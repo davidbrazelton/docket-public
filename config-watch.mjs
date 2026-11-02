@@ -72,6 +72,12 @@ function walk(dir, max = 300) {
 }
 const parse = (text) => { try { const j = JSON.parse(text.replace(/^\uFEFF/, '')); return j && typeof j === 'object' && !Array.isArray(j) ? j : undefined; } catch { return undefined; } };
 const withoutLive = (j) => j && Object.fromEntries(Object.entries(j).filter(([k]) => !LIVE_KEYS.has(k)));
+// Claude Code writes the time it last refreshed each marketplace and plugin into these files every time a process starts,
+// so comparing them as they are would make every session start reload every other one (#575). Only what they hold counts.
+const STAMP_KINDS = new Set(['installed', 'marketplaces']);
+const STAMP_KEYS = new Set(['lastUpdated', 'installedAt']);
+const withoutStamps = (v) => Array.isArray(v) ? v.map(withoutStamps)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).filter(([k]) => !STAMP_KEYS.has(k)).map(([k, x]) => [k, withoutStamps(x)])) : v;
 
 // What the files hold now: { [file]: { kind, label, h, json?, list? } }. A missing file is left out.
 export function readPrint(files, cache) {
@@ -86,8 +92,10 @@ export function readPrint(files, cache) {
     } else {
       const r = readFile(f.file, cache);
       if (!r) continue;
-      const json = JSON_KINDS.has(f.kind) ? parse(r.text) : undefined;
-      print[f.file] = { kind: f.kind, label: f.label, h: r.h, ...(json ? { json: f.kind === 'settings' ? withoutLive(json) : json } : {}) };
+      let json = JSON_KINDS.has(f.kind) ? parse(r.text) : undefined;
+      if (json && f.kind === 'settings') json = withoutLive(json);
+      if (json && STAMP_KINDS.has(f.kind)) json = withoutStamps(json);
+      print[f.file] = { kind: f.kind, label: f.label, h: json && STAMP_KINDS.has(f.kind) ? hashOf(json) : r.h, ...(json ? { json } : {}) };
     }
   }
   return print;
@@ -119,7 +127,9 @@ function describe(kind, a, b) {
   if (unreadable && JSON_KINDS.has(kind)) return [`${label} edited`];
   if (kind === 'settings') return settingsChanges(a?.json, b?.json).map((x) => `${x} (${label})`);
   if (kind === 'mcp') return keysChanged(a?.json?.mcpServers, b?.json?.mcpServers, 'connected service', 'added', 'removed', 'changed').map((x) => `${x} (${label})`);
-  if (kind === 'installed') return keysChanged(a?.json?.plugins, b?.json?.plugins, 'plugin', 'installed', 'uninstalled', 'updated');
+  // withoutStamps again here: a session started before #575 holds a print taken with the timestamps in.
+  if (kind === 'installed') return keysChanged(withoutStamps(a?.json?.plugins), withoutStamps(b?.json?.plugins), 'plugin', 'installed', 'uninstalled', 'updated');
+  if (kind === 'marketplaces') return keysChanged(withoutStamps(a?.json), withoutStamps(b?.json), 'plugin marketplace', 'added', 'removed', 'changed');
   if (kind === 'hooks') return keysChanged(a?.list, b?.list, 'hook file', 'added', 'removed', 'edited').map((x) => `${x} (${label})`);
   return [`${label} changed`];
 }

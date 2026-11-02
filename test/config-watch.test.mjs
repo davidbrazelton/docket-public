@@ -139,3 +139,24 @@ test('restart at idle: Ask waits for the person; nothing to do without changes, 
 test('the note after a reload lists what it took in', () => {
   assert.match(reloadNote(['plugin a turned on', 'Stop hooks edited']), /^\(From Docket: .*same conversation.*plugin a turned on; Stop hooks edited\.\)$/);
 });
+
+test('Claude Code rewriting marketplace and plugin timestamps is no reason to reload; a marketplace added is (#575)', () => {
+  const t = setup();
+  const mk = path.join(t.home, 'plugins', 'known_marketplaces.json'), inst = path.join(t.home, 'plugins', 'installed_plugins.json');
+  const official = { source: { source: 'github', repo: 'anthropics/claude-plugins-official' }, installLocation: '/x/official' };
+  t.write(mk, { official: { ...official, lastUpdated: '2026-11-02T10:00:00.000Z' } });
+  t.write(inst, { version: 2, plugins: { 'a@official': [{ version: '1.0', installedAt: '2026-11-01T00:00:00.000Z', lastUpdated: '2026-11-02T10:00:00.000Z' }] } });
+  const a = t.print();
+  t.write(mk, { official: { ...official, lastUpdated: '2026-11-02T11:00:00.000Z' } });
+  t.write(inst, { version: 2, plugins: { 'a@official': [{ version: '1.0', installedAt: '2026-11-01T00:00:00.000Z', lastUpdated: '2026-11-02T11:00:00.000Z' }] } });
+  assert.deepEqual(configChanges(a, t.print()), { reload: [], rules: [] });
+  t.write(mk, { official: { ...official, lastUpdated: '2026-11-02T12:00:00.000Z' }, acme: { source: { source: 'git', url: 'https://git.example/acme.git' }, lastUpdated: '2026-11-02T12:00:00.000Z' } });
+  assert.deepEqual(configChanges(a, t.print()).reload, ['plugin marketplace acme added']);
+});
+
+test('a print taken with the timestamps in (before #575) does not reload on a timestamp-only rewrite', () => {
+  const t = setup(), mk = path.join(t.home, 'plugins', 'known_marketplaces.json');
+  const old = { [path.resolve(mk)]: { kind: 'marketplaces', label: 'plugin marketplaces', h: 'raw-file-hash', json: { official: { source: { repo: 'o' }, lastUpdated: '1' } } } };
+  t.write(mk, { official: { source: { repo: 'o' }, lastUpdated: '2' } });
+  assert.deepEqual(configChanges(old, t.print()).reload, []);
+});
