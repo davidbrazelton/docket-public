@@ -1079,7 +1079,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
       <div class="side-top"><div class="side-tabs" role="tablist"><button role="tab" data-mode="sessions" class="on" data-tip="tab-sessions">Sessions</button><button role="tab" data-mode="schedules" data-tip="tab-schedules">Schedules</button></div><button class="ghost pane-close" id="sideClose" aria-label="Close the session list" title="Back to the session (Esc)">✕</button></div>
       <div class="search-row"><button class="primary" id="newBtn" data-tip="new">+ New session</button><input id="search" placeholder="Search sessions" aria-label="Search sessions" data-tip="search"><button id="textSearchBtn" class="ghost" aria-pressed="false" data-tip="textsearch">❝</button></div>
       <div id="searchNote" class="search-note" hidden></div>
-      <div class="attn-bar list-bar" id="listBar"><span id="listOpts"></span><button id="attnBtn" class="ghost" aria-pressed="false" data-tip="attn">✦</button><div class="view-menu"><button id="viewBtn" class="ghost" aria-haspopup="true" aria-expanded="false" data-tip="view">👁</button><div id="viewMenu" class="tl-menu view-pop" hidden></div></div></div>
+      <div class="attn-bar list-bar" id="listBar"><span id="listOpts"></span><button id="attnBtn" class="ghost" aria-pressed="false" data-tip="attn">✦</button><div class="view-menu"><button id="viewBtn" class="ghost" aria-haspopup="true" aria-expanded="false" data-tip="view">👁</button><div id="viewMenu" class="tl-menu view-pop" data-menu hidden></div></div></div>
     </div>
     <div id="signin"></div>
     <div id="inbox"></div>
@@ -1857,11 +1857,58 @@ new MutationObserver((list) => {
   }
 }).observe(document.documentElement, { childList: true, subtree: true });
 
+// ---------- menu hold
+// An open menu, submenu, dropdown or popover is never closed, moved or rebuilt by a session update (#591). Each
+// redraw an update can set off starts with `if (menuHold(fn)) return;`: while a menu is open that notes the redraw
+// and returns true, and the noted redraws run, once each, as soon as no menu is open. A redraw the person sets off
+// from inside the menu (a ✓ in 👁, Chime in ⋯) still runs at once, because it runs inside their click or keypress.
+// A menu is #ctx (every menu drawn at the pointer or under a button) or anything with role="menu" or data-menu that
+// can be seen, so a new menu built either way is held for without more code. A native dropdown (a SELECT) cannot be
+// seen to be open, so it counts as open while it has the focus, until a choice is made or for SELECT_HOLD_MS after
+// it was last pressed (it keeps the focus after closing without a choice).
+// open: what has to be open for this redraw to wait; a redraw inside a menu (☰ > About) waits only for its dropdown.
+const SELECT_HOLD_MS = 15000;
+const BY_USER = /^(click|dblclick|auxclick|contextmenu|change|input|keydown|keyup|submit|drop)$/;
+let selectAt = 0, menuWait = null;
+const menuHeld = new Map(); // redraw -> { args, open } from its latest call
+function selectOpen(within) {
+  const a = document.activeElement;
+  return a?.tagName === 'SELECT' && Date.now() - selectAt < SELECT_HOLD_MS && (!within || !!a.closest(within));
+}
+function menuOpen() {
+  if (document.getElementById('ctx')) return true;
+  for (const m of document.querySelectorAll('[role="menu"], [data-menu]')) if (m.checkVisibility ? m.checkVisibility() : !m.hidden) return true;
+  return selectOpen();
+}
+// Inside the person's own click, keypress or choice, not an update from the app, a timer or a reply arriving.
+const byUser = () => { const e = window.event; return !!e && e.isTrusted && BY_USER.test(e.type); };
+function menuHold(fn, args = [], open = menuOpen) {
+  if (byUser() || !open()) return false;
+  menuHeld.set(fn, { args, open });
+  menuWait ||= setInterval(menuRelease, 200);
+  return true;
+}
+function menuRelease() {
+  for (const [fn, { args, open }] of [...menuHeld]) if (!open()) { menuHeld.delete(fn); fn(...args); }
+  if (!menuHeld.size) { clearInterval(menuWait); menuWait = null; }
+}
+for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, (e) => { if (e.target.tagName === 'SELECT') selectAt = Date.now(); }, true);
+document.addEventListener('change', (e) => { if (e.target.tagName === 'SELECT') selectAt = 0; }, true); // a choice closes it
+document.addEventListener('focusout', () => setTimeout(menuRelease), true);
+// Scrolling a box by hand closes the menu over it, which would otherwise float away from what it belongs to. A box
+// scrolling by itself (a reply arriving, a redraw) does not: only a scroll soon after a wheel, touch or press there.
+function closeMenuOnHandScroll(box) {
+  let at = 0;
+  for (const ev of ['wheel', 'touchstart', 'pointerdown', 'keydown']) box.addEventListener(ev, () => { at = Date.now(); }, { passive: true, capture: true });
+  box.addEventListener('scroll', () => { if (Date.now() - at < 1000) closeMenu(); });
+}
+// end of menu hold
+
 // ---------- clients ----------
 // The page changed on disk: reload, once nothing would be lost, keeping the open session and anything typed.
 function reloadWhenFree() {
   // a dialog, menu, unsaved schedule, a box being typed in, or files waiting to be sent (those are only kept in memory)
-  const busy = !$('dlg').hidden || !$('wiz').hidden || schedDirty || document.getElementById('ctx') || document.activeElement?.tagName === 'INPUT' || Object.keys(boxFiles).length;
+  const busy = !$('dlg').hidden || !$('wiz').hidden || schedDirty || menuOpen() || document.activeElement?.tagName === 'INPUT' || Object.keys(boxFiles).length;
   if (busy) { setTimeout(reloadWhenFree, 2000); return; }
   stashBox();
   try { sessionStorage.setItem('docket-reload', JSON.stringify({ client: S.client, selected: S.selected })); } catch {}
@@ -1925,6 +1972,7 @@ function waitingCount(clientId) {
 
 }
 function renderClients() {
+  if (menuHold(renderClients)) return; // waits while a menu is open (menu hold)
   $('clients').innerHTML = S.clients.map((c) => {
     const n = waitingCount(c.id);
     const rc = remoteMarkTip(c);
@@ -2287,7 +2335,7 @@ function rowMenu(row, x, y) {
       : copied(act === 'clean' ? clean : url, row);
   }
   const m = document.createElement('div');
-  m.className = 'ctx row-menu'; m.id = 'ctx'; m.setAttribute('role', 'menu');
+  m.className = 'ctx row-menu'; m.id = 'ctx'; m.setAttribute('role', 'menu'); if (row.dataset.session) m.dataset.session = row.dataset.session;
   m.innerHTML = items;
   document.body.appendChild(m);
   m.style.left = Math.max(8, Math.min(x, innerWidth - m.offsetWidth - 8)) + 'px';
@@ -2345,7 +2393,7 @@ for (const box of [$('tasksBody'), $('transcript')]) {
     const row = e.target.closest('[data-row-file], [data-row-link], [data-row-task], [data-row-folder]'); if (!row) return;
     e.preventDefault(); rowMenu(row, e.clientX, e.clientY);
   });
-  box.addEventListener('scroll', closeMenu);
+  closeMenuOnHandScroll(box);
 }
 
 // ---------- pull requests ----------
@@ -2668,6 +2716,7 @@ async function openSchedule(id) {
   $('input').placeholder = `Ask ${brand()} to change this schedule…`;
 }
 function renderScheduleHead() {
+  if (menuHold(renderScheduleHead)) return; // waits while a menu is open (menu hold)
   const d = S.schedDetail; if (!d) return;
   const chat = S.live[S.selected];
   $('head').innerHTML = `<span class="dot ${d.running ? 'running' : d.enabled ? 'idle' : 'ended'}"></span><h1 id="title"${tip('title')}>${esc(d.title)}</h1>
@@ -2688,6 +2737,7 @@ function renderScheduleHead() {
 }
 // The right panel: the schedule itself, in collapsible sections.
 function renderSchedulePanel() {
+  if (menuHold(renderSchedulePanel)) return; // waits while a menu is open (menu hold)
   const d = S.schedDetail;
   const c = S.clients.find((x) => x.id === S.client);
   const ch = cronToChoice(d ? d.cron : '0 9 * * 1-5', d?.fireAt);
@@ -2811,6 +2861,7 @@ const nearCompact = (s) => !!s?.stats?.compactAt && s.stats.tokens >= s.stats.co
 // The one percent shown on the gauge, in the list beside a red title, and in its hover text.
 const ctxPct = (st) => st?.compactAt ? Math.round((st.tokens / st.compactAt) * 100) : null;
 function renderComposerBar() {
+  if (menuHold(renderComposerBar)) return; // waits while a menu is open (menu hold)
   const st = currentSettings();
   const row = selectedSessionRow();
   // The brand: a choice for a new session when the company has more than one brand set up; a running or saved
@@ -3645,17 +3696,16 @@ function glideList(list, before) {
     el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: GLIDE_MS * 0.6, easing: 'ease-in', fill: 'forwards' }).finished.then(() => el.remove(), () => el.remove());
   }
 }
-// A dropdown keeps the focus after it closes without a change, so it holds the list only for a while after it was last used.
-const LIST_HOLD_MS = 15000;
-let listSelectAt = 0, listHoldTimer = null;
-// The Order dropdown sits in the list bar above the list, so it counts too.
-const listSelectOpen = () => { const a = document.activeElement; return a?.tagName === 'SELECT' && !!a.closest('#list, #listBar') && Date.now() - listSelectAt < LIST_HOLD_MS; };
+// A dropdown in the list holds it as any open dropdown does (see menu hold). The Order dropdown sits in the list bar
+// above the list, so it counts too.
+let listHoldTimer = null;
+const listSelectOpen = () => selectOpen('#list, #listBar');
 const listHeld = () => listPressed || !!(dragRow || dragGid) || listSelectOpen();
 function releaseList() { if (S.listWanted && !listHeld()) renderList(); }
 for (const area of ['list', 'listBar']) {
   for (const ev of ['pointerdown', 'keydown']) $(area).addEventListener(ev, (e) => {
     if (e.target.tagName !== 'SELECT') return;
-    listSelectAt = Date.now(); clearTimeout(listHoldTimer); listHoldTimer = setTimeout(releaseList, LIST_HOLD_MS + 50);
+    clearTimeout(listHoldTimer); listHoldTimer = setTimeout(releaseList, SELECT_HOLD_MS + 50);
   });
   $(area).addEventListener('focusout', () => setTimeout(releaseList));
 }
@@ -3683,6 +3733,7 @@ document.addEventListener('click', async (e) => {
   catch (err) { alert(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
 });
 function renderList() {
+  if (menuHold(renderList)) return; // waits while a menu is open (menu hold)
   pruneBoxes();
   if (S.plans.client !== S.client) loadPlans();
   $('inbox').innerHTML = S.mode === 'sessions' ? inboxHtml() : '';
@@ -3818,6 +3869,7 @@ function clearPicked() {
   renderPickBar(); renderList();
 }
 function renderPickBar() {
+  if (menuHold(renderPickBar)) return; // waits while a menu is open (menu hold)
   const bar = $('pickBar'), n = S.picked.size;
   bar.hidden = !n;
   if (!n) { bar.innerHTML = ''; return; }
@@ -3860,7 +3912,9 @@ function descendants(id) {
   walk(id);
   return out;
 }
-function closeMenu() { document.getElementById('ctx')?.remove(); document.getElementById('sessMenuBtn')?.setAttribute('aria-expanded', 'false'); }
+function closeMenu() { document.getElementById('ctx')?.remove(); document.getElementById('sessMenuBtn')?.setAttribute('aria-expanded', 'false'); setTimeout(menuRelease); }
+// A menu for a session closes once that session is deleted or archived somewhere else: what it offers no longer applies.
+function closeMenuFor(id) { if (document.getElementById('ctx')?.dataset.session === id) closeMenu(); }
 // What archiving would cost, for the sessions about to be archived: a reply in progress is cut off
 // (archiving ends a live session, background jobs included), and a question or unread reply is easy to forget.
 // Returns null when nothing is at stake, else { working, body } for a dialog.
@@ -4083,7 +4137,7 @@ function openSessionMenu(id, at) {
 }
 document.addEventListener('click', (e) => { if (!e.target.closest('#ctx')) closeMenu(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
-$('list').addEventListener('scroll', closeMenu);
+closeMenuOnHandScroll($('list'));
 // ---------- feedback (tested in test/feedback.test.mjs)
 // What the browser can say about itself for a 🔨 report. Only these fields leave the page; the app drops anything
 // else and adds what it can safely say about Docket. nav, win: the browser's navigator and window.
@@ -4728,6 +4782,7 @@ function remoteMarkTip(c) {
 }
 function drawRemoteIcon() {
   const lines = remoteLines();
+  if (lines.length && menuHold(drawRemoteIcon)) return; // with nothing left to disconnect it closes at once
   $('rcWrap').hidden = !lines.length;
   $('rcBtn').title = lines.length ? `Remote connection on:\n${lines.map((l) => l.text).join('\n')}\n\nClick to Disconnect.` : '';
   if (!lines.length) rcMenu(false); else if (!$('rcMenu').hidden) rcMenu(true);
@@ -4744,6 +4799,7 @@ $('rcMenu').onclick = async (e) => {
   try {
     if (b.dataset.rcDrop) { const r = await api('/api/remote-control/disconnect', { id: b.dataset.rcDrop }); S.remoteHere = { desk: r.desk, connections: r.connections || [] }; renderClients(); }
     else { await api(`/api/remote-desks/${b.dataset.rcOff}/disconnect`, {}); await reloadClients(); }
+    if (!$('rcMenu').hidden) rcMenu(true); // the redraws wait while it is open, so it shows what is left itself
   } catch (err) { b.disabled = false; alert(err.message); }
 };
 document.addEventListener('mousedown', (e) => { if (!$('rcMenu').hidden && !e.target.closest('.rc-wrap')) rcMenu(false); });
@@ -5024,6 +5080,10 @@ window.addEventListener('resize', () => { if (!$('tour').hidden) tourShow(); });
 function showUpdate(u) {
   if (u.version !== undefined) S.update = u; else u = { ...S.update, ...u };
   showUpdateOffer();
+  drawMenuVer(u);
+}
+function drawMenuVer(u) {
+  if (menuHold(drawMenuVer, [u], () => selectOpen('#menuVer'))) return; // it is in ☰ itself, so it waits only for its dropdown
   const el = document.getElementById('menuVer'); if (!el) return;
   const res = u.checking ? 'checking now' : u.result ? `${u.result}${u.at ? ' · ' + (ago(u.at) === 'now' ? 'just now' : ago(u.at) + ' ago') : ''}` : 'not checked yet';
   const every = [0, 2, 5, 15, 30, 60];
@@ -6127,6 +6187,7 @@ $('reloadAllBtn').onclick = async () => {
   try { const r = await api('/api/reload-all', {}); if (r.later) alert(`${r.now} reloading now; ${r.later} will reload once their turn and background commands end.`); } catch (err) { alert(err.message); }
 };
 function renderHead() {
+  if (menuHold(renderHead)) return; // waits while a menu is open (menu hold)
   renderComposerBar();
   if ($('tlBar').hidden !== !tlSession()) renderTlBar();
   $('cutBanner').hidden = S.schedOpen || !cutOffShown(current());
@@ -6643,6 +6704,7 @@ const configTag = (s) => !s.live ? '' : s.reloading ? '<span class="tag cfg" tit
   : s.configChanged ? `<span class="tag cfg" title="${esc('Config changed since this session started; it loads it when it reloads:\n' + cfgList(s))}">config changed</span>` : '';
 const stalledTag = (s) => s.live && s.stalled ?`<span class="tag stalled" title="${esc(stalledTip(s.stalled))}">stalled ${s.stalled.minutes}m</span>` : '';
 function renderTasks() {
+  if (menuHold(renderTasks)) return; // waits while a menu is open (menu hold)
   if (S.schedOpen) return; // the right panel shows the schedule; it redraws only when the schedule changes
   $('tasksTitle').textContent = '';
   const all = Object.values(S.tasks).filter((t) => !t.ambient);
@@ -7710,12 +7772,14 @@ function connect() {
       if (c) { c.browser = { sites: m.sites, open: m.open }; if (m.client === S.client) renderBrowser(); }
     } else if (m.t === 'archived') {
       markListChanged(m.client);
+      if (m.archived) closeMenuFor(m.id);
       const row = (S.history[m.client] || []).find((r) => r.id === m.id);
       markArchived(S.live, S.history[m.client] || [], [m.id], m.archived);
       if (m.client === S.client) { renderList(); if (mine) renderHead(); }
       if (!row) loadSessions(m.client, true).then(() => { if (m.client === S.client) renderList(); });
     } else if (m.t === 'deleted') {
       markListChanged(m.client);
+      closeMenuFor(m.id);
       delete S.live[m.id];
       if (S.history[m.client]) S.history[m.client] = S.history[m.client].filter((r) => r.id !== m.id);
       if (mine) { S.selected = null; newDraft(); $('events').insertAdjacentHTML('afterbegin', '<div class="note">That session was deleted.</div>'); }
@@ -7801,6 +7865,7 @@ function tlSoon() {
 }
 // The bar above the chat: filters, how much is shown, Refresh.
 function renderTlBar() {
+  if (menuHold(renderTlBar)) return; // waits while a menu is open (menu hold)
   const bar = $('tlBar'), id = tlSession();
   bar.hidden = !id;
   if (!id) return;
@@ -7814,7 +7879,7 @@ function renderTlBar() {
   const items = cats.map(([k, label]) => `<label style="--c:${TL_COLORS[k]}"><input type="checkbox" data-cat="${k}"${tip('tl-cat')} ${f[k] !== false ? 'checked' : ''}><i></i><b>${esc(label)}</b><em>${d.counts[k]}</em></label>`).join('');
   const menuTop = bar.querySelector('.tl-menu')?.scrollTop || 0;
   bar.innerHTML = `<span class="tl-filt"><button id="tlFiltBtn"${tip('tl-filters')} aria-haspopup="true" aria-expanded="${tl.menu}">🕘 Filters: ${on} of ${cats.length}</button>
-      <div class="tl-menu" ${tl.menu ? '' : 'hidden'}><div class="tl-all"><a href="#" data-all="1"${tip('tl-all')}>All</a><a href="#" data-all="0"${tip('tl-none')}>None</a></div>${items}
+      <div class="tl-menu" data-menu ${tl.menu ? '' : 'hidden'}><div class="tl-all"><a href="#" data-all="1"${tip('tl-all')}>All</a><a href="#" data-all="0"${tip('tl-none')}>None</a></div>${items}
       <div class="tl-mnote">Messages and tool runs are in the chat already. Messages here adds only marks such as "Conversation compacted"; a tool category puts the time and size on its cards.</div></div></span>
     <span class="tl-sum"><span title="From the session's record file. Hooks that ran without printing anything are not written there, so only hooks that added something, showed a message, failed or timed out appear; the desk's Inspector lists every hook.">${shown.length} entries · ${tokensText(total) || 'nothing'} for Claude to read ⓘ</span><button id="tlRefresh"${tip('tl-refresh')}>Refresh</button></span>`;
   if (menuTop) bar.querySelector('.tl-menu').scrollTop = menuTop;
