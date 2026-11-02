@@ -7200,8 +7200,8 @@ async function send(preset) {
 function maybeAskNotify() { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); }
 // ---------- a chime when a session needs you ----------
 // Made by the browser (no sound file). Browsers only play sound after the page has been clicked
-// once, so the audio is unlocked on the first click. Chimes close together are merged into one.
-let audioCtx = null, lastChime = 0;
+// once, so the audio is unlocked on the first click. Which dots get a chime is the beep rules below.
+let audioCtx = null;
 const soundOn = () => store.get('sound', true);
 function unlockAudio() {
   try { audioCtx ||= new AudioContext(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch {}
@@ -7212,14 +7212,13 @@ const SOUND_WORDS = {
   ready: 'Reply finished: two bright notes going up, quick.',
   question: 'Question or permission: three bright notes, high, low, high.',
   cache: 'Session cache expiring: two lower, softer notes going down, a little slower. A box at the bottom left names each session it was for, with its desk when that is not the one on screen; click one to open it.',
-  rules: 'The chime plays only after a dot has stayed orange for 2 seconds, and not for the session you are looking at. Chimes within 4 seconds of each other merge into one. Session caches that expire within 2 minutes of each other share one tone, and with several Docket pages open only one of them plays it. Sound in the ☰ menu turns all sound off, and each conversation can be muted on its own.',
+  rules: 'The chime plays only after a dot has stayed orange for 2 seconds, and not for the session you are looking at. Chimes within 4 seconds of each other merge into one. A session and the sessions it started (and theirs) share one chime: after any of them chimes, the rest stay quiet for 60 seconds, though their dots still turn orange. After any chime there is no other for 30 seconds; a session that turned orange in that time and still needs you gets one catch-up chime when it ends. Questions and permission asks skip both waits. With several Docket pages open only one of them plays each chime. Session caches that expire within 2 minutes of each other share one tone, and with several Docket pages open only one of them plays it. Sound in the ☰ menu turns all sound off, and each conversation can be muted on its own.',
 };
-// force: the Key's ▶ buttons play it even with the bell off, and outside the 4 second merge window.
+// force: the Key's ▶ buttons play it even with the bell off, and outside the waits (see the beep rules below).
 function chime(question, force = false) {
   if (force) unlockAudio();
-  else if (!soundOn() || Date.now() - lastChime < 4000) return false;
+  else if (!soundOn()) return false;
   if (!audioCtx) return false;
-  if (!force) lastChime = Date.now();
   const notes = question ? [880, 660, 880] : [659.25, 880]; // a question gets a third note
   notes.forEach((freq, i) => {
     const t = audioCtx.currentTime + i * 0.16;
@@ -7344,7 +7343,56 @@ function soundTip() {
     + `\n• ${SOUND_WORDS.ready}\n• ${SOUND_WORDS.question}\n• ${SOUND_WORDS.cache} A waiting session's 1 hour cache has 10 minutes left. It is not the chime.\n`
     + SOUND_WORDS.rules + (soundOn() ? '\nClick to turn all sound off.' : '') + '\n☰ > Help > Key lets you hear each one.';
 }
-function toggleSound() { store.set('sound', !soundOn()); if (soundOn()) { lastChime = 0; chime(false); } if (!S.schedOpen) renderHead(); }
+function toggleSound() { store.set('sound', !soundOn()); if (soundOn()) chime(false); if (!S.schedOpen) renderHead(); }
+
+// ---------- beep rules ----------
+// Which settled orange dot gets a chime. Pure, so test/beep-rules.test.mjs can try it without a page.
+// st is the record every open page shares: last (when the last chime played), families (top session
+// id -> when that family last chimed) and held (sessions waiting for the catch-up chime).
+const BEEP_MERGE_MS = 4000, BEEP_QUIET_MS = 30000, BEEP_FAMILY_MS = 60000;
+const beepState = (st) => ({ last: st?.last || 0, families: { ...(st?.families || {}) }, held: [...(st?.held || [])] });
+// The top of a session's family: follow the parent links up. parentOf(id) gives a parent id or null.
+function familyTop(id, parentOf) {
+  const seen = new Set([id]);
+  for (let p = parentOf(id); p && !seen.has(p); p = parentOf(p)) { seen.add(p); id = p; }
+  return id;
+}
+// One settled dot. Returns { act, why, state }: act is play, merge (a chime under 4 seconds ago covers it),
+// family (its family chimed under 60 seconds ago) or hold (the 30 second quiet; state.held has it, for the
+// catch-up at holdUntil). A question skips the family and quiet waits but still merges.
+function beepDecision(st, { id, family, question, now }) {
+  const s = beepState(st);
+  for (const [k, at] of Object.entries(s.families)) if (now - at >= BEEP_FAMILY_MS) delete s.families[k];
+  s.held = s.held.filter((h) => h.id !== id && now - h.until < BEEP_QUIET_MS); // a page closed before its catch-up
+  const ago = (at) => `${Math.round((now - at) / 1000)}s ago`;
+  if (now - s.last < BEEP_MERGE_MS) { s.families[family] = now; return { act: 'merge', why: `merged into a chime ${ago(s.last)}`, state: s }; }
+  if (!question && s.families[family]) return { act: 'family', why: `skipped: family chimed ${ago(s.families[family])}`, state: s };
+  if (!question && now - s.last < BEEP_QUIET_MS) {
+    const holdUntil = s.last + BEEP_QUIET_MS;
+    s.held.push({ id, family, at: now, until: holdUntil });
+    return { act: 'hold', why: `held for catch-up: a chime played ${ago(s.last)}, quiet for ${Math.round((holdUntil - now) / 1000)}s more`, holdUntil, state: s };
+  }
+  s.last = now; s.families[family] = now;
+  return { act: 'play', why: question ? 'settled, question' : 'settled', state: s };
+}
+// The quiet window ended. stillNeeds(h) says whether a held session still needs you; the rest are dropped.
+// Each one left is decided again, so they share one catch-up chime (the rest merge into it). Returns
+// { play, decisions: [{ id, act, why }], state, holdUntil } (holdUntil when a newer chime keeps them waiting).
+function beepCatchUp(st, { now, stillNeeds }) {
+  let s = beepState(st);
+  const held = s.held; s.held = [];
+  const decisions = []; let play = false, holdUntil = 0;
+  for (const h of held) {
+    if (!stillNeeds(h)) { decisions.push({ id: h.id, act: 'drop', why: 'catch-up dropped: no longer needs you' }); continue; }
+    const d = beepDecision(s, { id: h.id, family: h.family, question: false, now });
+    s = d.state;
+    if (d.act === 'play') play = true;
+    if (d.act === 'hold') holdUntil = d.holdUntil;
+    decisions.push({ id: h.id, act: d.act, why: d.act === 'play' ? 'catch-up chime' : d.why });
+  }
+  return { play, decisions, state: s, holdUntil };
+}
+// end of beep rules
 
 // A session can turn orange for a moment and then go straight back to work (a child session's
 // report wakes it, or a background job shows up a beat late). So the alert waits until the orange
@@ -7367,11 +7415,45 @@ function watchNeedsYou(s, before) {
   }, SETTLE_MS));
 }
 
+// Every open page sees the same dots, so the beep record is read and saved under a lock all of this
+// browser's pages share (as the cache tone does): the first page to decide plays the chime, and the
+// others find it already played and merge. A page that cannot play (sound off, or not clicked yet)
+// stays out, so it never takes a chime another page could have played.
+const withChimeLock = (fn) => (navigator.locks ? navigator.locks.request('docket-chime', fn) : Promise.resolve(fn()));
+const parentOfRow = (id) => (S.live[id] || Object.values(S.history).flat().find((r) => r.id === id))?.parentId || null;
+let catchUpTimer = null;
+function beepFor(s) {
+  if (!soundOn()) return chimeLog(s, 'settled, sound is off');
+  if (!audioCtx) return chimeLog(s, 'settled, no sound until the page is clicked once');
+  const question = s.status === 'requires_action';
+  return withChimeLock(() => {
+    const d = beepDecision(store.get('beeps', null), { id: s.id, family: familyTop(s.id, parentOfRow), question, now: Date.now() });
+    store.set('beeps', d.state);
+    if (d.act === 'play') chime(question);
+    if (d.act === 'hold') planCatchUp(d.holdUntil);
+    chimeLog(s, d.why);
+  });
+}
+// Every page that held a dot sets a timer; the first to run under the lock plays the catch-up chime
+// and empties the held list, so the others find nothing left to do.
+function planCatchUp(at) {
+  clearTimeout(catchUpTimer);
+  catchUpTimer = setTimeout(() => withChimeLock(() => {
+    const st = store.get('beeps', null);
+    if (!st?.held?.length) return;
+    const stillNeeds = (h) => { const now = S.live[h.id]; return !!now && needsYou(now) && !isMuted(h.id) && !(looking() && h.id === S.selected); };
+    const r = beepCatchUp(st, { now: Date.now(), stillNeeds });
+    store.set('beeps', r.state);
+    if (r.play) chime(false);
+    if (r.holdUntil) planCatchUp(r.holdUntil);
+    for (const d of r.decisions) chimeLog(S.live[d.id] || { id: d.id }, d.why);
+  }), Math.max(0, at - Date.now()) + 50);
+}
+
 function notify(s) {
   if (looking() && s.id === S.selected) return chimeLog(s, 'skipped: you are looking at it');
   if (isMuted(s.id)) chimeLog(s, 'skipped: muted for this conversation');
-  else chimeLog(s, chime(s.status === 'requires_action') ? 'settled'
-    : !soundOn() ? 'settled, sound is off' : !audioCtx ? 'settled, no sound until the page is clicked once' : 'settled, merged into a chime under 4 seconds ago');
+  else beepFor(s);
   if (looking()) return chimeLog(s, 'no desktop notification: Docket has focus');
   if ('Notification' in window && Notification.permission === 'granted') {
     const n = new Notification(`${S.clients.find((c) => c.id === s.client)?.name}: ${s.title || 'Session'}`, { body: 'Needs you', tag: s.id });
