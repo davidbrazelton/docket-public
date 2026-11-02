@@ -851,12 +851,23 @@ header.top .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
 .signin-code { font: 600 22px/1.2 ui-monospace, Consolas, monospace; letter-spacing: 2px; text-align: center; margin: 8px 0; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); user-select: all; }
 .warn-mark { background: var(--bad); color: var(--on-bad); border-radius: 999px; font-size: 10px; width: 15px; height: 15px; display: inline-grid; place-items: center; font-weight: 700; }
 
+/* A narrow window gives way in order (#558): the session pane keeps its room, the details panel goes first (html.no-details),
+   then the session list (html.no-list). fitPanes() sets both from the panels' widths. A pane that gave way opens over the
+   session pane from its top-bar icon (.open): Details as a drawer on the right, both full width once the list is gone too. */
+html.no-list .app { grid-template-columns: 1fr; }
+html.no-list aside.side, html.no-list aside.side.shut, html.no-details aside.tasks, html.no-details aside.tasks.hidden { display: none; }
+html.no-list aside.side.open, html.no-details aside.tasks.open { display: flex; position: fixed; top: calc(49px + var(--card-gap)); bottom: 0; z-index: 6; box-shadow: 0 8px 30px rgba(0,0,0,.25); }
+html.no-list aside.side.open { left: 0; right: 0; }
+html.no-details aside.tasks.open { right: 0; width: min(var(--right-w, 330px), 100vw); }
+html.no-details aside.tasks.wide.open { width: min(max(440px, var(--right-w, 330px)), 100vw); }
+html.no-list aside.tasks.open, html.no-list aside.tasks.wide.open { left: 0; width: auto; }
+html.no-list aside.side > .resizer, html.no-details aside.tasks > .resizer { display: none; }
+.pane-close { display: none; }
+html.no-list aside.side .pane-close, html.no-details aside.tasks .pane-close { display: flex; align-items: center; padding: 2px 9px; }
+.side-top { display: flex; gap: 6px; align-items: center; }
+.side-top .side-tabs { flex: 1; }
 @media (max-width: 900px) {
-  .app { grid-template-columns: 1fr; }
-  aside.side, aside.side.shut { display: none; }
-  aside.side.open { display: flex; position: fixed; inset: calc(49px + var(--card-gap)) 0 0 0; z-index: 5; }
-  aside.tasks { position: fixed; right: 0; top: calc(49px + var(--card-gap)); bottom: 0; z-index: 4; width: min(330px, 100vw); }
-  .resizer { display: none; }
+  .compose-row > .resizer { display: none; }
   .inner { padding: 0 16px; }
 }
 /* ---------- a session's Timeline (a Details section) and a desk's Inspector ---------- */
@@ -1027,7 +1038,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   <aside class="side" id="side">
     <div class="resizer" id="leftResizer" role="separator" aria-orientation="vertical" aria-label="Resize the session list" data-tip="resize-left" tabindex="0"></div>
     <div class="side-head">
-      <div class="side-tabs" role="tablist"><button role="tab" data-mode="sessions" class="on" data-tip="tab-sessions">Sessions</button><button role="tab" data-mode="schedules" data-tip="tab-schedules">Schedules</button></div>
+      <div class="side-top"><div class="side-tabs" role="tablist"><button role="tab" data-mode="sessions" class="on" data-tip="tab-sessions">Sessions</button><button role="tab" data-mode="schedules" data-tip="tab-schedules">Schedules</button></div><button class="ghost pane-close" id="sideClose" aria-label="Close the session list" title="Back to the session (Esc)">✕</button></div>
       <div class="search-row"><button class="primary" id="newBtn" data-tip="new">+ New session</button><input id="search" placeholder="Search sessions" aria-label="Search sessions" data-tip="search"><button id="textSearchBtn" class="ghost" aria-pressed="false" data-tip="textsearch">❝</button></div>
       <div id="searchNote" class="search-note" hidden></div>
       <div class="attn-bar list-bar" id="listBar"><span id="listOpts"></span><button id="attnBtn" class="ghost" aria-pressed="false" data-tip="attn">✦</button><div class="view-menu"><button id="viewBtn" class="ghost" aria-haspopup="true" aria-expanded="false" data-tip="view">👁</button><div id="viewMenu" class="tl-menu view-pop" hidden></div></div></div>
@@ -1088,7 +1099,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   </main>
   <aside class="tasks" id="tasks">
     <div class="resizer" id="rightResizer" role="separator" aria-orientation="vertical" aria-label="Resize the details panel" data-tip="resize-right" tabindex="0"></div>
-    <div class="tasks-head"><span class="sec-toggles" id="secToggles" role="group" aria-label="Sections of the details panel"><button data-sec="cost" data-tip="sec-cost" aria-label="Cost">$</button><button data-sec="plan" data-tip="sec-plan" aria-label="Plan">📋</button><button data-sec="files" data-tip="sec-files" aria-label="Files">📄</button><button data-sec="prs" data-tip="sec-prs" aria-label="Pull requests"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4.75 1.5a2.25 2.25 0 0 0-.75 4.37v4.26a2.25 2.25 0 1 0 1.5 0V5.87A2.25 2.25 0 0 0 4.75 1.5Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm0 8.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5ZM11.25 10.13V6.5A2.5 2.5 0 0 0 8.75 4H7.56l1.22-1.22-1.06-1.06L4.69 4.75l3.03 3.03 1.06-1.06L7.56 5.5h1.19a1 1 0 0 1 1 1v3.63a2.25 2.25 0 1 0 1.5 0Zm-.75 1.37a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"/></svg></button><button data-sec="tasks" data-tip="sec-tasks" aria-label="Tasks"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 3.75l1.25 1.25 2.25-2.5M2 8.25l1.25 1.25 2.25-2.5M2 12.75l1.25 1.25 2.25-2.5M8 4h6M8 8.5h6M8 13h6"/></svg></button><button data-sec="mcp" data-tip="sec-mcp" aria-label="Connected services"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M6 1.5v3M10 1.5v3M3.75 4.5h8.5V7a4.25 4.25 0 0 1-8.5 0ZM8 11.25v3.25"/></svg></button></span><span id="tasksTitle"></span></div>
+    <div class="tasks-head"><span class="sec-toggles" id="secToggles" role="group" aria-label="Sections of the details panel"><button data-sec="cost" data-tip="sec-cost" aria-label="Cost">$</button><button data-sec="plan" data-tip="sec-plan" aria-label="Plan">📋</button><button data-sec="files" data-tip="sec-files" aria-label="Files">📄</button><button data-sec="prs" data-tip="sec-prs" aria-label="Pull requests"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4.75 1.5a2.25 2.25 0 0 0-.75 4.37v4.26a2.25 2.25 0 1 0 1.5 0V5.87A2.25 2.25 0 0 0 4.75 1.5Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm0 8.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5ZM11.25 10.13V6.5A2.5 2.5 0 0 0 8.75 4H7.56l1.22-1.22-1.06-1.06L4.69 4.75l3.03 3.03 1.06-1.06L7.56 5.5h1.19a1 1 0 0 1 1 1v3.63a2.25 2.25 0 1 0 1.5 0Zm-.75 1.37a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"/></svg></button><button data-sec="tasks" data-tip="sec-tasks" aria-label="Tasks"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 3.75l1.25 1.25 2.25-2.5M2 8.25l1.25 1.25 2.25-2.5M2 12.75l1.25 1.25 2.25-2.5M8 4h6M8 8.5h6M8 13h6"/></svg></button><button data-sec="mcp" data-tip="sec-mcp" aria-label="Connected services"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M6 1.5v3M10 1.5v3M3.75 4.5h8.5V7a4.25 4.25 0 0 1-8.5 0ZM8 11.25v3.25"/></svg></button></span><span id="tasksTitle"></span><button class="ghost pane-close" id="tasksClose" aria-label="Close the details panel" title="Back to the session (Esc)">✕</button></div>
     <div class="tasks-body" id="tasksBody"></div>
   </aside>
 </div>
@@ -1151,8 +1162,8 @@ const HELP = [
     ['back', '‹ Back', `Back to the session you viewed before (${OS.nav[0]}). Right-click for the steps behind, to jump several at once`],
     ['fwd', '› Forward', `Forward again to the session you went back from (${OS.nav[1]}). Right-click for the steps ahead`],
     ['company', 'Desk buttons', 'Switch to this desk\'s sessions. The orange number counts sessions that need you, plus cards from other desks waiting for Start. You can add more desks (☰ > Desks > + Add a desk): each keeps its own sign-in, settings and memory, so a new one is a safe place to try a plugin or framework while the desk you work in stays as it is.'],
-    ['side-toggle', 'Sessions list', 'Show or hide the Sessions list on the left. Docket remembers the choice. On a narrow window it opens the list over the page'],
-    ['details', 'Details', 'Show or hide the details panel on the right. Docket remembers the choice. The number counts the tasks running. On a narrow window the panel opens over the page, and Escape closes it too'],
+    ['side-toggle', 'Sessions list', 'Show or hide the Sessions list on the left. Docket remembers the choice. When the window is too narrow for it, this opens the list over the session; picking a session, ✕ or Escape closes it'],
+    ['details', 'Details', 'Show or hide the details panel on the right. Docket remembers the choice. The number counts the tasks running. When the window is too narrow for it, the panel gives way first and this opens it over the session; ✕ or Escape closes it'],
     ['terminal', 'Terminal', 'Open a terminal in this desk\'s folder, signed in as this desk'],
     ['pause-all', '⏸ Pause all', 'Pause all sessions: stop every working session in every desk, for example before the computer sleeps. Docket stays paused, with scheduled runs waiting, until you press Resume all.'],
     ['resume-all', 'Resume all', 'Tell each paused session to check its test servers and browsers still answer, then carry on. Sessions you wrote to while paused are left alone.'],
@@ -1758,6 +1769,7 @@ async function init() {
   applyTheme(store.get('theme', null));
   if (store.get('tasksHidden', false)) $('tasks').classList.add('hidden');
   if (store.get('sideHidden', false)) $('side').classList.add('shut');
+  fitPanes();
   // A first visit (this browser has never opened a company) gets the welcome tour once the page is up.
   const firstVisit = store.get('client', null) === null && !store.get('tourSeen', false);
   S.clients = await api('/api/clients?quick=1');
@@ -2516,7 +2528,7 @@ async function openSchedule(id) {
   closeProfile();
   if (id) store.set('sched:' + S.client, id);
   S.events = []; S.tasks = {}; setSuggestion('');
-  $('tasks').classList.remove('hidden'); $('tasks').classList.add('wide');
+  $('tasks').classList.remove('hidden'); $('tasks').classList.add('wide'); if (narrow('no-details')) overPane('tasks', true);
   renderList();
   if (!id) {
     S.selected = 'schednew'; S.schedDetail = null; swapBox();
@@ -2744,13 +2756,14 @@ const PANELS = {
   left: { el: 'leftResizer', prop: '--left-w', def: 300, min: 200, max: 640, edge: (x) => x },
   right: { el: 'rightResizer', prop: '--right-w', def: 330, min: 260, max: 900, edge: (x) => innerWidth - x },
 };
+const PANE_ROOM = 480; // the session pane's least width beside the panels, with the gaps and margins (#558)
 function setPanelWidth(key, w, save = true) {
   const p = PANELS[key];
   const other = key === 'left' ? $('tasks') : $('side');
-  const room = innerWidth - (other.offsetWidth || 0) - 380; // keep the conversation at least 380px wide
+  const room = innerWidth - (narrow(key === 'left' ? 'no-details' : 'no-list') ? 0 : other.offsetWidth || 0) - PANE_ROOM; // keep the conversation its room
   w = Math.round(Math.max(p.min, Math.min(p.max, room, w)));
   document.documentElement.style.setProperty(p.prop, w + 'px');
-  if (save) { const all = store.get('panelWidths', {}); all[key] = w; store.set('panelWidths', all); }
+  if (save) { const all = store.get('panelWidths', {}); all[key] = w; store.set('panelWidths', all); fitPanes(); }
 }
 for (const [key, p] of Object.entries(PANELS)) {
   const saved = store.get('panelWidths', {})[key];
@@ -2767,7 +2780,7 @@ for (const [key, p] of Object.entries(PANELS)) {
     };
     r.addEventListener('pointermove', move); r.addEventListener('pointerup', up);
   });
-  r.addEventListener('dblclick', () => { document.documentElement.style.removeProperty(p.prop); const all = store.get('panelWidths', {}); delete all[key]; store.set('panelWidths', all); });
+  r.addEventListener('dblclick', () => { document.documentElement.style.removeProperty(p.prop); const all = store.get('panelWidths', {}); delete all[key]; store.set('panelWidths', all); fitPanes(); });
   r.addEventListener('keydown', (e) => { // arrow keys nudge by 20px
     if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
     e.preventDefault();
@@ -3922,7 +3935,7 @@ $('menuBtn').onclick = (e) => {
   e.stopPropagation();
   if (document.getElementById('ctx')) { closeMenu(); return; }
   const desks = [...S.clients.filter((c) => c.id === S.client), ...S.clients.filter((c) => c.id !== S.client)]; // this desk first
-  const items = [...(innerWidth <= 900 ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage'], 'hr', ...desks.map((c) => ['profile:' + c.id, `${c.name} Inspector`])]], ...(S.remoteOn ? [['remote', 'Remote Desks']] : []), ['history', 'Recently viewed'], 'hr',
+  const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage'], 'hr', ...desks.map((c) => ['profile:' + c.id, `${c.name} Inspector`])]], ...(S.remoteOn ? [['remote', 'Remote Desks']] : []), ['history', 'Recently viewed'], 'hr',
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
@@ -4037,7 +4050,7 @@ $('menuBtn').onclick = (e) => {
       return;
     }
     closeMenu();
-    if (act === 'sessions') $('side').classList.toggle('open');
+    if (act === 'sessions') overPane('side', !$('side').classList.contains('open'));
     if (act === 'companies') editCompanies();
     if (act === 'remote') showRemoteDesks();
     if (act === 'bringin') showBringIn();
@@ -6578,7 +6591,12 @@ $('tasksBody').addEventListener('drop', (e) => {
   store.set('sectionOrder', spot.next);
   dragSec = null; renderTasks();
 });
-$('tasksBtn').onclick = () => { $('tasks').classList.toggle('hidden'); store.set('tasksHidden', $('tasks').classList.contains('hidden')); };
+// The Details button: shows and hides the panel, remembered; once the window is too narrow for it, it opens the panel
+// over the session pane instead and leaves the remembered choice alone.
+$('tasksBtn').onclick = () => {
+  if (narrow('no-details')) return overPane('tasks', !$('tasks').classList.contains('open'));
+  $('tasks').classList.toggle('hidden'); store.set('tasksHidden', $('tasks').classList.contains('hidden')); fitPanes();
+};
 // The Details button's number: the tasks running (#513, was "Details · 2").
 function detailsCount(n) {
   $('tasksN').textContent = n; $('tasksN').hidden = !n;
@@ -6587,23 +6605,48 @@ function detailsCount(n) {
 // The Sessions list button: hides the list on a wide window, remembered like Details; on a narrow one it opens
 // the list over the page, the same as ☰ > Sessions.
 $('sideBtn').onclick = () => {
-  if (innerWidth <= 900) return $('side').classList.toggle('open');
-  $('side').classList.toggle('shut'); store.set('sideHidden', $('side').classList.contains('shut'));
+  if (narrow('no-list')) return overPane('side', !$('side').classList.contains('open'));
+  $('side').classList.toggle('shut'); store.set('sideHidden', $('side').classList.contains('shut')); fitPanes();
 };
+// A narrow window gives way in order (#558): the session pane keeps at least PANE_ROOM, the details panel goes first,
+// then the session list. The widths are the panels' own (dragged or default), so a wider panel gives way sooner.
+// With the defaults Details goes below 1110px and the list below 780px.
+const narrow = (c) => document.documentElement.classList.contains(c);
+function fitPanes() {
+  const css = getComputedStyle(document.documentElement), px = (v, d) => parseFloat(css.getPropertyValue(v)) || d;
+  const left = px('--left-w', PANELS.left.def), right = px('--right-w', PANELS.right.def);
+  const noList = innerWidth < left + PANE_ROOM;
+  const listIn = !noList && !$('side').classList.contains('shut');
+  const noDetails = noList || innerWidth < (listIn ? left : 0) + right + PANE_ROOM;
+  const h = document.documentElement;
+  if (noList !== narrow('no-list')) h.classList.toggle('no-list', noList);
+  if (noDetails !== narrow('no-details')) h.classList.toggle('no-details', noDetails);
+  if (!noList && $('side').classList.contains('open')) $('side').classList.remove('open');
+  if (!noDetails && $('tasks').classList.contains('open')) $('tasks').classList.remove('open');
+  paneBtns();
+}
+// Opens or closes a panel that gave way, over the session pane; one at a time.
+function overPane(id, on) {
+  const other = id === 'side' ? 'tasks' : 'side';
+  if (on && $(other).classList.contains('open')) $(other).classList.remove('open');
+  if ($(id).classList.contains('open') !== on) $(id).classList.toggle('open', on);
+}
+$('sideClose').onclick = () => overPane('side', false);
+$('tasksClose').onclick = () => overPane('tasks', false);
 // Both panel buttons show whether their panel is shown, however it was opened or closed.
 function paneBtns() {
-  const side = innerWidth <= 900 ? $('side').classList.contains('open') : !$('side').classList.contains('shut');
-  for (const [id, on] of [['sideBtn', side], ['tasksBtn', !$('tasks').classList.contains('hidden')]]) { $(id).classList.toggle('on', on); $(id).setAttribute('aria-pressed', String(on)); }
+  const side = narrow('no-list') ? $('side').classList.contains('open') : !$('side').classList.contains('shut');
+  const tasks = narrow('no-details') ? $('tasks').classList.contains('open') : !$('tasks').classList.contains('hidden');
+  for (const [id, on] of [['sideBtn', side], ['tasksBtn', tasks]]) { $(id).classList.toggle('on', on); $(id).setAttribute('aria-pressed', String(on)); }
 }
 for (const el of [$('side'), $('tasks')]) new MutationObserver(paneBtns).observe(el, { attributes: true, attributeFilter: ['class'] });
-addEventListener('resize', paneBtns);
-paneBtns();
-// The Details panel has no ✕ of its own any more: the top-bar icon shows and hides it. On a narrow window, where
-// the panel and the Sessions list open over the page, Escape closes them too, once no dialog or menu is left to close.
+addEventListener('resize', fitPanes);
+fitPanes();
+// The Details panel has no ✕ of its own on a wide window: the top-bar icon shows and hides it. A panel open over the
+// session pane has a ✕, and Escape closes it too, once no dialog or menu is left to close.
 document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape' || e.defaultPrevented || innerWidth > 900 || !$('dlg').hidden || $('preview').classList.contains('as-window') && !$('preview').hidden || document.querySelector('#ctx, .tl-menu:not([hidden])')) return;
-  if (!$('tasks').classList.contains('hidden')) { $('tasks').classList.add('hidden'); store.set('tasksHidden', true); }
-  else if ($('side').classList.contains('open')) $('side').classList.remove('open');
+  if (e.key !== 'Escape' || e.defaultPrevented || !document.querySelector('#side.open, #tasks.open') || !$('dlg').hidden || $('preview').classList.contains('as-window') && !$('preview').hidden || document.querySelector('#ctx, .tl-menu:not([hidden])')) return;
+  overPane($('tasks').classList.contains('open') ? 'tasks' : 'side', false);
 });
 setInterval(renderComposerBar, 30000);
 function tick() {
