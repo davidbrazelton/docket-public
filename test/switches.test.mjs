@@ -98,7 +98,11 @@ test('the profile shows a checkbox for each switch, with what it is now', () => 
   assert.deepEqual(items('switches', 'How sessions split').map((i) => [i.toggle.kind, i.toggle.on]), [['split', true]]);
   const off = buildProfile({ ...client, splitWork: false }, { isDefaultHome: false });
   assert.equal(off.sections.find((s) => s.id === 'switches').groups.find((g) => g.title.startsWith('How sessions split')).items[0].toggle.on, false);
+  // reloading a session whose config changed: Automatic unless the desk set Ask
+  assert.deepEqual(items('switches', 'When a running session').map((i) => [i.toggle.kind, i.toggle.value]), [['reload', 'auto']]);
+  const ask = buildProfile({ ...client, configReload: 'ask' }, { isDefaultHome: false });
+  assert.equal(ask.sections.find((s) => s.id === 'switches').groups.find((g) => g.title.startsWith('When a running session')).items[0].toggle.value, 'ask');
   // no Grok home: no Grok switches
   const noGrok = buildProfile({ ...client, grokHome: undefined }, { isDefaultHome: false });
-  assert.deepEqual(noGrok.sections.find((s) => s.id === 'switches').groups.map((g) => g.title), ['Plans', 'How sessions split work', 'Settings layers Claude sessions load']);
+  assert.deepEqual(noGrok.sections.find((s) => s.id === 'switches').groups.map((g) => g.title), ['Plans', 'How sessions split work', 'When a running session\'s config changes', 'Settings layers Claude sessions load']);
 });

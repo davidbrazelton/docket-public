@@ -888,6 +888,12 @@ html.no-list aside.side .pane-close, html.no-details aside.tasks .pane-close { d
 /* A session cut off partway through its turn: across the top of the session view, in the primary color. */
 .cut-banner { display: flex; align-items: center; gap: 12px; padding: 8px 18px; background: var(--accent); color: var(--on-accent); font-size: 13px; }
 .cut-banner[hidden] { display: none; }
+/* A running session whose Claude config changed since it started (config-watch.mjs): what changed, and Reload. */
+.cfg-banner { display: flex; align-items: center; gap: 12px; padding: 6px 18px; border-bottom: 1px solid var(--warn); color: var(--warn); font-size: 13px; }
+.cfg-banner[hidden] { display: none; }
+.cfg-banner span { flex: 1; }
+.tag.cfg { border-color: var(--warn); color: var(--warn); flex: none; }
+header.top #reloadAllBtn { padding: 4px 8px; color: var(--warn); }
 .cut-banner span { flex: 1; }
 .cut-banner button { background: var(--on-accent); color: var(--accent); border-color: var(--on-accent); font-weight: 600; }
 /* Docket will not start by itself after a restart: across the whole page, under the top bar. */
@@ -1043,6 +1049,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   <span class="conn" id="conn" hidden>Portal not reachable, retrying…</span>
   <button id="termTopBtn" data-tip="terminal" aria-haspopup="true" aria-label="Terminal"><span class="tl">Terminal</span><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg></button>
   <button class="ghost" id="pauseBtn" data-tip="pause-all" aria-label="Pause all sessions">⏸︎</button>
+  <button class="ghost" id="reloadAllBtn" data-tip="reload-all" aria-label="Reload all sessions whose config changed" hidden>⟳<span id="reloadAllN"></span></button>
   <button class="ghost" id="feedbackBtn" data-tip="feedback" aria-label="Suggest a feature" aria-haspopup="dialog">🔨</button>
   <span class="top-icons"><span class="sep" aria-hidden="true"></span><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
 </header>
@@ -1077,6 +1084,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
       <div class="preview-body"><div class="md-body" id="pvBody"></div></div>
     </section>
     <div class="main-head" id="head"></div>
+    <div class="cfg-banner" id="cfgBanner" role="status" hidden><span id="cfgText"></span><button id="cfgReload" data-tip="cfg-reload">Reload</button></div>
     <div class="cut-banner" id="cutBanner" role="status" hidden><span>Docket stopped unexpectedly partway through this session's turn, so its reply was cut off.</span><button id="cutContinue" data-tip="cut-continue">Continue</button></div>
     <button class="last-msg" id="lastMsg" hidden data-tip="last-msg"><div class="lm-text"><span class="lm-label">Your last message</span><span id="lastMsgText"></span></div></button>
     <div class="tl-bar" id="tlBar" hidden aria-label="Timeline in the chat"></div>
@@ -1185,6 +1193,7 @@ const HELP = [
     ['side-toggle', 'Sessions list', 'Show or hide the Sessions list on the left. Docket remembers the choice. When the window is too narrow for it, this opens the list over the session; picking a session, ✕ or Escape closes it'],
     ['details', 'Details', 'Show or hide the details panel on the right. Docket remembers the choice. The number counts the tasks running. When the window is too narrow for it, the panel gives way first and this opens it over the session; ✕ or Escape closes it'],
     ['terminal', 'Terminal', 'Open a terminal in this desk\'s folder, signed in as this desk'],
+    ['reload-all', '⟳ Reload all', 'Sessions whose Claude config (plugins, hooks, settings) changed since they started. Reload all starts each one again with the same conversation: idle ones now, working ones once their turn and background commands end.'],
     ['pause-all', '⏸ Pause all', 'Pause all sessions: stop every working session in every desk, for example before the computer sleeps. Docket stays paused, with scheduled runs waiting, until you press Resume all.'],
     ['feedback', '🔨 Suggest a feature', 'Suggest a feature or tell us what is wrong: type a message, add your name if you like, and Send. Docket adds what it can safely say about this screen and its settings, never what is in your sessions'],
     ['fb-text', 'Your message', 'What you would like Docket to do, or what went wrong. Required. Kept here until it is sent'],
@@ -1371,6 +1380,7 @@ const HELP = [
     ['start-signin', 'Start Docket at sign-in', () => `Docket starts by itself, with no window, each time you sign in to this computer, and ${OS.mac ? 'Docket appears in your Applications folder' : 'Docket appears in the Start menu'} to open it. Change it later in ☰ > Settings > Starting Docket.`],
     ['start-shortcut', 'Just add a shortcut', () => `Docket does not start at sign-in. Instead a Docket shortcut ${OS.mac ? 'in your Applications folder and on the desktop' : 'in the Start menu, and Start Docket on the desktop,'} starts Docket if needed and opens it. Docket makes them again if they go missing.`],
     ['start-never', "Don't ask again", 'Hide this on this computer. Change it later in ☰ > Settings > Starting Docket.'],
+    ['cfg-reload', 'Reload', 'Start this session\'s Claude process again, with the same conversation, so it loads the changed config. Now if it is idle; if it is working, once its turn and background commands end'],
     ['cut-continue', 'Continue', 'Tell the session to carry on where it was cut off, checking first what state things are in'],
     ['pv-reload', 'Reload', 'Read the file again to show its latest version'],
     ['pv-open', 'Open in default program', `Open the file in the program ${OS.opener} uses for it, like Excel or Word`],
@@ -3433,7 +3443,7 @@ function sessionRow(s, depth) {
   const more = run && run.unread > (run.topUnread ? 1 : 0) ? `<span class="tag unread-n" title="Runs of this schedule with a reply you have not read. The Details panel lists every run.">${run.unread} unread</span>` : '';
   const snip = snippetFor(s);
   return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${!depth && rowDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
-      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotClass(s) === 'failed' ? ` title="${esc(failedTip(s))}"` : ''}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${planBadge(s.id)}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
+      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotClass(s) === 'failed' ? ` title="${esc(failedTip(s))}"` : ''}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${planBadge(s.id)}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
       <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // The list is only replaced when what it shows actually changed. A redraw is held while the pointer is down on the
@@ -5983,10 +5993,33 @@ $('cutContinue').onclick = () => {
   $('input').value = 'Continue where you left off. Your last reply was cut off before it finished, so check what state things are in first.';
   send();
 };
+// The open session's config changed since it started: what changed, and Reload (on an Automatic desk it reloads by itself).
+function renderCfgBanner() {
+  const s = current(), on = !S.schedOpen && !!s?.live && !!(s.configChanged || s.reloading);
+  $('cfgBanner').hidden = !on;
+  if (!on) return;
+  const ask = !!s.reloadAsk;
+  const when = s.reloading ? 'Reloading now, with the same conversation.' : ['idle', 'ended'].includes(s.status) && !s.runningTasks && !s.background && !ask ? 'Reloading in a moment.'
+    : ask ? 'This desk asks first: press Reload.' : 'It reloads, with the same conversation, once its turn and background commands end.';
+  $('cfgText').textContent = `Config changed since this session started: ${(s.configChanged || []).join('; ')}. ${when}`;
+  $('cfgText').title = cfgList(s);
+  $('cfgReload').hidden = !!s.reloading;
+}
+$('cfgReload').onclick = async () => {
+  const s = current(); if (!s?.live) return;
+  $('cfgReload').disabled = true;
+  try { await api(`/api/sessions/${s.id}/reload`, {}); } catch (err) { alert(err.message); } finally { $('cfgReload').disabled = false; }
+};
+// ⟳ in the top bar, shown while any session's config changed.
+function showReloads(r) { $('reloadAllBtn').hidden = !r?.count; $('reloadAllN').textContent = r?.count > 1 ? ' ' + r.count : ''; }
+$('reloadAllBtn').onclick = async () => {
+  try { const r = await api('/api/reload-all', {}); if (r.later) alert(`${r.now} reloading now; ${r.later} will reload once their turn and background commands end.`); } catch (err) { alert(err.message); }
+};
 function renderHead() {
   renderComposerBar();
   if ($('tlBar').hidden !== !tlSession()) renderTlBar();
   $('cutBanner').hidden = S.schedOpen || !cutOffShown(current());
+  renderCfgBanner();
   if (S.schedOpen) return renderScheduleHead();
   const s = current(); if (!s) return;
   const st = !s.live && s.archived ? ['', 'archived'] : !s.live ? (s.midReply ? ['needs', 'interrupted'] : s.elsewhere ? ['running', 'may be running in another app'] : ['', 'saved']) : s.compactingSince ? ['running', 'compacting the conversation'] : needsYou(s) ? ['needs', s.status === 'requires_action' ? 'needs your answer' : 'needs you'] : inBackground(s) ? ['running', s.runningTasks ? `working in background (${s.runningTasks})` : 'working in background'] : [s.status, s.status];
@@ -6493,7 +6526,11 @@ $('events').addEventListener('click', (e) => {
 // ---------- background tasks panel ----------
 // A step stuck mid-turn (stalledSteps in tasks.mjs): an amber tag with how long it has given no answer.
 const stalledTip = (st) => `This step has given no answer for ${st.minutes} min (its limit is ${st.limit} min${st.queued ? ', halved because a message of yours is waiting behind it' : ''}): ${st.label}. ${S.stallStop === false ? 'Docket will not stop it by itself (turned off in ☰ > Settings); Stop ends the turn.' : 'Past its limit Docket stops the turn and tells the session what happened.'}`;
-const stalledTag = (s) => s.live && s.stalled ? `<span class="tag stalled" title="${esc(stalledTip(s.stalled))}">stalled ${s.stalled.minutes}m</span>` : '';
+// Its Claude config changed since it started (config-watch.mjs): a tag listing what changed, until it reloads.
+const cfgList = (s) => (s.configChanged || []).join('\n');
+const configTag = (s) => !s.live ? '' : s.reloading ? '<span class="tag cfg" title="Docket is starting this session again, with the same conversation, to load its changed config">reloading</span>'
+  : s.configChanged ? `<span class="tag cfg" title="${esc('Config changed since this session started; it loads it when it reloads:\n' + cfgList(s))}">config changed</span>` : '';
+const stalledTag = (s) => s.live && s.stalled ?`<span class="tag stalled" title="${esc(stalledTip(s.stalled))}">stalled ${s.stalled.minutes}m</span>` : '';
 function renderTasks() {
   if (S.schedOpen) return; // the right panel shows the schedule; it redraws only when the schedule changes
   $('tasksTitle').textContent = '';
@@ -7354,6 +7391,7 @@ function connect() {
   ws.onopen = async () => {
     $('conn').hidden = true;
     loadPaused();
+    api('/api/reloads').then(showReloads).catch(() => {});
     if (S.wasConnected) { // the portal may have restarted: reload what it knows
       api('/api/update').then(showUpdate).catch(() => {}); // a restart that waited for a quiet moment is done
       S.live = {};
@@ -7435,6 +7473,8 @@ function connect() {
       renderList(); if (mine) renderHead();
     } else if (m.t === 'paused') {
       showPaused(m.paused);
+    } else if (m.t === 'reloads') {
+      showReloads(m.reloads);
     } else if (m.t === 'version') {
       if (S.pageVersion && S.pageVersion !== m.page) reloadWhenFree(); else S.pageVersion = m.page;
       if (updateBusy) { updateBusy = ''; api('/api/update').then(showUpdate).catch(() => {}); } // back after the restart

@@ -27,6 +27,7 @@ import { defaultCodexHome, codexSessions, codexRows } from './codex-usage.mjs';
 import { connectionOf, parseAwsConfig, kindOfKey } from './connection.mjs';
 import { sessionTimeline, sessionSkills, buildProfile, parseMcpList, TIMELINE_CATS } from './profile.mjs';
 import { hooksFor, hooksOffFor, cleanDocketHooks } from './docket-hooks.mjs';
+import { configFiles, readPrint, configChanges, reloadDecision, rulesNote, reloadNote } from './config-watch.mjs';
 import { LAYERS, cleanSettingSources, writePluginOn, GROK_COMPAT, writeGrokCompat } from './switches.mjs';
 import { makeGrokHome, writeGrokHooks, signedInFrom, deviceLink, isInside, HOOK_FILE as GROK_HOOK_FILE } from './grok-home.mjs';
 import { homeRootsFor } from './home-roots.mjs';
@@ -527,6 +528,9 @@ function summary(s) {
     compactingSince: s.compacting?.start || null,
     background: !!s.heldTurn,
     stalled: s.stalled || null,
+    configChanged: s.configChanged?.length ? s.configChanged : null, // what a reload would take in (config-watch.mjs)
+    reloading: !!s.reloading,
+    reloadAsk: reloadMode(clientById(s.client)) === 'ask', // its desk waits for Reload
     lastError: state.sessions[s.id]?.lastError || null,
     cutOff: !!state.sessions[s.id]?.cutOff,
     awaitingAnswer: liveAwaiting(s),
@@ -731,6 +735,82 @@ async function unstick(s, step) {
   } finally { s.stallStopping = false; }
 }
 setInterval(() => { for (const s of live.values()) if (s.status === 'running' || s.stalled) checkStalls(s); }, 30000);
+
+// ---------- reloading a session when its Claude config changes (the rules are in config-watch.mjs) ----------
+// A Claude process reads its plugins, hooks, connected services and settings when it starts. Docket keeps what each
+// one started with (configPrint, in its saved record), looks again every few seconds and before each message, and
+// marks a session whose config changed. At its next idle moment Docket starts its process again with resume (same
+// conversation), or, on a desk set to Ask, when the person presses Reload or Reload all. A changed CLAUDE.md is no
+// reason to restart: the session's next turn says to read it again.
+const configCache = new Map(); // file -> what it held when last read (config-watch.mjs reads only changed files again)
+const reloadMode = (client) => client?.configReload === 'ask' ? 'ask' : 'auto';
+function configNow(s) {
+  const client = clientById(s.client);
+  return client ? readPrint(configFiles({ home: client.home, cwd: s.cwd, sources: client.settingSources }), configCache) : {};
+}
+// Looks at one session's config again: updates its mark, and reloads it when it is time. Returns reloadDecision's answer.
+function checkConfig(s) {
+  const rec = state.sessions[s.id];
+  if ((s.engine || 'claude') !== 'claude' || !s.configReady || s.reloading || !rec || s.status === 'ended') return 'none';
+  if (!rec.configPrint) { rec.configPrint = configNow(s); saveState(); return 'none'; } // started before Docket kept it: from now on
+  const { reload } = configChanges(rec.configPrint, configNow(s));
+  if (JSON.stringify(reload) !== JSON.stringify(s.configChanged || [])) { s.configChanged = reload; pushSession(s); broadcastReloads(); }
+  const d = reloadDecision({ engine: s.engine || 'claude', changes: reload, mode: reloadMode(clientById(s.client)), wanted: !!s.reloadWanted,
+    status: s.status, runningJobs: runningTasks(s), heldTurn: !!s.heldTurn, asks: s.pendingAsks?.size || 0 });
+  if (d === 'reload' && !state.paused) { reloadSession(s, reload); return d; }
+  return d === 'reload' ? 'wait' : d;
+}
+setInterval(() => { for (const s of [...live.values()]) checkConfig(s); }, 10000);
+// The rules files that changed since the session last heard: told once, with its next turn.
+function rulesToReread(s) {
+  const rec = state.sessions[s.id];
+  if ((s.engine || 'claude') !== 'claude' || !s.configReady || !rec?.configPrint) return [];
+  const now = configNow(s), { rules } = configChanges(rec.configPrint, now);
+  if (!rules.length) return [];
+  for (const f of rules) { if (now[f]) rec.configPrint[f] = now[f]; else delete rec.configPrint[f]; }
+  saveState();
+  return rules.filter((f) => now[f]); // one removed is nothing to read
+}
+// Ends its process and starts it again with resume, as the runner restart does (see the runner check), then sends what
+// came meanwhile (s.reloadQueue). Only ever called on an idle session (reloadDecision).
+function reloadSession(s, changes) {
+  s.reloading = true; s.reloadQueue = [];
+  pushSession(s);
+  logEvent(`reloading for changed config: ${sessionTag(s)}`, changes.join('\n'));
+  addEvent(s, { k: 'note', text: `Docket restarted this session, with the same conversation, to load changed config: ${changes.join('; ')}` });
+  (async () => {
+    s.query.close();
+    await settledOr(s.finished, 20000);
+    if (live.get(s.id) !== s) return;
+    live.delete(s.id);
+    const n = startSession({ clientId: s.client, resumeId: s.id });
+    n.events = s.events; n.tasks = s.tasks; n.stats = s.stats; n.unread = s.unread;
+    n.readyAt = s.readyAt; n.wasWaiting = s.wasWaiting;
+    if (state.sessions[n.id]) { state.sessions[n.id].reloadNote = reloadNote(changes); saveState(); }
+    setStatus(n, 'idle');
+    pushSession(n);
+    broadcastReloads();
+    for (const m of s.reloadQueue) sendToSession(n, m);
+  })().catch((e) => logEvent(`reload failed: ${sessionTag(s)}`, e.message));
+}
+// Reload all: every session whose config changed, whatever its desk's setting; one working now reloads when its turn ends.
+function reloadAll() {
+  let now = 0, later = 0;
+  for (const s of [...live.values()]) {
+    if (!s.configChanged?.length || s.reloading) continue;
+    s.reloadWanted = true;
+    if (checkConfig(s) === 'reload') now++; else later++;
+  }
+  logEvent('reload all', `${now} now, ${later} when their turn ends`);
+  return { now, later };
+}
+// The top bar's Reload all shows while a session's config changed: how many.
+const reloadsView = () => ({ count: [...live.values()].filter((s) => s.configChanged?.length && !s.reloading).length });
+let lastReloads = '';
+function broadcastReloads() {
+  const v = reloadsView(), key = JSON.stringify(v);
+  if (key !== lastReloads) { lastReloads = key; broadcast({ t: 'reloads', reloads: v }); }
+}
 
 // ---------- Pause all / Resume all (the rules are in pause.mjs) ----------
 // Pause all stops every working session of every company and brand, and saves which ones it stopped
@@ -3481,13 +3561,15 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
     mcpServers: { portal: portalTools(id), playwright: browserTools(client, id) },
     plugins: [{ type: 'local', path: PLUGIN_DIR }],
   };
+  const print = (s.engine || 'claude') === 'claude' ? configNow(s) : null; // the config this process starts with (config-watch.mjs)
   // The runner starts it, or reconnects if it is still running there (s.runnerSeq: read from the start).
   s.ready = ensureRunner().then(() => ghForSession(s, client)).then((gh) => { if (gh) options.env = { ...options.env, GH_TOKEN: gh }; })
     .then(() => runnerCall(`/sessions/${id}/start`, { options }))
     .then((r) => {
       if (r.attached) s.runnerSeq = r.seq;
-      else if (state.sessions[id]) { state.sessions[id].processStart = Date.now(); saveState(); } // see repairTasks
+      else if (state.sessions[id]) { state.sessions[id].processStart = Date.now(); if (print) state.sessions[id].configPrint = print; saveState(); } // see repairTasks
       if (!r.attached && keepsChat(s.engine)) keepChat(id, { type: 'docket_start' }); // the runner numbers this run's messages from 1
+      s.configReady = true;
     });
   s.ready.catch(() => {});
   Object.assign(s, remoteSession(s));
@@ -3519,6 +3601,8 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
     return;
   }
   if (state.paused && !system && noteMessaged(state.paused, s.id)) { saveState(); broadcastPause(); }
+  // Its Claude config changed and it may restart now: restarted first, and the message goes to the new process.
+  if (s.reloading || checkConfig(s) === 'reload') { s.reloadQueue.push({ text, attachments, context, system, from }); return; }
   const files = saveUploads(s.id, attachments);
   const blocks = [];
   const images = [];
@@ -3540,6 +3624,9 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   if (state.sessions[s.id]?.recallNote) { blocks.push({ type: 'text', text: RECALL_NOTE }); delete state.sessions[s.id].recallNote; saveState(); }
   if (s.shiftRulesPending && isShift(s)) { blocks.push({ type: 'text', text: '(From the session portal: this session was switched to Shift mode.)\n\n' + shiftRules(s) }); s.shiftRulesPending = false; }
   if (!blocks.length) return;
+  if (state.sessions[s.id]?.reloadNote) { blocks.push({ type: 'text', text: state.sessions[s.id].reloadNote }); delete state.sessions[s.id].reloadNote; saveState(); }
+  const rules = rulesToReread(s);
+  if (rules.length) blocks.push({ type: 'text', text: rulesNote(rules) });
   if (!s.title && text && !system) { s.title = text.split('\n')[0].slice(0, 60); state.sessions[s.id].title = s.title; state.sessions[s.id].titleBy = 'first-message'; saveState(); }
   if (!s.titleNoted && s.title) {
     const how = { 'first-message': 'made from the start of the first message. In this reply, once you know what the work is, call mcp__portal__rename_session (asked_by_user false) with a short title that names the work', claude: 'one you chose earlier', you: 'one the user chose' }[titleBy(s.id)];
@@ -3826,13 +3913,14 @@ function runLoop(s) {
     try {
       for await (const m of s.query) handleSdkMessage(s, m);
       if (s.runnerRestarted) return; // the runner is taking in a change; the check below puts it back
+      if (s.reloading) return; // reloadSession puts it back
       if (live.get(s.id) !== s) return; // archived or ended from here: already taken off the list
       // It stopped by itself with a message unanswered: say so, rather than look read and finished.
       if (!s.closing && ['starting', 'running', 'requires_action'].includes(s.status)) stoppedNote(s, 'Session stopped before it answered. Send the message again to start it afresh.');
       setStatus(s, 'ended');
       markRunning(s.id, false);
     } catch (err) {
-      if (live.get(s.id) !== s) return;
+      if (live.get(s.id) !== s || s.reloading) return;
       // The runner went away partway through a turn (a crash, or it was killed): a cut-off, as after a start.
       const midTurn = !s.closing && ['starting', 'running'].includes(s.status);
       stoppedNote(s, `Session stopped: ${err.message}`);
@@ -3859,7 +3947,7 @@ async function reattachSessions() {
     s.runnerSeq = keepsChat(s.engine) ? Math.min(chatSeq(r.id), now.seq) : now.seq;
     // The runner has the message after all (it is working on it): no need to say it may not have arrived.
     if (state.sessions[r.id]?.unsent && now.busy) { delete state.sessions[r.id].unsent; saveState(); s.events = s.events.filter((e) => !e.unsent); }
-    s.ready = Promise.resolve();
+    s.ready = Promise.resolve(); s.configReady = true;
     Object.assign(s, remoteSession(s));
     // A session that was orange before the restart stays orange, in the same place in the list.
     if (now.asks.length || (wasWaiting && !now.busy) || state.sessions[r.id]?.unsent) { setUnread(s, 'restart'); s.wasWaiting = wasWaiting; }
@@ -5335,6 +5423,8 @@ function cleanCompany(c, taken) {
   // splitWork: false when its sessions should not send work to child sessions on their own (splitOn); set in the
   // setup wizard and on the profile page, kept when not sent. On is the default and is not written.
   const splitWork = (c.splitWork !== undefined ? c.splitWork : before.splitWork) !== false;
+  // configReload: 'ask' when a session whose Claude config changed waits for Reload; Automatic (not written) reloads it at its next idle moment.
+  const configReload = (c.configReload !== undefined ? c.configReload : before.configReload) === 'ask';
   const asked = c.defaultEngine !== undefined ? c.defaultEngine : c.engine !== undefined ? c.engine : before.defaultEngine;
   const grokHome = String((c.grokHome !== undefined ? c.grokHome : before.grokHome) || '').trim();
   if (grokHome && !path.isAbsolute(grokHome)) return { error: `${name}: the Grok home folder must be a full path, like ${exampleFolder(process.platform, os.homedir(), 'grok_home', name)}` };
@@ -5398,7 +5488,7 @@ function cleanCompany(c, taken) {
   for (const [label, dir, sub] of [['Claude home', home, 'claude-home'], ['Grok home', grokHome, 'grok-home'], ['Codex home', codexHome, 'codex-home']]) {
     if (dir && isInside(dir, ROOT)) return { error: `${name}: the ${label} folder ${dir} is inside Docket's own folder (${ROOT}). It holds the sign-in, so it must be somewhere else, like ${path.join(homeRoots().claude, `${name}-desk`, sub)}` };
   }
-  return { id, name, home, folder: folder || home, ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
+  return { id, name, home, folder: folder || home, ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
 }
 function saveCompanies(list) {
   for (const c of list) {
@@ -5991,6 +6081,9 @@ async function profileRoutes(req, res, url, p) {
         if (!LAYERS.includes(key)) return json(res, 404, { error: 'No such settings layer' });
         const now = (client.settingSources || LAYERS).filter((l) => l !== key);
         save({ settingSources: cleanSettingSources(on ? [...now, key] : now) });
+      } else if (kind === 'reload') {
+        if (!['auto', 'ask'].includes(value)) return json(res, 400, { error: 'Reload is auto or ask' });
+        save({ configReload: value === 'ask' ? 'ask' : undefined });
       } else if (kind === 'split') {
         save({ splitWork: on ? undefined : false });
       } else if (kind === 'plans') {
@@ -6609,6 +6702,8 @@ const server = http.createServer(async (req, res) => {
     // Whether Docket stops a turn whose step is stuck past its limit (checkStalls); on unless turned off.
     if (req.method === 'GET' && p === '/api/pause') return json(res, 200, { paused: pauseView() });
     if (req.method === 'POST' && p === '/api/pause') return json(res, 200, { paused: await pauseAll((await readBody(req)).reason || 'user') });
+    if (req.method === 'GET' && p === '/api/reloads') return json(res, 200, reloadsView());
+    if (req.method === 'POST' && p === '/api/reload-all') return json(res, 200, reloadAll()); // the top bar's Reload all
     if (req.method === 'POST' && p === '/api/resume') return json(res, 200, await resumeAll((await readBody(req)).reason || 'user'));
     // Whether Docket continues a session cut off by an unplanned stop by itself; on unless turned off.
     if (p === '/api/auto-continue') {
@@ -7182,7 +7277,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, summary(s));
     }
     if (await profileRoutes(req, res, url, p) !== false) return;
-    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|auto-group|title-suggestion|unread|delete|task-done|move|folder-offer)$/);
+    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|auto-group|title-suggestion|unread|delete|task-done|reload|move|folder-offer)$/);
     if (m) {
       const [, id, action] = m;
       if (!reattachDone && !live.has(id) && state.sessions[id]?.running) await settledOr(reattached, 20000); // it may be on its way back
@@ -7342,6 +7437,8 @@ const server = http.createServer(async (req, res) => {
         releaseHold(s);
         return json(res, 200, { ok: true });
       }
+      // Reload: start its process again to load changed config, now if it is idle, else when its turn ends.
+      if (action === 'reload') { if (!s) return json(res, 404, { error: 'That session is not running' }); s.reloadWanted = true; return json(res, 200, { decision: checkConfig(s) }); }
       if (action === 'interrupt') { await s.query.interrupt().catch(() => {}); return json(res, 200, { ok: true }); }
       if (action === 'seen') { if (s.unread) logSeen(id, s, b); s.unread = false; pushSession(s); return json(res, 200, { ok: true }); }
       if (action === 'end') {

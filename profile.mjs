@@ -462,6 +462,9 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
     { title: 'How sessions split work', brand: null, note: 'Docket\'s instructions in prompts/optional/split-work.md, for every brand. Off: a session still starts another when the user asks for one.',
     items: [{ name: 'Send work to child sessions', detail: 'a session the user started sends real work (a build, a fix) to its own child session on its own, and stays free to talk',
       toggle: { kind: 'split', key: 'split', on: client.splitWork !== false, note: '' } }] },
+    { title: 'When a running session\'s config changes', note: 'A Claude session loads its plugins, hooks, connected services and settings when it starts, so Docket restarts it, with the same conversation, to take a change in: never mid-turn or while its background commands run. A changed CLAUDE.md needs no restart: the session is told to read it again with its next message.',
+      items: [{ name: 'Reload', detail: 'Automatic: at the session\'s next idle moment, before its next message. Ask: the session shows "config changed" until you press Reload or Reload all',
+        toggle: { kind: 'reload', key: 'reload', value: client.configReload === 'ask' ? 'ask' : 'auto', options: [['auto', 'Automatic'], ['ask', 'Ask']], note: '' } }] },
     { title: 'Settings layers Claude sessions load', note: 'Docket passes these when it starts a Claude session (settingSources); no file changes.', items: layerItems }];
   if (client.grokHome) {
     const cfg = path.join(client.grokHome, 'config.toml'), now = readGrokCompat(readText(cfg));
@@ -470,7 +473,7 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
       items: GROK_COMPAT.map((k) => item({ name: k, detail: what[k], path: fs.existsSync(cfg) ? cfg : undefined, size: 0,
         toggle: { kind: 'grok', key: k, on: now[k] !== false, note: now[k] === undefined ? 'not set: Grok\'s default' : '' } })) });
   }
-  sections.push({ id: 'switches', title: 'Switches', note: 'Each change applies to sessions started after it; open sessions keep what they started with. Plugins and Docket\'s hooks have their checkboxes in their own sections.',
+  sections.push({ id: 'switches', title: 'Switches', note: 'Each change applies to sessions started after it; open sessions keep what they started with until they reload (see When a running session\'s config changes). Plugins and Docket\'s hooks have their checkboxes in their own sections.',
     groups: switchGroups });
 
 
