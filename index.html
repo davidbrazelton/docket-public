@@ -461,10 +461,10 @@ aside.tasks.hidden { display: none; }
 #tasksBody > .drop-end { box-shadow: 0 2px 0 var(--accent); }
 .row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
-/* While a session row is dragged: every place it can move to gets a dashed accent outline and a light tint,
-   the one under the pointer a solid accent border and a strong tint; the row and its family are faded.
+/* While a session row is dragged: every place it can move to gets only a faint dashed outline, and the one
+   under the pointer alone a solid accent border and a strong tint; the row and its family are faded.
    The tint is a background image, so it sits over a heading's own colour and leaves the order lines free. */
-#list.moving .drop-ok { outline: 1px dashed var(--accent); outline-offset: -2px; background-image: linear-gradient(color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 10%, transparent)); }
+#list.moving .drop-ok { outline: 1px dashed color-mix(in srgb, var(--accent) 30%, transparent); outline-offset: -2px; }
 #list.moving .drop-ok.drop-hot { outline: 2px solid var(--accent); background-image: linear-gradient(color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 30%, transparent)); }
 #list.moving .drag-src { opacity: .45; }
 .gsec.archived .gname { text-decoration: line-through; }
@@ -3292,7 +3292,7 @@ $('list').addEventListener('dragover', (e) => {
   const move = moveSpot(e); if (!move) return;
   e.preventDefault(); move.el.classList.add('drop-hot');
 });
-$('list').addEventListener('dragleave', (e) => { if (dragRow && !$('list').contains(e.relatedTarget)) { clearDrop(); clearMove(); } });
+$('list').addEventListener('dragleave', (e) => { if (!$('list').contains(e.relatedTarget)) { clearDrop(); clearMove(); clearGroupDrop(); } });
 $('list').addEventListener('dragend', () => { dragRow = null; clearDrop(); endMove(); releaseList(); });
 $('list').addEventListener('drop', async (e) => {
   const spot = dropSpot(e), move = !spot && moveSpot(e); if (!spot && !move) return;
@@ -6896,6 +6896,7 @@ function secSpot(e) {
 }
 $('tasksBody').addEventListener('dragstart', (e) => { const h = e.target.closest?.('.dsec'); dragSec = h ? h.dataset.dsec : null; if (!h) return; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragSec); });
 $('tasksBody').addEventListener('dragover', (e) => { if (!dragSec) return; clearSecDrop(); const spot = secSpot(e); if (!spot) return; e.preventDefault(); spot.line.classList.add(spot.cls); });
+$('tasksBody').addEventListener('dragleave', (e) => { if (!$('tasksBody').contains(e.relatedTarget)) clearSecDrop(); });
 $('tasksBody').addEventListener('dragend', () => { dragSec = null; clearSecDrop(); });
 $('tasksBody').addEventListener('drop', (e) => {
   const spot = secSpot(e); if (!spot) return;
@@ -7072,8 +7073,10 @@ $('input').addEventListener('paste', (e) => {
   }
 });
 const comp = $('composer');
-comp.addEventListener('dragover', (e) => { e.preventDefault(); comp.classList.add('drag'); });
-comp.addEventListener('dragleave', () => comp.classList.remove('drag'));
+// The outline only for files, the one thing a drop here takes, and off only once the pointer leaves the whole box,
+// not when it crosses into the text box inside it.
+comp.addEventListener('dragover', (e) => { e.preventDefault(); comp.classList.toggle('drag', [...e.dataTransfer.types].includes('Files')); });
+comp.addEventListener('dragleave', (e) => { if (!comp.contains(e.relatedTarget)) comp.classList.remove('drag'); });
 comp.addEventListener('drop', (e) => { e.preventDefault(); comp.classList.remove('drag'); addFiles([...e.dataTransfer.files]); });
 $('input').addEventListener('input', () => { autosize(); stashBox(); });
 
