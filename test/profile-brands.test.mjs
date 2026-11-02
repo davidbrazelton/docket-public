@@ -154,7 +154,7 @@ test('buildProfile: a Claude-only desk is as before; a three-brand desk adds eac
   assert.ok(all.allowed.has(path.join(h.codex, 'AGENTS.override.md').toLowerCase()), 'the file viewer may open the new files');
   assert.ok(all.allowed.has(path.join(h.grok, 'rules', 'style.md').toLowerCase()));
   const sw = all.sections.find((s) => s.id === 'switches').groups;
-  assert.deepEqual(sw.map((g) => g.brand), [null, 'claude', 'grok'], 'splitting work is every brand\'s, the settings layers Claude\'s, the [compat.claude] checkboxes Grok\'s');
+  assert.deepEqual(sw.map((g) => g.brand), [null, null, 'claude', 'grok'], 'plans and splitting work are every brand\'s, the settings layers Claude\'s, the [compat.claude] checkboxes Grok\'s');
   assert.equal(JSON.stringify(all.sections).match(/compat\.claude\]/g).length, 1, 'Grok\'s [compat.claude] is listed once, in Switches');
   assert.ok(!buildProfile(h.client, { brands: ['claude', 'codex'] }).sections.find((s) => s.id === 'switches').groups.some((g) => g.brand === 'grok'), 'a desk with Grok off has no Grok switches');
   const skills = all.sections.find((s) => s.id === 'skills');

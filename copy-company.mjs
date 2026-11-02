@@ -21,7 +21,7 @@ export const COPY_ITEMS = [
   { key: 'plugins', on: true, label: 'Plugins', detail: 'Marketplaces, installed plugins and their cache' },
   { key: 'mcp', on: true, label: 'MCP servers', detail: 'Copied and turned on' },
   { key: 'env', on: true, label: 'Desk environment variables', detail: 'Edited below before the copy is made' },
-  { key: 'docket', on: true, label: 'Docket desk settings', detail: 'Links, Docket hooks, default brand, start gears, save before compact, prompt cache, handoff pattern, budget, color' },
+  { key: 'docket', on: true, label: 'Docket desk settings', detail: 'Links, Docket hooks, default brand, start gears, save before compact, prompt cache, handoff pattern, budget, color, plan system' },
   { key: 'groups', on: true, label: 'Groups', detail: 'Names, colors, start folders and order; archived groups and all sessions stay behind' },
   { key: 'memory', on: false, label: 'Memory', detail: 'A one-time copy; from then on each desk keeps its own' },
 ];
@@ -317,7 +317,7 @@ export function copyGroups(groups = [], newId = () => 'g' + randomUUID().slice(0
 }
 
 // The Docket desk settings a copy takes from its source (the "Docket desk settings" item).
-export const DOCKET_KEYS = ['links', 'docketHooks', 'defaultEngine', 'startGear', 'saveBeforeCompact', 'promptCacheTtl', 'handoffPattern', 'budget', 'color', 'splitWork'];
+export const DOCKET_KEYS = ['links', 'docketHooks', 'defaultEngine', 'startGear', 'saveBeforeCompact', 'promptCacheTtl', 'handoffPattern', 'budget', 'color', 'splitWork', 'planSystem'];
 
 // The new desk's entry, before cleanCompany checks it. conn: per brand { mode: 'same' | 'new' | 'off' }, Claude's
 // with kind ('claude' account or 'bedrock'), email, awsProfile and awsRegion for a new connection. A same connection

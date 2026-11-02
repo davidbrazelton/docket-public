@@ -1043,8 +1043,8 @@ function crossingTools(parent) {
 }
 
 // ---------- Docket's own plan system (#180, plans.mjs) ----------
-// On for a desk whose plan system is Docket's own: planSystem "docket" on its entry in the desk list (the setting on
-// the Desks screen, the wizard step and the card after the update come later). Each desk's plans are files in a
+// On for a desk whose plan system is Docket's own: planSystem "docket" on its entry in the desk list, chosen in the
+// Inspector's Switches, the setup wizard's Plans step, or the card shown once to a desk with none set. Each desk's plans are files in a
 // folder of its own, so two desks never share a plan.
 const plansOn = (client) => client?.planSystem === 'docket';
 const planStores = new Map();
@@ -5266,7 +5266,7 @@ function cleanCompany(c, taken) {
   // handoffPattern is set by editing the company list file; an edit on the page keeps it.
   const handoffPattern = cleanHandoffPattern(c.handoffPattern !== undefined ? c.handoffPattern : clientById(id)?.handoffPattern);
   // planSystem (#180): which plan system the desk uses: docket (Docket's own), folder (an outside one, shown read-only), or
-  // none. Set by editing the desk list file for now; an edit on the page keeps it.
+  // none. Set in the Inspector's Switches, the setup wizard and the card after the update; a save that leaves it out keeps it.
   const planSystem = ['docket', 'folder', 'none'].find((v) => v === (c.planSystem !== undefined ? c.planSystem : clientById(id)?.planSystem)) || '';
   // docketHooks.off: the Docket hooks this company turned off (the Companies screen); the wizard does not send it, so it is kept.
   const docketHooks = cleanDocketHooks(c.docketHooks !== undefined ? c.docketHooks : clientById(id)?.docketHooks);
@@ -5918,7 +5918,7 @@ async function profileRoutes(req, res, url, p) {
   }
   if (pm[2] === 'switch' && req.method === 'POST') {
     // One checkbox on the profile page: { kind, key, on }. Each changes one setting for sessions started after it.
-    const { kind, key, on } = await readBody(req);
+    const { kind, key, on, value } = await readBody(req);
     const save = (patch) => saveCompanies(CLIENTS.map((c) => {
       if (c.id !== client.id) return c;
       const out = { ...c, ...patch };
@@ -5936,6 +5936,10 @@ async function profileRoutes(req, res, url, p) {
         save({ settingSources: cleanSettingSources(on ? [...now, key] : now) });
       } else if (kind === 'split') {
         save({ splitWork: on ? undefined : false });
+      } else if (kind === 'plans') {
+        // A choice: { value } is the plan system. The read-only plan folder (#180 step 3) is kept when set by hand, not offered yet.
+        if (!['docket', 'none'].includes(value) && !(value === 'folder' && client.planSystem === 'folder')) return json(res, 400, { error: 'The plan system is docket or none' });
+        save({ planSystem: value });
       } else if (kind === 'plugin') {
         const installed = profileFor(client, true).sections.find((s) => s.id === 'skills')?.groups.find((g) => g.title === 'Plugins')?.items || [];
         if (!installed.some((it) => it.toggle?.key === key)) return json(res, 404, { error: 'That plugin is not installed on this desk' });
@@ -6430,7 +6434,8 @@ const server = http.createServer(async (req, res) => {
         const signedIn = brands.some((x) => x.signedIn === false) ? false : brands.some((x) => x.signedIn === null) ? null : true;
         // startGears: the model a new Shift session starts on, per brand, for the model menu's "Shift (starts ...)".
         const startGears = Object.fromEntries(brandsOf(c).map((e) => [e, usableGear(c, e, startGearOf(e, null, c.startGear?.[e])).name]));
-        return { id: c.id, name: c.name, folder: c.folder, color: c.color || '', defaultEngine: defaultEngineOf(c), brands, startGears,
+        // planSystem: '' while the desk has not chosen one, which the page offers once (the card after the update, #180).
+        return { id: c.id, name: c.name, folder: c.folder, color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', brands, startGears,
           bedrock: isBedrock(c), ...(gatewayFor(c, 'claude') ? { gateway: gatewayHost(c.gateway.url) } : {}), signedIn, forced: forcedOf(c), browser: browserStatus(c) };
       }));
       return json(res, 200, [...rows, ...await remoteRows(!quick)]); // remote desks come after this computer's own

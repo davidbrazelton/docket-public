@@ -513,7 +513,10 @@ aside.tasks.hidden { display: none; }
 /* The update card is the same card again; when another offer holds the corner it sits at the top right. */
 #updateOffer .b { flex-wrap: wrap; }
 #updateOffer .b button { white-space: nowrap; }
-#cacheOffer:not([hidden]) + #updateOffer { bottom: auto; top: 64px; }
+#cacheOffer:not([hidden]) ~ #updateOffer, #planOffer:not([hidden]) + #updateOffer { bottom: auto; top: 64px; }
+/* The plan system card (#180) waits while the cache offer holds the corner. */
+#planOffer .b button { white-space: nowrap; }
+#cacheOffer:not([hidden]) + #planOffer { display: none; }
 #updateOffer .x { position: absolute; top: 6px; right: 6px; padding: 2px 6px; border: 0; color: inherit; }
 #updateOffer .x:hover { background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
 #menuBtn.has-update { position: relative; }
@@ -1106,6 +1109,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="wiz-back" id="wiz" hidden><div class="wiz" role="dialog" aria-modal="true" aria-labelledby="wizTitle" id="wizCard"></div></div>
 <div class="cache-toast" id="cacheToast" role="status" aria-live="polite" hidden><div class="ct-head"><span id="cacheToastTitle"></span><button class="ghost" id="cacheToastClose" data-tip="cache-toast-close" aria-label="Close">✕</button></div><div class="ct-d">10 minutes or less left on the 1 hour session cache. Send a message before it expires to keep it.</div><div id="cacheToastList"></div></div>
 <div class="install-offer" id="cacheOffer" role="dialog" aria-labelledby="cacheOfferTitle" hidden></div>
+<div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
 <div class="install-offer" id="updateOffer" role="dialog" aria-labelledby="updateOfferTitle" hidden></div>
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Larger view of the image" hidden><img id="lbImg" alt=""><button class="lb-close" id="lbClose" data-tip="lb-close" aria-label="Close">✕</button><button class="lb-prev" id="lbPrev" data-tip="lb-prev" aria-label="Previous image">‹</button><button class="lb-next" id="lbNext" data-tip="lb-next" aria-label="Next image">›</button><div class="lb-count" id="lbCount"></div></div>
 <div class="dlg-back" id="pfDlg" hidden><section class="dlg profile-page" id="profilePage" hidden role="dialog" aria-modal="true" aria-label="Desk Inspector"></section></div>
@@ -1413,6 +1417,7 @@ const HELP = [
     ['pf-link', 'Runs', 'Show what this one runs'],
     ['pf-show', 'Show in folder', `Show this file in ${OS.files}`],
     ['pf-switch', 'On/off checkbox', 'Turn this on or off for this desk. Sessions started after the change get it; open sessions keep what they started with'],
+    ['pf-choice', 'Choose a setting', 'Pick this setting for the desk. Sessions started after the change get it; open sessions keep what they started with'],
   ]],
   ['Small windows and setup', [
     ['browse', 'Browse…', () => `Choose the folder in ${OS.files} instead of typing it. It opens at the folder already typed`],
@@ -1446,6 +1451,9 @@ const HELP = [
     ['cache-later', 'Not now', 'Ask again in 30 days at the earliest, and only if pauses of 5 to 60 minutes keep costing a re-read'],
     ['cache-ok', 'OK', 'Close this note'],
     ['cache-never', 'Never', 'Never ask about this desk\'s prompt cache again'],
+    ['plan-yes', 'Turn on plans', 'Give this desk\'s new sessions Docket\'s plans. Sessions already running keep what they started with. Change it later in the desk\'s Inspector, under Switches'],
+    ['plan-no', 'No thanks', 'Leave plans off for this desk and don\'t ask again. Turn them on later in the desk\'s Inspector, under Switches'],
+    ['plan-ok', 'OK', 'Close this note'],
     ['co-cache', 'Prompt cache', 'How long Claude keeps its short-term memory of a session after each reply. Automatic is Claude Code\'s own choice: 1 hour on a Claude subscription, 5 minutes on an API key or Bedrock. 1 hour keeps it through longer pauses, and starting it costs a bit more each time. New sessions only'],
     ['co-env-name', 'Variable name', 'The name of an environment variable this desk\'s sessions, hooks, Terminal and env script get, like BATON_NOTES_ROOT. Names Docket sets itself (the homes, sign-in and connection) can\'t be used'],
     ['co-env-value', 'Variable value', 'Its value, on one line. Empty sets it to nothing'],
@@ -1478,6 +1486,7 @@ const HELP = [
     ['w-brand-home', 'Grok or Codex home folder', 'Where this desk\'s sign-in and settings for that brand are kept'],
     ['w-default', 'Default brand for new sessions', 'The brand a new session starts on unless you pick another beside the model'],
     ['w-split', 'Send work to its own session', 'On: a session hands real work to a new session of its own and stays free to talk. Off: each session does the work itself, and starts a new one only when asked'],
+    ['w-plans', 'Use Docket\'s plans', 'On: sessions can keep a plan of tasks for a larger piece of work and hand the tasks out to child sessions, shown in the Plan section. Off: no plans'],
     ['w-folder', 'Working folder', 'Where new sessions start'],
     ['w-folder-pick', 'A folder found on this computer', 'Use this folder as the working folder. Docket found it in your own AI history on this computer'],
     ['w-reuse', 'Use the setup you already have', 'This desk uses the folder that brand already signs in from on this computer, keeping its sign-in, memory and past chats'],
@@ -1800,6 +1809,7 @@ async function init() {
     if (firstVisit && $('dlg').hidden && $('wiz').hidden) startTour();
   }, 400);
   api('/api/startup').then(showStartupBanner).catch(() => {});
+  showPlanOffer();
   // The other companies (their counts on the tabs), and the sign-in checks, arrive behind it.
   Promise.all(S.clients.filter((c) => c.id !== S.client).map((c) => Promise.all([loadSessions(c.id), loadGroups(c.id)]))).then(renderClients);
   api('/api/clients').then((full) => {
@@ -5127,8 +5137,8 @@ async function terminalEnv(c) {
 // ---------- the setup wizard: adding a company step by step ----------
 // Shown at start-up when there is no company yet (first: true, nothing behind it to go back to), and from
 // ☰ > Desks > Add a company. Resolves with the new company's id, or null if it was cancelled.
-const WIZ_STEPS = ['Name', 'AI brand', 'Sessions', 'Folders', 'Sign in', 'Done'];
-const [NAME, BRAND, SPLIT, FOLDERS, SIGNIN, DONE] = WIZ_STEPS.keys();
+const WIZ_STEPS = ['Name', 'AI brand', 'Sessions', 'Plans', 'Folders', 'Sign in', 'Done'];
+const [NAME, BRAND, SPLIT, PLANS, FOLDERS, SIGNIN, DONE] = WIZ_STEPS.keys();
 // The brands besides Claude, as the wizard offers them: what each is, and how to install its program. Their
 // names, home folder columns and default folders come from CO_BRANDS and defaultHome, as on the Companies screen.
 const WIZ_BRANDS = {
@@ -5143,8 +5153,9 @@ function companyWizard({ first = false } = {}) {
   return new Promise((resolve) => {
     // kind: how it uses Claude ('claude' account, 'bedrock', or '' for no Claude); brands: the others picked, with
     // their home folders in homes; def: the default brand for new sessions ('' is Claude).
-    // split: its sessions send real work to child sessions on their own (the desk's splitWork).
-    const w = { step: NAME, name: '', kind: '', brands: [], split: true, homes: {}, homesTyped: {}, reuse: {}, def: '', home: '', folder: '', email: '', awsProfile: '', awsRegion: '', id: null,
+    // split: its sessions send real work to child sessions on their own (the desk's splitWork). plans: it uses Docket's
+    // plans (planSystem docket rather than none); off by default, since it adds tools and instructions to every session.
+    const w = { step: NAME, name: '', kind: '', brands: [], split: true, plans: false, homes: {}, homesTyped: {}, reuse: {}, def: '', home: '', folder: '', email: '', awsProfile: '', awsRegion: '', id: null,
       homeTyped: false, folderTyped: false, check: null, checking: false, error: '', signedIn: null, si: null, code: '', inUse: {}, keepInUse: {} };
     const card = $('wizCard');
     $('wiz').classList.toggle('first', first); $('wiz').hidden = false;
@@ -5268,6 +5279,9 @@ function companyWizard({ first = false } = {}) {
       if (w.step === SPLIT) return `<p>How should ${esc(w.name)}'s sessions handle real work, like a build or a fix?</p>
         <label class="wiz-radio"><input type="checkbox" id="wSplit"${tip('w-split')} ${w.split ? 'checked' : ''}><span><b>Send work to its own session</b>
           <small>A session you start hands real work to a new session of its own, listed under it, so your conversation stays free to talk while the work runs. Untick it to have each session do the work itself; it still starts a new session when you ask for one. You can change this later, in the desk's Inspector, under Switches.</small></span></label>`;
+      if (w.step === PLANS) return `<p>Should ${esc(w.name)}'s sessions use Docket's plans?</p>
+        <label class="wiz-radio"><input type="checkbox" id="wPlans"${tip('w-plans')} ${w.plans ? 'checked' : ''}><span><b>Use Docket's plans</b>
+          <small>For a bigger piece of work, a session can write a plan: a checklist of tasks, in order, which it hands to sessions of their own. You follow them in the Plan section. Leave it unticked if you are not sure; you can turn it on later, in the desk's Inspector, under Switches.</small></span></label>`;
       if (w.step === FOLDERS) {
         const clash = (p) => takenHome(p) ? '<div class="wiz-err">Another desk already uses this folder. Each desk needs its own, or they would share one sign-in.</div>' : '';
         const inside = (e, typed) => { const d = !typed && w.check?.roots && defaultHome(roots(), w.name, e); return d?.clash ? ` Not ${esc(d.clash)}: that is inside Docket's own folder (${OS.caps}).` : ''; };
@@ -5390,6 +5404,7 @@ function companyWizard({ first = false } = {}) {
       if (t.dataset.home) { w.homes[t.dataset.home] = t.value; w.homesTyped[t.dataset.home] = true; inspect(); }
       if (t.id === 'wDefault') w.def = t.value;
       if (t.id === 'wSplit') w.split = t.checked;
+      if (t.id === 'wPlans') w.plans = t.checked;
       if (t.id === 'wEmail') w.email = t.value;
       if (t.id === 'wCode') { w.code = t.value; card.querySelector('[data-w="code"]').disabled = !w.code.trim(); }
       if (t.id === 'wRegion') w.awsRegion = t.value;
@@ -5398,7 +5413,7 @@ function companyWizard({ first = false } = {}) {
     // Every company has a Claude home (the server needs one), so one without Claude still sends it, with Claude
     // left out (brandsOff). A brand not picked sends an empty home folder, which takes it away again after Back.
     const save = (extra = {}) => api('/api/clients/save-one', { id: w.id, name: w.name, home: homeOf('claude'), folder: w.folder, email: w.kind === 'claude' ? w.email : '',
-      ...Object.fromEntries(OTHER.map(([e, , k]) => [k, w.brands.includes(e) ? homeOf(e) : ''])), brandsOff: w.kind ? [] : ['claude'], defaultEngine: w.def, splitWork: w.split,
+      ...Object.fromEntries(OTHER.map(([e, , k]) => [k, w.brands.includes(e) ? homeOf(e) : ''])), brandsOff: w.kind ? [] : ['claude'], defaultEngine: w.def, splitWork: w.split, planSystem: w.plans ? 'docket' : 'none',
       ...(w.kind === 'bedrock' && w.awsProfile.trim() ? { awsProfile: w.awsProfile, awsRegion: w.awsRegion || 'us-east-1' } : {}), ...extra });
     const enterSignin = async () => {
       w.step = SIGNIN; w.signedIn = null; w.si = null; w.already = null; w.forced = null;
@@ -5437,7 +5452,8 @@ function companyWizard({ first = false } = {}) {
           if (!picked().includes(w.def || 'claude')) w.def = picked()[0] === 'claude' ? '' : picked()[0];
           return render();
         }
-        if (w.step === SPLIT) { w.step = FOLDERS; return render(); }
+        if (w.step === SPLIT) { w.step = PLANS; return render(); }
+        if (w.step === PLANS) { w.step = FOLDERS; return render(); }
         if (w.step === FOLDERS) {
           // A company is saved now, so it can sign in on the next step; a Bedrock-only one once its AWS profile is chosen.
           if (w.kind === 'bedrock' && !w.brands.length) return enterSignin();
@@ -5673,6 +5689,7 @@ async function reloadClients() {
     if (c.id === S.client && S.selected !== 'draft') newDraft();
   }
   showAccent(); // a desk's color may have changed
+  showPlanOffer(); // a desk may have chosen its plan system
   if (!S.clients.length) { location.reload(); return; } // the last desk went: start over in the setup wizard
   // Show the new list at once; a new company's sessions can take a while to read.
   const fresh = S.clients.filter((c) => !S.history[c.id] || (c.remote?.connected && !wasOn.has(c.id))); // a remote desk connected again, here or in another page
@@ -7603,7 +7620,9 @@ function renderProfile() {
     const key = `i${k++}`; pf.texts[key] = it;
     const meta = [it.note, it.size ? tokensText(it.size) : '', it.error].filter(Boolean).join(' · ');
     // An on/off checkbox: one setting for this desk, for sessions started after the change.
-    const sw = it.toggle ? `<input type="checkbox" class="pf-switch" data-pf-switch="${key}"${it.toggle.on ? ' checked' : ''}${tip('pf-switch')}>` : '';
+    // A choice of more than on and off (options: [value, label] pairs) is a list to pick from instead.
+    const sw = !it.toggle ? '' : it.toggle.options ? `<select class="pf-switch" data-pf-switch="${key}"${tip('pf-choice')}>${it.toggle.options.map(([v, l]) => `<option value="${esc(v)}"${v === it.toggle.value ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`
+      : `<input type="checkbox" class="pf-switch" data-pf-switch="${key}"${it.toggle.on ? ' checked' : ''}${tip('pf-switch')}>`;
     const swNote = it.toggle ? `<span class="pf-switch-note">${esc([it.toggle.note, 'applies to sessions started after a change'].filter(Boolean).join(' · '))}</span>` : '';
     const row = `${sw}<span class="pf-name">${esc(it.name)}</span>${it.status ? `<span class="mcp-st ${it.status}">${esc(it.statusText)}</span>` : ''}${it.badge ? `<span class="pf-badge">${esc(it.badge)}</span>` : ''}<span class="pf-detail ${it.code ? 'code' : ''}">${esc(it.detail || '')}</span>${meta ? `<span class="pf-meta">${esc(meta)}</span>` : ''}${swNote}`;
     const links = (it.links || []).length ? `<div class="pf-links">Runs ${it.links.map((l, i) => { const lk = `${key}l${i}`; pf.texts[lk] = l; return `<a href="#" data-pf-link="${lk}"${tip('pf-link')}>${esc(l.name)}</a>`; }).join('')}</div>` : '';
@@ -7681,8 +7700,8 @@ $('profilePage').addEventListener('change', async (e) => { // an on/off checkbox
   const box = e.target.closest?.('[data-pf-switch]'); if (!box) return;
   const it = pf.texts[box.dataset.pfSwitch], id = pf.data.client.id;
   box.disabled = true;
-  try { await api(`/api/clients/${id}/profile/switch`, { kind: it.toggle.kind, key: it.toggle.key, on: box.checked }); }
-  catch (err) { box.checked = !box.checked; alert(err.message); }
+  try { await api(`/api/clients/${id}/profile/switch`, { kind: it.toggle.kind, key: it.toggle.key, ...(it.toggle.options ? { value: box.value } : { on: box.checked }) }); }
+  catch (err) { if (it.toggle.options) box.value = it.toggle.value; else box.checked = !box.checked; alert(err.message); }
   if (S.client === id) loadProfile(true);
 });
 $('profilePage').addEventListener('toggle', (e) => { const el = e.target; if (el.dataset?.pf && el.open) pfFill(el, pf.texts[el.dataset.pf]); }, true);
@@ -7820,6 +7839,43 @@ $('cacheOffer').onclick = async (e) => {
   el.hidden = false; // the server's own message about the offers may have hidden the card already
 };
 api('/api/cache-offers').then(showCacheOffer).catch(() => {});
+
+// The card after the update that brought Docket's plans (#180): once for each desk on this computer with no plan system
+// chosen yet (planSystem ''), the desk on view first. Either button saves a choice on the desk, so it never comes back;
+// a desk made in the setup wizard chose already. Closing the page without a choice asks again next time.
+let planOfferDone = ''; // a desk that was just turned on, while its note shows
+function showPlanOffer() {
+  const el = $('planOffer');
+  if (planOfferDone) return;
+  const open = S.clients.filter((c) => !c.remote && c.planSystem === '');
+  const o = open.find((c) => c.id === S.client) || open[0];
+  if (!o) { el.hidden = true; return; }
+  if (el.dataset.client === o.id && !el.hidden) return; // already showing it: keep the keyboard where it is
+  const name = esc(o.name);
+  el.dataset.client = o.id;
+  el.innerHTML = `<span class="ico" aria-hidden="true">📋</span><div class="t" id="planOfferTitle">New: plans for ${name}</div>
+    <div class="d">For a bigger piece of work, a session can write a plan: a checklist of tasks, in order. It hands the tasks to sessions of their own, and you follow them in the Plan section.</div>
+    <div class="d">It is off until you turn it on, and you can change it later in ${name}'s Inspector, under Switches.</div>
+    <div class="b"><button data-plan="none"${tip('plan-no')}>No thanks</button><button class="primary" data-plan="docket"${tip('plan-yes')}>Turn on plans</button></div>`;
+  el.hidden = false;
+}
+$('planOffer').onclick = async (e) => {
+  const b = e.target.closest('[data-plan]'), el = $('planOffer');
+  if (!b) return;
+  if (b.dataset.plan === 'ok') { planOfferDone = ''; el.hidden = true; return showPlanOffer(); }
+  const id = el.dataset.client, value = b.dataset.plan, c = S.clients.find((x) => x.id === id);
+  for (const x of el.querySelectorAll('button')) x.disabled = true;
+  try { await api(`/api/clients/${id}/profile/switch`, { kind: 'plans', key: 'plans', value }); }
+  catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return alert(err.message); }
+  if (c) c.planSystem = value; // the server's own message about the desk list follows
+  if (value !== 'docket') { el.hidden = true; return showPlanOffer(); }
+  // Running sessions keep what they started with, so say when it takes effect.
+  planOfferDone = id;
+  el.innerHTML = `<span class="ico" aria-hidden="true">📋</span><div class="t" id="planOfferTitle">${esc(c?.name || '')} now has plans</div>
+    <div class="d">Sessions that start from now on get them; sessions running now keep what they started with.</div>
+    <div class="b"><button class="primary" data-plan="ok"${tip('plan-ok')}>OK</button></div>`;
+  el.hidden = false;
+};
 </script>
 </body>
 </html>

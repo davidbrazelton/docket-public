@@ -121,6 +121,31 @@ test('splitting work into sessions is on unless the wizard unticks it, and a sav
   assert.equal(saved().find((x) => x.id === r.id).splitWork, false, 'kept when not sent');
 });
 
+test('the plan system: the wizard saves docket or none, a save that leaves it out keeps it, and the list sends it to the page', async () => {
+  const on = await api('/api/clients/save-one', { ...wizard('PlansOn', { claude: true }), planSystem: 'docket' });
+  assert.equal(on.status, 200, on.error);
+  assert.equal(saved().find((x) => x.id === on.id).planSystem, 'docket');
+  const off = await api('/api/clients/save-one', { ...wizard('PlansOff', { claude: true }), planSystem: 'none' });
+  assert.equal(saved().find((x) => x.id === off.id).planSystem, 'none', 'none is written, so the card after the update skips it');
+  const { planSystem, ...again } = saved().find((x) => x.id === on.id);
+  await api('/api/clients/save-one', again);
+  assert.equal(saved().find((x) => x.id === on.id).planSystem, 'docket', 'kept when not sent');
+  const rows = await list();
+  assert.equal(rows.find((x) => x.id === on.id).planSystem, 'docket');
+  assert.equal(rows.find((x) => x.id === 'claudeco').planSystem, '', 'a desk with nothing chosen says so, for the card');
+});
+
+test('the Inspector\'s plan choice saves the desk\'s plan system and refuses anything else', async () => {
+  const sw = (id, value) => api(`/api/clients/${id}/profile/switch`, { kind: 'plans', key: 'plans', value });
+  assert.equal((await sw('claudeco', 'docket')).status, 200);
+  assert.equal(saved().find((x) => x.id === 'claudeco').planSystem, 'docket');
+  assert.equal((await sw('claudeco', 'none')).status, 200);
+  assert.equal(saved().find((x) => x.id === 'claudeco').planSystem, 'none');
+  assert.equal((await sw('claudeco', 'folder')).status, 400, 'the plan folder is not offered yet');
+  assert.equal((await sw('claudeco', 'bogus')).status, 400);
+  assert.equal(saved().find((x) => x.id === 'claudeco').planSystem, 'none');
+});
+
 test('the sign-in step\'s one button signs in Claude first, then each other brand in turn, and waits while one finishes', () => {
   const page = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const fn = page.slice(page.indexOf('    function signinAction() {'), page.indexOf('    function buttons() {'));

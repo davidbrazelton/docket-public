@@ -100,5 +100,5 @@ test('the profile shows a checkbox for each switch, with what it is now', () => 
   assert.equal(off.sections.find((s) => s.id === 'switches').groups.find((g) => g.title.startsWith('How sessions split')).items[0].toggle.on, false);
   // no Grok home: no Grok switches
   const noGrok = buildProfile({ ...client, grokHome: undefined }, { isDefaultHome: false });
-  assert.deepEqual(noGrok.sections.find((s) => s.id === 'switches').groups.map((g) => g.title), ['How sessions split work', 'Settings layers Claude sessions load']);
+  assert.deepEqual(noGrok.sections.find((s) => s.id === 'switches').groups.map((g) => g.title), ['Plans', 'How sessions split work', 'Settings layers Claude sessions load']);
 });
