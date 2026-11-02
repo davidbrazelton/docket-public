@@ -1,0 +1,629 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usage · Docket</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 256x256">
+<!--
+  The Usage page: a usage viewer's usual shape (cards, a cumulative and a daily chart,
+  a table by title), drawn from the rows Docket keeps (GET /api/usage/report), and grouped the ways only Docket
+  can: desk, group, family and session. Charts are plain SVG, so the page needs nothing from the internet.
+-->
+<style>
+:root {
+  --bg: #f7f6f3; --panel: #ffffff; --panel-2: #efeee9; --line: #e2e0d8; --text: #1f1e1b; --muted: #6b6a64;
+  --accent: #c2410c; --accent-soft: #fde7d9; --ok: #15803d; --bad: #b91c1c;
+  --s-hypo: #8a8983; --s-save: #15803d; --s-actual: var(--accent); --s-main: #2563eb; --s-agent: #9333ea; --s-compact: #d97706; --s-expiry: #dc2626;
+  --lines-add: #14703a; --lines-del: #b91c1c; /* lines added / removed, 4.5:1 or better on --bg, --panel and --panel-2 */
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1b1b19; --panel: #232321; --panel-2: #2b2b28; --line: #373633; --text: #ecebe6; --muted: #a09f98;
+    --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --bad: #f87171;
+    --s-hypo: #a09f98; --s-save: #4ade80; --s-main: #60a5fa; --s-agent: #c084fc; --s-compact: #fbbf24; --s-expiry: #f87171; --lines-add: #4ade80; --lines-del: #fb8585;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1b1b19; --panel: #232321; --panel-2: #2b2b28; --line: #373633; --text: #ecebe6; --muted: #a09f98;
+  --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --bad: #f87171;
+  --s-hypo: #a09f98; --s-save: #4ade80; --s-main: #60a5fa; --s-agent: #c084fc; --s-compact: #fbbf24; --s-expiry: #f87171; --lines-add: #4ade80; --lines-del: #fb8585;
+  color-scheme: dark;
+}
+:root[data-accent] { --accent: var(--accent-light); }
+@media (prefers-color-scheme: dark) { :root[data-accent]:not([data-theme="light"]) { --accent: var(--accent-dark); } }
+:root[data-accent][data-theme="dark"] { --accent: var(--accent-dark); }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+button, select, input { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px 9px; }
+button { cursor: pointer; } button:hover { background: var(--panel-2); }
+button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 16px; margin: 0 8px 0 0; color: var(--accent); }
+header label { display: flex; gap: 5px; align-items: center; font-size: 12px; color: var(--muted); }
+main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+.muted { color: var(--muted); }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.card .k { font-size: 12px; color: var(--muted); }
+.card .v { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.card .s { font-size: 12px; color: var(--muted); }
+.card.good .v { color: var(--ok); }
+.ln-add { color: var(--lines-add); } .ln-del { color: var(--lines-del); } /* lines added and removed */
+.box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 16px; }
+.box h2 { font-size: 14px; margin: 0 0 6px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; font-weight: 400; }
+.legend button { padding: 1px 8px; display: flex; gap: 5px; align-items: center; font-size: 12px; }
+.legend button i { width: 10px; height: 10px; border-radius: 2px; background: var(--c); display: inline-block; }
+.legend button.off { opacity: .45; text-decoration: line-through; }
+svg.chart { width: 100%; height: 260px; display: block; }
+svg.chart text { fill: var(--muted); font-size: 11px; }
+svg.chart .grid { stroke: var(--line); }
+.tip { position: fixed; z-index: 20; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12px; box-shadow: 0 6px 20px rgba(0,0,0,.18); display: none; }
+.tip div { display: flex; gap: 12px; justify-content: space-between; }
+.tip i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: inline-block; margin-right: 5px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; white-space: normal; }
+th { position: sticky; top: 0; background: var(--panel); font-weight: 600; font-size: 12px; color: var(--muted); }
+tr.node > td:first-child { cursor: pointer; }
+tr.node > td:first-child::before { content: '▸'; display: inline-block; width: 14px; color: var(--muted); }
+tr.node.open > td:first-child::before { content: '▾'; }
+table.tree tr.lvl1 { background: var(--panel-2); font-weight: 600; }
+tr.sub td { color: var(--muted); font-size: 12px; }
+.tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 6px; padding: 0 5px; margin-left: 6px; font-weight: 400; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; background: var(--c, var(--muted)); }
+.scroll { max-height: 70vh; overflow: auto; }
+.pick { position: relative; }
+.pick-menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 10; width: 360px; max-height: 420px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.pick-menu input[type=search] { width: 100%; margin-bottom: 6px; }
+.pick-menu label { display: flex; gap: 6px; align-items: center; padding: 2px 4px; font-size: 12px; color: var(--text); cursor: pointer; }
+.pick-menu label b { font-weight: 400; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-menu .ph { font-size: 11px; color: var(--muted); padding: 6px 4px 2px; }
+/* The Connection filter: a small dropdown, since a plain select cannot show the brand logos. */
+header .lab { display: flex; gap: 5px; align-items: center; font-size: 12px; color: var(--muted); }
+#acctBtn { display: inline-flex; gap: 5px; align-items: center; max-width: 280px; color: var(--text); font-size: 14px; }
+#acctBtn .nm, .acct-menu .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#acctBtn .caret { color: var(--muted); font-size: 10px; margin-left: 2px; }
+.acct-menu { width: auto; min-width: 100%; padding: 4px; }
+.acct-menu .opt { display: flex; gap: 5px; align-items: center; padding: 4px 8px; border-radius: 6px; font-size: 13px; color: var(--text); cursor: pointer; white-space: nowrap; }
+.acct-menu .opt:hover, .acct-menu .opt.act { background: var(--panel-2); }
+.acct-menu .opt.sel { font-weight: 600; }
+.acct-menu .opt .dt { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.blogo { flex: none; display: inline-block; width: 14px; height: 14px; color: var(--text); }
+.blogo svg { display: block; width: 100%; height: 100%; }
+details.help { margin: 6px 0; } details.help summary { cursor: pointer; font-weight: 600; } details.help p { margin: 6px 0 6px 16px; max-width: 760px; } details.help ol { margin: 4px 0 6px 16px; max-width: 744px; } details.help li { margin: 3px 0; }
+.empty { padding: 30px; text-align: center; color: var(--muted); }
+</style>
+<script>
+// The same theme and main color as Docket's own page (index.html keeps them in this browser's storage).
+(function () {
+  const get = (k) => { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } };
+  const theme = get('theme'); if (theme) document.documentElement.dataset.theme = theme;
+  const client = new URLSearchParams(location.search).get('client') || get('client');
+  const hex = (get('companyColors') || {})[client] || get('accent');
+  if (!/^#[0-9a-f]{6}$/i.test(hex || '')) return;
+  const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const lum = (c) => { const [r, g, b] = c.map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const mix = (to, t) => rgb.map((v) => Math.round(v + (to - v) * t));
+  const shade = (to, ok) => { for (let t = 0; t <= 1; t += 0.05) { const c = mix(to, t); if (ok(lum(c))) return c; } return mix(to, 1); };
+  const css = (c) => '#' + c.map((v) => v.toString(16).padStart(2, '0')).join('');
+  const root = document.documentElement;
+  root.style.setProperty('--accent-light', css(shade(0, (L) => L <= 0.18)));
+  root.style.setProperty('--accent-dark', css(shade(255, (L) => L >= 0.25)));
+  root.dataset.accent = hex;
+})();
+</script>
+</head>
+<body>
+<header>
+  <h1>Usage</h1>
+  <label>Brand <select id="brand"></select></label>
+  <span class="lab">Connection <span class="pick" id="acctWrap"><button id="acctBtn" aria-haspopup="listbox" aria-expanded="false" title="Who the use is billed to: an AWS account, a sign-in, an API key or a gateway">All connections</button><div class="pick-menu acct-menu" id="acctMenu" role="listbox" hidden></div></span></span>
+  <label>Desk <select id="fCompany"></select></label>
+  <label id="groupWrap">Group <select id="fGroup"></select></label>
+  <label>Dates <select id="fRange"></select></label>
+  <span id="customWrap" style="display:none"><input type="date" id="fFrom"> to <input type="date" id="fTo"></span>
+  <span class="pick"><button id="pickBtn">Sessions: all</button><div class="pick-menu" id="pickMenu" hidden></div></span>
+  <span style="flex:1"></span>
+  <span class="muted" id="asOf" style="font-size:12px"></span>
+  <button id="reload" title="Read the rows again">↻</button>
+</header>
+<main>
+  <div class="cards" id="cards"></div>
+  <div class="box">
+    <h2>Spend over time, added up <span class="legend" id="cumLegend"></span></h2>
+    <svg class="chart" id="cumChart" preserveAspectRatio="none"></svg>
+  </div>
+  <div class="box">
+    <h2>Spend by day <span class="legend" id="dayLegend"></span></h2>
+    <svg class="chart" id="dayChart" preserveAspectRatio="none"></svg>
+  </div>
+  <div class="box">
+    <h2>
+      <span>Sessions</span>
+      <span class="legend">
+        <button data-view="title">By title</button>
+        <button data-view="tree">By desk, group and family</button>
+        <button data-view="conn" title="Desks billed to the same AWS account, sign-in, API key or gateway, added up">By connection</button>
+        <button data-view="raw">Raw rows</button>
+      </span>
+      <label class="muted" id="allWrap" style="font-size:12px;font-weight:400"><input type="checkbox" id="allFields"> Show all fields</label>
+    </h2>
+    <div class="scroll" id="table"></div>
+  </div>
+  <div class="box" id="help"></div>
+</main>
+<div class="tip" id="tip"></div>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('usage.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('usage.' + k, JSON.stringify(v)); } catch {} },
+};
+const money = (n) => (n < 0 ? '−' : '') + '$' + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const tok = (n) => n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(Math.round(n));
+// Lines added and removed as "+1,234 / −567".
+const linesStr = (t) => `<span class="ln-add">+${t.added.toLocaleString()}</span> / <span class="ln-del">−${t.removed.toLocaleString()}</span>`;
+const pct = (n) => (isFinite(n) ? (n * 100).toFixed(1) + '%' : '–');
+// Seconds as "2h 10m", "25m" or "40s".
+const span = (s) => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}h ${m}m` : m ? `${m}m` : `${s}s`; };
+const dayStr = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const shortDay = (s) => new Date(s + 'T12:00:00').toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+let R = null; // the report from the app
+let SS = null; // shift-savings.mjs: the Shift card's sums, the ones its tests check
+const params = new URLSearchParams(location.search);
+// A link may set a filter for this visit (the main window's today's spend sends range, group, brand and billed);
+// the remembered one is kept for the next visit. billed is a connection's key, or an account's label as before.
+const asked = (k, stored) => params.has(k) ? params.get(k) : stored;
+const F = {
+  billed: asked('billed', store.get('billed', '')),
+  brand: asked('brand', store.get('brand', '')),
+  company: params.get('client') ? params.get('client') : store.get('company', ''),
+  group: asked('group', store.get('group', '')),
+  range: asked('range', store.get('range', 'last30')),
+  from: store.get('from', ''), to: store.get('to', ''),
+  sessions: new Set(), // empty: all
+  view: store.get('view', 'title'),
+  all: store.get('allFields', false),
+};
+const hidden = new Set(store.get('hidden', ['d:hypo']));
+
+// ---------- dates ----------
+const RANGES = [['last30', 'Last 30 days'], ['last7', 'Last 7 days'], ['today', 'Today'], ['yesterday', 'Yesterday'], ['thisWeek', 'This week (Mon–Sun)'],
+  ['lastWeek', 'Last week'], ['thisMonth', 'This month'], ['lastMonth', 'Last month'], ['thisYear', 'This year'], ['all', 'All time'], ['custom', 'Custom']];
+function rangeDates() {
+  const t = new Date(); t.setHours(12, 0, 0, 0);
+  const monday = addDays(t, -((t.getDay() + 6) % 7));
+  switch (F.range) {
+    case 'last7': return [addDays(t, -6), t];
+    case 'today': return [t, t];
+    case 'yesterday': return [addDays(t, -1), addDays(t, -1)];
+    case 'thisWeek': return [monday, addDays(monday, 6)];
+    case 'lastWeek': return [addDays(monday, -7), addDays(monday, -1)];
+    case 'thisMonth': return [new Date(t.getFullYear(), t.getMonth(), 1, 12), new Date(t.getFullYear(), t.getMonth() + 1, 0, 12)];
+    case 'lastMonth': return [new Date(t.getFullYear(), t.getMonth() - 1, 1, 12), new Date(t.getFullYear(), t.getMonth(), 0, 12)];
+    case 'thisYear': return [new Date(t.getFullYear(), 0, 1, 12), t];
+    case 'all': { const first = R.rows.reduce((a, r) => (r.Date < a ? r.Date : a), dayStr(t)); return [new Date(first + 'T12:00:00'), t]; }
+    case 'custom': return [new Date((F.from || dayStr(addDays(t, -29))) + 'T12:00:00'), new Date((F.to || dayStr(t)) + 'T12:00:00')];
+    default: return [addDays(t, -29), t];
+  }
+}
+
+// ---------- filtering ----------
+const companyName = (id) => R.companies.find((c) => c.id === id)?.name || id;
+// The connection filter: by key; a label (an older link, or a key gone from the rows) matches by label.
+const billedMatch = (r) => !F.billed || (accounts.some((a) => a.key === F.billed) ? r.Connection === F.billed : r.BilledProfile === F.billed);
+function baseRows() { // every filter except the session pick and dates
+  return R.rows.filter((r) => (!F.brand || (r.Brand || 'claude') === F.brand) && billedMatch(r) && (!F.company || r.Client === F.company)
+    && (!F.group || (F.group === '-' ? !r.GroupId : r.GroupId === F.group)));
+}
+function filtered() {
+  const [a, b] = rangeDates().map(dayStr);
+  return baseRows().filter((r) => r.Date >= a && r.Date <= b && (!F.sessions.size || F.sessions.has(r.SessionId)));
+}
+
+// ---------- adding up ----------
+function totals(rows) {
+  const t = { cost: 0, main: 0, agent: 0, compact: 0, compactions: 0, grokCompactions: 0, hypo: 0, hypoAgent: 0, agentCost: 0, list: 0, input: 0, cacheRead: 0, cacheSaved: 0, expiries: 0, turns: 0, output: 0, agentSec: 0, waitSec: 0, userSec: 0, added: 0, removed: 0 };
+  for (const r of rows) {
+    t.cost += r.Cost; t.list += r.PersonalCost ?? r.Cost; t.hypo += r.HypotheticalCost ?? r.Cost;
+    t[r.Source] = (t[r.Source] || 0) + r.Cost;
+    if (r.Source === 'agent') { t.hypoAgent += r.HypotheticalCost ?? r.Cost; t.agentCost += r.Cost; }
+    // Grok does not price its compactions apart from the turn they happen in, so they are counted on their own.
+    if (r.Brand === 'grok') t.grokCompactions += r.Compacting || 0; else t.compactions += r.Compacting || 0;
+    t.expiries += r.CacheExpiry || 0;
+    t.input += r.InputTokens || 0; t.cacheRead += r.CacheRead || 0; t.cacheSaved += r.CacheSaved || 0;
+    t.turns += r.Turns || 0; t.output += r.OutputTokens || 0;
+    t.agentSec += r.AgentSeconds || 0; t.waitSec += r.WaitSeconds || 0; t.userSec += r.UserSeconds || 0;
+    t.added += r.LinesAdded || 0; t.removed += r.LinesRemoved || 0;
+  }
+  t.savings = t.hypo - t.cost; t.saveAgent = t.hypoAgent - t.agentCost; t.saveMain = t.savings - t.saveAgent;
+  t.cacheEff = t.cacheRead / (t.input + t.cacheRead);
+  return t;
+}
+
+// ---------- cards ----------
+function renderCards(rows) {
+  const t = totals(rows);
+  const card = (k, v, s, cls = '') => `<div class="card ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  const listDiffers = Math.abs(t.list - t.cost) >= 0.01;
+  $('cards').innerHTML = [
+    card('Actual cost', money(t.cost), 'at the rate each account pays'),
+    card('Session cost', money(t.main || 0), 'your turns'),
+    card('Agent cost', money(t.agent || 0), 'helper agents'),
+    card('Compaction cost', money(t.compact || 0), (t.compactions ? `${t.compactions} compaction${t.compactions === 1 ? '' : 's'}, ${money((t.compact || 0) / t.compactions)} each` : 'no compactions') + (t.grokCompactions ? `; ${t.grokCompactions} in Grok, inside its turn cost` : '')),
+    card('Hypothetical cost', money(t.hypo), `all on ${esc(R.baseline?.name || 'Opus')}, no routing`),
+    card('Routing savings', money(t.savings), `agents ${money(t.saveAgent)} · sessions ${money(t.saveMain)}`, t.savings > 0 ? 'good' : ''),
+    ...shiftCard(rows, card),
+    card('Cache efficiency', pct(t.cacheEff), `${money(t.cacheSaved)} saved`),
+    card('Cache expiries', t.expiries.toLocaleString(), 'gaps longer than the cache'),
+    card('Agent time', span(t.agentSec), 'working on your messages'),
+    card('Waiting on you', span(t.waitSec), 'permissions, questions and plans'),
+    card('Your time', span(t.userSec), 'typing your messages'),
+    card('Lines changed', linesStr(t), 'added and removed by file edits'),
+    ...(listDiffers ? [card('API list price', money(t.list), 'without Bedrock regional rates')] : []),
+  ].join('');
+}
+
+// What Shift mode saved: its sessions' spend against the same tokens on their brand's top gear.
+function shiftCard(rows, card) {
+  const s = SS ? SS.shiftTotals(rows, R.shift) : null;
+  if (!s?.sessions) return [];
+  const top = F.brand ? esc(R.topGears?.[F.brand] || 'the top gear') : 'the top gear';
+  const n = (k, one, many) => `${s[k]} ${s[k] === 1 ? one : many}`;
+  return [card('Shift savings', money(s.saved), `${money(s.spent)} spent, ${money(s.top)} on ${top}<br>`
+    + `${n('sessions', 'Shift session', 'Shift sessions')}: ${s.shifted} shifted, ${s.stayedLow} stayed on a low gear`
+    + (s.unpriced ? `<br>${s.unpriced} row${s.unpriced === 1 ? '' : 's'} with no top-gear price, counted at cost` : ''), s.saved > 0 ? 'good' : '')];
+}
+
+// ---------- charts (plain SVG) ----------
+const SERIES = {
+  cum: [['hypo', 'Hypothetical', '--s-hypo', true], ['save', 'Savings', '--s-save'], ['actual', 'Actual', '--s-actual'], ['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact']],
+  day: [['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['hypo', 'Hypothetical', '--s-hypo'], ['expiry', 'Cache expiries', '--s-expiry']],
+};
+function dailyData(rows) {
+  const [a, b] = rangeDates();
+  const days = [];
+  for (let d = new Date(a); dayStr(d) <= dayStr(b); d = addDays(d, 1)) days.push(dayStr(d));
+  const by = new Map(days.map((d) => [d, { main: 0, agent: 0, compact: 0, hypo: 0, actual: 0, expiry: 0 }]));
+  for (const r of rows) {
+    const x = by.get(r.Date); if (!x) continue;
+    x[r.Source] += r.Cost; x.actual += r.Cost; x.hypo += r.HypotheticalCost ?? r.Cost; x.expiry += r.CacheExpiry || 0;
+  }
+  return days.map((d) => ({ day: d, ...by.get(d) }));
+}
+const W = 1000, H = 260, PAD = { l: 56, r: 44, t: 10, b: 24 };
+const niceMax = (v) => { if (v <= 0) return 1; const p = 10 ** Math.floor(Math.log10(v)); return [1, 2, 2.5, 5, 10].map((m) => m * p).find((m) => m >= v); };
+function axes(max, days, right) {
+  let s = '';
+  for (let i = 0; i <= 4; i++) {
+    const y = PAD.t + (H - PAD.t - PAD.b) * (1 - i / 4);
+    s += `<line class="grid" x1="${PAD.l}" x2="${W - PAD.r}" y1="${y}" y2="${y}"/><text x="${PAD.l - 6}" y="${y + 4}" text-anchor="end">${money(max * i / 4).replace('.00', '')}</text>`;
+    if (right) s += `<text x="${W - PAD.r + 6}" y="${y + 4}">${Math.round(right * i / 4)}</text>`;
+  }
+  const step = Math.max(1, Math.ceil(days.length / 10));
+  days.forEach((d, i) => { if (i % step === 0) s += `<text x="${xAt(i, days.length)}" y="${H - 6}" text-anchor="middle">${shortDay(d)}</text>`; });
+  return s;
+}
+const xAt = (i, n) => PAD.l + (W - PAD.l - PAD.r) * (n === 1 ? 0.5 : (i + 0.5) / n);
+const yAt = (v, max) => PAD.t + (H - PAD.t - PAD.b) * (1 - v / max);
+const colorOf = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+function legend(el, kind) {
+  el.innerHTML = SERIES[kind].map(([k, label, c]) => `<button data-s="${kind[0]}:${k}" class="${hidden.has(kind[0] + ':' + k) ? 'off' : ''}" style="--c:var(${c})"><i></i>${label}</button>`).join('');
+}
+function hoverZones(svg, data, lines) {
+  const n = data.length, w = (W - PAD.l - PAD.r) / n;
+  svg.insertAdjacentHTML('beforeend', data.map((d, i) => `<rect data-i="${i}" x="${PAD.l + w * i}" y="0" width="${w}" height="${H}" fill="transparent"/>`).join(''));
+  svg.onmousemove = (e) => {
+    const i = e.target.dataset?.i; if (i === undefined) return;
+    const tip = $('tip');
+    tip.innerHTML = `<b>${new Date(data[i].day + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</b>` + lines(data[i]).map(([label, c, v]) => `<div><span><i style="--c:var(${c})"></i>${label}</span><span>${v}</span></div>`).join('');
+    tip.style.display = 'block';
+    tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = e.clientY + 14 + 'px';
+  };
+  svg.onmouseleave = () => { $('tip').style.display = 'none'; };
+}
+function renderCharts(rows) {
+  const data = dailyData(rows);
+  // added up day by day
+  let run = { hypo: 0, save: 0, actual: 0, main: 0, agent: 0, compact: 0 };
+  const cum = data.map((d) => { run = { hypo: run.hypo + d.hypo, actual: run.actual + d.actual, main: run.main + d.main, agent: run.agent + d.agent, compact: run.compact + d.compact }; run.save = run.hypo - run.actual; return { day: d.day, ...run }; });
+  const cumOn = SERIES.cum.filter(([k]) => !hidden.has('c:' + k));
+  const cmax = niceMax(Math.max(0, ...cum.flatMap((d) => cumOn.map(([k]) => d[k]))));
+  let s = axes(cmax, data.map((d) => d.day));
+  for (const [k, , c, dashed] of cumOn) {
+    const pts = cum.map((d, i) => `${xAt(i, cum.length)},${yAt(Math.max(0, d[k]), cmax)}`).join(' ');
+    s += `<polyline points="${pts}" fill="none" stroke="${colorOf(c)}" stroke-width="2"${dashed ? ' stroke-dasharray="6 4"' : ''}/>`;
+  }
+  const cumSvg = $('cumChart'); cumSvg.setAttribute('viewBox', `0 0 ${W} ${H}`); cumSvg.innerHTML = s;
+  hoverZones(cumSvg, cum, (d) => cumOn.map(([k, label, c]) => [label, c, money(d[k])]));
+  legend($('cumLegend'), 'cum');
+  // each day: bars stacked, the hypothetical as a bar behind them, cache expiries as a line on the right axis
+  const stack = SERIES.day.filter(([k]) => ['main', 'agent', 'compact'].includes(k) && !hidden.has('d:' + k));
+  const showHypo = !hidden.has('d:hypo'), showExp = !hidden.has('d:expiry');
+  const dmax = niceMax(Math.max(0, ...data.map((d) => Math.max(stack.reduce((a, [k]) => a + d[k], 0), showHypo ? d.hypo : 0))));
+  const emax = Math.max(4, Math.ceil(Math.max(0, ...data.map((d) => d.expiry)) / 4) * 4);
+  s = axes(dmax, data.map((d) => d.day), showExp ? emax : 0);
+  const bw = Math.max(2, (W - PAD.l - PAD.r) / data.length * 0.7);
+  data.forEach((d, i) => {
+    const x = xAt(i, data.length) - bw / 2;
+    if (showHypo) s += `<rect x="${x - 2}" width="${bw + 4}" y="${yAt(d.hypo, dmax)}" height="${yAt(0, dmax) - yAt(d.hypo, dmax)}" fill="none" stroke="${colorOf('--s-hypo')}" stroke-dasharray="3 2"/>`;
+    let base = 0;
+    for (const [k, , c] of stack) {
+      if (d[k] <= 0) continue;
+      s += `<rect x="${x}" width="${bw}" y="${yAt(base + d[k], dmax)}" height="${yAt(base, dmax) - yAt(base + d[k], dmax)}" fill="${colorOf(c)}"/>`;
+      base += d[k];
+    }
+  });
+  if (showExp) s += `<polyline points="${data.map((d, i) => `${xAt(i, data.length)},${yAt(d.expiry, emax)}`).join(' ')}" fill="none" stroke="${colorOf('--s-expiry')}" stroke-width="1.5"/>`;
+  const daySvg = $('dayChart'); daySvg.setAttribute('viewBox', `0 0 ${W} ${H}`); daySvg.innerHTML = s;
+  hoverZones(daySvg, data, (d) => SERIES.day.filter(([k]) => !hidden.has('d:' + k)).map(([k, label, c]) => [label, c, k === 'expiry' ? d[k] : money(d[k])]));
+  legend($('dayLegend'), 'day');
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-s]'); if (!b) return;
+  const k = b.dataset.s; if (hidden.has(k)) hidden.delete(k); else hidden.add(k);
+  store.set('hidden', [...hidden]); renderCharts(filtered());
+});
+
+// ---------- the table ----------
+const sum = (rows) => totals(rows);
+const cells = (t) => `<td>${t.turns.toLocaleString()}</td><td>${tok(t.output)}</td><td>${pct(t.cacheEff)}</td><td>${money(t.cost)}</td><td>${span(t.agentSec)}</td><td>${span(t.waitSec)}</td><td>${span(t.userSec)}</td><td>${linesStr(t)}</td>`;
+const goneTag = (r) => (r.Gone ? `<span class="tag" title="${r.Gone === 'deleted' ? 'Deleted in Docket; its cost still counts' : 'Claude Code removed its log; its cost still counts'}">${esc(r.Gone)}</span>` : '');
+const sourceName = { main: 'Session', agent: 'Agents', compact: 'Compaction' };
+function groupBy(rows, key) { const m = new Map(); for (const r of rows) { const k = key(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); } return m; }
+// One line that opens; `inner` draws what is under it, only when it is opened.
+let nodeId = 0;
+const lazy = new Map();
+function node(level, label, rows, inner) {
+  const id = 'n' + nodeId++;
+  lazy.set(id, inner);
+  return `<tr class="node lvl${level}" data-node="${id}"><td style="padding-left:${8 + (level - 1) * 16}px">${label}</td>${cells(sum(rows))}</tr>`;
+}
+function dayLines(rows, level) {
+  return [...rows].sort((a, b) => (a.Date === b.Date ? b.Cost - a.Cost : a.Date < b.Date ? 1 : -1)).map((r) => {
+    const t = sum([r]);
+    return `<tr class="sub" data-parent><td style="padding-left:${8 + level * 16 + 14}px">${shortDay(r.Date)} · ${sourceName[r.Source] || r.Source} · ${esc(R.models[r.Model] || r.Model)}</td>${cells(t)}</tr>`;
+  }).join('');
+}
+const byCost = (m) => [...m.entries()].sort((a, b) => sum(b[1]).cost - sum(a[1]).cost);
+function sessionNodes(rows, level) {
+  return byCost(groupBy(rows, (r) => r.SessionId)).map(([, rs]) => node(level, `${esc(rs[0].Title)}${goneTag(rs[0])}`, rs, () => dayLines(rs, level))).join('');
+}
+function renderTable(rows) {
+  nodeId = 0; lazy.clear();
+  const head = `<thead><tr><th>${F.view === 'tree' ? 'Desk › group › family › session' : F.view === 'conn' ? 'Connection › desk › group › session' : 'Title'}</th><th>Turns</th><th>Output</th><th>Cache eff</th><th>Cost</th><th title="Time working on your messages, waits on you taken out">Agent</th><th title="Time a turn stood waiting on you: a permission, a question, a plan">Wait</th><th title="Time you spent typing your messages">You</th><th title="Lines added and removed by the session's file edits">Lines</th></tr></thead>`;
+  $('allWrap').style.display = F.view === 'raw' ? '' : 'none';
+  document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === F.view));
+  if (!rows.length) { $('table').innerHTML = '<div class="empty">No usage in this range.</div>'; return; }
+  if (F.view === 'raw') return renderRaw(rows);
+  let body = '';
+  if (F.view === 'title') {
+    // as in the tracker: one line per title, opening to one line per day, source and model
+    body = byCost(groupBy(rows, (r) => r.Title)).map(([title, rs]) => node(1, `${esc(title)}${goneTag(rs[0])}${new Set(rs.map((r) => r.SessionId)).size > 1 ? ` <span class="tag">${new Set(rs.map((r) => r.SessionId)).size} sessions</span>` : ''}`, rs, () => dayLines(rs, 1))).join('');
+  } else if (F.view === 'conn') {
+    // one line per billing connection, its cost the sum across its desks, opening to desk › group › session.
+    const groupName = (r) => (r.GroupId ? R.companies.find((c) => c.id === r.Client)?.groups.find((g) => g.id === r.GroupId) : null);
+    body = byCost(groupBy(rows, (r) => r.Connection || r.BilledProfile || '')).map(([key, krs]) => {
+      const a = accounts.find((x) => x.key === key), desks = new Set(krs.map((r) => r.Client)).size, inferred = krs.filter((r) => r.ProfileInferred).length;
+      const label = a ? `${acctLogos(a.brands)} ${esc(a.label)}${a.detail ? ` <span class="muted">${esc(a.detail)}</span>` : ''}${connTags(a)}` : key ? esc(krs[0].BilledProfile || key) : '<span class="muted">No connection</span>';
+      return node(1, label + (desks > 1 ? ` <span class="tag">${desks} desks</span>` : '')
+        + (inferred ? ` <span class="tag" title="${inferred} of these ${krs.length} rows were made before the session recorded its connection when it started, so they are put here by the desk's setup today">${inferred === krs.length ? 'inferred' : 'partly inferred'}</span>` : ''), krs,
+        () => byCost(groupBy(krs, (r) => r.Client)).map(([cid, crs]) => node(2, `<span class="dot" style="--c:${esc(R.companies.find((c) => c.id === cid)?.color || 'var(--muted)')}"></span>${esc(companyName(cid))}`, crs,
+          () => byCost(groupBy(crs, (r) => r.GroupId)).map(([, grs]) => { const g = groupName(grs[0]);
+            return node(3, g ? `<span class="dot" style="--c:${esc(g.color)}"></span>${esc(g.name)}` : '<span class="muted">No group</span>', grs, () => sessionNodes(grs, 4));
+          }).join(''))).join(''));
+    }).join('');
+  } else {
+    const groupName = (r) => (r.GroupId ? R.companies.find((c) => c.id === r.Client)?.groups.find((g) => g.id === r.GroupId) : null);
+    body = byCost(groupBy(rows, (r) => r.Client)).map(([cid, crs]) => node(1, `<span class="dot" style="--c:${esc(R.companies.find((c) => c.id === cid)?.color || 'var(--muted)')}"></span>${esc(companyName(cid))}`, crs,
+      () => byCost(groupBy(crs, (r) => r.GroupId)).map(([, grs]) => { const g = groupName(grs[0]);
+        return node(2, g ? `<span class="dot" style="--c:${esc(g.color)}"></span>${esc(g.name)}` : '<span class="muted">No group</span>', grs,
+          () => byCost(groupBy(grs, (r) => r.Family)).map(([, frs]) => {
+            const kids = new Set(frs.map((r) => r.SessionId));
+            if (kids.size === 1) return sessionNodes(frs, 3); // a session on its own is its own family
+            return node(3, `${esc(frs[0].FamilyTitle)} <span class="tag">family of ${kids.size}</span>`, frs, () => sessionNodes(frs, 4));
+          }).join(''));
+      }).join(''))).join('');
+  }
+  $('table').innerHTML = `<table class="${F.view}">${head}<tbody>${body}</tbody></table>`;
+}
+// Opening a line draws what is under it (so a long list stays quick), closing it removes that again.
+$('table').addEventListener('click', (e) => {
+  const tr = e.target.closest('tr.node'); if (!tr || e.target.closest('a')) return;
+  const id = tr.dataset.node;
+  if (tr.classList.toggle('open')) {
+    tr.insertAdjacentHTML('afterend', `<tr hidden data-end="${id}"></tr>`);
+    tr.insertAdjacentHTML('afterend', lazy.get(id)());
+  } else {
+    let n = tr.nextElementSibling;
+    while (n && n.dataset.end !== id) { const next = n.nextElementSibling; n.remove(); n = next; }
+    n?.remove();
+  }
+});
+const RAW_COLS = ['Date', 'Brand', 'Client', 'Group', 'Title', 'Source', 'Model', 'Turns', 'OutputTokens', 'CacheRead', 'Cost', 'AgentSeconds', 'WaitSeconds', 'UserSeconds', 'LinesAdded', 'LinesRemoved'];
+function renderRaw(rows) {
+  const cols = F.all ? [...new Set(rows.flatMap((r) => Object.keys(r)))] : RAW_COLS;
+  const fmt = (c, v) => (typeof v === 'number' ? (/Cost|Saved/.test(c) ? money(v) : /Seconds$/.test(c) ? span(v) : c === 'LinesAdded' ? `<span class="ln-add">${v.toLocaleString()}</span>` : c === 'LinesRemoved' ? `<span class="ln-del">${v.toLocaleString()}</span>` : v.toLocaleString()) : c === 'Client' ? esc(companyName(v)) : c === 'Model' ? esc(R.models[v] || v) : esc(v));
+  const sorted = [...rows].sort((a, b) => (a.Date === b.Date ? b.Cost - a.Cost : a.Date < b.Date ? 1 : -1));
+  const shown = sorted.slice(0, 3000);
+  $('table').innerHTML = `<table><thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${shown.map((r) => `<tr>${cols.map((c) => `<td>${fmt(c, r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table>`
+    + (sorted.length > shown.length ? `<div class="empty">Showing the newest ${shown.length.toLocaleString()} of ${sorted.length.toLocaleString()} rows; the full set is in the usage CSV.</div>` : '');
+}
+document.querySelectorAll('[data-view]').forEach((b) => b.onclick = () => { F.view = b.dataset.view; store.set('view', F.view); renderTable(filtered()); });
+$('allFields').onchange = () => { F.all = $('allFields').checked; store.set('allFields', F.all); renderTable(filtered()); };
+
+// ---------- the session pick ----------
+function renderPick() {
+  const [a, b] = rangeDates().map(dayStr);
+  const rows = baseRows().filter((r) => r.Date >= a && r.Date <= b);
+  const sessions = [...groupBy(rows, (r) => r.SessionId).entries()].map(([id, rs]) => ({ id, title: rs[0].Title, client: rs[0].Client, cost: sum(rs).cost, gone: rs[0].Gone }))
+    .sort((x, y) => y.cost - x.cost);
+  for (const id of [...F.sessions]) if (!sessions.some((s) => s.id === id)) F.sessions.delete(id);
+  $('pickBtn').textContent = F.sessions.size ? `Sessions: ${F.sessions.size}` : 'Sessions: all';
+  const q = ($('pickQ')?.value || '').toLowerCase();
+  const list = sessions.filter((s) => !q || s.title.toLowerCase().includes(q));
+  const keep = $('pickQ')?.value || '';
+  $('pickMenu').innerHTML = `<input type="search" id="pickQ" placeholder="Search titles" value="${esc(keep)}">
+    <div style="display:flex;gap:10px;font-size:12px;padding:0 4px 4px"><a href="#" id="pickAll">All</a><a href="#" id="pickShown">Only those shown</a></div>
+    ${list.slice(0, 400).map((s) => `<label><input type="checkbox" data-sid="${esc(s.id)}" ${F.sessions.has(s.id) ? 'checked' : ''}><b title="${esc(s.title)}">${esc(s.title)}</b>${s.gone ? '<span class="tag">' + esc(s.gone) + '</span>' : ''}<span class="muted">${F.company ? '' : esc(companyName(s.client)) + ' · '}${money(s.cost)}</span></label>`).join('')}
+    ${list.length > 400 ? `<div class="ph">${list.length - 400} more; search to find them</div>` : ''}`;
+  const qEl = $('pickQ'); qEl.oninput = () => { const pos = qEl.selectionStart; renderPick(); $('pickQ').focus(); $('pickQ').setSelectionRange(pos, pos); };
+  $('pickAll').onclick = (e) => { e.preventDefault(); F.sessions.clear(); render(); };
+  $('pickShown').onclick = (e) => { e.preventDefault(); F.sessions = new Set(list.map((s) => s.id)); render(); };
+}
+$('pickBtn').onclick = (e) => { e.stopPropagation(); acctOpen(false); $('pickMenu').hidden = !$('pickMenu').hidden; if (!$('pickMenu').hidden) { renderPick(); $('pickQ').focus(); } };
+$('pickMenu').addEventListener('click', (e) => e.stopPropagation());
+$('pickMenu').addEventListener('change', (e) => {
+  const id = e.target.dataset.sid; if (!id) return;
+  if (e.target.checked) F.sessions.add(id); else F.sessions.delete(id);
+  render(false);
+});
+document.addEventListener('click', () => { $('pickMenu').hidden = true; acctOpen(false); });
+
+// ---------- the account pick ----------
+// Each brand's logo, the same ones Docket's session list uses (BRAND_LOGOS in index.html, from @lobehub/icons-static-svg).
+const BRAND_LOGOS = {
+  claude: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#D97757" d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z"/></svg>',
+  grok: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815"/></svg>',
+  codex: '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg>',
+};
+const BRAND_ORDER = ['claude', 'codex', 'grok'];
+// accounts: the billing connections in the rows, from the report's connections:
+// { key, label, kind, detail, exact, brands, desks }; filled by fillFilters.
+let accounts = [];
+let acctAct = -1; // the option the arrow keys are on
+const acctLogos = (brands) => brands.map((b) => `<span class="blogo">${BRAND_LOGOS[b] || BRAND_LOGOS.claude}</span>`).join('');
+const acctOpts = () => [{ key: '', label: '', brands: [], desks: [] }, ...accounts];
+// A quiet word on what a connection's total means: a flat plan's API value, or a grouping by a local name.
+const connTags = (a) => (a.kind === 'subscription' ? ' <span class="tag" title="A flat plan: the cost is what the same use would cost on the API, and every desk on it shares its use limits">flat plan: API value, shared use limits</span>' : '')
+  + (a.kind === 'bedrock' && !a.exact ? ' <span class="tag" title="The AWS config does not say which account this profile is in, so it is grouped by its name; another profile on the same account shows on its own line">grouped by profile name</span>' : '')
+  + (a.kind === 'unknown' ? ' <span class="tag" title="Docket could not read who this desk is signed in as, so it stays on its own line">sign-in not readable</span>' : '');
+const isSel = (a) => (a.key ? a.key === F.billed : !F.billed);
+function renderAcct() {
+  const cur = accounts.find((a) => a.key === F.billed);
+  $('acctBtn').innerHTML = (cur ? acctLogos(cur.brands) + `<span class="nm">${esc(cur.label)}</span>` : `<span class="nm">${F.billed ? esc(F.billed) : 'All connections'}</span>`) + '<span class="caret">▾</span>';
+  $('acctBtn').title = cur ? [cur.label, cur.detail].filter(Boolean).join(' · ') : F.billed;
+  $('acctMenu').innerHTML = acctOpts().map((a, i) => `<div class="opt${isSel(a) ? ' sel' : ''}${i === acctAct ? ' act' : ''}" role="option" aria-selected="${isSel(a)}" data-i="${i}" title="${esc([a.label, a.detail].filter(Boolean).join(' · '))}">${acctLogos(a.brands)}<span class="nm">${a.key ? esc(a.label) : 'All connections'}</span>${a.detail ? `<span class="dt">${esc(a.detail)}</span>` : ''}${a.desks.length > 1 ? `<span class="tag">${a.desks.length} desks</span>` : ''}${a.key ? connTags(a) : ''}</div>`).join('');
+}
+function acctOpen(open) {
+  if (open === !$('acctMenu').hidden) return;
+  $('acctMenu').hidden = !open; $('acctBtn').setAttribute('aria-expanded', open);
+  if (open) { $('pickMenu').hidden = true; acctAct = Math.max(0, acctOpts().findIndex(isSel)); renderAcct(); }
+}
+function acctPick(i) {
+  const a = acctOpts()[i]; if (!a) return;
+  acctOpen(false); $('acctBtn').focus();
+  if (isSel(a)) return;
+  F.billed = a.key; store.set('billed', F.billed); render();
+}
+$('acctBtn').onclick = (e) => { e.stopPropagation(); acctOpen($('acctMenu').hidden); };
+$('acctMenu').addEventListener('click', (e) => { e.stopPropagation(); const o = e.target.closest('.opt'); if (o) acctPick(+o.dataset.i); });
+$('acctBtn').addEventListener('keydown', (e) => {
+  const open = !$('acctMenu').hidden, n = acctOpts().length;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    if (!open) { acctOpen(true); return; }
+    acctAct = (acctAct + (e.key === 'ArrowDown' ? 1 : n - 1)) % n; renderAcct();
+    $('acctMenu').querySelector('.opt.act')?.scrollIntoView({ block: 'nearest' });
+  } else if ((e.key === 'Enter' || e.key === ' ') && open) { e.preventDefault(); acctPick(acctAct); }
+  else if (e.key === 'Escape' && open) { e.preventDefault(); acctOpen(false); }
+  else if (e.key === 'Tab') acctOpen(false);
+});
+
+// ---------- filters ----------
+const BRANDS = [['', 'All'], ['claude', 'Claude'], ['codex', 'Codex'], ['grok', 'Grok']];
+function fillFilters() {
+  $('brand').innerHTML = BRANDS.map(([k, l]) => `<option value="${k}" ${k === F.brand ? 'selected' : ''}>${l}</option>`).join('');
+  // Each connection with the brands its rows were made under (one used by more than one brand, a gateway, shows each logo)
+  // and the desks on it.
+  const rank = (b) => BRAND_ORDER.includes(b) ? BRAND_ORDER.indexOf(b) : 99;
+  accounts = (R.connections || []).map((a) => ({ ...a, brands: [...a.brands].sort((x, y) => rank(x) - rank(y)) })).sort((x, y) => x.label.localeCompare(y.label));
+  // A link's billed= may be a label: kept while some row has it, so it filters by label.
+  if (F.billed && !accounts.some((a) => a.key === F.billed) && !R.rows.some((r) => r.BilledProfile === F.billed)) F.billed = '';
+  renderAcct();
+  if (F.company && !R.companies.some((c) => c.id === F.company)) F.company = '';
+  $('fCompany').innerHTML = `<option value="">All desks</option>` + R.companies.map((c) => `<option value="${esc(c.id)}" ${c.id === F.company ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  const groups = R.companies.find((c) => c.id === F.company)?.groups || [];
+  $('groupWrap').style.display = F.company ? '' : 'none';
+  if (F.group && F.group !== '-' && !groups.some((g) => g.id === F.group)) F.group = '';
+  $('fGroup').innerHTML = `<option value="">All groups</option>` + groups.map((g) => `<option value="${esc(g.id)}" ${g.id === F.group ? 'selected' : ''}>${esc(g.name)}</option>`).join('') + `<option value="-" ${F.group === '-' ? 'selected' : ''}>No group</option>`;
+  $('fRange').innerHTML = RANGES.map(([k, l]) => `<option value="${k}" ${k === F.range ? 'selected' : ''}>${l}</option>`).join('');
+  $('customWrap').style.display = F.range === 'custom' ? '' : 'none';
+  const [a, b] = rangeDates().map(dayStr); $('fFrom').value = a; $('fTo').value = b;
+  $('allFields').checked = F.all;
+}
+$('brand').onchange = () => { F.brand = $('brand').value; store.set('brand', F.brand); render(); };
+$('fCompany').onchange = () => { F.company = $('fCompany').value; F.group = ''; store.set('company', F.company); store.set('group', F.group); render(); };
+$('fGroup').onchange = () => { F.group = $('fGroup').value; store.set('group', F.group); render(); };
+$('fRange').onchange = () => { F.range = $('fRange').value; store.set('range', F.range); render(); };
+$('fFrom').onchange = $('fTo').onchange = () => { F.from = $('fFrom').value; F.to = $('fTo').value; store.set('from', F.from); store.set('to', F.to); render(); };
+
+// ---------- help ----------
+function renderHelp(rows) {
+  const b = R.baseline || {}, name = esc(b.name || 'Opus');
+  const t = totals(rows), each = t.compactions ? money((t.compact || 0) / t.compactions) : null;
+  const per = (n) => '$' + (+n).toLocaleString(undefined, { maximumFractionDigits: 3 });
+  $('help').innerHTML = `<h2>What these numbers mean</h2>
+  <details class="help"><summary>Turns, tokens and compacting</summary>
+    <p>A <b>turn</b> is one reply from Claude. Every turn reads the whole conversation so far and then writes its answer, and both are counted in <b>tokens</b> (a token is about three quarters of a word). That is why a long conversation costs more per turn than a new one: each turn reads everything before it again.</p>
+    <p>When a conversation gets too long for Claude to hold, Claude Code <b>compacts</b> it: it writes a summary and carries on from that. The summary is not in the log, so Docket estimates each one from how long the conversation was${each ? `; in these dates they averaged ${each} each` : ''}. The turn right after a compaction rebuilds the cache from the summary, so it counts as compaction cost too.</p></details>
+  <details class="help"><summary>Routing savings</summary>
+    <p>Your own turns usually run on ${name}. Helper agents and some steps run on cheaper models such as Sonnet or Haiku. The <b>hypothetical cost</b> prices all of that work as if it had run on ${name} instead (${per(b.input)} per million tokens read, ${per(b.output)} per million written). The <b>routing savings</b> are the difference: what sending work to cheaper models saved. Work already on an Opus model keeps its own price. Work on a dearer model than ${name}, such as Fable, counts against the savings, so they can go below zero.</p></details>
+  <details class="help"><summary>Shift savings</summary>
+    <p>A session in <b>Shift</b> picks its own model as it works: a cheap, fast one for plain work, the most capable one (its <b>top gear</b>: ${esc(Object.values(R.topGears || {}).join(', ') || 'Opus')}) for code, fixes and decisions. <b>Shift savings</b> is what its replies cost on the cheaper gears less what the same tokens would have cost on the top gear. Replies already on the top gear, and helper agents on a model of their own, count the same both ways. A shift makes the next reply read the whole conversation again at the new model's price; that is in what was spent, so it comes off the savings. <b>Shifted</b> counts the sessions that changed gear at least once; <b>stayed on a low gear</b> the ones that never reached the top gear.</p></details>
+  <details class="help"><summary>The cache</summary>
+    <p>Claude keeps the start of a conversation in a <b>cache</b> for 5 minutes or 1 hour, so the next turn does not pay full price to read it again. On ${name}, reading from the cache costs ${per(b.cacheRead)} per million tokens instead of ${per(b.input)}${b.input ? `, ${Math.round((1 - b.cacheRead / b.input) * 100)}% less` : ''}; putting it there costs a little more than plain reading (${per(b.cacheWrite1h ?? b.cacheWrite5m)} per million for an hour). <b>Cache efficiency</b> is the share of what was read that came from the cache, and <b>saved</b> is what those reads would have cost at full price, by each reply's own model.</p>
+    <p>A <b>cache expiry</b> is a gap between turns longer than the cache lasts. The next turn then puts the whole conversation back in the cache at full price, so a session left waiting for over an hour costs more when it picks up again.</p></details>
+  <details class="help"><summary>Agent, wait and your time</summary>
+    <p><b>Agent time</b> runs from each message you send (or a background task reporting back) to the session's last reply to it. Time a session sits open with nothing running does not count, and helper agents count inside the turn that started them. <b>Waiting on you</b> is the part of a turn spent on a question for you: a permission, a question form or a plan to approve, from when it showed to when it was answered. It is taken out of agent time and shown on its own, since answering sooner shortens it. Both come from the session logs, so past sessions have them too (Claude and Codex; Grok's records do not say when a turn started, so its time stays empty).</p>
+    <p><b>Your time</b> is time spent typing in a session's message box: it starts at the first keystroke, pauses when you pick another session, switch to another tab or window, or stop typing for a minute, picks up again when you come back while text is still in the box, and stops when you send. It is measured from when this was added, not before.</p>
+    <p>Like cost, time adds up session by session: three sessions working for an hour at the same time are three hours of agent time.</p></details>
+  <details class="help"><summary>Lines changed</summary>
+    <p><b>Lines changed</b> counts the lines the sessions' file edits added and removed, helper agents' edits included, read from the session logs. An edit that changes a line counts it once as removed and once as added; a new file counts all its lines as added. A line changed by hand outside a session does not count, and neither does a file a command or script writes. Codex counts its patches (a deleted file's lines are not in the patch, so they do not count as removed). Grok's records do not say what an edit changed, so Grok's lines stay at 0.</p></details>
+  <details class="help"><summary>Grok</summary>
+    <p>Grok sessions are read from each desk's Grok home folder. Grok writes down its own price for every turn, and Docket uses that figure as it is: it already counts web searches and the higher rate for very long conversations. Grok has no helper agents in its records, never charges to put things in its cache, and does not say what a compaction cost apart from the turn it happened in, so those parts stay empty for Grok. Grok work has no routing comparison: its hypothetical cost is its own cost. On a grok.com sign-in the work is covered by the Grok plan, so like a Claude subscription this is what the same use would cost on xAI's API.</p></details>
+  <details class="help"><summary>Billing connections, and what is approximate</summary>
+    <p>A <b>connection</b> is who the use is billed to: an AWS account for Bedrock, a Claude, ChatGPT or grok.com sign-in, an API key, or a gateway. Desks on the same connection add up in <b>By connection</b> and in the Connection filter, so two desks on one AWS account show the one total that account is billed for, and a plan's total shows how much of its use limits all its desks take together. Each desk's own totals stay as they are. A Claude row and a Grok row with the same email are two connections: two plans.</p>
+    <p>What is approximate:</p>
+    <ol>
+      <li><b>Costs are estimates</b>: tokens times list prices (with Bedrock's regional rate), not the invoice. For a flat plan they are the API value of the use, not money paid.</li>
+      <li><b>Setup read today</b> for rows from before a session recorded its connection when it started (marked inferred). A desk that changed its sign-in moves that older spend to the new connection.</li>
+      <li><b>The AWS account comes from the AWS config, not from AWS</b> (sso_account_id, or the account in role_arn, through source_profile). A profile with plain keys, environment keys or a credential_process is grouped by its name, so two such profiles on one account do not add up.</li>
+      <li><b>Only what this computer's Docket sees.</b> Other computers, claude.ai or chatgpt.com in a browser, other tools on the same key, and Codex sessions Docket leaves out are not counted: a connection's total is the least it was billed.</li>
+      <li><b>A shared Codex home</b> is split between desks by working folder. The connection's total is right even when that split is not.</li>
+      <li><b>An API key is known by a fingerprint</b> (8 characters of its hash, with its last 4 shown; the key itself is never kept). A new key, or a key helper whose command changed, starts a new line.</li>
+      <li><b>A gateway's</b> total is this estimate until Docket can read the gateway's own figure.</li>
+    </ol></details>
+  <p class="muted" style="font-size:12px;margin:8px 0 0">Prices are Anthropic's API list prices from Docket's pricing.json, with Bedrock's regional rate where a reply went through Bedrock. A Claude subscription is billed flat, so for those accounts this is what the same use would cost on the API. Codex sessions use OpenAI's API list prices; a ChatGPT sign-in is billed flat too, so for those this is the API value. Codex logs its compaction calls, so they are counted, not estimated, and its approval reviewer shows as Agents. Deleted sessions, and sessions whose log Claude Code removed, still count and are marked.</p>`;
+}
+
+// ---------- drawing it all ----------
+function render(closePick = true) {
+  fillFilters();
+  const rows = filtered();
+  renderCards(rows); renderCharts(rows); renderTable(rows); renderHelp(rows);
+  if (!$('pickMenu').hidden && !closePick) renderPick(); else { $('pickMenu').hidden = true; renderPick(); }
+}
+async function load() {
+  $('asOf').textContent = 'Loading…';
+  try {
+    const res = await fetch('/api/usage/report');
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText);
+    R = await res.json();
+    SS ||= await import('/shift-savings.mjs').catch(() => null);
+    $('asOf').textContent = `${R.rows.length.toLocaleString()} rows · read ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+    render();
+  } catch (e) { $('asOf').textContent = ''; $('cards').innerHTML = `<div class="empty">Could not load the usage rows: ${esc(e.message)}</div>`; }
+}
+$('reload').onclick = load;
+load();
+</script>
+</body>
+</html>

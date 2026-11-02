@@ -1,0 +1,15 @@
+node_modules/
+uploads/
+portal-state*.json
+portal.log
+portal-dev.log
+browser/
+schedules*.json
+data/
+data-dev/
+portal-events.log
+clients.local.json
+clients-dev.json
+claude-home/
+grok-home/
+.vs/

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preview</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 256x256">
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<style>
+:root { --bg: #ffffff; --panel: #f7f6f3; --line: #e2e0d8; --text: #1f1e1b; --muted: #6b6a64; --accent: #c2410c; --code-bg: #f1efe9; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #1b1b19; --panel: #232321; --line: #373633; --text: #ecebe6; --muted: #a09f98; --accent: #f97316; --code-bg: #2a2a27; }
+}
+:root[data-theme="dark"] { --bg: #1b1b19; --panel: #232321; --line: #373633; --text: #ecebe6; --muted: #a09f98; --accent: #f97316; --code-bg: #2a2a27; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { position: sticky; top: 0; display: flex; gap: 8px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header .name { font-weight: 600; flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header .when { font-size: 12px; color: var(--muted); }
+button { font: inherit; font-size: 13px; color: inherit; background: none; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+main { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; word-wrap: break-word; }
+pre { background: var(--code-bg); padding: 10px 12px; border-radius: 8px; overflow: auto; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+:not(pre) > code { background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
+table { border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; white-space: pre-wrap; vertical-align: top; }
+a { color: var(--accent); }
+img { max-width: 100%; }
+.plain { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.err { color: #b91c1c; }
+body.framed main { max-width: none; padding: 0; }
+.frame { display: block; width: 100%; height: calc(100vh - 50px); border: 0; background: #fff; }
+.pager { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pager[hidden] { display: none; }
+.pager button { border: none; font-size: 20px; line-height: 1; padding: 0 8px 2px; }
+.pager button:disabled { opacity: .35; cursor: default; }
+.pic { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+</style>
+</head>
+<body>
+<header>
+  <span class="pager" id="pager" hidden><button id="prev" aria-label="Previous file" title="Previous file (←)">‹</button><span id="pos"></span><button id="next" aria-label="Next file" title="Next file (→)">›</button></span>
+  <span class="name" id="name">Loading…</span><span class="when" id="when"></span>
+  <button id="reload">Reload</button><button id="open">Open in default program</button><button id="folder" title="Show in File Explorer">📂</button>
+</header>
+<main id="body"></main>
+<script>
+// A preview of one file from a session's Files list, in its own tab or window: Markdown and text,
+// CSV as a table, pictures, PDF, and HTML pages (sandboxed).
+const q = new URLSearchParams(location.search);
+const ask = { client: q.get('client'), sessionId: q.get('sessionId'), path: q.get('path') };
+try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// A CSV or TSV file as a table (quoted values may hold the separator, quotes, and line breaks).
+function table(text, sep) {
+  const rows = []; let row = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') quoted = false; else cell += c; }
+    else if (c === '"' && cell === '') quoted = true;
+    else if (c === sep) { row.push(cell); cell = ''; }
+    else if (c === '\n') { row.push(cell.replace(/\r$/, '')); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  if (!rows.length) return '<p class="plain">(empty)</p>';
+  const [head, ...rest] = rows;
+  return `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rest.map((r) => `<tr>${r.map((d) => `<td>${esc(d)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+async function load() {
+  try {
+    const r = await fetch('/api/files/content?' + new URLSearchParams(ask));
+    const f = await r.json();
+    if (!r.ok) throw new Error(f.error || r.statusText);
+    document.title = f.name + ' · Preview';
+    document.getElementById('name').textContent = f.name;
+    document.getElementById('name').title = f.path;
+    document.getElementById('when').textContent = 'changed ' + new Date(f.modified).toLocaleString();
+    const body = document.getElementById('body');
+    const raw = '/api/files/raw?' + new URLSearchParams({ ...ask, t: Date.now() });
+    document.body.classList.toggle('framed', f.view === 'pdf' || f.view === 'html');
+    if (f.view === 'image') body.innerHTML = `<img class="pic" alt="${esc(f.name)}" src="${esc(raw)}">`;
+    else if (f.view === 'pdf') body.innerHTML = `<iframe class="frame" title="${esc(f.name)}" src="${esc(raw)}"></iframe>`;
+    // HTML runs in a sandbox with no access to Docket; pictures and styles it loads from beside it will not show.
+    else if (f.view === 'html') body.innerHTML = `<iframe class="frame" title="${esc(f.name)}" sandbox="allow-scripts allow-popups allow-forms" src="${esc(raw)}"></iframe>`;
+    else if (f.ext === 'csv' || f.ext === 'tsv') body.innerHTML = table(f.text, f.ext === 'tsv' ? '\t' : ',');
+    else body.innerHTML = f.markdown && window.marked && window.DOMPurify ? DOMPurify.sanitize(marked.parse(f.text)) : `<div class="plain">${esc(f.text)}</div>`;
+    for (const a of body.querySelectorAll('a[href]:not([href^="#"])')) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+  } catch (e) { document.getElementById('body').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+const act = (how) => fetch('/api/files/open', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...ask, how }) })
+  .then(async (r) => { if (!r.ok) alert((await r.json()).error); });
+// ‹ and › step through the session's files this page can show, in the order of Docket's Files list.
+const SHOWS = /\.(md|markdown|txt|json|csv|tsv|png|jpe?g|gif|webp|svg|pdf|html?)$/i; // TAB_VIEW in index.html
+let files = [];
+async function loadFiles() {
+  try {
+    const r = await fetch(`/api/sessions/${encodeURIComponent(ask.sessionId)}/files?client=${encodeURIComponent(ask.client)}`);
+    if (!r.ok) return;
+    const shown = (await r.json()).filter((f) => f.exists && SHOWS.test(f.name));
+    files = [...shown.filter((f) => f.kind !== 'edited'), ...shown.filter((f) => f.kind === 'edited')];
+  } catch {}
+  pager();
+}
+const at = () => files.findIndex((f) => f.path.toLowerCase() === String(ask.path).toLowerCase());
+function pager() {
+  const i = at();
+  document.getElementById('pager').hidden = files.length < 2 || i < 0;
+  document.getElementById('pos').textContent = `${i + 1} of ${files.length}`;
+  document.getElementById('prev').disabled = i <= 0;
+  document.getElementById('next').disabled = i < 0 || i >= files.length - 1;
+}
+function step(d) {
+  const i = at(), f = i >= 0 && files[i + d]; if (!f) return;
+  ask.path = f.path;
+  history.replaceState(null, '', '/view?' + new URLSearchParams(ask));
+  pager(); load();
+}
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+document.addEventListener('keydown', (e) => {
+  if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+  e.preventDefault(); step(e.key === 'ArrowLeft' ? -1 : 1);
+});
+loadFiles(); setInterval(loadFiles, 15000);
+document.getElementById('reload').onclick = load;
+document.getElementById('open').onclick = () => act('open');
+document.getElementById('folder').onclick = () => act('folder');
+// On a Mac the 📂 button shows the file in Finder.
+if (/mac|iphone|ipad/i.test(navigator.userAgentData?.platform || navigator.platform || '')) document.getElementById('folder').title = 'Show in Finder';
+load();
+</script>
+</body>
+</html>
