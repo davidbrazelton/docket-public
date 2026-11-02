@@ -1050,7 +1050,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   <button id="termTopBtn" data-tip="terminal" aria-haspopup="true" aria-label="Terminal"><span class="tl">Terminal</span><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg></button>
   <button class="ghost" id="pauseBtn" data-tip="pause-all" aria-label="Pause all sessions">⏸︎</button>
   <button class="ghost" id="reloadAllBtn" data-tip="reload-all" aria-label="Reload all sessions whose config changed" hidden>⟳<span id="reloadAllN"></span></button>
-  <button class="ghost" id="feedbackBtn" data-tip="feedback" aria-label="Suggest a feature" aria-haspopup="dialog">🔨</button>
+  <button class="ghost" id="feedbackBtn" data-tip="feedback" aria-label="Suggest a feature" aria-haspopup="dialog" hidden>🔨</button>
   <span class="top-icons"><span class="sep" aria-hidden="true"></span><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
 </header>
 <div class="start-banner" id="startBanner" role="status" hidden><span id="startBannerText"></span><button class="primary" id="startSignin" data-tip="start-signin">Start Docket at sign-in (recommended)</button><button id="startShortcut" data-tip="start-shortcut">Just add a shortcut</button><button id="startNever" data-tip="start-never">Don't ask again</button></div>
@@ -1183,6 +1183,9 @@ const OS = osWords(isMac(globalThis.navigator));
 // both read from this list, so the two cannot drift. Controls in the page's own markup carry a data-tip with the row's name;
 // controls built in code put ${tip(name)} in their tag. A row is [key, the name people see, the tip, and for a
 // toggle the tip while it is turned on]. test/tips.test.mjs fails if a clickable control has no tip.
+// The 🔨 feedback button (#552) is not launched yet (#570): false hides the button, its Help rows and
+// ☰ > Settings > Feedback destination. The feature and /api/feedback stay in place; true turns it all back on.
+const FEEDBACK_ON = false;
 const STALL_TIP = 'When a step in a session (a browser step, a command) gives no answer past its limit (browser 3 min, commands 11 min, others 15 min; half that when you have sent a message behind it), Docket stops the turn the way Stop does and tells the session what happened. Off: the amber "stalled" tag still shows, and stopping is up to you.';
 const HELP = [
   ['Top bar', [
@@ -4034,6 +4037,7 @@ async function sendFeedback() {
   if (r.ok) { store.set('feedbackDraft', {}); $('fbText').value = ''; fbShow(`Sent to ${r.where}. Thank you.`, false, r.link); }
   else fbShow(r.message || 'Not sent.', true);
 }
+$('feedbackBtn').hidden = !FEEDBACK_ON;
 $('feedbackBtn').onclick = openFeedback;
 $('fbSend').onclick = sendFeedback;
 $('fbClose').onclick = closeFeedback;
@@ -4067,7 +4071,7 @@ $('menuBtn').onclick = (e) => {
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
-    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()], ['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ['fbdest', 'Feedback destination']]],
+    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()], ['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
     ['about', S.update?.waiting || S.update?.restartWaiting ? 'About · update waiting' : 'About', [...(S.update?.restartWaiting && !S.update.restartWaiting.restarting ? [['restartnow', 'Update now anyway']] : S.update?.waiting ? [['updnow', 'Update now']] : []), ['update', 'Check for updates']]]];
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
     ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${x[0]}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0])}>${esc(x[1])}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
@@ -4814,7 +4818,8 @@ async function offerBringIn(client) {
 // ---------- Help: every control with its tip, by the part of the page it sits in, then the Key ----------
 // The rows come from HELP at the top of the script, the same list the hover tips read.
 // Remote Desks is left out of Help while it is hidden.
-const helpSections = () => S.remoteOn ? HELP : HELP.filter(([title]) => title !== 'Remote desks').map(([title, rows]) => [title, rows.filter((r) => r[0] !== 'menu-remote')]);
+const helpSections = () => (S.remoteOn ? HELP : HELP.filter(([title]) => title !== 'Remote desks').map(([title, rows]) => [title, rows.filter((r) => r[0] !== 'menu-remote')]))
+  .map(([title, rows]) => [title, FEEDBACK_ON ? rows : rows.filter((r) => !/^(feedback|fb-|menu-fbdest)/.test(r[0]))]);
 async function showHelp() {
   const sec = (title, rows) => `<section class="help-sec"><h3>${esc(title)}</h3>${rows.map((r) => `<div class="help-row"><b>${esc(r[1])}</b><span>${esc(tipText(r[0]))}</span></div>`).join('')}</section>`;
   const body = `<input type="text" id="helpFind" class="help-find" placeholder="Find a button or symbol" aria-label="Find in Help"${tip('help-find')}>
