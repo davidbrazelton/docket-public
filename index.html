@@ -470,6 +470,12 @@ aside.tasks.hidden { display: none; }
 .dlg-body { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
 .dlg-body label { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .dlg.wide { width: min(720px, 100%); }
+/* the 🔨 feedback panel */
+header.top #feedbackBtn { padding: 4px 8px; }
+.fb textarea { width: 100%; min-height: 110px; resize: vertical; color: var(--text); }
+.fb input[type=text] { width: 100%; color: var(--text); }
+.fb .fb-res { color: var(--text); } .fb .fb-res.bad { color: var(--warn, #b45309); } .fb .fb-res:empty { display: none; }
+.fb details pre { white-space: pre-wrap; word-break: break-word; font-size: 11px; margin: 6px 0 0; }
 /* ☰ > Remote Desks */
 .rd .rd-h { font-size: 14px; margin: 4px 0 8px; }
 .rd .rd-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
@@ -1034,6 +1040,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   <span class="conn" id="conn" hidden>Portal not reachable, retrying…</span>
   <button id="termTopBtn" data-tip="terminal" aria-haspopup="true" aria-label="Terminal"><span class="tl">Terminal</span><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg></button>
   <button class="ghost" id="pauseBtn" data-tip="pause-all" aria-label="Pause all sessions">⏸︎</button>
+  <button class="ghost" id="feedbackBtn" data-tip="feedback" aria-label="Suggest a feature" aria-haspopup="dialog">🔨</button>
   <span class="top-icons"><span class="sep" aria-hidden="true"></span><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
 </header>
 <div class="start-banner" id="startBanner" role="status" hidden><span id="startBannerText"></span><button class="primary" id="startSignin" data-tip="start-signin">Start Docket at sign-in (recommended)</button><button id="startShortcut" data-tip="start-shortcut">Just add a shortcut</button><button id="startNever" data-tip="start-never">Don't ask again</button></div>
@@ -1114,6 +1121,12 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Larger view of the image" hidden><img id="lbImg" alt=""><button class="lb-close" id="lbClose" data-tip="lb-close" aria-label="Close">✕</button><button class="lb-prev" id="lbPrev" data-tip="lb-prev" aria-label="Previous image">‹</button><button class="lb-next" id="lbNext" data-tip="lb-next" aria-label="Next image">›</button><div class="lb-count" id="lbCount"></div></div>
 <div class="dlg-back" id="pfDlg" hidden><section class="dlg profile-page" id="profilePage" hidden role="dialog" aria-modal="true" aria-label="Desk Inspector"></section></div>
 <div class="dlg-back" id="dlg" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"><div class="dlg-title" id="dlgTitle"></div><div class="dlg-body" id="dlgBody"></div><div class="dlg-btns" id="dlgBtns"></div></div></div>
+<div class="dlg-back" id="fbDlg" hidden><div class="dlg fb" role="dialog" aria-modal="true" aria-labelledby="fbTitle"><div class="dlg-title" id="fbTitle">🔨 Suggest a feature</div><div class="dlg-body">
+  <textarea id="fbText" placeholder="What would make Docket better? (required)" aria-label="Your message (required)" aria-required="true" data-tip="fb-text"></textarea>
+  <input type="text" id="fbName" placeholder="Your name (optional)" aria-label="Your name (optional)" maxlength="80" data-tip="fb-name">
+  <details><summary>What else is sent</summary><div>With your message, Docket sends the screen you were on, its version, your window and screen size, your browser and computer type, time zone and language, which Docket settings are on, which AI brands are set up, and how many sessions are open. Never what is in your sessions, file or folder names, sign-ins, or desk names. Keys and phone numbers in your message are removed before it goes.</div><pre id="fbFacts"></pre></details>
+  <div class="fb-res" id="fbRes" role="status" aria-live="polite"></div>
+</div><div class="dlg-btns"><button id="fbClose" data-tip="fb-close">Close</button><button class="primary" id="fbSend" data-tip="fb-send">Send</button></div></div></div>
 <div class="tour" id="tour" hidden><div class="tour-hole" id="tourHole"></div><div class="tour-card" id="tourCard" role="dialog" aria-modal="true" aria-labelledby="tourTitle" aria-describedby="tourText"><div class="tour-step" id="tourStep"></div><h3 id="tourTitle"></h3><p id="tourText"></p><div class="tour-btns"><button class="ghost" id="tourSkip" data-tip="tour-skip">Skip</button><span class="spacer"></span><button id="tourBack" data-tip="tour-back">Back</button><button class="primary" id="tourNext" data-tip="tour-next">Next</button></div></div></div>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -1170,6 +1183,12 @@ const HELP = [
     ['details', 'Details', 'Show or hide the details panel on the right. Docket remembers the choice. The number counts the tasks running. When the window is too narrow for it, the panel gives way first and this opens it over the session; ✕ or Escape closes it'],
     ['terminal', 'Terminal', 'Open a terminal in this desk\'s folder, signed in as this desk'],
     ['pause-all', '⏸ Pause all', 'Pause all sessions: stop every working session in every desk, for example before the computer sleeps. Docket stays paused, with scheduled runs waiting, until you press Resume all.'],
+    ['feedback', '🔨 Suggest a feature', 'Suggest a feature or tell us what is wrong: type a message, add your name if you like, and Send. Docket adds what it can safely say about this screen and its settings, never what is in your sessions'],
+    ['fb-text', 'Your message', 'What you would like Docket to do, or what went wrong. Required. Kept here until it is sent'],
+    ['fb-name', 'Your name', 'Optional. Leave it empty to send without a name'],
+    ['fb-send', 'Send', 'Send the message to where this computer sends feedback. It says where it went, or why it did not; a message that did not go stays here to try again'],
+    ['fb-close', 'Close', 'Close the panel. A message not yet sent is kept for next time'],
+    ['fb-link', 'Open it', 'Open the report where it landed'],
     ['resume-all', 'Resume all', 'Tell each paused session to check its test servers and browsers still answer, then carry on. Sessions you wrote to while paused are left alone.'],
   ]],
   ['Session list (left)', [
@@ -1397,6 +1416,9 @@ const HELP = [
     ['menu-update', 'About > Check for updates', 'Look on GitHub for a newer Docket now'],
     ['upd-every', 'Check every', 'How often Docket looks on GitHub for a newer version'],
     ['menu-updmode', 'Settings > Updates', 'Automatic: Docket takes each new version from GitHub by itself and restarts once no session is busy (sessions keep working). Manual: it only says when one is waiting, and you press Update now. Kept on this computer only'],
+    ['menu-fbdest', 'Settings > Feedback destination', 'Where the 🔨 button sends suggestions from this computer: the address of the relay that files them, and its key if it needs one. Not set means nothing is sent. Kept on this computer only'],
+    ['fb-dest-url', 'Address', 'The full https:// address that takes the reports (http:// only for one on this computer). Leave it empty to stop sending'],
+    ['fb-dest-key', 'Key', 'The key that address asks for, if any. Kept on this computer only and sent only to that address'],
     ['menu-updnow', 'About > Update now', 'Take the new version from GitHub now. Docket restarts by itself; sessions keep working. If sessions are busy, it asks whether to wait for them first'],
     ['upd-auto', 'Turn on auto-update', 'Take this and every later version by itself, restarting Docket when one comes in. Sessions keep working. Change it in ☰ > Settings'],
     ['upd-manual', 'I\'ll update manually', 'Only say when a new version is waiting; you press Update now. Change it in ☰ > Settings'],
@@ -3933,6 +3955,82 @@ function openSessionMenu(id, at) {
 document.addEventListener('click', (e) => { if (!e.target.closest('#ctx')) closeMenu(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
 $('list').addEventListener('scroll', closeMenu);
+// ---------- feedback (tested in test/feedback.test.mjs)
+// What the browser can say about itself for a 🔨 report. Only these fields leave the page; the app drops anything
+// else and adds what it can safely say about Docket. nav, win: the browser's navigator and window.
+function feedbackFacts(nav, win, { view = 'other', inGroup = false, theme = '' } = {}) {
+  const ua = String(nav.userAgent || ''), uad = nav.userAgentData;
+  const named = (uad?.brands || []).find((b) => !/not.?a.?brand|chromium/i.test(b.brand)) || (uad?.brands || []).find((b) => /chromium/i.test(b.brand));
+  const hit = (re) => ua.match(re)?.[1];
+  const m = hit(/Edg\/([\d.]+)/) ? ['Edge', hit(/Edg\/([\d.]+)/)] : hit(/OPR\/([\d.]+)/) ? ['Opera', hit(/OPR\/([\d.]+)/)]
+    : hit(/Firefox\/([\d.]+)/) ? ['Firefox', hit(/Firefox\/([\d.]+)/)] : hit(/Chrome\/([\d.]+)/) ? ['Chrome', hit(/Chrome\/([\d.]+)/)]
+    : /Safari/.test(ua) && hit(/Version\/([\d.]+)/) ? ['Safari', hit(/Version\/([\d.]+)/)] : ['', ''];
+  const browser = named ? { name: named.brand, version: String(named.version || '') } : { name: m[0], version: m[1] };
+  const platform = uad?.platform || nav.platform || '';
+  const device = /iPad|Tablet/i.test(ua) || (/Mac/.test(platform) && nav.maxTouchPoints > 1) ? 'tablet' : uad?.mobile || /Mobi|iPhone|Android/i.test(ua) ? 'phone' : 'desktop';
+  let tz = ''; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch {}
+  return { view, inGroup: !!inGroup, viewport: { w: win.innerWidth, h: win.innerHeight }, screen: { w: win.screen?.width, h: win.screen?.height }, dpr: win.devicePixelRatio,
+    platform, browser, device, ua, tz, lang: nav.language || '', online: nav.onLine !== false, theme, at: new Date().toISOString() };
+}
+// end of feedback
+// Which screen is in front, in the words the report uses (feedback.mjs VIEWS).
+function feedbackView() {
+  const s = S.selected && S.selected !== 'draft' ? (S.live[S.selected] || (S.history[S.client] || []).find((r) => r.id === S.selected)) : null;
+  const view = !$('wiz').hidden ? 'setup' : !$('profilePage').hidden ? 'desk-inspector' : !$('dlg').hidden ? 'dialog' : !$('preview').hidden ? 'file-preview'
+    : S.mode === 'schedules' ? 'schedules' : S.selected === 'draft' ? 'new-session' : s ? 'session' : 'session-list';
+  const dark = themeChoice() === 'dark' || (themeChoice() !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+  return { view, inGroup: !!s?.groupId, theme: dark ? 'dark' : 'light' };
+}
+// The 🔨 panel. The message is kept in this browser until a send that the destination took, so closing the panel,
+// a send with no network, or one refused never loses it.
+const fbDraft = { get: () => store.get('feedbackDraft', {}) || {}, set: () => store.set('feedbackDraft', { text: $('fbText').value, name: $('fbName').value }) };
+let fbAt = null; // the facts as the panel opened, so the screen behind it is the one reported
+function fbShow(msg, bad, link) {
+  $('fbRes').className = 'fb-res' + (bad ? ' bad' : '');
+  $('fbRes').innerHTML = esc(msg) + (link ? ` <a href="${esc(link)}" target="_blank" rel="noopener"${tip('fb-link')}>Open it</a>` : '');
+}
+async function openFeedback() {
+  const d = fbDraft.get();
+  fbAt = feedbackFacts(navigator, window, feedbackView());
+  $('fbText').value = d.text || ''; $('fbName').value = d.name || ''; fbShow('');
+  $('fbFacts').textContent = JSON.stringify(fbAt, null, 1);
+  $('fbDlg').hidden = false; $('fbText').focus();
+  try {
+    const r = await api('/api/feedback');
+    $('fbFacts').textContent = JSON.stringify({ ...fbAt, ...r.docket }, null, 1);
+    if (!r.destination.url) fbShow('Feedback is not set up on this computer yet, so Send will not reach anyone. Whoever looks after Docket here sets where it goes in ☰ > Settings > Feedback destination.', true);
+  } catch {}
+}
+const closeFeedback = () => { fbDraft.set(); $('fbDlg').hidden = true; $('feedbackBtn').focus(); };
+async function sendFeedback() {
+  const text = $('fbText').value;
+  if (!text.trim()) { fbShow('Type a message first.', true); $('fbText').focus(); return; }
+  fbDraft.set();
+  const b = $('fbSend'); b.disabled = true; b.textContent = 'Sending'; fbShow('');
+  let r;
+  try { r = await api('/api/feedback', { description: text, name: $('fbName').value, page: { ...fbAt, online: navigator.onLine !== false } }); }
+  catch (err) { r = { ok: false, message: `Not sent: Docket itself could not be reached (${err.message}). Your message is kept here; press Send again.` }; }
+  b.disabled = false; b.textContent = 'Send';
+  if (r.ok) { store.set('feedbackDraft', {}); $('fbText').value = ''; fbShow(`Sent to ${r.where}. Thank you.`, false, r.link); }
+  else fbShow(r.message || 'Not sent.', true);
+}
+$('feedbackBtn').onclick = openFeedback;
+$('fbSend').onclick = sendFeedback;
+$('fbClose').onclick = closeFeedback;
+$('fbDlg').onclick = (e) => { if (e.target === $('fbDlg')) closeFeedback(); };
+$('fbDlg').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeFeedback(); } if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendFeedback(); });
+$('fbText').addEventListener('input', fbDraft.set); $('fbName').addEventListener('input', fbDraft.set);
+// ☰ > Settings > Feedback destination: the address that takes this computer's reports, and its key if it needs one.
+async function setFeedbackDestination() {
+  let cur = { url: '', hasKey: false }; try { cur = (await api('/api/feedback')).destination; } catch {}
+  const v = await dialog({ title: 'Feedback destination', body: `<div>Where the 🔨 button sends suggestions from this computer. Docket has no destination of its own: until one is set here, nothing is sent.</div>
+    <input type="text" id="fbDestUrl" placeholder="https://…" aria-label="Address" value="${esc(cur.url)}"${tip('fb-dest-url')}>
+    <input type="password" id="fbDestKey" placeholder="${cur.hasKey ? 'Key saved (leave empty to keep it)' : 'Key (optional)'}" aria-label="Key" autocomplete="off" style="margin-top:6px"${tip('fb-dest-key')}>`,
+    buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: 'ok', primary: true }] });
+  if (!v) return;
+  const url = document.getElementById('fbDestUrl').value.trim(), key = document.getElementById('fbDestKey').value.trim();
+  try { await api('/api/feedback/destination', { url, key, keepKey: !key && cur.hasKey }); } catch (err) { alert(err.message); }
+}
 const stallLabel = () => `Stop stuck steps: ${S.stallStop === false ? 'off' : 'on'}`;
 const autoContinueLabel = () => `Continue after a crash: ${S.autoContinue === false ? 'off' : 'on'}`;
 const updModeLabel = () => `Updates: ${S.update?.mode === 'auto' ? 'automatic' : 'manual'}`;
@@ -3949,7 +4047,7 @@ $('menuBtn').onclick = (e) => {
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
-    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()], ['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()]]],
+    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()], ['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ['fbdest', 'Feedback destination']]],
     ['about', S.update?.waiting || S.update?.restartWaiting ? 'About · update waiting' : 'About', [...(S.update?.restartWaiting && !S.update.restartWaiting.restarting ? [['restartnow', 'Update now anyway']] : S.update?.waiting ? [['updnow', 'Update now']] : []), ['update', 'Check for updates']]]];
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
     ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${x[0]}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0])}>${esc(x[1])}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
@@ -4067,6 +4165,7 @@ $('menuBtn').onclick = (e) => {
     if (act === 'copydesk') copyDesk(S.clients.find((c) => c.id === S.client && !c.remote)?.id || S.clients.find((c) => !c.remote)?.id); // starts on this desk
     if (act.startsWith('profile:')) openProfile(act.slice(8));
     if (act === 'color') pickMainColor();
+    if (act === 'fbdest') setFeedbackDestination();
     if (act === 'key') showKey();
     if (act === 'help') showHelp();
     if (act === 'tour') startTour();

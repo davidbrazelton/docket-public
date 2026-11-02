@@ -43,6 +43,7 @@ import { start as startCodex } from './engines/codex.mjs';
 import { createPlanStore, readyTasks, whyNoneReady, STATES } from './plans.mjs';
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
+import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport } from './feedback.mjs';
 import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
 import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE } from './recall.mjs';
 import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPrUrl, adoPRsForBranch, adoPRById, adoWorkItemIds, adoItemKey, isAdoItemKey, adoItemKeyFrom, adoPRWorkItemIds, adoWorkItems, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, linkTtl, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
@@ -3900,7 +3901,7 @@ function findCutOffs() {
 // - the library list changed: run npm install first;
 // - only the page changed: open pages reload themselves (version below).
 const RESTART_CODE = 75;
-const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs'];
+const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs'];
 const PAGE_FILES = ['index.html', 'view.html', 'usage.html'];
 const LIB_FILES = ['package.json', 'package-lock.json'];
 // While a restart waits for a quiet moment this app keeps serving the pages it started with, which go with
@@ -6576,6 +6577,30 @@ const server = http.createServer(async (req, res) => {
       if (!ev || ev === 'ready') return json(res, 400, { error: 'Give event: sleep, wake or shutdown' });
       onPower(ev);
       return json(res, 200, { paused: pauseView() });
+    }
+    // The 🔨 feedback button (#552). GET: where reports go (never the key) and what Docket adds about itself, for the
+    // panel to show. POST: send one ({ description, name, page }); the answer always says whether it went (ok) and why not.
+    if (p === '/api/feedback') {
+      const facts = () => docketFacts({ version: updateInfo().version, commit: updateStatus.commit, clients: CLIENTS, live: live.values(), state, os: process.platform });
+      if (req.method === 'GET') return json(res, 200, { destination: destinationInfo(cleanDestination(state.feedback)), docket: facts() });
+      if (req.method === 'POST') {
+        const b = await readBody(req);
+        if (typeof b.description !== 'string' || !b.description.trim()) return json(res, 400, { error: 'Type a message first' });
+        const report = buildReport({ description: b.description, name: b.name, page: b.page, docket: facts() });
+        return json(res, 200, await sendReport(cleanDestination(state.feedback), report));
+      }
+    }
+    // Where this computer sends feedback: { url, key? }, or url '' to turn sending off. keepKey keeps the saved key,
+    // only while the address stays on the same site, so a key never follows a change to somewhere else.
+    if (req.method === 'POST' && p === '/api/feedback/destination') {
+      const b = await readBody(req), url = String(b.url || '').trim();
+      if (!url) { delete state.feedback; saveState(); return json(res, 200, destinationInfo(null)); }
+      const site = (u) => { try { return new URL(u).origin; } catch { return null; } };
+      const key = b.keepKey ? (site(state.feedback?.url) === site(url) ? state.feedback?.key : '') : b.key;
+      const d = cleanDestination({ url, key });
+      if (!d) return json(res, 400, { error: 'Give a full https:// address (http:// only for this computer)' });
+      state.feedback = d; saveState();
+      return json(res, 200, destinationInfo(d));
     }
     if (p === '/api/stall-stop') {
       if (req.method === 'POST') { state.stallStop = !!(await readBody(req)).on; saveState(); }
