@@ -8,7 +8,7 @@ const page = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const start = page.indexOf('// ---------- list order');
 const end = page.indexOf('// end of list order');
 assert.ok(start > 0 && end > start, 'the list order part of index.html has moved or lost its markers');
-const { orderOf, byPlace, familyTier, familyAt, ORDER_CHOICES, TIER, takeHold, holding, startedAt, naturalSort, dropPlace } = new Function(page.slice(start, end) + '\nreturn { orderOf, byPlace, familyTier, familyAt, ORDER_CHOICES, TIER, takeHold, holding, startedAt, naturalSort, dropPlace };')();
+const { orderOf, byPlace, familyTier, familyAt, ORDER_CHOICES, TIER, takeHold, holding, startedAt, naturalSort, dropPlace, orderChanged } = new Function(page.slice(start, end) + '\nreturn { orderOf, byPlace, familyTier, familyAt, ORDER_CHOICES, TIER, takeHold, holding, startedAt, naturalSort, dropPlace, orderChanged };')();
 
 const at = (s) => s.at;
 const rows = () => [{ id: 'b', at: 200 }, { id: 'c', at: 300 }, { id: 'a', at: 100 }];
@@ -320,4 +320,14 @@ test('a family is placed by its top session, so children move with their parent'
 
 test('a saved order with sessions since deleted still sorts the ones left', () => {
   assert.equal(ids(naturalSort(started(), ['gone', 'd', 'old', 'a'])), 'dbca');
+});
+
+test('a drop that leaves what is on screen as it is counts as no move, so no drop line is drawn there', () => {
+  const shown = ['a', 'b', 'c', 'd'];
+  assert.equal(orderChanged(shown, dropPlace([], shown, 'b', 'c'), shown), false); // just before the next one: where it is
+  assert.equal(orderChanged(shown, dropPlace([], shown, 'b', 'a', true), shown), false); // just after the one above
+  assert.equal(orderChanged(shown, dropPlace([], shown, 'b', 'd'), shown), true);
+  // something not on screen moving (a hidden group or section) is not a move either
+  assert.equal(orderChanged(['x', 'a', 'b'], ['a', 'x', 'b'], ['a', 'b']), false);
+  assert.equal(orderChanged(['x', 'a', 'b'], ['b', 'x', 'a'], ['a', 'b']), true);
 });

@@ -412,7 +412,7 @@ aside.tasks.hidden { display: none; }
 .gsec .gdots .dot.ended { background: var(--muted); }
 .gsec.drag-over { box-shadow: inset 0 2px 0 var(--accent); }
 .dsec.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
-.dsec.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+#tasksBody > .drop-end { box-shadow: 0 2px 0 var(--accent); }
 .row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
 .gsec.archived .gname { text-decoration: line-through; }
@@ -1042,7 +1042,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   </main>
   <aside class="tasks" id="tasks">
     <div class="resizer" id="rightResizer" role="separator" aria-orientation="vertical" aria-label="Resize the details panel" data-tip="resize-right" tabindex="0"></div>
-    <div class="tasks-head"><span class="sec-toggles" id="secToggles" role="group" aria-label="Sections of the details panel"><button data-sec="cost" data-tip="sec-cost" aria-label="Cost">$</button><button data-sec="files" data-tip="sec-files" aria-label="Files">📄</button><button data-sec="prs" data-tip="sec-prs" aria-label="Pull requests"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4.75 1.5a2.25 2.25 0 0 0-.75 4.37v4.26a2.25 2.25 0 1 0 1.5 0V5.87A2.25 2.25 0 0 0 4.75 1.5Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm0 8.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5ZM11.25 10.13V6.5A2.5 2.5 0 0 0 8.75 4H7.56l1.22-1.22-1.06-1.06L4.69 4.75l3.03 3.03 1.06-1.06L7.56 5.5h1.19a1 1 0 0 1 1 1v3.63a2.25 2.25 0 1 0 1.5 0Zm-.75 1.37a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"/></svg></button><button data-sec="tasks" data-tip="sec-tasks" aria-label="Tasks">⚙</button><button data-sec="mcp" data-tip="sec-mcp" aria-label="Connected services">🔌</button></span><span id="tasksTitle"></span><button class="ghost" id="tasksClose" aria-label="Close" data-tip="details-close">✕</button></div>
+    <div class="tasks-head"><span class="sec-toggles" id="secToggles" role="group" aria-label="Sections of the details panel"><button data-sec="cost" data-tip="sec-cost" aria-label="Cost">$</button><button data-sec="files" data-tip="sec-files" aria-label="Files">📄</button><button data-sec="prs" data-tip="sec-prs" aria-label="Pull requests"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4.75 1.5a2.25 2.25 0 0 0-.75 4.37v4.26a2.25 2.25 0 1 0 1.5 0V5.87A2.25 2.25 0 0 0 4.75 1.5Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm0 8.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5ZM11.25 10.13V6.5A2.5 2.5 0 0 0 8.75 4H7.56l1.22-1.22-1.06-1.06L4.69 4.75l3.03 3.03 1.06-1.06L7.56 5.5h1.19a1 1 0 0 1 1 1v3.63a2.25 2.25 0 1 0 1.5 0Zm-.75 1.37a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"/></svg></button><button data-sec="tasks" data-tip="sec-tasks" aria-label="Tasks"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 3.75l1.25 1.25 2.25-2.5M2 8.25l1.25 1.25 2.25-2.5M2 12.75l1.25 1.25 2.25-2.5M8 4h6M8 8.5h6M8 13h6"/></svg></button><button data-sec="mcp" data-tip="sec-mcp" aria-label="Connected services"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M6 1.5v3M10 1.5v3M3.75 4.5h8.5V7a4.25 4.25 0 0 1-8.5 0ZM8 11.25v3.25"/></svg></button></span><span id="tasksTitle"></span><button class="ghost" id="tasksClose" aria-label="Close" data-tip="details-close">✕</button></div>
     <div class="tasks-body" id="tasksBody"></div>
   </aside>
 </div>
@@ -1246,8 +1246,8 @@ const HELP = [
     ['sec-prs', 'Pull requests', 'Pull requests: changes this session sent to GitHub for review, its tickets (Jira, GitHub issues or Azure DevOps work items), the git branches it worked on, and the lines it changed'],
     ['lines', 'Lines changed', 'Lines this session added and removed in the files it edited, helper agents included: the same total as on the Usage page'],
     ['branches', 'Branches', 'The git branches this session made or worked on (master and main are left out), each with the pull request opened from it. The one it is on now is listed first'],
-    ['sec-tasks', '⚙ Tasks', 'Tasks: Claude\'s to-do list and the jobs it runs in the background'],
-    ['sec-mcp', '🔌 Connected services', 'Connected services: outside tools this session can use, and whether each one is connected'],
+    ['sec-tasks', 'Tasks', 'Tasks: Claude\'s to-do list and the jobs it runs in the background'],
+    ['sec-mcp', 'Connected services', 'Connected services: outside tools this session can use, and whether each one is connected'],
     ['dsec-head', 'A section\'s heading', 'Click to fold the section to its heading or open it again. Drag it up or down to change the order; the buttons at the top of the panel follow the same order.'],
     ['details-close', '✕', 'Hide the details panel'],
     ['group-select', 'Group', 'Which group this session is in'],
@@ -1592,6 +1592,9 @@ const dropPlace = (saved, shown, id, target, after = false) => {
   rest.splice(first < 0 ? rest.length : first, 0, ...seq);
   return rest;
 };
+// Whether going from order before to order after moves anything among shown (what is on screen), so a drag
+// only offers, and a drop only takes, a place that changes what the person sees.
+const orderChanged = (before, after, shown) => { const on = new Set(shown), f = (o) => o.filter((x) => on.has(x)).join('\n'); return f(before) !== f(after); };
 const takeHold = (s, measures) => s ? { id: s.id, ...Object.fromEntries(Object.entries(measures).map(([k, f]) => [k, f(s)])) } : null;
 const holding = (hold, key, f) => (s) => hold && s.id === hold.id && key in hold ? hold[key] : f(s);
 // end of list order
@@ -2991,14 +2994,24 @@ $('list').addEventListener('contextmenu', (e) => {
   };
 }, true);
 let dragGid = null;
-$('list').addEventListener('dragstart', (e) => { const sec = e.target.closest('.gsec[draggable]'); if (!sec) return; dragGid = sec.dataset.gid; e.dataTransfer.effectAllowed = 'move'; });
-$('list').addEventListener('dragover', (e) => { const sec = e.target.closest('.gsec[draggable]'); if (!sec || !dragGid) return; e.preventDefault(); for (const x of document.querySelectorAll('.gsec.drag-over')) x.classList.remove('drag-over'); sec.classList.add('drag-over'); });
-$('list').addEventListener('dragend', () => { dragGid = null; for (const x of document.querySelectorAll('.gsec.drag-over')) x.classList.remove('drag-over'); releaseList(); });
-$('list').addEventListener('drop', async (e) => {
-  const sec = e.target.closest('.gsec[draggable]'); if (!sec || !dragGid) return;
-  e.preventDefault();
-  const ids = (S.groups[S.client] || []).map((g) => g.id).filter((x) => x !== dragGid);
+const clearGroupDrop = () => { for (const x of document.querySelectorAll('.gsec.drag-over')) x.classList.remove('drag-over'); };
+// The group order a drop on this group's heading would make, or null where it would change nothing on screen
+// (the dragged group itself, or the one just below it), so no line is drawn where the drop is refused.
+function groupSpot(e) {
+  const sec = e.target.closest?.('#list .gsec[draggable]'); if (!sec || !dragGid) return null;
+  const order = (S.groups[S.client] || []).map((g) => g.id), ids = order.filter((x) => x !== dragGid);
   ids.splice(ids.indexOf(sec.dataset.gid), 0, dragGid); // the dragged group goes before the one dropped on
+  const shown = [...document.querySelectorAll('#list .gsec[data-gid]')].map((x) => x.dataset.gid);
+  return orderChanged(order, ids, shown) ? { sec, ids } : null;
+}
+// Each dragstart sets both, so one left over from a drag whose row a redraw replaced cannot draw lines in this one.
+$('list').addEventListener('dragstart', (e) => { const sec = e.target.closest('.gsec[draggable]'); dragGid = sec ? sec.dataset.gid : null; if (sec) e.dataTransfer.effectAllowed = 'move'; });
+$('list').addEventListener('dragover', (e) => { if (!dragGid) return; clearGroupDrop(); const spot = groupSpot(e); if (!spot) return; e.preventDefault(); spot.sec.classList.add('drag-over'); });
+$('list').addEventListener('dragend', () => { dragGid = null; clearGroupDrop(); releaseList(); });
+$('list').addEventListener('drop', async (e) => {
+  const spot = groupSpot(e); if (!spot) return;
+  e.preventDefault(); clearGroupDrop();
+  const { ids } = spot;
   dragGid = null;
   S.groups[S.client].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)); renderList();
   await api('/api/groups/order', { client: S.client, ids });
@@ -3021,22 +3034,25 @@ function dropSpot(e) {
   const r = row.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
   const top = rowTop(row);
   const fam = run.slice(run.indexOf(top)), end = fam.findIndex((x, i) => i > 0 && !x.classList.contains('child'));
-  return { run, top, after, line: after ? fam[(end < 0 ? fam.length : end) - 1] : top }; // after a family: under its last member
+  // A place that leaves the rows as they are (on or next to the dragged row's own family) is no place.
+  const shown = run.filter((x) => !x.classList.contains('child')).map((x) => x.dataset.id);
+  const ids = dropPlace(S.places[S.client] || [], shown, dragRow, top.dataset.id, after);
+  if (top.dataset.id === dragRow || !orderChanged(shown, ids, shown)) return null;
+  return { ids, after, line: after ? fam[(end < 0 ? fam.length : end) - 1] : top }; // after a family: under its last member
 }
-$('list').addEventListener('dragstart', (e) => { const row = e.target.closest?.('.row[draggable][data-id]'); if (!row) return; dragRow = row.dataset.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', row.dataset.id); });
+$('list').addEventListener('dragstart', (e) => { const row = e.target.closest?.('.row[draggable][data-id]'); dragRow = row ? row.dataset.id : null; if (!row) return; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', row.dataset.id); });
 $('list').addEventListener('dragover', (e) => {
+  if (!dragRow) return; clearDrop();
   const spot = dropSpot(e); if (!spot) return;
-  e.preventDefault(); clearDrop();
+  e.preventDefault();
   spot.line.classList.add(spot.after ? 'drop-after' : 'drop-before');
 });
 $('list').addEventListener('dragend', () => { dragRow = null; clearDrop(); releaseList(); });
 $('list').addEventListener('drop', async (e) => {
   const spot = dropSpot(e); if (!spot) return;
   e.preventDefault(); clearDrop();
-  const id = dragRow; dragRow = null;
-  if (spot.top.dataset.id === id) return;
-  const shown = spot.run.filter((x) => !x.classList.contains('child')).map((x) => x.dataset.id);
-  const ids = dropPlace(S.places[S.client] || [], shown, id, spot.top.dataset.id, spot.after);
+  dragRow = null;
+  const { ids } = spot;
   S.places[S.client] = ids; renderList();
   await api('/api/places', { client: S.client, ids });
 });
@@ -6381,15 +6397,25 @@ $('tasksBody').addEventListener('click', (e) => {
   store.set('collapsedSections', c); renderTasks();
 });
 let dragSec = null;
-const clearSecDrop = () => { for (const x of document.querySelectorAll('.dsec.drop-before, .dsec.drop-after')) x.classList.remove('drop-before', 'drop-after'); };
-const secSpot = (e) => { const h = e.target.closest?.('.dsec'); if (!h || !dragSec) return null; const r = h.getBoundingClientRect(); return { h, after: e.clientY > r.top + r.height / 2 }; };
-$('tasksBody').addEventListener('dragstart', (e) => { const h = e.target.closest?.('.dsec'); if (!h) return; dragSec = h.dataset.dsec; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragSec); });
-$('tasksBody').addEventListener('dragover', (e) => { const spot = secSpot(e); if (!spot) return; e.preventDefault(); clearSecDrop(); spot.h.classList.add(spot.after ? 'drop-after' : 'drop-before'); });
+const clearSecDrop = () => { for (const x of document.querySelectorAll('#tasksBody .drop-before, #tasksBody .drop-end')) x.classList.remove('drop-before', 'drop-end'); };
+// The order a drop here would make and where its line goes: above the section it lands before, or under the
+// last one. Null where the sections on screen would stay as they are (on or next to the dragged one).
+function secSpot(e) {
+  const h = e.target.closest?.('.dsec'); if (!h || !dragSec) return null;
+  const r = h.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2, k = h.dataset.dsec;
+  const heads = [...$('tasksBody').querySelectorAll('.dsec')], shown = [...new Set(heads.map((x) => x.dataset.dsec))];
+  const order = sectionOrder(store.get('sectionOrder', [])), next = moveSection(order, dragSec, k, after);
+  if (!orderChanged(order, next, shown)) return null;
+  const below = after ? shown[shown.indexOf(k) + 1] : k; // Tasks running and finished are one section: its first heading
+  return below ? { next, line: heads.find((x) => x.dataset.dsec === below), cls: 'drop-before' } : { next, line: $('tasksBody').lastElementChild, cls: 'drop-end' };
+}
+$('tasksBody').addEventListener('dragstart', (e) => { const h = e.target.closest?.('.dsec'); dragSec = h ? h.dataset.dsec : null; if (!h) return; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', dragSec); });
+$('tasksBody').addEventListener('dragover', (e) => { if (!dragSec) return; clearSecDrop(); const spot = secSpot(e); if (!spot) return; e.preventDefault(); spot.line.classList.add(spot.cls); });
 $('tasksBody').addEventListener('dragend', () => { dragSec = null; clearSecDrop(); });
 $('tasksBody').addEventListener('drop', (e) => {
   const spot = secSpot(e); if (!spot) return;
   e.preventDefault(); clearSecDrop();
-  store.set('sectionOrder', moveSection(sectionOrder(store.get('sectionOrder', [])), dragSec, spot.h.dataset.dsec, spot.after));
+  store.set('sectionOrder', spot.next);
   dragSec = null; renderTasks();
 });
 $('tasksBtn').onclick = () => { $('tasks').classList.toggle('hidden'); store.set('tasksHidden', $('tasks').classList.contains('hidden')); };
