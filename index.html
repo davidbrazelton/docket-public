@@ -1204,13 +1204,13 @@ const HELP = [
     ['resume-all', 'Resume all', 'Tell each paused session to check its test servers and browsers still answer, then carry on. Sessions you wrote to while paused are left alone.'],
   ]],
   ['Session list (left)', [
-    ['tab-sessions', 'Sessions', 'Your conversations with Claude for this desk: running ones on top, earlier ones below'],
+    ['tab-sessions', 'Sessions', 'Your AI conversations for this desk: running ones on top, earlier ones below'],
     ['tab-schedules', 'Schedules', 'Sessions that start by themselves at set times, like every weekday at 9'],
     ['g-cpu', 'CPU gauge', "How much of this computer's processor Docket is using: the app, the runner, the sessions and their helpers, as Task Manager counts it. Amber when it stays over 80%. Click for ☰ > Memory and disk"],
     ['g-mem', 'Memory gauge', 'How much memory Docket is using: the app, the runner, the sessions and their helpers. Click for ☰ > Memory and disk'],
     ['g-disk', 'File space gauge', "The size of Docket's folder, as last measured (every 20 minutes). Click for ☰ > Memory and disk"],
     ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is'],
-    ['new', '+ New session', 'Start a new conversation with Claude'],
+    ['new', '+ New session', 'Start a new conversation with the AI'],
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
     ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups) and which chips each row shows'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
@@ -1219,13 +1219,13 @@ const HELP = [
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
     ['commentchips', '👁 > Comment chips', 'Comment chips: show a speech bubble on a session\'s row when one of its tickets or pull requests has a new comment', 'Each row shows a speech bubble when a comment is waiting. Turn it off to hide them; Details still shows them.'],
     ['brandlogos', '👁 > Brand logos', 'Brand logos: show which AI runs each session, as a small logo on its row', 'Each row shows the logo of the AI that runs it. Turn it off to hide the logos.'],
-    ['textsearch', '❝ Search conversations', 'Search conversations: also match what you and Claude wrote in each session', 'Searching what was said in each conversation too. Click to search titles and folders only.'],
+    ['textsearch', '❝ Search conversations', 'Search conversations: also match what you and the AI wrote in each session', 'Searching what was said in each conversation too. Click to search titles and folders only.'],
     ['order', 'Order', 'Which sessions go at the top of each section. Natural keeps every row in one place, the order the sessions were started; drag a row to move it.'],
     ['row', 'A session row', `Click to open it. Right-click for archive, group, rename and more. ${OS.pick} or Shift+click picks several at once.`],
     ['pick-clear', 'Clear', 'Clear the picked sessions (Esc)'],
     ['show-archive', 'archived', 'Show the sessions you archived'],
     ['hide-archive', '← Back to sessions', 'Leave the archive and go back to your sessions'],
-    ['refresh', 'refresh', 'Read the session list again from Claude\'s files'],
+    ['refresh', 'refresh', 'Read the session list again from the saved session files'],
     ['new-group', '+ New group', 'Make a named group to sort sessions into'],
     ['show-empty', '👁 > Show empty groups', 'Show empty groups: list groups that have no sessions too', 'Groups with no sessions are listed too. Turn it off to hide them.'],
     ['group-head', 'A group header', 'Click to fold or unfold the group. Drag it to change the order. Right-click to rename it, set its start folder, archive or delete it.'],
@@ -1313,12 +1313,12 @@ const HELP = [
     ['tsug-apply', 'Apply', 'Use the suggested title for this session'],
     ['tsug-dismiss', 'Dismiss', 'Keep the current title'],
     ['send-again', 'Send again', 'Send this message again: it failed because the sign-in had run out'],
-    ['perm-allow', 'Allow', 'Let Claude do this, this once'],
-    ['perm-always', 'Always allow', 'Let Claude do this kind of thing for the rest of this session without asking'],
-    ['perm-deny', 'Deny', 'Don\'t let Claude do this'],
+    ['perm-allow', 'Allow', 'Let the AI do this, this once'],
+    ['perm-always', 'Always allow', 'Let the AI do this kind of thing for the rest of this session without asking'],
+    ['perm-deny', 'Deny', 'Don\'t let the AI do this'],
     ['q-pick', 'An answer', 'Pick this answer'],
     ['q-other', 'Other', 'Type your own answer instead'],
-    ['q-submit', 'Submit answers', 'Send your answers to Claude'],
+    ['q-submit', 'Submit answers', 'Send your answers to the AI'],
     ['q-skip', 'Answer in the chat instead', 'Close the form and answer by typing in the send box'],
     ['open-session', 'open it', 'Open that session'],
   ]],
@@ -1326,13 +1326,13 @@ const HELP = [
     ['message', 'The message box', 'Type your message. Enter sends, Shift+Enter makes a new line. Paste pictures or drop files here. Type / for skills.'],
     ['attach', '+ Add files', 'Add files to your message'],
     ['chip-remove', '✕ on a file', 'Take this file off the message'],
-    ['perm-mode', 'Permission mode', 'How much Claude may do without asking you first'],
+    ['perm-mode', 'Permission mode', 'How much the AI may do without asking you first'],
     ['cache', 'Minutes left', 'How long the conversation stays in Claude\'s short-term memory (the prompt cache), which makes the next message cheaper'],
     ['context', '% context', 'How full the conversation is. Near full, it gets summarized so it can keep going.'],
     ['brand-pill', 'Brand label', 'The AI that runs this session. A session keeps the brand it started on.'],
     ['brand', 'Brand', 'Which AI runs this session: Claude, Grok or Codex (OpenAI). Lists the brands this desk is signed in to. A session keeps the brand it started on.'],
     ['model', 'Model', 'Which model answers. Shift, the default for new sessions, starts on the cheapest model (or the desk\'s start gear) and moves up by itself when the work needs it.'],
-    ['effort', 'Effort', 'How hard Claude thinks before answering. Higher is slower and costs more.'],
+    ['effort', 'Effort', 'How hard the AI thinks before answering. Higher is slower and costs more.'],
     ['stop', 'Stop', 'Stop the current turn'],
     ['send', 'Send', 'Send your message (Enter)'],
   ]],
@@ -1342,11 +1342,11 @@ const HELP = [
     ['plan-badge', 'Plan badge', 'This session coordinates a plan: how many of its tasks are done, counting the tasks of the plans under it'],
     ['plan-badge-folder', 'Plan badge', 'This session holds a plan in the desk\'s plan folder (its marker file says so): how many of its lines are done, counting the plans under it'],
     ['plan-tree', 'Plan tree', 'Every plan in this desk\'s plan folder, as a tree with progress, broken links and plans nothing links to (opens in its own window)'],
-    ['sec-files', '📄 Files', 'Files: files Claude made or showed you in this session'],
+    ['sec-files', '📄 Files', 'Files: files the AI made or showed you in this session'],
     ['sec-prs', 'Pull requests', 'Pull requests: changes this session sent to GitHub for review, its tickets (Jira, GitHub issues or Azure DevOps work items), the git branches it worked on, and the lines it changed'],
     ['lines', 'Lines changed', 'Lines this session added and removed in the files it edited, helper agents included: the same total as on the Usage page'],
     ['branches', 'Branches', 'The git branches this session made or worked on (master and main are left out), each with the pull request opened from it. The one it is on now is listed first'],
-    ['sec-tasks', 'Tasks', 'Tasks: Claude\'s to-do list and the jobs it runs in the background'],
+    ['sec-tasks', 'Tasks', 'Tasks: the AI\'s to-do list and the jobs it runs in the background'],
     ['sec-mcp', 'Connected services', 'Connected services: outside tools this session can use, and whether each one is connected'],
     ['dsec-head', 'A section\'s heading', 'Click to fold the section to its heading or open it again. Drag it up or down to change the order; the buttons at the top of the panel follow the same order.'],
     ['group-select', 'Group', 'Which group this session is in'],
@@ -1591,14 +1591,14 @@ const tip = (key, on) => ` title="${esc(tipText(key, on))}"`;
 // The welcome tour: at most five steps, each pointing at one big part of the page. alt is what it points
 // at when that part is hidden (a narrow window keeps the session list behind ☰; the details panel can be closed). menu: the step also opens the ⋯ session menu, so it can be seen.
 const TOUR = [
-  { at: '#side', alt: '#menuBtn', title: 'Your sessions', text: 'Each row is one conversation with Claude. Its dot shows whether it is working (blue), waiting on you (orange) or done (green). + New session starts another one.',
-    altText: 'Each conversation with Claude is a session. On a narrow window the list of them is in ☰ > Sessions.' },
-  { at: '#transcript', title: 'The conversation', text: 'Claude\'s replies show here, with each step it took. When Claude needs a choice or a yes from you, a card with buttons appears here too.' },
+  { at: '#side', alt: '#menuBtn', title: 'Your sessions', text: 'Each row is one conversation with the AI. Its dot shows whether it is working (blue), waiting on you (orange) or done (green). + New session starts another one.',
+    altText: 'Each conversation with the AI is a session. On a narrow window the list of them is in ☰ > Sessions.' },
+  { at: '#transcript', title: 'The conversation', text: 'The AI\'s replies show here, with each step it took. When it needs a choice or a yes from you, a card with buttons appears here too.' },
   { at: '#sessMenuBtn', menu: true, title: 'The session menu', text: 'The ⋯ button above the conversation opens everything you can do with this session: archive it, open its folder in a terminal or editor, turn its chime off, put it in a group, rename it and more. Right-clicking it in the list opens the same menu.',
     altText: 'Once a session is open, the ⋯ button above its conversation opens everything you can do with it: archive it, open its folder in a terminal or editor, turn its chime off, put it in a group, rename it and more. Right-clicking it in the list opens the same menu.' },
-  { at: '#composer', title: 'The send box', text: 'Type your message and press Enter. The choices under it set how much Claude may do without asking, which model answers, and how hard it thinks.' },
-  { at: '#tasks', alt: '#tasksBtn', title: 'The details panel', text: 'Cost, files Claude made, pull requests, git branches, background jobs and connected services. Hover over any button to see what it does, or press ? for Help.',
-    altText: 'Details opens a panel with cost, files Claude made, pull requests, git branches and background jobs. Hover over any button to see what it does, or press ? for Help.' },
+  { at: '#composer', title: 'The send box', text: 'Type your message and press Enter. The choices under it set how much the AI may do without asking, which model answers, and how hard it thinks.' },
+  { at: '#tasks', alt: '#tasksBtn', title: 'The details panel', text: 'Cost, files the AI made, pull requests, git branches, background jobs and connected services. Hover over any button to see what it does, or press ? for Help.',
+    altText: 'Details opens a panel with cost, files the AI made, pull requests, git branches and background jobs. Hover over any button to see what it does, or press ? for Help.' },
 ];
 // end of tips
 // Static controls: their tip from the list above.
@@ -6544,7 +6544,7 @@ function renderTasks() {
     const d = t.start ? (t.end || Date.now()) - t.start : null; // an ending heard without its start has no length
     const held = canFree && t.status === 'running';
     return `<div class="task" title="${esc(t.label)}"${held ? ` data-row-task="${esc(t.id)}" data-session="${S.selected}"` : ''}><span class="ic ${ic[0]}">${ic[1]}</span>
-      <span class="lb">${esc(t.label)}${s?.stalled?.id === t.id && t.status === 'running' ? `<span class="tag stalled" title="${esc(stalledTip(s.stalled))}">stalled ${s.stalled.minutes}m</span>` : ''}${t.background ? '<span class="tag">background</span>' : ''}${t.recovered ? '<span class="tag" title="Docket lost track of this and found it again in Claude&#39;s files">recovered</span>' : ''}</span><span class="end"><span class="dur" data-start="${t.start}" ${t.end || t.status !== 'running' ? '' : 'data-live'}>${d === null ? '' : dur(d)}</span>${held ? ROW_MORE : ''}</span>
+      <span class="lb">${esc(t.label)}${s?.stalled?.id === t.id && t.status === 'running' ? `<span class="tag stalled" title="${esc(stalledTip(s.stalled))}">stalled ${s.stalled.minutes}m</span>` : ''}${t.background ? '<span class="tag">background</span>' : ''}${t.recovered ? '<span class="tag" title="Docket lost track of this and found it again in the session&#39;s files">recovered</span>' : ''}</span><span class="end"><span class="dur" data-start="${t.start}" ${t.end || t.status !== 'running' ? '' : 'data-live'}>${d === null ? '' : dur(d)}</span>${held ? ROW_MORE : ''}</span>
       ${t.progress || t.summary ? `<span class="sub">${esc(t.progress || t.summary)}</span>` : ''}</div>`;
   };
   const prs = (S.prs[S.selected] || []).slice().sort((a, b) => PR_ORDER.indexOf(prState(a)) - PR_ORDER.indexOf(prState(b)));

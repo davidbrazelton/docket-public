@@ -336,7 +336,7 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   // Hooks
   const hookSources = settingFiles.map((s) => [s.j.hooks, s.label, s.f]);
   for (const p of plugins) if (p.dir) { const f = path.join(p.dir, 'hooks', 'hooks.json'); const j = readJson(f); if (j) hookSources.push([j.hooks || j, `plugin ${p.key}${p.on ? '' : ' (off)'}`, f]); }
-  sections.push({ id: 'hooks', title: 'Hooks', note: 'Commands Claude Code runs by itself at set moments. Sessions in other folders also run that folder\'s own .claude/settings.json hooks.',
+  sections.push({ id: 'hooks', title: 'Hooks', note: 'Commands the AI\'s program runs by itself at set moments. Claude sessions in other folders also run that folder\'s own .claude/settings.json hooks.',
     groups: hookGroups(hookSources, item) });
 
   // Instructions
@@ -369,7 +369,7 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
     });
     memGroups.push({ title: `Sessions working in ${folderOf(path.join(projects, p)) || p}`, items });
   }
-  sections.push({ id: 'memory', title: 'Memory', note: 'Facts Claude saved for later. Each working folder has its own; its index loads at the start of every session there.',
+  sections.push({ id: 'memory', title: 'Memory', note: 'Facts the AI saved for later. Each working folder has its own; its index loads at the start of every session there.',
     groups: memGroups.length ? memGroups : [{ title: '', items: [{ name: 'No memory saved yet', detail: projects }] }] });
 
   // Skills, commands, agents, plugins
@@ -385,7 +385,7 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   const agents = mdList([[path.join(home, 'agents'), 'made on this desk'], [path.join(folder, '.claude', 'agents'), 'in the desk folder'], ...plugins.filter((p) => p.dir).map((p) => [path.join(p.dir, 'agents'), `plugin ${p.key}`])]);
   const pluginItems = plugins.map((p) => item({ name: p.key, size: 0, detail: p.dir || '', badge: p.on ? 'on' : 'off', note: p.version ? `version ${p.version}` : '',
     toggle: { kind: 'plugin', key: p.key, on: p.on, note: `covers all of its hooks, skills, commands, agents and services${p.over.length ? `; also set in ${p.over.join(', ')}, which wins` : ''}` }, path: p.dir && fs.existsSync(path.join(p.dir, '.claude-plugin', 'plugin.json')) ? path.join(p.dir, '.claude-plugin', 'plugin.json') : undefined }));
-  sections.push({ id: 'skills', title: 'Skills, commands, agents and plugins', note: 'Skills load when a task needs them; commands run when you type /name; agents are helpers Claude can start.',
+  sections.push({ id: 'skills', title: 'Skills, commands, agents and plugins', note: 'Skills load when a task needs them; commands run when you type /name; agents are helpers the AI can start.',
     groups: [{ title: 'Skills', items: skills }, { title: 'Slash commands', items: commands }, { title: 'Agents', items: agents }, { title: 'Plugins', items: pluginItems }] });
 
   // Connected services (MCP servers). Only names and how they start: never their keys or headers.
@@ -412,7 +412,7 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
     if (missing.length) groups.push({ title: 'In ~/.claude.json but not on this desk', note: `The terminal on the standard Claude home has these; this desk's sessions do not, because its Claude home is ${home}. Add one with claude mcp add while CLAUDE_CONFIG_DIR is set to that folder if this desk needs it.`, items: missing });
   }
   for (const it of [...mcp, ...own]) it.key ||= it.name;
-  sections.push({ id: 'mcp', title: 'Connected services', note: 'Outside tools Claude can use (MCP servers). Check connections runs claude mcp list for this desk and marks each one connected, failed or waiting for a sign-in. Docket\'s own two are not part of that check; an open session shows all of its servers, Docket\'s included, in its Details panel.',
+  sections.push({ id: 'mcp', title: 'Connected services', note: 'Outside tools the AI can use (MCP servers). Check connections runs claude mcp list for this desk and marks each one connected, failed or waiting for a sign-in. Docket\'s own two are not part of that check; an open session shows all of its servers, Docket\'s included, in its Details panel.',
     check: true, groups });
 
   // Claude Code's own defaults, as the newest session in this profile saw them
