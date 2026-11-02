@@ -42,7 +42,7 @@ import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexDeviceLi
 import { start as startCodex } from './engines/codex.mjs';
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
-import { cleanMode, pullsByItself, updatePrompt, changeReason } from './update-mode.mjs';
+import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
 import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE } from './recall.mjs';
 import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPrUrl, adoPRsForBranch, adoPRById, adoWorkItemIds, adoItemKey, isAdoItemKey, adoItemKeyFrom, adoPRWorkItemIds, adoWorkItems, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, linkTtl, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
   parseIssueUrl, branchIssue, githubTicket, CLOSES, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, sessionBranches,
@@ -3764,9 +3764,14 @@ async function takeChanges() {
 // session is making to Docket), and every open page reconnects. So, like the runner's own restart, it waits for a
 // quiet moment (runner-idle.mjs): no reply in progress, no question waiting, no background commands or subagents,
 // no ask_desk run, nothing said for a minute. It looks every 5 seconds and never forces it; Update now anyway (the card, ☰ > About) skips the wait.
-// A scheduled run is a session like any other, so one mid-run holds it too.
+// A scheduled run is a session like any other, so one mid-run holds it too. So does typing in a session: a
+// restart reloads every open page, which would cut into what is being typed.
+// lastTyping: the last time a page said you were typing in a session (POST /api/typing-now, at most every 5
+// seconds while you type).
+let lastTyping = 0;
 function restartHolds() {
   if (!reattachDone) return 'still reconnecting to the running sessions';
+  if (typingNow(lastTyping, Date.now())) return 'you are typing in a session';
   const sessions = [...live.values()].filter((s) => s.status !== 'ended').map((s) => ({
     busy: ['starting', 'running', 'requires_action'].includes(s.status) || !!s.compacting,
     held: holdsRunner(s, runningTasks(s)),
@@ -3826,6 +3831,9 @@ const updateStatus = { checking: false, commit: '', waiting: null, ...(state.upd
 const updateMode = () => cleanMode(state.updates?.mode);
 const updateMinutes = () => (Number.isFinite(state.updates?.minutes) ? state.updates.minutes : 5);
 let updateTimer = null;
+// typingHeld: the last check found an update and held it because you are typing (lastTyping, above), so the
+// timer looks again in TYPING_RETRY_MS rather than at the next timed check.
+let typingHeld = false;
 // logAs: what the log line says, when it says more than the menu's result ('updated (auto)'); false: no log line
 // (the caller writes its own).
 function noteUpdate(result, detail = '', logAs = result) {
@@ -3862,7 +3870,7 @@ const checkForUpdate = async (pull = false) => {
   return (updateRun ||= lookForUpdate(pull).finally(() => { updateRun = null; broadcast({ t: 'update', update: updateInfo() }); }));
 };
 async function lookForUpdate(pull) {
-  updateStatus.checking = true;
+  updateStatus.checking = true; typingHeld = false;
   try {
     updateStatus.waiting = null;
     const branch = (await git(['rev-parse', '--abbrev-ref', 'HEAD'])).out.trim();
@@ -3881,6 +3889,11 @@ async function lookForUpdate(pull) {
       updateStatus.waiting = { from: head.slice(0, 7), to: theirs.slice(0, 7), files };
       return noteUpdate('update waiting', `${head.slice(0, 7)} → ${theirs.slice(0, 7)}: ${files.join(', ')}`);
     }
+    if (!pull && typingNow(lastTyping, Date.now())) { // auto, but you are typing: Update now is never held
+      updateStatus.waiting = { from: head.slice(0, 7), to: theirs.slice(0, 7), files };
+      typingHeld = true; scheduleUpdates(TYPING_RETRY_MS);
+      return noteUpdate('held', `${head.slice(0, 7)} → ${theirs.slice(0, 7)}: ${TYPING_HOLD}.`);
+    }
     const by = pull ? 'now' : 'auto';
     ownPull = by; // set before the merge: the folder watch can fire while it is still writing files
     const m = await git(['merge', '--ff-only', theirs]);
@@ -3898,7 +3911,12 @@ async function readCommit() { const r = await git(['rev-parse', '--short', 'HEAD
 function scheduleUpdates(wait) {
   clearTimeout(updateTimer);
   const min = updateMinutes(); if (!(min > 0)) return;
-  updateTimer = setTimeout(async () => { await checkForUpdate(); scheduleUpdates(); }, wait ?? min * 60000);
+  updateTimer = setTimeout(async () => {
+    // Held for typing: look again shortly, and only go back to GitHub once the minute with no typing is up.
+    if (typingHeld && typingNow(lastTyping, Date.now())) return scheduleUpdates(TYPING_RETRY_MS);
+    await checkForUpdate();
+    if (!typingHeld) scheduleUpdates(); // a check held for typing set its own short retry
+  }, wait ?? min * 60000);
 }
 function updateInfo() {
   let version = ''; try { version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch {}
@@ -6129,6 +6147,9 @@ const server = http.createServer(async (req, res) => {
     const p = url.pathname;
     // Remote desks: this computer's remote control, the remote desks listed here, and requests for one of them.
     // Alt+click on ☰ > About shows or hides them with no AI, the same as the remote_desks tool.
+    // You are typing in a session (index.html typingOn): holds an automatic update and the app restart. Kept on this
+    // computer whatever desk is shown, since it is this computer's pages an update would reload.
+    if (p === '/api/typing-now' && req.method === 'POST') { lastTyping = Date.now(); return json(res, 200, { ok: true }); }
     if (p === '/api/remote-features' && req.method === 'POST') { setRemoteFeatures((await readBody(req)).on === true); return json(res, 200, { on: remoteOn() }); }
     if (await remoteControlRoutes(req, res, p) !== false) return;
     if (await remoteDeskRoutes(req, res, p) !== false) return;

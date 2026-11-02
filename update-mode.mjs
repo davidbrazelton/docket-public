@@ -28,3 +28,13 @@ export function changeReason({ pulledBy, from, to }) {
       : 'Files in the Docket folder were edited without a new git commit.',
   };
 }
+
+// Typing in a session holds an automatic update (and the app restart after any update): the page pings the app
+// as you type (at most every TYPING_PING_MS), and typing counts as going on for a minute after the last ping,
+// the same minute the page's typing time uses (TYPING_IDLE in index.html). A held update looks again every
+// TYPING_RETRY_MS, so it goes ahead soon after the minute is up rather than at the next timed check.
+export const TYPING_QUIET_MS = 60000;
+export const TYPING_PING_MS = 5000;
+export const TYPING_RETRY_MS = 5000;
+export const typingNow = (last, now) => last > 0 && now >= last && now - last < TYPING_QUIET_MS;
+export const TYPING_HOLD = 'you are typing in a session; the update is taken in once you stop for a minute';

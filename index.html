@@ -6780,13 +6780,16 @@ $('stopBtn').onclick = () => S.live[S.selected] && api(`/api/sessions/${S.select
 // again from the next keystroke, or on coming back to the session while its box still has text. Each stretch goes to the
 // app when it ends; a new session's waits until it is sent and has an id.
 const TYPING_IDLE = 60000;
-const typing = { id: null, client: null, since: 0, last: 0, timer: null, drafts: {} };
+const typing = { id: null, client: null, since: 0, last: 0, pinged: 0, timer: null, drafts: {} };
 const typingDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 function typingOn() {
   const id = S.selected;
   if (!id || String(id).startsWith('sched') || document.hidden) return;
   if (!typing.since) Object.assign(typing, { id, client: S.client, since: Date.now() });
   typing.last = Date.now();
+  // Tells the app you are typing, so an automatic update (and its restart, which reloads this page) waits until
+  // a minute after the last keystroke (update-mode.mjs typingNow). At most every 5 seconds.
+  if (typing.last - typing.pinged >= 5000) { typing.pinged = typing.last; api('/api/typing-now', {}).catch(() => {}); }
   clearTimeout(typing.timer); typing.timer = setTimeout(() => typingOff(true), TYPING_IDLE);
 }
 // idle: the minute with no keystroke is not typing, so the stretch ends at the last keystroke.
