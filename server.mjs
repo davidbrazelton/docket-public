@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { spawn, execFile } from 'node:child_process';
 import { chromium } from 'playwright';
 import { createScheduler } from './scheduler.mjs';
+import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
@@ -2885,6 +2886,21 @@ async function setParent(client, id, parentId) {
     for (const r of await Promise.allSettled(notes)) if (r.status === 'rejected') logEvent('parent change notice not sent', r.reason?.message || String(r.reason));
   } else if (s && s.status !== 'ended') addEvent(s, { k: 'note', text: 'Moved to the top level: this session no longer reports to another session.' });
   return { changed: true, from: old, to: parentId };
+}
+// A session dragged in the list: under parentId (it then follows that parent's group), or to the
+// top level of group gid ('' for No group). Every session under it, all the way down, drops its
+// own group choice so it follows along and stays under it. Returns how many went with it.
+async function moveFamily(client, id, parentId, gid) {
+  await setParent(client, id, parentId);
+  const rows = [...(await history(client)), ...[...live.values()].filter((x) => x.client === client.id).map(summary)];
+  const below = familyBelow([...new Set(rows.map((r) => r.id))].map((x) => ({ id: x, parentId: parentOf(client, x) })), id);
+  const rec = (state.sessions[id] ||= { client: client.id });
+  if (parentId) delete rec.groupId; else rec.groupId = gid;
+  for (const x of below) if (state.sessions[x]) delete state.sessions[x].groupId;
+  groupChanged(client.id);
+  for (const x of [id, ...below]) if (live.get(x)) pushSession(live.get(x));
+  logEvent('session dragged', `${id} (+${below.length}): ${parentId ? 'under ' + parentId : 'group ' + (gid || '(none)')}`);
+  return { moved: below.length };
 }
 async function sessionReport(clientId, id) {
   const client = clientById(clientId);
@@ -7370,7 +7386,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, summary(s));
     }
     if (await profileRoutes(req, res, url, p) !== false) return;
-    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|auto-group|title-suggestion|unread|delete|task-done|reload|move|folder-offer)$/);
+    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|moveto|auto-group|title-suggestion|unread|delete|task-done|reload|move|folder-offer)$/);
     if (m) {
       const [, id, action] = m;
       if (!reattachDone && !live.has(id) && state.sessions[id]?.running) await settledOr(reattached, 20000); // it may be on its way back
@@ -7440,6 +7456,12 @@ const server = http.createServer(async (req, res) => {
       if (action === 'parent' && req.method === 'POST') { // { parentId }: a session id, or null for the top level
         if (!client) return json(res, 404, { error: 'Unknown session' });
         try { return json(res, 200, { ok: true, ...(await setParent(client, id, b.parentId)) }); }
+        catch (e) { return json(res, 400, { error: e.message }); }
+      }
+      if (action === 'moveto' && req.method === 'POST') { // { parentId, groupId }: a drag in the session list, family and all
+        if (!client) return json(res, 404, { error: 'Unknown session' });
+        if (b.groupId && !groupById(client.id, b.groupId)) return json(res, 400, { error: 'Unknown group' });
+        try { return json(res, 200, { ok: true, ...(await moveFamily(client, id, b.parentId || null, b.groupId || '')) }); }
         catch (e) { return json(res, 400, { error: e.message }); }
       }
       if (action === 'archive') {

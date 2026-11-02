@@ -461,6 +461,12 @@ aside.tasks.hidden { display: none; }
 #tasksBody > .drop-end { box-shadow: 0 2px 0 var(--accent); }
 .row.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 .row.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+/* While a session row is dragged: every place it can move to gets a dashed accent outline and a light tint,
+   the one under the pointer a solid accent border and a strong tint; the row and its family are faded.
+   The tint is a background image, so it sits over a heading's own colour and leaves the order lines free. */
+#list.moving .drop-ok { outline: 1px dashed var(--accent); outline-offset: -2px; background-image: linear-gradient(color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 10%, transparent)); }
+#list.moving .drop-ok.drop-hot { outline: 2px solid var(--accent); background-image: linear-gradient(color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent) 30%, transparent)); }
+#list.moving .drag-src { opacity: .45; }
 .gsec.archived .gname { text-decoration: line-through; }
 .gnew { color: var(--accent); }
 .dlg-back { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50; display: grid; place-items: center; padding: 16px; }
@@ -1734,6 +1740,31 @@ const orderChanged = (before, after, shown) => { const on = new Set(shown), f = 
 const takeHold = (s, measures) => s ? { id: s.id, ...Object.fromEntries(Object.entries(measures).map(([k, f]) => [k, f(s)])) } : null;
 const holding = (hold, key, f) => (s) => hold && s.id === hold.id && key in hold ? hold[key] : f(s);
 // end of list order
+// ---------- drag moves (tested in test/drag-move.test.mjs) ----------
+// A session row dragged onto a group heading, or onto another session, moves there with its whole family.
+// rows: [{ id, parentId, groupId }]. Every session under id, all the way down (the same as drag-move.mjs).
+function familyBelow(rows, id) {
+  const kids = new Map();
+  for (const r of rows) if (r.parentId && r.parentId !== r.id) (kids.get(r.parentId) || kids.set(r.parentId, []).get(r.parentId)).push(r.id);
+  const out = [], seen = new Set([id]);
+  for (let i = 0, todo = [id]; i < todo.length; i++)
+    for (const k of kids.get(todo[i]) || []) if (!seen.has(k)) { seen.add(k); out.push(k); todo.push(k); }
+  return out;
+}
+// What dropping session id on target would do, or null where it makes no sense: onto itself, onto a session
+// under it (a loop), onto the parent it already has, or onto its own group's heading when it is already at the top.
+// target: { gid } for a group heading ('' is No group; the session goes to the top level there), { id } for a session.
+// Returns { parentId, groupId, below }: below is the family that goes with it.
+function dropMove(rows, id, target) {
+  const byId = new Map(rows.map((r) => [r.id, r])), s = byId.get(id);
+  if (!s) return null;
+  const below = familyBelow(rows, id), parent = s.parentId && s.parentId !== id ? s.parentId : null;
+  if ('gid' in target) return !parent && (s.groupId || '') === (target.gid || '') ? null : { parentId: null, groupId: target.gid || '', below };
+  const t = byId.get(target.id);
+  if (!t || t.id === id || t.id === parent || below.includes(t.id)) return null;
+  return { parentId: t.id, groupId: t.groupId || '', below };
+}
+// end of drag moves
 // A schedule's row counts as unread when any of its runs is, the same runs its "unread" badge counts.
 const rowUnread = (s) => runUnread(s) || S.runInfo.get(s.id)?.unread > 0;
 // Working: busy on a reply right now (starting, mid-turn, compacting, or its background jobs still running),
@@ -1766,6 +1797,8 @@ const sortTops = (list, kids, topOf = (x) => x) => {
 };
 // Session rows can be dragged into place in Natural order, outside the archive and search.
 const rowDrag = () => listOrder() === 'natural' && !S.showArchived && !$('search').value.trim();
+// Any session row can be dragged onto a group heading or another session to move it there, outside the archive.
+const moveDrag = () => !S.showArchived;
 const GROUP_DOT_ORDER = ['running', 'background', 'idle', 'needs', 'failed', 'stopped', 'ended'];
 // A turn that ended in an error (failed) shows over orange, so it does not look like a normal finish.
 const dotClass = (s) => !s.live ? (s.midReply ? 'stopped' : s.lastError ? 'failed' : s.waiting ? 'needs' : 'ended')
@@ -3190,10 +3223,13 @@ const rowRun = (row) => { // the rows of the part of the list a row is in, top t
 const rowTop = (row) => { let x = row; while (x.classList.contains('child') && x.previousElementSibling?.matches('.row[data-id]')) x = x.previousElementSibling; return x; };
 const clearDrop = () => { for (const x of document.querySelectorAll('.row.drop-before, .row.drop-after')) x.classList.remove('drop-before', 'drop-after'); };
 // Where a drop over this row would land: the family top to go next to, whether after it, and where to draw the line.
+// Only the top and bottom quarter of a row reorder; its middle is for moving the dragged session under it (moveSpot).
+const reorderable = (row) => !!dragRow && dragTop && rowDrag() && rowRun(row).some((x) => x.dataset.id === dragRow);
 function dropSpot(e) {
-  const row = e.target.closest?.('.row[data-id]'); if (!row || !dragRow) return null;
-  const run = rowRun(row); if (!run.some((x) => x.dataset.id === dragRow)) return null;
-  const r = row.getBoundingClientRect(), after = e.clientY > r.top + r.height / 2;
+  const row = e.target.closest?.('.row[data-id]'); if (!row || !reorderable(row)) return null;
+  const run = rowRun(row);
+  const r = row.getBoundingClientRect(), f = (e.clientY - r.top) / r.height, after = f > .75;
+  if (!after && f >= .25) return null;
   const top = rowTop(row);
   const fam = run.slice(run.indexOf(top)), end = fam.findIndex((x, i) => i > 0 && !x.classList.contains('child'));
   // A place that leaves the rows as they are (on or next to the dragged row's own family) is no place.
@@ -3202,18 +3238,63 @@ function dropSpot(e) {
   if (top.dataset.id === dragRow || !orderChanged(shown, ids, shown)) return null;
   return { ids, after, line: after ? fam[(end < 0 ? fam.length : end) - 1] : top }; // after a family: under its last member
 }
-$('list').addEventListener('dragstart', (e) => { const row = e.target.closest?.('.row[draggable][data-id]'); dragRow = row ? row.dataset.id : null; if (!row) return; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', row.dataset.id); });
-$('list').addEventListener('dragover', (e) => {
-  if (!dragRow) return; clearDrop();
-  const spot = dropSpot(e); if (!spot) return;
-  e.preventDefault();
-  spot.line.classList.add(spot.after ? 'drop-after' : 'drop-before');
+// Moving a dragged session: onto a group heading (or the empty part of a group) puts it at the top level of that
+// group, onto another session's row puts it under that session. Its whole family goes with it, after a yes.
+// Every place it can go is marked when the drag starts; places that make no sense (itself, a session under it,
+// where it already is) are not, and take no drop.
+let dragTop = false; // whether the dragged row is the top of its family, the only kind Natural order reorders
+function moveSpot(e) {
+  if (!dragRow) return null;
+  const el = e.target.closest?.('#list .row[data-id], #list .gsec[data-gid], #list .gbody'); if (!el) return null;
+  const head = el.matches('.gsec') ? el : el.matches('.gbody') ? el.previousElementSibling : null;
+  if (!(head || el).classList.contains('drop-ok')) return null;
+  if (!head && reorderable(el)) { const r = el.getBoundingClientRect(), f = (e.clientY - r.top) / r.height; if (f < .25 || f > .75) return null; } // a row's edges only reorder
+  const plan = dropMove(allSessionRows(), dragRow, head ? { gid: head.dataset.gid } : { id: el.dataset.id });
+  return plan && { el: head || el, plan };
+}
+function markMoveTargets() {
+  const rows = allSessionRows(), fam = new Set([dragRow, ...familyBelow(rows, dragRow)]);
+  $('list').classList.add('moving');
+  for (const el of $('list').querySelectorAll('.row[data-id], .gsec[data-gid]')) {
+    el.classList.toggle('drop-ok', !!dropMove(rows, dragRow, el.matches('.gsec') ? { gid: el.dataset.gid } : { id: el.dataset.id }));
+    el.classList.toggle('drag-src', fam.has(el.dataset.id));
+  }
+}
+const clearMove = () => { for (const x of $('list').querySelectorAll('.drop-hot')) x.classList.remove('drop-hot'); };
+const endMove = () => { $('list').classList.remove('moving'); for (const x of $('list').querySelectorAll('.drop-ok, .drag-src, .drop-hot')) x.classList.remove('drop-ok', 'drag-src', 'drop-hot'); };
+// The yes-or-no before a dragged session moves: what moves, where to, and how many go with it.
+async function confirmDrop(id, plan) {
+  const rows = allSessionRows(), title = (x) => `"${esc((rows.find((r) => r.id === x)?.title || 'Untitled').slice(0, 60))}"`;
+  const s = rows.find((r) => r.id === id), group = plan.groupId ? `the group "${esc(groupOf(plan.groupId)?.name || 'Unknown')}"` : 'No group';
+  const where = plan.parentId ? `under ${title(plan.parentId)}, in ${group}` : `to ${group}${s?.parentId ? ', at the top level (no parent)' : ''}`;
+  const n = plan.below.length;
+  const body = `<div>Move ${title(id)} ${where}?</div>`
+    + `<div style="margin-top:8px">${n ? `${n} child session${n === 1 ? '' : 's'} under it ${n === 1 ? 'goes' : 'go'} with it and ${n === 1 ? 'stays' : 'stay'} under it.` : 'It has no child sessions.'}</div>`
+    + (plan.parentId ? '<div style="margin-top:8px">Its finished turns will go to the new parent, and its cost will count in that family.</div>'
+      : s?.parentId ? '<div style="margin-top:8px">It will no longer report to the session that started it.</div>' : '');
+  if (!await dialog({ title: 'Move session?', body, buttons: [{ label: 'Cancel', value: null }, { label: 'Move', value: 'ok', primary: true }] })) return;
+  try { await api(`/api/sessions/${id}/moveto?client=${S.client}`, { parentId: plan.parentId, groupId: plan.groupId }); } catch (err) { alert(err.message); }
+}
+$('list').addEventListener('dragstart', (e) => {
+  const row = e.target.closest?.('.row[draggable][data-id]'); dragRow = row ? row.dataset.id : null; if (!row) return;
+  dragTop = !row.classList.contains('child');
+  e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', row.dataset.id);
+  setTimeout(() => { if (dragRow) markMoveTargets(); }); // after the browser has taken its picture of the row
 });
-$('list').addEventListener('dragend', () => { dragRow = null; clearDrop(); releaseList(); });
+$('list').addEventListener('dragover', (e) => {
+  if (!dragRow) return; clearDrop(); clearMove();
+  const spot = dropSpot(e);
+  if (spot) { e.preventDefault(); spot.line.classList.add(spot.after ? 'drop-after' : 'drop-before'); return; }
+  const move = moveSpot(e); if (!move) return;
+  e.preventDefault(); move.el.classList.add('drop-hot');
+});
+$('list').addEventListener('dragleave', (e) => { if (dragRow && !$('list').contains(e.relatedTarget)) { clearDrop(); clearMove(); } });
+$('list').addEventListener('dragend', () => { dragRow = null; clearDrop(); endMove(); releaseList(); });
 $('list').addEventListener('drop', async (e) => {
-  const spot = dropSpot(e); if (!spot) return;
+  const spot = dropSpot(e), move = !spot && moveSpot(e); if (!spot && !move) return;
   e.preventDefault(); clearDrop();
-  dragRow = null;
+  const id = dragRow; dragRow = null; endMove();
+  if (move) { releaseList(); await confirmDrop(id, move.plan); return; }
   const { ids } = spot;
   S.places[S.client] = ids; renderList();
   await api('/api/places', { client: S.client, ids });
@@ -3466,7 +3547,7 @@ function sessionRow(s, depth) {
   // The badge appears once a run other than the newest one is unread, so an older reply is never hidden.
   const more = run && run.unread > (run.topUnread ? 1 : 0) ? `<span class="tag unread-n" title="Runs of this schedule with a reply you have not read. The Details panel lists every run.">${run.unread} unread</span>` : '';
   const snip = snippetFor(s);
-  return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${!depth && rowDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
+  return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
       ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotClass(s) === 'failed' ? ` title="${esc(failedTip(s))}"` : ''}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${planBadge(s.id)}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
       <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
