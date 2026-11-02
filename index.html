@@ -1002,7 +1002,8 @@ a.pf-sum:hover { background: var(--panel-2); }
 .pf-item .pf-act:disabled, #pfSrcAdd:disabled { opacity: .6; cursor: progress; }
 .pf-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; font-size: 12px; color: var(--muted); }
 .pf-add input { font: 13px/1.4 ui-monospace, Consolas, monospace; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
-#pfSrcAddr { flex: 1 1 360px; } #pfSrcSub { flex: 0 1 220px; } #pfSrcOut { flex-basis: 100%; }
+/* each box at least as wide as its placeholder; the row wraps the subfolder box under the address when narrow */
+.pf-add .pick { flex: 3 1 420px; } #pfSrcAddr { min-width: 38ch; } #pfSrcSub { flex: 1 1 260px; min-width: 34ch; max-width: 360px; } #pfSrcOut { flex-basis: 100%; }
 .pf-item.d1 { margin-left: 22px; } .pf-item.d2 { margin-left: 44px; } .pf-item.d3 { margin-left: 66px; }
 .pf-links { padding: 0 10px 6px; }
 .pf-links a { font-size: 12px; color: var(--accent); margin-right: 10px; }
@@ -1477,11 +1478,11 @@ const HELP = [
     ['pf-switch', 'On/off checkbox', 'Turn this on or off for this desk. Sessions started after the change get it; open sessions keep what they started with'],
     ['pf-choice', 'Choose a setting', 'Pick this setting for the desk. Sessions started after the change get it; open sessions keep what they started with'],
     ['pf-input', 'Type a setting', 'Type the setting for this desk; it is saved when you press Enter or leave the box. Empty clears it'],
-    ['pf-src-addr', 'Plugin source address', 'Where the plugins are: a git address on any host (GitHub, GitLab, Bitbucket, Azure DevOps, a company server), owner/repo for GitHub, or the full path of a folder on this computer that holds .claude-plugin'],
-    ['pf-src-sub', 'Subfolder', 'The folder in the repo that holds .claude-plugin, when it is not at the repo\'s top. Docket then copies just that folder from the repo'],
+    ['pf-src-addr', 'Plugin source address', 'Where the plugins are: a git address on any host (GitHub, GitLab, Bitbucket, Azure DevOps, a company server), owner/repo for GitHub, or the full path of a folder on this computer that holds .claude-plugin. A folder is used where it is: Docket copies nothing, so to update it, git pull in that folder, then Update here'],
+    ['pf-src-sub', 'Subfolder', 'The folder in the repo that holds .claude-plugin, when it is not at the repo\'s top. Docket then makes a partial git clone of only that folder, in <desk home>/plugin-sources/<name>; Update runs git pull there'],
     ['pf-src-add', 'Add source', 'Add this plugin source to this desk and list its plugins. Git signs in with the sign-in this computer already has for the host; Docket keeps none'],
     ['pf-install', 'Install', 'Install this plugin on this desk only. It starts on; turn it off under Skills > Plugins. Sessions started after it get it'],
-    ['pf-src-update', 'Update', 'Read this source again (git pull for a repo Docket copied) and take in the newer version of each plugin installed from it'],
+    ['pf-src-update', 'Update', 'Read this source again and take in the newer version of each plugin installed from it. For a subfolder source Docket first runs git pull in its partial clone (<desk home>/plugin-sources/<name>); a folder on this computer is read as it is now'],
     ['pf-src-remove', 'Remove', 'Remove this source from this desk. Claude Code also uninstalls the plugins installed from it. A folder on this computer is left as it is'],
   ]],
   ['Small windows and setup', [
@@ -8022,10 +8023,11 @@ function renderProfile() {
     <div class="pf-cols"><nav class="pf-side" aria-label="Sections of the Inspector">${profileSummaryHtml(s?.id)}</nav><div class="pf-body"><div class="pf-inner">${[s].filter(Boolean).map((s) => `<section class="pf-sec" id="pf-${s.id}"><h2>${esc(s.title)}</h2><div class="pf-note">${esc(s.note || '')}</div>
       ${s.check ? `<div class="mcp-sum"><button id="pfMcpCheck"${tip('pf-check')}>${check ? 'Check again' : 'Check connections'}</button><span id="pfMcpOut">${check ? esc(mcpCounts(check.servers)) + ` · checked ${esc(new Date(check.at).toLocaleString())}` : 'Not checked since Docket started.'}</span>
         ${check ? `<details><summary>What claude mcp list printed</summary><pre>${esc(check.text)}</pre></details>` : ''}</div>` : ''}
-      ${s.addSource ? `<div class="pf-add"><input id="pfSrcAddr" value="${esc(pf.srcAddr || '')}" placeholder="A git address (https://… or git@…) or the full path of a folder" spellcheck="false" aria-label="Plugin source address"${tip('pf-src-addr')}>
-        <input id="pfSrcSub" value="${esc(pf.srcSub || '')}" placeholder="Subfolder in the repo (if not at its top)" spellcheck="false" aria-label="Subfolder in the repo"${tip('pf-src-sub')}>
+      ${s.addSource ? `<div class="pf-add"><input id="pfSrcAddr" value="${esc(pf.srcAddr || '')}" data-pick="desk" placeholder="Git address, owner/repo, or a folder" spellcheck="false" aria-label="Plugin source address"${tip('pf-src-addr')}>
+        <input id="pfSrcSub" value="${esc(pf.srcSub || '')}" placeholder="Subfolder in the repo (optional)" spellcheck="false" aria-label="Subfolder in the repo"${tip('pf-src-sub')}>
         <button id="pfSrcAdd"${tip('pf-src-add')}>Add source</button><span id="pfSrcOut">${esc(pf.srcMsg || '')}</span></div>` : ''}
       ${s.groups.map((g) => `${g.title || (many && g.brand) ? `<h3>${many && g.brand ? `<span class="pf-brand">${brandLogo(g.brand)}${esc(BRAND_NAMES[g.brand] || g.brand)}</span>` : ''}${esc(g.title)}</h3>` : ''}${g.note ? `<div class="pf-gnote">${esc(g.note)}</div>` : ''}${g.items.length ? g.items.map(itemHtml).join('') : '<div class="pf-empty">None</div>'}`).join('')}</section>`).join('')}</div></div></div>`;
+  if ($('pfSrcAddr')) addBrowse($('pfSrcAddr')); // now, not from the watcher, so the focus put back next stays
   $('profilePage').querySelector('.pf-body').scrollTop = top;
   (document.getElementById(focused) || $('pfBack')).focus(); // the dialog keeps the keyboard after it redraws
   $('pfRefresh').onclick = () => loadProfile(true);
