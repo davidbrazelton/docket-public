@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { LAYERS, GROK_COMPAT, readGrokCompat } from './switches.mjs';
+import { readMarket, marketFile, pluginsIn, bringsText, sourceLine } from './plugin-sources.mjs';
 
 // ---------- the Timeline: one session's record file, entry by entry ----------
 // Categories, in the order the filter shows them. Hooks that ran without printing anything leave
@@ -387,6 +388,29 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
     toggle: { kind: 'plugin', key: p.key, on: p.on, note: `covers all of its hooks, skills, commands, agents and services${p.over.length ? `; also set in ${p.over.join(', ')}, which wins` : ''}` }, path: p.dir && fs.existsSync(path.join(p.dir, '.claude-plugin', 'plugin.json')) ? path.join(p.dir, '.claude-plugin', 'plugin.json') : undefined }));
   sections.push({ id: 'skills', title: 'Skills, commands, agents and plugins', note: 'Skills load when a task needs them; commands run when you type /name; agents are helpers the AI can start.',
     groups: [{ title: 'Skills', items: skills }, { title: 'Slash commands', items: commands }, { title: 'Agents', items: agents }, { title: 'Plugins', items: pluginItems }] });
+
+  // Plugin sources (#574): the marketplaces in <home>/plugins/known_marketplaces.json, and the plugins each lists
+  const known = readJson(path.join(home, 'plugins', 'known_marketplaces.json')) || {};
+  const sourceItems = [], sourceGroups = [];
+  for (const [name, m] of Object.entries(known)) {
+    const dir = m?.installLocation, market = dir && readMarket(dir), list = market ? pluginsIn(dir, market) : [];
+    const have = plugins.filter((p) => p.key.endsWith('@' + name)).length;
+    sourceItems.push(item({ name, detail: sourceLine(m?.source, home), size: 0, note: market ? `${list.length} plugin${list.length === 1 ? '' : 's'}${have ? `, ${have} installed` : ''}` : 'its list is not on this computer yet: Update reads it again',
+      path: market ? marketFile(dir) : undefined,
+      actions: [{ kind: 'source-update', key: name, label: 'Update' },
+        { kind: 'source-remove', key: name, label: 'Remove', confirm: `Remove the source ${name} from this desk?${have ? ` Claude Code also uninstalls the ${have} plugin${have === 1 ? '' : 's'} installed from it.` : ''}` }] }));
+    if (list.length) sourceGroups.push({ title: `Plugins in ${name}`, items: list.map((p) => {
+      const key = `${p.name}@${name}`, has = plugins.some((x) => x.key === key), runs = p.brings?.code.length;
+      const manifest = p.dir && path.join(p.dir, '.claude-plugin', 'plugin.json');
+      return item({ name: p.name, detail: p.description, size: 0, badge: has ? 'installed' : '', note: [p.version && `version ${p.version}`, bringsText(p)].filter(Boolean).join(' · '),
+        path: manifest && fs.existsSync(manifest) ? manifest : undefined,
+        actions: has ? [] : [{ kind: 'install', key, label: 'Install',
+          confirm: `Install ${p.name} on this desk?${runs ? `\n\nIt runs code on this computer: ${p.brings.code.join(', ')}. Install it only if you trust where it comes from.` : !p.brings ? `\n\nIt comes from ${p.from}, so what it brings is seen only once it is installed. Install it only if you trust where it comes from.` : ''}` }] });
+    }) });
+  }
+  sections.push({ id: 'sources', title: 'Plugin sources', addSource: true,
+    note: 'Where this desk installs Claude plugins from: GitHub, any other git host, or a folder on this computer. Installing puts a plugin on this desk only (its settings.json and plugins folder); turn it on and off under Skills > Plugins. Git signs in with the sign-in this computer already has for the host; Docket keeps none.',
+    groups: [{ title: 'Sources', items: sourceItems }, ...sourceGroups] });
 
   // Connected services (MCP servers). Only names and how they start: never their keys or headers.
   const cfgFile = isDefaultHome ? path.join(os.homedir(), '.claude.json') : path.join(home, '.claude.json');

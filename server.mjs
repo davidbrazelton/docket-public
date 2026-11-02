@@ -29,6 +29,7 @@ import { sessionTimeline, sessionSkills, buildProfile, parseMcpList, TIMELINE_CA
 import { hooksFor, hooksOffFor, cleanDocketHooks } from './docket-hooks.mjs';
 import { configFiles, readPrint, configChanges, reloadDecision, rulesNote, reloadNote } from './config-watch.mjs';
 import { LAYERS, cleanSettingSources, writePluginOn, GROK_COMPAT, writeGrokCompat } from './switches.mjs';
+import { sourceFrom, cloneCommands, noPrompts, plainError, readMarket, isClone, hostOf, CLONES } from './plugin-sources.mjs';
 import { makeGrokHome, writeGrokHooks, signedInFrom, deviceLink, isInside, HOOK_FILE as GROK_HOOK_FILE } from './grok-home.mjs';
 import { homeRootsFor } from './home-roots.mjs';
 import { homeInUse, freeHome } from './home-in-use.mjs';
@@ -201,9 +202,11 @@ const broadcastGateway = (url, signedIn) => { for (const { client, engine } of o
 const authCache = new Map(); // authKey -> { at, loggedIn }
 const logins = new Map();    // authKey -> { proc, url, out }
 
-function runClaude(client, args, { input, timeout = 20000, cwd } = {}) {
+// exe: another program to run the same way (git, for plugin sources); prompts: false turns git's sign-in prompts off.
+function runClaude(client, args, { input, timeout = 20000, cwd, exe = CLAUDE_EXE, prompts = true } = {}) {
   return new Promise((resolve) => {
-    const proc = spawn(CLAUDE_EXE, args, { env: { ...envFor(client), BROWSER: 'none' }, windowsHide: true, ...(cwd && fs.existsSync(cwd) ? { cwd } : {}) });
+    const env = { ...envFor(client), BROWSER: 'none' };
+    const proc = spawn(exe, args, { env: prompts ? env : noPrompts(env), windowsHide: true, ...(cwd && fs.existsSync(cwd) ? { cwd } : {}) });
     let out = '';
     proc.stdout.on('data', (d) => { out += d; });
     proc.stderr.on('data', (d) => { out += d; });
@@ -5988,6 +5991,75 @@ const mcpChecks = new Map();    // clientId -> the last Check connections result
 const mcpRow = (x) => ({ name: x.name, status: x.status, error: x.error || '',
   source: x.name === 'portal' || x.name === 'playwright' ? 'docket' : x.source || x.scope || '',
   target: x.config?.url || [x.config?.command, ...(x.config?.args || [])].filter(Boolean).join(' '), tools: x.tools?.length ?? null });
+// ---------- plugin sources (#574): add a marketplace, install from it, update and remove it ----------
+// All through the claude program at user scope, so only the desk home changes (its settings.json and plugins folder),
+// never a working folder. A marketplace in a repo's subfolder is cloned by Docket (just that folder) into
+// <home>/plugin-sources/<folder> and added as a folder source; <folder>.json beside it says where it came from.
+const sourceBusy = new Set(); // desk ids with one of these under way
+const knownMarkets = (client) => { try { return JSON.parse(fs.readFileSync(path.join(client.home, 'plugins', 'known_marketplaces.json'), 'utf8')) || {}; } catch { return {}; } };
+const runGit = (client, args, timeout = 300000) => runClaude(client, args, { exe: 'git', prompts: false, timeout, cwd: client.home });
+const runPlugin = (client, args) => runClaude(client, ['plugin', ...args, '--json'], { prompts: false, timeout: 300000, cwd: client.home });
+// The line claude printed for --json, or {}.
+const jsonLine = (out) => { for (const l of String(out).split(/\r?\n/).reverse()) { try { const j = JSON.parse(l); if (j && typeof j === 'object') return j; } catch {} } return {}; };
+async function addPluginSource(client, address, sub) {
+  const src = sourceFrom(address, sub);
+  let target = src.kind === 'folder' ? src.path : src.url, clone = '';
+  if (src.kind === 'folder' && !readMarket(src.path)) throw new Error(`${src.path} has no .claude-plugin${path.sep}marketplace.json. Pick the folder that holds the .claude-plugin folder.`);
+  if (src.kind === 'git' && src.sub) {
+    const root = path.join(client.home, CLONES), base = src.sub.split('/').pop().replace(/[^\w.-]/g, '-') || 'source';
+    fs.mkdirSync(root, { recursive: true });
+    clone = path.join(root, base);
+    for (let n = 2; fs.existsSync(clone) || fs.existsSync(clone + '.json'); n++) clone = path.join(root, `${base}-${n}`);
+    const drop = () => toTrash([clone, clone + '.json'].filter((p) => fs.existsSync(p))).catch(() => {});
+    for (const args of cloneCommands(src, clone)) {
+      const r = await runGit(client, args);
+      if (r.code !== 0) { await drop(); throw new Error(plainError(r.out, src.host)); }
+    }
+    target = path.join(clone, ...src.sub.split('/'));
+    if (!readMarket(target)) { await drop(); throw new Error(`The repo has no ${src.sub}/.claude-plugin/marketplace.json. Check the subfolder.`); }
+    fs.writeFileSync(clone + '.json', JSON.stringify({ url: src.url, sub: src.sub }, null, 2) + '\n');
+    const r = await runPlugin(client, ['marketplace', 'add', target, '--scope', 'user']);
+    if (r.code !== 0) { await drop(); throw new Error(plainError(r.out, src.host)); }
+    return jsonLine(r.out).marketplace || '';
+  }
+  const r = await runPlugin(client, ['marketplace', 'add', target, '--scope', 'user']);
+  if (r.code !== 0) throw new Error(plainError(r.out, src.host));
+  return jsonLine(r.out).marketplace || '';
+}
+// kind: install (key plugin@source), source-update or source-remove (key: the source's name). A plain line of what happened.
+async function pluginSourceAction(client, kind, key) {
+  const known = knownMarkets(client);
+  if (kind === 'install') {
+    const [name, market] = String(key).split('@');
+    if (!name || !known[market]) throw new Error('This desk has no such source');
+    const r = await runPlugin(client, ['install', `${name}@${market}`, '--scope', 'user']);
+    if (r.code !== 0) throw new Error(plainError(r.out, hostOf(readMarket(known[market].installLocation)?.plugins.find((e) => e?.name === name)?.source)));
+    return `Installed ${name} on this desk. It is on; turn it off under Skills > Plugins.`;
+  }
+  const m = known[key];
+  if (!m) throw new Error('This desk has no such source');
+  const clone = isClone(m.source?.path || m.installLocation, client.home);
+  if (kind === 'source-update') {
+    const host = (() => { try { return hostOf(JSON.parse(fs.readFileSync(clone + '.json', 'utf8'))); } catch { return hostOf(m.source); } })();
+    if (clone) { const g = await runGit(client, ['-C', clone, 'pull', '--ff-only']); if (g.code !== 0) throw new Error(plainError(g.out, host)); }
+    const r = await runPlugin(client, ['marketplace', 'update', key]);
+    if (r.code !== 0) throw new Error(plainError(r.out, host));
+    // a folder source's plugins are copies, so each installed one is taken in again too
+    let installed = {}; try { installed = JSON.parse(fs.readFileSync(path.join(client.home, 'plugins', 'installed_plugins.json'), 'utf8')).plugins || {}; } catch {}
+    const mine = Object.keys(installed).filter((k) => k.endsWith('@' + key)), failed = [];
+    for (const p of mine) { const u = await runPlugin(client, ['update', p, '--scope', 'user']); if (u.code !== 0) failed.push(`${p}: ${plainError(u.out)}`); }
+    if (failed.length) throw new Error(`The list was updated, but not every plugin: ${failed.join(' ')}`);
+    return `Updated ${key}${mine.length ? ` and its ${mine.length} installed plugin${mine.length === 1 ? '' : 's'}` : ''}.`;
+  }
+  if (kind === 'source-remove') {
+    const r = await runPlugin(client, ['marketplace', 'remove', key, '--scope', 'user']);
+    if (r.code !== 0) throw new Error(plainError(r.out));
+    if (clone) await toTrash([clone, clone + '.json'].filter((p) => fs.existsSync(p))).catch((e) => logEvent('plugin source clone left', `${clone}: ${e.message}`));
+    return String(jsonLine(r.out).message || `Removed ${key}.`).replace(/\n+/g, ' ');
+  }
+  throw new Error('Unknown plugin source action');
+}
+
 function profileFor(client, force) {
   const hit = profileCache.get(client.id);
   if (hit && !force && Date.now() - hit.at < 30000) return hit.profile;
@@ -6052,7 +6124,7 @@ async function profileRoutes(req, res, url, p) {
       return json(res, 200, s.mcpAtStart ? { from: 'start', at: s.mcpAtStart.at, servers: s.mcpAtStart.servers.map(mcpRow) } : { from: 'none', servers: [] });
     }
   }
-  const pm = p.match(/^\/api\/clients\/(\w+)\/profile(?:\/(file|show|mcp-check|switch))?$/);
+  const pm = p.match(/^\/api\/clients\/(\w+)\/profile(?:\/(file|show|mcp-check|switch|source|source-action))?$/);
   if (!pm) return false; // not one of these: the main handler carries on
   const client = clientById(pm[1]);
   if (!client) return json(res, 404, { error: 'Unknown desk' });
@@ -6062,6 +6134,22 @@ async function profileRoutes(req, res, url, p) {
     const check = { at: Date.now(), ok: r.code === 0, text: r.out.trim() || (r.code === 0 ? 'No servers.' : 'claude mcp list did not answer'), servers: parseMcpList(r.out) };
     mcpChecks.set(client.id, check);
     return json(res, 200, check);
+  }
+  if ((pm[2] === 'source' || pm[2] === 'source-action') && req.method === 'POST') {
+    // A plugin source: add one ({ address, sub }), or install from, update or remove one ({ kind, key }).
+    const b = await readBody(req);
+    if (sourceBusy.has(client.id)) return json(res, 409, { error: 'This desk is already adding, installing or updating a plugin source; wait for it to finish.' });
+    sourceBusy.add(client.id);
+    try {
+      let message;
+      if (pm[2] === 'source') { const name = await addPluginSource(client, b.address, b.sub); message = `Added the source${name ? ` ${name}` : ''}. Its plugins are listed below.`; }
+      else message = await pluginSourceAction(client, b.kind, b.key);
+      logEvent('plugin source', `${client.name}: ${pm[2] === 'source' ? 'add' : `${b.kind} ${b.key}`}: ${message}`);
+      return json(res, 200, { ok: true, message });
+    } catch (e) {
+      logEvent('plugin source failed', `${client.name}: ${pm[2] === 'source' ? 'add' : `${b.kind} ${b.key}`}: ${e.message}`);
+      return json(res, 400, { error: e.message });
+    } finally { sourceBusy.delete(client.id); profileCache.delete(client.id); }
   }
   if (pm[2] === 'switch' && req.method === 'POST') {
     // One checkbox on the profile page: { kind, key, on }. Each changes one setting for sessions started after it.

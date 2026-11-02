@@ -986,6 +986,11 @@ a.pf-sum:hover { background: var(--panel-2); }
 .pf-item .pf-switch { margin: 0; align-self: center; cursor: pointer; }
 .pf-item .pf-switch-note { font-size: 11px; color: var(--accent); }
 .pf-item .pf-input { display: block; width: min(100%, 520px); margin: 4px 0 2px; font: 13px/1.4 ui-monospace, Consolas, monospace; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
+.pf-item .pf-act { font-size: 12px; padding: 1px 10px; align-self: center; }
+.pf-item .pf-act:disabled, #pfSrcAdd:disabled { opacity: .6; cursor: progress; }
+.pf-add { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 10px; font-size: 12px; color: var(--muted); }
+.pf-add input { font: 13px/1.4 ui-monospace, Consolas, monospace; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
+#pfSrcAddr { flex: 1 1 360px; } #pfSrcSub { flex: 0 1 220px; } #pfSrcOut { flex-basis: 100%; }
 .pf-item.d1 { margin-left: 22px; } .pf-item.d2 { margin-left: 44px; } .pf-item.d3 { margin-left: 66px; }
 .pf-links { padding: 0 10px 6px; }
 .pf-links a { font-size: 12px; color: var(--accent); margin-right: 10px; }
@@ -1460,6 +1465,12 @@ const HELP = [
     ['pf-switch', 'On/off checkbox', 'Turn this on or off for this desk. Sessions started after the change get it; open sessions keep what they started with'],
     ['pf-choice', 'Choose a setting', 'Pick this setting for the desk. Sessions started after the change get it; open sessions keep what they started with'],
     ['pf-input', 'Type a setting', 'Type the setting for this desk; it is saved when you press Enter or leave the box. Empty clears it'],
+    ['pf-src-addr', 'Plugin source address', 'Where the plugins are: a git address on any host (GitHub, GitLab, Bitbucket, Azure DevOps, a company server), owner/repo for GitHub, or the full path of a folder on this computer that holds .claude-plugin'],
+    ['pf-src-sub', 'Subfolder', 'The folder in the repo that holds .claude-plugin, when it is not at the repo\'s top. Docket then copies just that folder from the repo'],
+    ['pf-src-add', 'Add source', 'Add this plugin source to this desk and list its plugins. Git signs in with the sign-in this computer already has for the host; Docket keeps none'],
+    ['pf-install', 'Install', 'Install this plugin on this desk only. It starts on; turn it off under Skills > Plugins. Sessions started after it get it'],
+    ['pf-src-update', 'Update', 'Read this source again (git pull for a repo Docket copied) and take in the newer version of each plugin installed from it'],
+    ['pf-src-remove', 'Remove', 'Remove this source from this desk. Claude Code also uninstalls the plugins installed from it. A folder on this computer is left as it is'],
   ]],
   ['Small windows and setup', [
     ['browse', 'Browse…', () => `Choose the folder in ${OS.files} instead of typing it. It opens at the folder already typed`],
@@ -7816,7 +7827,10 @@ function renderProfile() {
     const sw = !it.toggle ? '' : it.toggle.options ? `<select class="pf-switch" data-pf-switch="${key}"${tip('pf-choice')}>${it.toggle.options.map(([v, l]) => `<option value="${esc(v)}"${v === it.toggle.value ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select>`
       : `<input type="checkbox" class="pf-switch" data-pf-switch="${key}"${it.toggle.on ? ' checked' : ''}${tip('pf-switch')}>`;
     const swNote = it.toggle ? `<span class="pf-switch-note">${esc([it.toggle.note, 'applies to sessions started after a change'].filter(Boolean).join(' · '))}</span>` : '';
-    const row = `${sw}<span class="pf-name">${esc(it.name)}</span>${it.status ? `<span class="mcp-st ${it.status}">${esc(it.statusText)}</span>` : ''}${it.badge ? `<span class="pf-badge">${esc(it.badge)}</span>` : ''}<span class="pf-detail ${it.code ? 'code' : ''}">${esc(it.detail || '')}</span>${meta ? `<span class="pf-meta">${esc(meta)}</span>` : ''}${swNote}`;
+    // Buttons that do one thing to the desk (a plugin source's Install, Update and Remove), each asking first if it says to.
+    const acts = (it.actions || []).map((a, i) => { const ak = `${key}a${i}`; pf.texts[ak] = a;
+      return `<button class="pf-act" data-pf-act="${ak}"${tip(a.kind === 'install' ? 'pf-install' : a.kind === 'source-update' ? 'pf-src-update' : 'pf-src-remove')}>${esc(a.label)}</button>`; }).join('');
+    const row = `${sw}<span class="pf-name">${esc(it.name)}</span>${it.status ? `<span class="mcp-st ${it.status}">${esc(it.statusText)}</span>` : ''}${it.badge ? `<span class="pf-badge">${esc(it.badge)}</span>` : ''}<span class="pf-detail ${it.code ? 'code' : ''}">${esc(it.detail || '')}</span>${meta ? `<span class="pf-meta">${esc(meta)}</span>` : ''}${swNote}${acts}`;
     // A box to type a setting into (the plan folder's path and marker pattern), saved when it loses the focus or on Enter.
     const input = it.input ? `<input class="pf-input" data-pf-input="${key}" value="${esc(it.input.value)}" placeholder="${esc(it.input.placeholder || '')}" spellcheck="false" aria-label="${esc(it.name)}"${tip('pf-input')}>${it.input.note ? `<span class="pf-switch-note">${esc(it.input.note)}</span>` : ''}` : '';
     const links = input || ((it.links || []).length ? `<div class="pf-links">Runs ${it.links.map((l, i) => { const lk = `${key}l${i}`; pf.texts[lk] = l; return `<a href="#" data-pf-link="${lk}"${tip('pf-link')}>${esc(l.name)}</a>`; }).join('')}</div>` : '');
@@ -7832,6 +7846,9 @@ function renderProfile() {
     <div class="pf-cols"><nav class="pf-side" aria-label="Sections of the Inspector">${profileSummaryHtml(s?.id)}</nav><div class="pf-body"><div class="pf-inner">${[s].filter(Boolean).map((s) => `<section class="pf-sec" id="pf-${s.id}"><h2>${esc(s.title)}</h2><div class="pf-note">${esc(s.note || '')}</div>
       ${s.check ? `<div class="mcp-sum"><button id="pfMcpCheck"${tip('pf-check')}>${check ? 'Check again' : 'Check connections'}</button><span id="pfMcpOut">${check ? esc(mcpCounts(check.servers)) + ` · checked ${esc(new Date(check.at).toLocaleString())}` : 'Not checked since Docket started.'}</span>
         ${check ? `<details><summary>What claude mcp list printed</summary><pre>${esc(check.text)}</pre></details>` : ''}</div>` : ''}
+      ${s.addSource ? `<div class="pf-add"><input id="pfSrcAddr" value="${esc(pf.srcAddr || '')}" placeholder="A git address (https://… or git@…) or the full path of a folder" spellcheck="false" aria-label="Plugin source address"${tip('pf-src-addr')}>
+        <input id="pfSrcSub" value="${esc(pf.srcSub || '')}" placeholder="Subfolder in the repo (if not at its top)" spellcheck="false" aria-label="Subfolder in the repo"${tip('pf-src-sub')}>
+        <button id="pfSrcAdd"${tip('pf-src-add')}>Add source</button><span id="pfSrcOut">${esc(pf.srcMsg || '')}</span></div>` : ''}
       ${s.groups.map((g) => `${g.title || (many && g.brand) ? `<h3>${many && g.brand ? `<span class="pf-brand">${brandLogo(g.brand)}${esc(BRAND_NAMES[g.brand] || g.brand)}</span>` : ''}${esc(g.title)}</h3>` : ''}${g.note ? `<div class="pf-gnote">${esc(g.note)}</div>` : ''}${g.items.length ? g.items.map(itemHtml).join('') : '<div class="pf-empty">None</div>'}`).join('')}</section>`).join('')}</div></div></div>`;
   $('profilePage').querySelector('.pf-body').scrollTop = top;
   (document.getElementById(focused) || $('pfBack')).focus(); // the dialog keeps the keyboard after it redraws
@@ -7841,6 +7858,23 @@ function renderProfile() {
     try { const r = await api(`/api/clients/${d.client.id}/profile/mcp-check`, {}); if (pf.data?.client.id === d.client.id) { pf.data.mcpCheck = r; renderProfile(); } }
     catch (e) { $('pfMcpOut').textContent = e.message; $('pfMcpCheck').disabled = false; }
   };
+  if ($('pfSrcAdd')) {
+    $('pfSrcAddr').oninput = () => { pf.srcAddr = $('pfSrcAddr').value; };
+    $('pfSrcSub').oninput = () => { pf.srcSub = $('pfSrcSub').value; };
+    $('pfSrcAddr').onkeydown = $('pfSrcSub').onkeydown = (e) => { if (e.key === 'Enter') $('pfSrcAdd').click(); };
+    $('pfSrcAdd').onclick = () => pfSource(d.client.id, 'source', { address: $('pfSrcAddr').value, sub: $('pfSrcSub').value }, 'Adding the source (a git clone can take a minute or two)…', true);
+  }
+}
+// A plugin source change (add one, or install, update or remove): the buttons wait while it runs, then the desk is read again.
+// What happened shows beside Add source; an error also in a message box, so it is seen from anywhere on the page.
+async function pfSource(id, what, body, busy, clear) {
+  for (const b of $('profilePage').querySelectorAll('#pfSrcAdd, .pf-act')) b.disabled = true;
+  if ($('pfSrcOut')) $('pfSrcOut').textContent = busy;
+  try {
+    const r = await api(`/api/clients/${id}/profile/${what}`, body);
+    pf.srcMsg = r.message; if (clear) pf.srcAddr = pf.srcSub = '';
+  } catch (err) { pf.srcMsg = err.message; alert(err.message); }
+  if (pf.id === id) loadProfile(true);
 }
 // The Inspector's section list: one line per section with its count and the size of its text (on is the one shown),
 // what a session in the company folder starts with, and everything added up. A line shows its section.
@@ -7909,6 +7943,15 @@ $('profilePage').addEventListener('change', async (e) => { // an on/off checkbox
 });
 $('profilePage').addEventListener('toggle', (e) => { const el = e.target; if (el.dataset?.pf && el.open) pfFill(el, pf.texts[el.dataset.pf]); }, true);
 $('profilePage').addEventListener('click', async (e) => {
+  const act = e.target.closest('[data-pf-act]');
+  if (act) { // inside a row's summary: the button only, not opening the row
+    e.preventDefault(); e.stopPropagation();
+    const a = pf.texts[act.dataset.pfAct];
+    if (a.confirm && !confirm(a.confirm)) return;
+    const busy = { install: `Installing ${a.key.split('@')[0]}…`, 'source-update': `Updating ${a.key}…`, 'source-remove': `Removing ${a.key}…` }[a.kind];
+    act.textContent = busy;
+    return pfSource(pf.data.client.id, 'source-action', { kind: a.kind, key: a.key }, busy);
+  }
   const go = e.target.closest('[data-pf-go]'), show = e.target.closest('[data-pf-show]'), link = e.target.closest('[data-pf-link]');
   if (go) { e.preventDefault(); pfGo(go.dataset.pfGo); }
   if (show) { e.preventDefault(); api(`/api/clients/${pf.data.client.id}/profile/show`, { path: show.dataset.pfShow }).catch((err) => alert(err.message)); }
