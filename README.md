@@ -1,13 +1,29 @@
 # Docket
 
-A page on your computer for starting, resuming and watching Claude Code sessions, so your work does not depend on the Claude desktop app. It runs on Windows 10 or 11 and on macOS.
+A page on your computer for starting, resuming and watching AI coding sessions, so your work does not depend on any one AI company's desktop app. It runs on Windows 10 or 11 and on macOS.
 
 ## What you need
 
 - **Node.js** 20 or newer (the LTS version from nodejs.org).
 - **Git.**
-- **Claude Code:** `npm install -g @anthropic-ai/claude-code`
-- Optional: the **GitHub CLI** (`gh`) to show pull request status on sessions, and the **AWS CLI** for a desk that runs on Amazon Bedrock.
+- **At least one AI tool** from the table below.
+- Optional: the **GitHub CLI** (`gh`) to show pull request status on sessions, and the **AWS CLI** for a desk that runs Claude through Amazon Bedrock.
+
+### Supported AI tools
+
+| AI tool | Made by | Install | Signs in with |
+|---|---|---|---|
+| Claude Code | Anthropic | `npm install -g @anthropic-ai/claude-code` | a Claude account, or Amazon Bedrock (your company's AWS account) |
+| Codex | OpenAI | `npm install -g @openai/codex` (Windows also: `winget install -e --id OpenAI.Codex`) | a ChatGPT account (Plus, Pro, Business or Enterprise) |
+| Grok | xAI | Mac: `curl -fsSL https://x.ai/cli/install.sh \| bash`<br>Windows: `irm https://x.ai/cli/install.ps1 \| iex` | a Grok account |
+
+Each desk picks one or more of these, and each signs in on its own. Docket checks which tools are on the computer and shows how to install a missing one. Docket also recognizes an API key for each tool (Anthropic, OpenAI or xAI) set in that tool's own settings or in the desk's environment; the setup window does not ask for one.
+
+### Connections (optional)
+
+- **GitHub** (`gh`): pull request status on sessions.
+- **Jira** and **Azure DevOps**: ticket and pull request status, for desks set up for them in ☰ > Desks.
+- **AWS CLI**: only for a desk that runs Claude through Amazon Bedrock.
 
 ## Install on Windows
 
@@ -33,7 +49,7 @@ If Windows refuses to run the script because it came from the internet, run `Unb
 
 ## Install on a Mac
 
-Install Node.js, Git and Claude Code first, for example with Homebrew: `brew install node git gh`, then `npm install -g @anthropic-ai/claude-code`. Then in Terminal:
+Install Node.js, Git and at least one AI tool from the table above first, for example with Homebrew: `brew install node git gh`, then the AI tool's install line. Then in Terminal:
 
 ```bash
 git clone https://github.com/davidbrazelton/docket-public.git ~/Work/docket
@@ -43,7 +59,7 @@ npx playwright install chromium
 ./install-mac.sh
 ```
 
-`install-mac.sh` makes Docket start by itself when you sign in to the Mac, adds `Docket.command` to `~/Applications` (it starts Docket if needed and opens it), and starts it now. Run it from a Terminal where `claude`, `git` and `node` work, since Docket uses that Terminal's PATH. `--shortcut-only` skips the start at sign-in; `./remove-mac.sh` undoes the install.
+`install-mac.sh` makes Docket start by itself when you sign in to the Mac, adds `Docket.command` to `~/Applications` (it starts Docket if needed and opens it), and starts it now. Run it from a Terminal where `git`, `node` and your AI tools (`claude`, `codex`, `grok`) work, since Docket uses that Terminal's PATH. `--shortcut-only` skips the start at sign-in; `./remove-mac.sh` undoes the install.
 
 ## First start
 
