@@ -9,12 +9,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { freePorts } from './free-port.mjs';
 import net from 'node:net';
 import WebSocket from 'ws';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
-const PORT = 4483, RUNNER_PORT = 4493;
+const [PORT, RUNNER_PORT, REMOTE_PORT] = await freePorts(3);
 const URL_ = `http://127.0.0.1:${PORT}`;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'docket-494-'));
 const STATE = path.join(tmp, 'state.json');
@@ -24,7 +25,6 @@ const SETUP = {
   remoteControl: { on: true, desk: 't1', secret: 'JBSWY3DPEHPK3PXP' },
   remoteDesks: [{ id: 'rabc123', name: 'Other PC', address: 'https://10.255.255.1:4402', pin: 'AB:CD:EF:01:23:45:67:89', cert: '' }],
 };
-const REMOTE_PORT = PORT + 20;
 const setupKept = () => { const st = JSON.parse(fs.readFileSync(STATE, 'utf8')); assert.deepEqual({ remoteControl: st.remoteControl, remoteDesks: st.remoteDesks }, SETUP, 'the remote setup is kept'); assert.equal(st.remoteFeatures, undefined, 'the switch is never saved'); };
 const hostListening = () => new Promise((resolve) => { const c = net.connect(REMOTE_PORT, '127.0.0.1'); c.on('connect', () => { c.destroy(); resolve(true); }); c.on('error', () => resolve(false)); });
 const remoteRowsShown = async () => (await api('/api/clients?quick=1')).json.some((c) => c.remote);
@@ -65,7 +65,7 @@ const refused = async () => {
 function startDocket() {
   server = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
-    env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_REMOTE_PORT: String(PORT + 20), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
+    env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_REMOTE_PORT: String(REMOTE_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: STATE, PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
       PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs') },
   });

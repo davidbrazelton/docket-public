@@ -8,10 +8,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { freePorts } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
-const PORT = 4488, RUNNER_PORT = 4498;
+const [PORT, RUNNER_PORT] = await freePorts(2);
 const URL_ = `http://127.0.0.1:${PORT}`;
 const tmp = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'docket-303s-')));
 const user = path.join(tmp, 'user'), work = path.join(tmp, 'Projects');

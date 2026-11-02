@@ -8,10 +8,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { freePorts } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
-const PORT = 4484, RUNNER_PORT = 4494;
+const [PORT, RUNNER_PORT] = await freePorts(2);
 const URL_ = `http://127.0.0.1:${PORT}`;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'docket-254-'));
 const STATE = path.join(tmp, 'state.json');
