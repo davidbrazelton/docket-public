@@ -664,6 +664,8 @@ header.top #feedbackBtn { padding: 4px 8px; }
 /* The folders step: reuse a setup or start fresh, and the folders found in the person's AI history. */
 .wiz-radio { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
 .wiz-radio input { margin-top: 3px; flex: none; }
+.wiz-field { display: flex; flex-direction: column; gap: 4px; margin: -4px 0 0 24px; font-size: 13px; color: var(--muted); }
+.wiz-field input { font: inherit; color: var(--text); }
 .wiz-radio small, .wiz-found small { display: block; font-weight: 400; color: var(--muted); }
 .wiz-found { display: flex; flex-direction: column; gap: 4px; margin-top: -6px; }
 .wiz-found button { text-align: left; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
@@ -977,6 +979,7 @@ a.pf-sum:hover { background: var(--panel-2); }
 .pf-item .pf-meta { font-size: 11px; color: var(--muted); }
 .pf-item .pf-switch { margin: 0; align-self: center; cursor: pointer; }
 .pf-item .pf-switch-note { font-size: 11px; color: var(--accent); }
+.pf-item .pf-input { display: block; width: min(100%, 520px); margin: 4px 0 2px; font: 13px/1.4 ui-monospace, Consolas, monospace; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 7px; }
 .pf-item.d1 { margin-left: 22px; } .pf-item.d2 { margin-left: 44px; } .pf-item.d3 { margin-left: 66px; }
 .pf-links { padding: 0 10px 6px; }
 .pf-links a { font-size: 12px; color: var(--accent); margin-right: 10px; }
@@ -1328,6 +1331,8 @@ const HELP = [
     ['sec-cost', '$ Cost', 'Cost: what this session and this desk have spent'],
     ['sec-plan', '📋 Plan', 'Plan: the plan this session coordinates, or the task it holds in one: each task, its state, which session holds it, and its links'],
     ['plan-badge', 'Plan badge', 'This session coordinates a plan: how many of its tasks are done, counting the tasks of the plans under it'],
+    ['plan-badge-folder', 'Plan badge', 'This session holds a plan in the desk\'s plan folder (its marker file says so): how many of its lines are done, counting the plans under it'],
+    ['plan-tree', 'Plan tree', 'Every plan in this desk\'s plan folder, as a tree with progress, broken links and plans nothing links to (opens in its own window)'],
     ['sec-files', '📄 Files', 'Files: files Claude made or showed you in this session'],
     ['sec-prs', 'Pull requests', 'Pull requests: changes this session sent to GitHub for review, its tickets (Jira, GitHub issues or Azure DevOps work items), the git branches it worked on, and the lines it changed'],
     ['lines', 'Lines changed', 'Lines this session added and removed in the files it edited, helper agents included: the same total as on the Usage page'],
@@ -1392,6 +1397,7 @@ const HELP = [
     ['bi-undo', 'Undo…', 'Pick which copies this run made go to the Recycle Bin (the Trash on a Mac). The originals are never touched'],
     ['bi-undo-pick', 'Copy to undo', 'Send this copy to the Recycle Bin. Copies continued since they were brought in are not ticked: tick one to send it anyway, with what was added'],
     ['menu-history', 'Recently viewed', 'The last 200 sessions you viewed in this browser, day by day, so you can go back to one'],
+    ['menu-plantree', 'Plan tree', 'Every plan in this desk\'s plan folder, as a tree with progress, broken links and plans nothing links to (opens in its own window)'],
     ['menu-color', 'Settings > Color', 'Pick Docket\'s main color'],
     ['menu-tools', 'Tools', 'Bring in Past Sessions, and Copy a Desk'],
     ['menu-gauges', 'Gauges', 'AI Usage, and the memory and disk Docket uses'],
@@ -1440,6 +1446,7 @@ const HELP = [
     ['pf-show', 'Show in folder', `Show this file in ${OS.files}`],
     ['pf-switch', 'On/off checkbox', 'Turn this on or off for this desk. Sessions started after the change get it; open sessions keep what they started with'],
     ['pf-choice', 'Choose a setting', 'Pick this setting for the desk. Sessions started after the change get it; open sessions keep what they started with'],
+    ['pf-input', 'Type a setting', 'Type the setting for this desk; it is saved when you press Enter or leave the box. Empty clears it'],
   ]],
   ['Small windows and setup', [
     ['browse', 'Browse…', () => `Choose the folder in ${OS.files} instead of typing it. It opens at the folder already typed`],
@@ -1508,7 +1515,10 @@ const HELP = [
     ['w-brand-home', 'Grok or Codex home folder', 'Where this desk\'s sign-in and settings for that brand are kept'],
     ['w-default', 'Default brand for new sessions', 'The brand a new session starts on unless you pick another beside the model'],
     ['w-split', 'Send work to its own session', 'On: a session hands real work to a new session of its own and stays free to talk. Off: each session does the work itself, and starts a new one only when asked'],
-    ['w-plans', 'Use Docket\'s plans', 'On: sessions can keep a plan of tasks for a larger piece of work and hand the tasks out to child sessions, shown in the Plan section. Off: no plans'],
+    ['w-plans', 'Docket\'s plans', 'Sessions can keep a plan of tasks for a larger piece of work and hand the tasks out to child sessions, shown in the Plan section'],
+    ['w-plans-folder', 'A plan folder, read-only', 'Another system keeps the plans as markdown checklists in a folder; Docket only shows them'],
+    ['w-plan-folder', 'The plan folder', 'The folder of markdown checklist plans. Docket reads every folder under it and never writes there'],
+    ['w-plans-none', 'No plans', 'Sessions get no plan tools or instructions, and the Plan section stays hidden'],
     ['w-folder', 'Working folder', 'Where new sessions start'],
     ['w-folder-pick', 'A folder found on this computer', 'Use this folder as the working folder. Docket found it in your own AI history on this computer'],
     ['w-reuse', 'Use the setup you already have', 'This desk uses the folder that brand already signs in from on this computer, keeping its sign-in, memory and past chats'],
@@ -4043,7 +4053,7 @@ $('menuBtn').onclick = (e) => {
   e.stopPropagation();
   if (document.getElementById('ctx')) { closeMenu(); return; }
   const desks = [...S.clients.filter((c) => c.id === S.client), ...S.clients.filter((c) => c.id !== S.client)]; // this desk first
-  const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage'], 'hr', ...desks.map((c) => ['profile:' + c.id, `${c.name} Inspector`])]], ...(S.remoteOn ? [['remote', 'Remote Desks']] : []), ['history', 'Recently viewed'], 'hr',
+  const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage'], 'hr', ...desks.map((c) => ['profile:' + c.id, `${c.name} Inspector`])]], ...(S.remoteOn ? [['remote', 'Remote Desks']] : []), ['history', 'Recently viewed'], ...(S.clients.find((c) => c.id === S.client)?.planSystem === 'folder' ? [['plantree', 'Plan tree']] : []), 'hr',
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
@@ -4170,6 +4180,7 @@ $('menuBtn').onclick = (e) => {
     if (act === 'help') showHelp();
     if (act === 'tour') startTour();
     if (act === 'history') showViewHistory();
+    if (act === 'plantree') openPlanTree();
     if (act === 'machine') showMachineUse();
     if (act === 'startup') showStartupSettings();
     if (act === 'usage') window.open('/usage?' + new URLSearchParams({ client: S.client }), 'docket-usage');
@@ -5252,9 +5263,10 @@ function companyWizard({ first = false } = {}) {
   return new Promise((resolve) => {
     // kind: how it uses Claude ('claude' account, 'bedrock', or '' for no Claude); brands: the others picked, with
     // their home folders in homes; def: the default brand for new sessions ('' is Claude).
-    // split: its sessions send real work to child sessions on their own (the desk's splitWork). plans: it uses Docket's
-    // plans (planSystem docket rather than none); off by default, since it adds tools and instructions to every session.
-    const w = { step: NAME, name: '', kind: '', brands: [], split: true, plans: false, homes: {}, homesTyped: {}, reuse: {}, def: '', home: '', folder: '', email: '', awsProfile: '', awsRegion: '', id: null,
+    // split: its sessions send real work to child sessions on their own (the desk's splitWork). plans: its plan system,
+    // docket, folder (a folder of plans another system keeps, shown read-only, in planFolder) or none; none by default,
+    // since Docket's plans add tools and instructions to every session.
+    const w = { step: NAME, name: '', kind: '', brands: [], split: true, plans: 'none', planFolder: '', homes: {}, homesTyped: {}, reuse: {}, def: '', home: '', folder: '', email: '', awsProfile: '', awsRegion: '', id: null,
       homeTyped: false, folderTyped: false, check: null, checking: false, error: '', signedIn: null, si: null, code: '', inUse: {}, keepInUse: {} };
     const card = $('wizCard');
     $('wiz').classList.toggle('first', first); $('wiz').hidden = false;
@@ -5378,9 +5390,14 @@ function companyWizard({ first = false } = {}) {
       if (w.step === SPLIT) return `<p>How should ${esc(w.name)}'s sessions handle real work, like a build or a fix?</p>
         <label class="wiz-radio"><input type="checkbox" id="wSplit"${tip('w-split')} ${w.split ? 'checked' : ''}><span><b>Send work to its own session</b>
           <small>A session you start hands real work to a new session of its own, listed under it, so your conversation stays free to talk while the work runs. Untick it to have each session do the work itself; it still starts a new session when you ask for one. You can change this later, in the desk's Inspector, under Switches.</small></span></label>`;
-      if (w.step === PLANS) return `<p>Should ${esc(w.name)}'s sessions use Docket's plans?</p>
-        <label class="wiz-radio"><input type="checkbox" id="wPlans"${tip('w-plans')} ${w.plans ? 'checked' : ''}><span><b>Use Docket's plans</b>
-          <small>For a bigger piece of work, a session can write a plan: a checklist of tasks, in order, which it hands to sessions of their own. You follow them in the Plan section. Leave it unticked if you are not sure; you can turn it on later, in the desk's Inspector, under Switches.</small></span></label>`;
+      if (w.step === PLANS) return `<p>How should ${esc(w.name)}'s sessions keep plans for bigger pieces of work? You can change this later, in the desk's Inspector, under Switches.</p>
+        <label class="wiz-radio"><input type="radio" name="wPlans" value="docket"${tip('w-plans')} ${w.plans === 'docket' ? 'checked' : ''}><span><b>Docket's plans</b>
+          <small>A session can write a plan: a checklist of tasks, in order, which it hands to sessions of their own. You follow them in the Plan section.</small></span></label>
+        <label class="wiz-radio"><input type="radio" name="wPlans" value="folder"${tip('w-plans-folder')} ${w.plans === 'folder' ? 'checked' : ''}><span><b>A plan folder, read-only</b>
+          <small>Another system already keeps this desk's plans, as markdown checklists in a folder. Docket shows them in the Plan section and the Plan tree, and never changes them. Sessions get no plan tools or plan instructions from Docket.</small></span></label>
+        ${w.plans === 'folder' ? `<label class="wiz-field">The plan folder <input id="wPlanFolder"${tip('w-plan-folder')} value="${esc(w.planFolder)}" placeholder="the full path, or leave it empty to set it later" spellcheck="false"></label>` : ''}
+        <label class="wiz-radio"><input type="radio" name="wPlans" value="none"${tip('w-plans-none')} ${w.plans === 'none' ? 'checked' : ''}><span><b>None</b>
+          <small>No plans. Pick this if you are not sure.</small></span></label>`;
       if (w.step === FOLDERS) {
         const clash = (p) => takenHome(p) ? '<div class="wiz-err">Another desk already uses this folder. Each desk needs its own, or they would share one sign-in.</div>' : '';
         const inside = (e, typed) => { const d = !typed && w.check?.roots && defaultHome(roots(), w.name, e); return d?.clash ? ` Not ${esc(d.clash)}: that is inside Docket's own folder (${OS.caps}).` : ''; };
@@ -5503,7 +5520,8 @@ function companyWizard({ first = false } = {}) {
       if (t.dataset.home) { w.homes[t.dataset.home] = t.value; w.homesTyped[t.dataset.home] = true; inspect(); }
       if (t.id === 'wDefault') w.def = t.value;
       if (t.id === 'wSplit') w.split = t.checked;
-      if (t.id === 'wPlans') w.plans = t.checked;
+      if (t.name === 'wPlans') { w.plans = t.value; w.error = ''; render(); }
+      if (t.id === 'wPlanFolder') w.planFolder = t.value;
       if (t.id === 'wEmail') w.email = t.value;
       if (t.id === 'wCode') { w.code = t.value; card.querySelector('[data-w="code"]').disabled = !w.code.trim(); }
       if (t.id === 'wRegion') w.awsRegion = t.value;
@@ -5512,7 +5530,7 @@ function companyWizard({ first = false } = {}) {
     // Every company has a Claude home (the server needs one), so one without Claude still sends it, with Claude
     // left out (brandsOff). A brand not picked sends an empty home folder, which takes it away again after Back.
     const save = (extra = {}) => api('/api/clients/save-one', { id: w.id, name: w.name, home: homeOf('claude'), folder: w.folder, email: w.kind === 'claude' ? w.email : '',
-      ...Object.fromEntries(OTHER.map(([e, , k]) => [k, w.brands.includes(e) ? homeOf(e) : ''])), brandsOff: w.kind ? [] : ['claude'], defaultEngine: w.def, splitWork: w.split, planSystem: w.plans ? 'docket' : 'none',
+      ...Object.fromEntries(OTHER.map(([e, , k]) => [k, w.brands.includes(e) ? homeOf(e) : ''])), brandsOff: w.kind ? [] : ['claude'], defaultEngine: w.def, splitWork: w.split, planSystem: w.plans, ...(w.plans === 'folder' && w.planFolder.trim() ? { planFolder: { path: w.planFolder.trim() } } : {}),
       ...(w.kind === 'bedrock' && w.awsProfile.trim() ? { awsProfile: w.awsProfile, awsRegion: w.awsRegion || 'us-east-1' } : {}), ...extra });
     const enterSignin = async () => {
       w.step = SIGNIN; w.signedIn = null; w.si = null; w.already = null; w.forced = null;
@@ -5552,7 +5570,10 @@ function companyWizard({ first = false } = {}) {
           return render();
         }
         if (w.step === SPLIT) { w.step = PLANS; return render(); }
-        if (w.step === PLANS) { w.step = FOLDERS; return render(); }
+        if (w.step === PLANS) {
+          if (w.plans === 'folder' && w.planFolder.trim() && !/^([a-zA-Z]:[\\/]|[\\/])/.test(w.planFolder.trim())) { w.error = 'Give the plan folder as a full path, or leave it empty to set it later.'; return render(); }
+          w.error = ''; w.step = FOLDERS; return render();
+        }
         if (w.step === FOLDERS) {
           // A company is saved now, so it can sign in on the next step; a Bedrock-only one once its AWS profile is chosen.
           if (w.kind === 'bedrock' && !w.brands.length) return enterSignin();
@@ -6522,28 +6543,47 @@ function renderTasks() {
 // ---------- plans (#180) ----------
 // A desk on Docket's own plan system: a session coordinating a plan shows its progress on its row, and the Plan
 // section lists the plan it coordinates and the tasks it holds in other plans. Fetched again whenever a plan changes.
+// A desk on a plan folder (#180 step 3) instead: another system keeps the plans, and Docket only shows them. A session
+// a marker file names shows the plan it holds, read-only, and the whole folder opens in the Plan tree window. The
+// folder changes outside Docket, so it is asked again when the details are drawn and the last answer is 30 seconds old.
 async function loadPlans() {
-  const client = S.client; S.plans.client = client;
+  const client = S.client; S.plans.client = client; S.plans.loading = true;
   const d = client ? await api(`/api/plans?client=${encodeURIComponent(client)}`).catch(() => null) : null;
   if (S.client !== client) return;
-  S.plans = { client, on: !!d?.on, plans: d?.plans || [] };
+  S.plans = { client, on: !!d?.on, folder: !!d?.folder, error: d?.error || '', count: d?.count || 0, plans: d?.plans || [], at: Date.now() };
   S.planDetail = {};
   renderList(); if (!S.schedOpen) renderTasks();
 }
-const ownPlan = (id) => S.plans.plans.find((p) => p.coordinator === id);
+// A marker file carries the start of a session id; Docket's own plans carry the whole id.
+const holdsPlan = (p, id) => p.holders.some((h) => h === id || (S.plans.folder && h.length >= 6 && id.startsWith(h)));
+const ownPlan = (id) => S.plans.folder ? S.plans.plans.find((p) => holdsPlan(p, id)) : S.plans.plans.find((p) => p.coordinator === id);
 function planBadge(id) {
   const p = S.plans.on && ownPlan(id); if (!p) return '';
-  return `<span class="tag plan-tag" title="${esc(`${tipText('plan-badge')}\n${p.title}: ${p.done} of ${p.total} done`)}">📋 ${p.done}/${p.total}</span>`;
+  return `<span class="tag plan-tag" title="${esc(`${tipText(S.plans.folder ? 'plan-badge-folder' : 'plan-badge')}\n${p.title}: ${p.done} of ${p.total} done`)}">📋 ${p.done}/${p.total}</span>`;
 }
 function planDetail(id) {
   const c = S.planDetail[id];
-  if (!c) { S.planDetail[id] = { at: Date.now(), plan: null }; api(`/api/plans/${id}?client=${encodeURIComponent(S.client)}`).then((plan) => { S.planDetail[id] = { at: Date.now(), plan }; if (!S.schedOpen) renderTasks(); }).catch(() => {}); }
+  const url = S.plans.folder ? `/api/plan-folder?${new URLSearchParams({ client: S.client, key: id })}` : `/api/plans/${id}?client=${encodeURIComponent(S.client)}`;
+  if (!c) { S.planDetail[id] = { at: Date.now(), plan: null }; api(url).then((plan) => { S.planDetail[id] = { at: Date.now(), plan }; if (!S.schedOpen) renderTasks(); }).catch(() => {}); }
   return c?.plan || null;
+}
+const openPlanTree = () => window.open('/plans?' + new URLSearchParams({ client: S.client }), 'docket-plans');
+// One plan from the plan folder: its progress, where it sits in the tree, and its checklist lines, nothing to click
+// that changes it.
+function folderPlanHtml(p) {
+  const head = `<div class="plan-head">${esc(p.title)} · ${p.done} of ${p.total} done<span class="plan-sub">${p.parentPlan ? `part of ${esc(p.parentPlan.title)} (${p.parentPlan.done} of ${p.parentPlan.total} done)` : 'a top plan'}${p.childPlans.length ? ` · ${p.childPlans.length} plan${p.childPlans.length === 1 ? '' : 's'} under it` : ''} · read-only · <a href="#" data-plan-tree${tip('plan-tree')}>Plan tree</a></span></div>`;
+  const subOf = (k) => p.childPlans.find((c) => c.key === k);
+  return head + p.items.map((t) => {
+    const sub = [t.state !== 'open' && t.state !== 'done' ? PLAN_WORD[t.state] : '', t.holder ? `held by ${esc(t.holderTitle || t.holder)}` : '', t.after.length && t.state !== 'done' ? 'after ' + t.after.join(', ') : '',
+      ...t.sub.map(subOf).filter(Boolean).map((c) => `its plan: ${c.done} of ${c.total} done`), ...t.links.map(linkHtml), t.note ? esc(t.note) : ''].filter(Boolean);
+    return `<div class="task plan-task" title="${esc(t.brief || t.title)}"${t.depth ? ` style="margin-left:${Math.min(t.depth, 12) * 5}px"` : ''}><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '○'}</span><span class="lb">${esc((t.id ? t.id + ' ' : '') + t.title)}</span><span class="end"></span>${sub.length ? `<span class="sub">${sub.join(' · ')}</span>` : ''}</div>`;
+  }).join('') + (p.broken.length ? `<div class="hint">Broken link${p.broken.length === 1 ? '' : 's'}: ${p.broken.map((b) => esc(b.ref)).join(', ')}</div>` : '') + `<div class="hint" title="${esc(p.file)}">${esc(p.file)}</div>`;
 }
 const PLAN_ICON = { open: '○', claimed: '●', done: '✓', waiting_on_user: '⏸', sent_back: '↩' };
 const PLAN_WORD = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on you', sent_back: 'sent back' };
 const sessionLink = (id, title) => id ? `<a href="#" data-plan-open="${esc(id)}" title="Open this session">${esc(title || 'a session')}</a>` : '';
-const linkHtml = (l) => /^https?:\/\//.test(l) ? `<a href="${esc(l)}" target="_blank" rel="noopener" title="${esc(l)}">${esc(l.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60))}</a>` : esc(l.split(/[\\/]/).pop());
+const linkHtml = (l) => /^\[[^\]]+\]\(https?:\/\/[^)]+\)$/.test(l) ? (([, t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener" title="${esc(u)}">${esc(t)}</a>`)(l.match(/^\[([^\]]+)\]\((.*)\)$/)) // a markdown link: its words
+  : /^https?:\/\//.test(l) ? `<a href="${esc(l)}" target="_blank" rel="noopener" title="${esc(l)}">${esc(l.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60))}</a>` : esc(l.split(/[\\/]/).pop());
 function planHtml(p, me) {
   const head = `<div class="plan-head">${esc(p.title)} · ${p.done} of ${p.total} done<span class="plan-sub">${p.coordinator === me ? 'Coordinated by this session' : `Coordinated by ${sessionLink(p.coordinator, p.coordinatorTitle)}`}${p.parent ? ` · part of ${esc(p.parentTitle || p.parent.plan)}, task ${esc(p.parent.task)}` : ' · master plan'}</span></div>`;
   return head + p.tasks.map((t) => {
@@ -6555,6 +6595,13 @@ function planHtml(p, me) {
 // The Plan section for one session, or null when it coordinates no plan and holds no task.
 function planSection(id) {
   if (!S.plans.on || !id || id === 'draft') return null;
+  if (S.plans.folder) {
+    if (Date.now() - (S.plans.at || 0) > 30000 && !S.plans.loading) loadPlans();
+    const held = S.plans.plans.filter((p) => holdsPlan(p, id));
+    if (!held.length) return null;
+    const shown = held.map((p) => planDetail(p.id)).filter(Boolean);
+    return [held.length === 1 ? `Plan · ${held[0].done} of ${held[0].total} done` : `Plans ${held.length}`, shown.length ? shown.map(folderPlanHtml).join('') : '<div class="hint">Loading…</div>'];
+  }
   const ids = [...new Set([ownPlan(id)?.id, ...S.plans.plans.filter((p) => p.holders.includes(id)).map((p) => p.id)].filter(Boolean))];
   if (!ids.length) return null;
   const shown = ids.map((pid) => planDetail(pid)).filter(Boolean);
@@ -6562,6 +6609,7 @@ function planSection(id) {
   return [own ? `Plan · ${own.done} of ${own.total} done` : 'Plan', shown.length ? shown.map((p) => planHtml(p, id)).join('') : '<div class="hint">Loading…</div>'];
 }
 $('tasksBody').addEventListener('click', (e) => {
+  if (e.target.closest('[data-plan-tree]')) { e.preventDefault(); openPlanTree(); return; }
   const a = e.target.closest('[data-plan-open]'); if (!a) return;
   e.preventDefault(); openSession(a.dataset.planOpen);
 });
@@ -7724,7 +7772,9 @@ function renderProfile() {
       : `<input type="checkbox" class="pf-switch" data-pf-switch="${key}"${it.toggle.on ? ' checked' : ''}${tip('pf-switch')}>`;
     const swNote = it.toggle ? `<span class="pf-switch-note">${esc([it.toggle.note, 'applies to sessions started after a change'].filter(Boolean).join(' · '))}</span>` : '';
     const row = `${sw}<span class="pf-name">${esc(it.name)}</span>${it.status ? `<span class="mcp-st ${it.status}">${esc(it.statusText)}</span>` : ''}${it.badge ? `<span class="pf-badge">${esc(it.badge)}</span>` : ''}<span class="pf-detail ${it.code ? 'code' : ''}">${esc(it.detail || '')}</span>${meta ? `<span class="pf-meta">${esc(meta)}</span>` : ''}${swNote}`;
-    const links = (it.links || []).length ? `<div class="pf-links">Runs ${it.links.map((l, i) => { const lk = `${key}l${i}`; pf.texts[lk] = l; return `<a href="#" data-pf-link="${lk}"${tip('pf-link')}>${esc(l.name)}</a>`; }).join('')}</div>` : '';
+    // A box to type a setting into (the plan folder's path and marker pattern), saved when it loses the focus or on Enter.
+    const input = it.input ? `<input class="pf-input" data-pf-input="${key}" value="${esc(it.input.value)}" placeholder="${esc(it.input.placeholder || '')}" spellcheck="false" aria-label="${esc(it.name)}"${tip('pf-input')}>${it.input.note ? `<span class="pf-switch-note">${esc(it.input.note)}</span>` : ''}` : '';
+    const links = input || ((it.links || []).length ? `<div class="pf-links">Runs ${it.links.map((l, i) => { const lk = `${key}l${i}`; pf.texts[lk] = l; return `<a href="#" data-pf-link="${lk}"${tip('pf-link')}>${esc(l.name)}</a>`; }).join('')}</div>` : '');
     const cls = `pf-item ${it.depth ? 'd' + Math.min(it.depth, 3) : ''} ${it.status === 'failed' ? 'failed' : ''} ${it.missing ? 'missing' : ''}`;
     return it.path || it.text
       ? `<details class="${cls}" data-pf="${key}"><summary>${row}</summary>${links}<div class="pf-view"></div></details>`
@@ -7796,12 +7846,21 @@ async function pfFill(el, it) {
   } catch (e) { view.innerHTML = tools(it.path) + `<div class="pf-empty">${esc(e.message)}</div>`; delete view.dataset.done; }
 }
 $('profilePage').addEventListener('change', async (e) => { // an on/off checkbox: save it, then read the desk again
+  const typed = e.target.closest?.('[data-pf-input]');
+  if (typed) { // a typed setting: saved as it is, then the desk read again
+    const it = pf.texts[typed.dataset.pfInput], id = pf.data.client.id;
+    typed.disabled = true;
+    try { await api(`/api/clients/${id}/profile/switch`, { kind: it.input.kind, key: it.input.key, value: typed.value }); }
+    catch (err) { typed.value = it.input.value; alert(err.message); }
+    if (S.client === id) { loadProfile(true); loadPlans(); }
+    return;
+  }
   const box = e.target.closest?.('[data-pf-switch]'); if (!box) return;
   const it = pf.texts[box.dataset.pfSwitch], id = pf.data.client.id;
   box.disabled = true;
   try { await api(`/api/clients/${id}/profile/switch`, { kind: it.toggle.kind, key: it.toggle.key, ...(it.toggle.options ? { value: box.value } : { on: box.checked }) }); }
   catch (err) { if (it.toggle.options) box.value = it.toggle.value; else box.checked = !box.checked; alert(err.message); }
-  if (S.client === id) loadProfile(true);
+  if (S.client === id) { loadProfile(true); if (it.toggle.kind === 'plans') loadPlans(); }
 });
 $('profilePage').addEventListener('toggle', (e) => { const el = e.target; if (el.dataset?.pf && el.open) pfFill(el, pf.texts[el.dataset.pf]); }, true);
 $('profilePage').addEventListener('click', async (e) => {

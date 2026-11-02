@@ -141,9 +141,36 @@ test('the Inspector\'s plan choice saves the desk\'s plan system and refuses any
   assert.equal(saved().find((x) => x.id === 'claudeco').planSystem, 'docket');
   assert.equal((await sw('claudeco', 'none')).status, 200);
   assert.equal(saved().find((x) => x.id === 'claudeco').planSystem, 'none');
-  assert.equal((await sw('claudeco', 'folder')).status, 400, 'the plan folder is not offered yet');
   assert.equal((await sw('claudeco', 'bogus')).status, 400);
   assert.equal(saved().find((x) => x.id === 'claudeco').planSystem, 'none');
+});
+
+test('a plan folder desk (#180 step 3): its folder and marker pattern are saved, and the page reads the folder', async () => {
+  const fx = path.join(HERE, 'fixtures', 'plan-folder');
+  const set = (key, value) => api('/api/clients/claudeco/profile/switch', { kind: 'plan-folder', key, value });
+  assert.equal((await api('/api/clients/claudeco/profile/switch', { kind: 'plans', key: 'plans', value: 'folder' })).status, 200);
+  assert.equal(saved().find((x) => x.id === 'claudeco').planSystem, 'folder');
+  assert.equal((await set('path', 'notes/Projects')).status, 400, 'not a full path');
+  assert.equal((await set('marker', '.notes-plan-')).status, 400, 'no * for the session id');
+  assert.equal((await set('path', path.join(fx, 'notes'))).status, 200);
+  assert.equal((await set('marker', path.join(fx, 'home', '.notes-plan-*'))).status, 200);
+  assert.deepEqual(saved().find((x) => x.id === 'claudeco').planFolder, { path: path.join(fx, 'notes'), marker: path.join(fx, 'home', '.notes-plan-*') });
+  const sum = await (await fetch(`${URL_}/api/plans?client=claudeco`)).json();
+  assert.equal(sum.folder, true);
+  assert.equal(sum.count, 7, 'the seven checklist plans under notes (the shortcut folder is made only in plan-folder.test.mjs)');
+  assert.deepEqual(sum.plans.map((p) => [p.id, p.holders, p.done, p.total]), [['Projects/TICK-100-epic/TICK-102-plan.md', ['abcdef123456'], 1, 3]], 'the plan the marker names, held by the start of a session id');
+  const one = await (await fetch(`${URL_}/api/plan-folder?client=claudeco&key=${encodeURIComponent('Projects/TICK-100-epic/TICK-102-plan.md')}`)).json();
+  assert.equal(one.parentPlan.key, 'Projects/TICK-100-epic/TICK-100-plan.md');
+  assert.equal(one.items[1].holder, '8ad80cd72d86');
+  const tree = await (await fetch(`${URL_}/api/plan-folder?client=claudeco`)).json();
+  assert.equal(tree.broken.length, 1);
+  assert.equal(tree.dirs, undefined, 'the reader\'s own folder list stays on the server');
+  assert.equal((await fetch(`${URL_}/plans?client=claudeco`)).status, 200, 'the Plan tree window');
+  assert.equal((await set('marker', '')).status, 200);
+  assert.deepEqual(saved().find((x) => x.id === 'claudeco').planFolder, { path: path.join(fx, 'notes') }, 'an empty box clears only its own setting');
+  assert.equal((await api('/api/clients/claudeco/profile/switch', { kind: 'plans', key: 'plans', value: 'none' })).status, 200);
+  assert.ok(saved().find((x) => x.id === 'claudeco').planFolder, 'the folder is kept when the desk switches away');
+  assert.equal((await fetch(`${URL_}/api/plan-folder?client=claudeco`)).status, 404);
 });
 
 test('the sign-in step\'s one button signs in Claude first, then each other brand in turn, and waits while one finishes', () => {

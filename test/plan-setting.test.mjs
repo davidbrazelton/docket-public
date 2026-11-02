@@ -18,14 +18,12 @@ test('the Inspector shows the plan system as a choice, with what the desk has no
     .sections.find((s) => s.id === 'switches').groups.find((g) => g.title === 'Plans').items[0].toggle;
   const unset = choice();
   assert.equal(unset.kind, 'plans');
-  assert.deepEqual(unset.options.map(([v]) => v), ['docket', 'none'], 'the plan folder is not offered yet');
+  assert.deepEqual(unset.options.map(([v]) => v), ['docket', 'folder', 'none'], 'the plan folder is a real third choice (#180 step 3)');
   assert.equal(unset.value, 'none');
   assert.equal(unset.note, 'not chosen yet');
   assert.equal(choice('docket').value, 'docket');
   assert.equal(choice('none').note, '');
-  // set by hand: shown as it is, so the list never claims another setting
   assert.equal(choice('folder').value, 'folder');
-  assert.deepEqual(choice('folder').options.map(([v]) => v), ['docket', 'none', 'folder']);
 });
 
 test('a copied desk keeps its plan system', () => {
@@ -34,12 +32,12 @@ test('a copied desk keeps its plan system', () => {
   assert.equal(c.planSystem, 'docket');
 });
 
-test('the setup wizard has a Plans step, off unless ticked, and sends docket or none', () => {
+test('the setup wizard has a Plans step, none unless picked, and sends the choice', () => {
   assert.match(page, /const WIZ_STEPS = \['Name', 'AI brand', 'Sessions', 'Plans', 'Folders', 'Sign in', 'Done'\];/);
-  assert.match(page, /split: true, plans: false,/);
-  assert.match(page, /planSystem: w\.plans \? 'docket' : 'none'/);
+  assert.match(page, /split: true, plans: 'none',/);
+  assert.match(page, /planSystem: w\.plans,/);
   assert.match(page, /if \(w\.step === SPLIT\) \{ w\.step = PLANS;/);
-  assert.match(page, /if \(w\.step === PLANS\) \{ w\.step = FOLDERS;/);
+  assert.match(page, /w\.error = ''; w\.step = FOLDERS; return render\(\);/);
 });
 
 // showPlanOffer from the page, run on a fake card and desk list.

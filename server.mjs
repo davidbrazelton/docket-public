@@ -41,6 +41,7 @@ import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usag
 import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
 import { createPlanStore, readyTasks, whyNoneReady, STATES } from './plans.mjs';
+import { createFolderReader, readMarkers, markerPlan, cleanPlanFolder, planFolderProblem } from './plan-folder.mjs';
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
 import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport } from './feedback.mjs';
@@ -1119,6 +1120,53 @@ function planDetail(client, id) {
       const sub = t.plan && all.find((x) => x.id === t.plan);
       return { ...t, holderTitle: knownTitle(client, t.holder) || t.holderTitle, ready: readyTasks(p).includes(t), sub: sub ? { id: sub.id, title: sub.title, ...store.rollup(sub.id, all) } : null };
     }) };
+}
+
+// ---------- a plan folder, read-only (#180 step 3, plan-folder.mjs) ----------
+// A desk whose plans another system keeps: planSystem "folder", with planFolder { path, marker } on its entry. Docket
+// only shows them: plansOn is false there, so its sessions get no plan tools and no plan instructions, and nothing
+// is ever written to the folder or its marker files. One reader per desk and folder, which reads again only what
+// changed (plan-folder.mjs says how it checks).
+const folderOn = (client) => client?.planSystem === 'folder';
+const folderReaders = new Map();
+function folderReader(client) {
+  const root = client.planFolder?.path; if (!root) return null;
+  const k = `${client.id}|${root}`;
+  if (!folderReaders.has(k)) folderReaders.set(k, createFolderReader({ root }));
+  return folderReaders.get(k);
+}
+function dropFolderReader(client) { for (const k of [...folderReaders.keys()]) if (k.startsWith(client.id + '|')) folderReaders.delete(k); }
+// Which session holds which plan, from the marker files: the plan's key in the tree ('' when it is not in the
+// folder), the start of the session id the marker carries, and the whole id and title when Docket knows the session.
+function folderHolders(client, tree) {
+  const pf = client.planFolder || {};
+  if (!pf.marker || !pf.path || !tree) return [];
+  const ids = [...new Set([...Object.keys(state.sessions).filter((id) => state.sessions[id]?.client === client.id),
+    ...[...live.values()].filter((s) => s.client === client.id).map((s) => s.id)])];
+  return readMarkers(pf.marker, client.home).map((m) => {
+    const id = ids.find((x) => x.startsWith(m.session)) || '';
+    return { key: markerPlan(tree, pf.path, m.plan), plan: m.plan, prefix: m.session, session: id, title: id ? knownTitle(client, id) : '' };
+  });
+}
+async function folderTree(client) {
+  const r = folderReader(client);
+  if (!r) return { error: 'No plan folder is set for this desk yet. Set it in the Inspector, under Switches > Plans.', plans: [], roots: [], broken: [], unlinked: [] };
+  return r.get();
+}
+// The page's view: the plans sessions hold (for the board badge and the Plan section), and counts for the whole folder.
+async function folderSummary(client) {
+  const t = await folderTree(client), holders = folderHolders(client, t);
+  const held = (p) => holders.filter((h) => h.key === p.key).map((h) => h.session || h.prefix);
+  return { on: true, folder: true, root: client.planFolder?.path || '', error: t.error || '', count: t.plans.length, brokenCount: t.broken.length, unlinkedCount: t.unlinked.length,
+    plans: t.plans.filter((p) => held(p).length).map((p) => ({ id: p.key, title: p.title, file: p.file, coordinator: '', parent: p.parent, done: p.done, total: p.total, holders: held(p) })),
+    elsewhere: holders.filter((h) => !h.key).map((h) => ({ session: h.session || h.prefix, plan: h.plan })) };
+}
+// One plan with its items, its parent and the plans under it; or the whole tree for the Plan tree window.
+function folderPlanDetail(t, key) {
+  const p = t.plans.find((x) => x.key === key); if (!p) return null;
+  const sum = (k) => { const x = t.plans.find((y) => y.key === k); return x ? { key: x.key, title: x.title, done: x.done, total: x.total } : null; };
+  return { ...p, parentPlan: p.parent ? sum(p.parent) : null, childPlans: p.children.map(sum).filter(Boolean),
+    broken: t.broken.filter((b) => b.from === key) };
 }
 
 // The plan tools, only on a desk whose plan system is Docket's own (prompts/optional/plans.md says how to use them).
@@ -3901,8 +3949,8 @@ function findCutOffs() {
 // - the library list changed: run npm install first;
 // - only the page changed: open pages reload themselves (version below).
 const RESTART_CODE = 75;
-const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs'];
-const PAGE_FILES = ['index.html', 'view.html', 'usage.html'];
+const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs'];
+const PAGE_FILES = ['index.html', 'view.html', 'usage.html', 'plans.html'];
 const LIB_FILES = ['package.json', 'package-lock.json'];
 // While a restart waits for a quiet moment this app keeps serving the pages it started with, which go with
 // its own code; the new pages come with the new app. pageSnap: what the pages held at start or the last page reload.
@@ -5269,6 +5317,9 @@ function cleanCompany(c, taken) {
   // planSystem (#180): which plan system the desk uses: docket (Docket's own), folder (an outside one, shown read-only), or
   // none. Set in the Inspector's Switches, the setup wizard and the card after the update; a save that leaves it out keeps it.
   const planSystem = ['docket', 'folder', 'none'].find((v) => v === (c.planSystem !== undefined ? c.planSystem : clientById(id)?.planSystem)) || '';
+  // planFolder (#180 step 3): the plan folder's path and its optional marker file pattern, kept whatever the plan
+  // system, so switching away and back loses nothing.
+  const planFolder = cleanPlanFolder(c.planFolder !== undefined ? c.planFolder : clientById(id)?.planFolder);
   // docketHooks.off: the Docket hooks this company turned off (the Companies screen); the wizard does not send it, so it is kept.
   const docketHooks = cleanDocketHooks(c.docketHooks !== undefined ? c.docketHooks : clientById(id)?.docketHooks);
   // grokHome sets Grok up for this company: its Grok home folder (its Grok sign-in and settings). defaultEngine
@@ -5347,7 +5398,7 @@ function cleanCompany(c, taken) {
   for (const [label, dir, sub] of [['Claude home', home, 'claude-home'], ['Grok home', grokHome, 'grok-home'], ['Codex home', codexHome, 'codex-home']]) {
     if (dir && isInside(dir, ROOT)) return { error: `${name}: the ${label} folder ${dir} is inside Docket's own folder (${ROOT}). It holds the sign-in, so it must be somewhere else, like ${path.join(homeRoots().claude, `${name}-desk`, sub)}` };
   }
-  return { id, name, home, folder: folder || home, ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
+  return { id, name, home, folder: folder || home, ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
 }
 function saveCompanies(list) {
   for (const c of list) {
@@ -5516,6 +5567,11 @@ async function sessionFiles(client, id) {
   if (fs.existsSync(browserDirOut)) for (const n of fs.readdirSync(browserDirOut)) add(path.join(browserDirOut, n), 'browser');
   // The plan this session coordinates, and the plans it holds tasks in (#180), badged "plan" on the page.
   if (plansOn(client)) for (const p of plansOf(client).list()) if (p.coordinator === id || p.tasks.some((t) => t.holder === id)) found.set(path.resolve(p.file), { kind: 'plan' });
+  // On a plan folder desk, the plan a marker file says this session holds.
+  if (folderOn(client) && client.planFolder?.marker) {
+    const t = await folderTree(client).catch(() => null);
+    for (const h of folderHolders(client, t)) if (h.session === id) { const p = t.plans.find((x) => x.key === h.key); if (p) found.set(path.resolve(p.file), { kind: 'plan' }); }
+  }
 
   const out = [];
   for (const [p, { kind }] of found) {
@@ -5938,9 +5994,15 @@ async function profileRoutes(req, res, url, p) {
       } else if (kind === 'split') {
         save({ splitWork: on ? undefined : false });
       } else if (kind === 'plans') {
-        // A choice: { value } is the plan system. The read-only plan folder (#180 step 3) is kept when set by hand, not offered yet.
-        if (!['docket', 'none'].includes(value) && !(value === 'folder' && client.planSystem === 'folder')) return json(res, 400, { error: 'The plan system is docket or none' });
+        // A choice: { value } is the plan system: Docket's own, a plan folder shown read-only (#180 step 3), or none.
+        if (!['docket', 'folder', 'none'].includes(value)) return json(res, 400, { error: 'The plan system is docket, folder or none' });
         save({ planSystem: value });
+      } else if (kind === 'plan-folder') {
+        // One of the plan folder's two boxes: { key: 'path' | 'marker', value }. Empty clears it.
+        const bad = planFolderProblem(key, value);
+        if (bad) return json(res, 400, { error: bad });
+        save({ planFolder: cleanPlanFolder({ ...(client.planFolder || {}), [key]: String(value ?? '').trim() }) });
+        dropFolderReader(client);
       } else if (kind === 'plugin') {
         const installed = profileFor(client, true).sections.find((s) => s.id === 'skills')?.groups.find((g) => g.title === 'Plugins')?.items || [];
         if (!installed.some((it) => it.toggle?.key === key)) return json(res, 404, { error: 'That plugin is not installed on this desk' });
@@ -6928,7 +6990,20 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/plans') { // a desk's plans, for the board badges and the Plan section
       const client = clientById(url.searchParams.get('client'));
       if (!client) return json(res, 404, { error: 'Unknown desk' });
-      return json(res, 200, plansSummary(client));
+      return json(res, 200, folderOn(client) ? await folderSummary(client) : plansSummary(client));
+    }
+    if (req.method === 'GET' && p === '/api/plan-folder') { // a plan folder desk (#180 step 3): ?key= one plan, else the whole tree
+      const client = clientById(url.searchParams.get('client'));
+      if (!client || !folderOn(client)) return json(res, 404, { error: 'This desk does not use a plan folder' });
+      const t = await folderTree(client), key = url.searchParams.get('key');
+      const holders = folderHolders(client, t);
+      if (key) { const d = folderPlanDetail(t, key); return d ? json(res, 200, { ...d, holders: holders.filter((h) => h.key === key) }) : json(res, 404, { error: 'No such plan in the plan folder' }); }
+      const { dirs, ...tree } = t;
+      return json(res, 200, { ...tree, desk: client.name, root: client.planFolder?.path || '', marker: client.planFolder?.marker || '', holders });
+    }
+    if (req.method === 'GET' && p === '/plans') { // the Plan tree, in its own window
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      return res.end(pageBody('plans.html'));
     }
     const plm = p.match(/^\/api\/plans\/(p-[a-z0-9]+)$/);
     if (plm && req.method === 'GET') {

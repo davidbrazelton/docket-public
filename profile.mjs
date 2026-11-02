@@ -445,13 +445,20 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
     ['project', 'Project settings', 'each working folder\'s .claude/settings.json'],
     ['local', 'Local settings', 'each working folder\'s .claude/settings.local.json'],
   ].map(([k, name, detail]) => ({ name, detail, toggle: { kind: 'layer', key: k, on: layers.includes(k), note: k === 'project' ? 'off also leaves out every CLAUDE.md' : '' } }));
-  // The plan system (#180): a choice, not on/off, since a read-only plan folder joins Docket's own later. A desk set to
-  // one by hand that is not offered here yet still shows it, so the list never claims a different setting.
+  // The plan system (#180): a choice of three. A plan folder (#180 step 3) is a folder of markdown checklist plans
+  // another system keeps: Docket shows it read-only, so its two boxes (the folder, and the optional marker file
+  // pattern for which session holds which plan) show only when it is chosen.
   const plan = client.planSystem || '';
-  const planOptions = [['docket', 'Docket\'s plans'], ['none', 'None'], ...(plan === 'folder' ? [['folder', 'A plan folder, read-only (set by hand)']] : [])];
-  const switchGroups = [{ title: 'Plans', brand: null, note: 'Docket\'s own plan system: a session can keep a plan of tasks for a larger piece of work, hand the tasks to child sessions, and follow them in the Plan section. Its instructions are prompts/optional/plans.md, for every brand.',
-    items: [{ name: 'Plan system', detail: 'Docket\'s plans: sessions get the plan tools and instructions, and the Plan section shows each plan. None: no plan tools or instructions',
-      toggle: { kind: 'plans', key: 'plans', value: plan === 'folder' ? 'folder' : plan === 'docket' ? 'docket' : 'none', options: planOptions, note: plan ? '' : 'not chosen yet' } }] },
+  const planOptions = [['docket', 'Docket\'s plans'], ['folder', 'A plan folder, read-only'], ['none', 'None']];
+  const pf = client.planFolder || {};
+  const folderItems = plan !== 'folder' ? [] : [
+    { name: 'Plan folder', detail: 'the folder of markdown checklist plans (- [ ] lines), read with every folder under it, shortcut folders too. Docket never writes there',
+      input: { kind: 'plan-folder', key: 'path', value: pf.path || '', placeholder: 'C:\\notes\\Projects', note: pf.path ? '' : 'not set yet' } },
+    { name: 'Marker files', detail: 'optional: the files in which the other system notes which session holds which plan, with * for the start of the session id (each holds state= and plan= lines). A name alone is looked for in this desk\'s Claude home',
+      input: { kind: 'plan-folder', key: 'marker', value: pf.marker || '', placeholder: '.notes-plan-*', note: '' } }];
+  const switchGroups = [{ title: 'Plans', brand: null, note: 'Docket\'s own plan system: a session can keep a plan of tasks for a larger piece of work, hand the tasks to child sessions, and follow them in the Plan section. Its instructions are prompts/optional/plans.md, for every brand. A plan folder: another system keeps the plans, and Docket only shows them.',
+    items: [{ name: 'Plan system', detail: 'Docket\'s plans: sessions get the plan tools and instructions, and the Plan section shows each plan. A plan folder: Docket shows the plans in a folder another system keeps (read-only, no plan tools or instructions). None: no plans',
+      toggle: { kind: 'plans', key: 'plans', value: ['folder', 'docket'].includes(plan) ? plan : 'none', options: planOptions, note: plan ? '' : 'not chosen yet' } }, ...folderItems] },
     { title: 'How sessions split work', brand: null, note: 'Docket\'s instructions in prompts/optional/split-work.md, for every brand. Off: a session still starts another when the user asks for one.',
     items: [{ name: 'Send work to child sessions', detail: 'a session the user started sends real work (a build, a fix) to its own child session on its own, and stays free to talk',
       toggle: { kind: 'split', key: 'split', on: client.splitWork !== false, note: '' } }] },
