@@ -445,7 +445,10 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
     ['project', 'Project settings', 'each working folder\'s .claude/settings.json'],
     ['local', 'Local settings', 'each working folder\'s .claude/settings.local.json'],
   ].map(([k, name, detail]) => ({ name, detail, toggle: { kind: 'layer', key: k, on: layers.includes(k), note: k === 'project' ? 'off also leaves out every CLAUDE.md' : '' } }));
-  const switchGroups = [{ title: 'Settings layers Claude sessions load', note: 'Docket passes these when it starts a Claude session (settingSources); no file changes.', items: layerItems }];
+  const switchGroups = [{ title: 'How sessions split work', brand: null, note: 'Docket\'s instructions in prompts/optional/split-work.md, for every brand. Off: a session still starts another when the user asks for one.',
+    items: [{ name: 'Send work to child sessions', detail: 'a session the user started sends real work (a build, a fix) to its own child session on its own, and stays free to talk',
+      toggle: { kind: 'split', key: 'split', on: client.splitWork !== false, note: '' } }] },
+    { title: 'Settings layers Claude sessions load', note: 'Docket passes these when it starts a Claude session (settingSources); no file changes.', items: layerItems }];
   if (client.grokHome) {
     const cfg = path.join(client.grokHome, 'config.toml'), now = readGrokCompat(readText(cfg));
     const what = { hooks: 'Claude\'s hooks (settings.json)', rules: 'Claude\'s rules (CLAUDE.md)', skills: 'Claude\'s skills', agents: 'Claude\'s agents', mcps: 'Claude\'s connected services', sessions: 'Claude\'s past sessions' };

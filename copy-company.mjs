@@ -317,7 +317,7 @@ export function copyGroups(groups = [], newId = () => 'g' + randomUUID().slice(0
 }
 
 // The Docket desk settings a copy takes from its source (the "Docket desk settings" item).
-export const DOCKET_KEYS = ['links', 'docketHooks', 'defaultEngine', 'startGear', 'saveBeforeCompact', 'promptCacheTtl', 'handoffPattern', 'budget', 'color'];
+export const DOCKET_KEYS = ['links', 'docketHooks', 'defaultEngine', 'startGear', 'saveBeforeCompact', 'promptCacheTtl', 'handoffPattern', 'budget', 'color', 'splitWork'];
 
 // The new desk's entry, before cleanCompany checks it. conn: per brand { mode: 'same' | 'new' | 'off' }, Claude's
 // with kind ('claude' account or 'bedrock'), email, awsProfile and awsRegion for a new connection. A same connection

@@ -110,6 +110,17 @@ test('a Claude-only company is saved as before: no other brand, nothing left out
   assert.deepEqual(c.madeFolders, [c.home], 'the home it made, for Remove to offer the Recycle Bin');
 });
 
+test('splitting work into sessions is on unless the wizard unticks it, and a save that leaves it out keeps it', async () => {
+  const on = await api('/api/clients/save-one', { ...wizard('SplitOn', { claude: true }), splitWork: true });
+  assert.equal(saved().find((x) => x.id === on.id).splitWork, undefined, 'on is the default and is not written');
+  const r = await api('/api/clients/save-one', { ...wizard('SplitOff', { claude: true }), splitWork: false });
+  assert.equal(r.status, 200, r.error);
+  assert.equal(saved().find((x) => x.id === r.id).splitWork, false);
+  const { splitWork, ...again } = saved().find((x) => x.id === r.id);
+  await api('/api/clients/save-one', again);
+  assert.equal(saved().find((x) => x.id === r.id).splitWork, false, 'kept when not sent');
+});
+
 test('the sign-in step\'s one button signs in Claude first, then each other brand in turn, and waits while one finishes', () => {
   const page = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const fn = page.slice(page.indexOf('    function signinAction() {'), page.indexOf('    function buttons() {'));

@@ -1236,13 +1236,17 @@ function planToolDefs(parent) {
 // each session reaches them through tools-helper.mjs, a separate small program that asks the app
 // for this list and passes calls back (see /api/tools), so sessions don't hold the app's code.
 function portalToolDefs(parent) {
+  // A desk with split work off (splitOn) starts a session when the user asks for one, and does other work in place.
+  const split = splitOn(clientById(parent.client));
   return [
       tool('start_session',
-        'Start, offer or propose a separate session in the session portal, under the same client as this one and listed under it. Real work the user asks for, even in the first reply and in plain words like "build X", is started now (user_asked), so the user\'s session stays free to talk; a session that was itself started or sent work by another session does that work itself. A request for agents, subagents, parallel work or fanning out means sessions like this, one per piece (each code-writing piece in its own git worktree), not the Agent tool. See "Starting other sessions" in your instructions for when to use each initiation. Returns the session id (started), the user\'s choice (offer), or a proposal id (own_initiative).',
+        `Start, offer or propose a separate session in the session portal, under the same client as this one and listed under it. ${split
+          ? 'Real work the user asks for, even in the first reply and in plain words like "build X", is started now (user_asked), so the user\'s session stays free to talk; a session that was itself started or sent work by another session does that work itself. A request for agents, subagents, parallel work or fanning out means sessions like this, one per piece (each code-writing piece in its own git worktree), not the Agent tool.'
+          : 'Start one now (user_asked) when the user asks for the work to run in its own session, in parallel or in pieces (each code-writing piece in its own git worktree); other work they ask for is done in this session.'} See "Starting other sessions" in your instructions for when to use each initiation. Returns the session id (started), the user's choice (offer), or a proposal id (own_initiative).`,
         {
           title: z.string().describe('Short title for the new session, under 60 characters'),
           prompt: z.string().describe('Complete, self-contained brief for the new session: files or area, and what done looks like'),
-          initiation: z.enum(['user_asked', 'offer', 'own_initiative']).describe('user_asked = start now, for real work the user asked for (no special words needed); offer = only when the user asks you to suggest a session: ask New session / Do it here and wait; own_initiative = a proposal card for work the user did not ask for'),
+          initiation: z.enum(['user_asked', 'offer', 'own_initiative']).describe(`user_asked = start now, ${split ? 'for real work the user asked for (no special words needed)' : 'when the user asked for the work in its own session'}; offer = only when the user asks you to suggest a session: ask New session / Do it here and wait; own_initiative = a proposal card for work the user did not ask for`),
           folder: z.string().optional().describe("Working folder; defaults to this session's folder"),
           brand: z.enum(Object.keys(BRANDS)).optional().describe("Which AI runs the new session (claude, grok or codex, which is OpenAI's Codex on a ChatGPT plan). Leave it out to use this session's own brand. Only a brand this desk has set up and signed in works; anything else returns an error"),
           start_gear: z.string().optional().describe(`The new session starts in Shift mode, on the gear this session is on now; this picks the gear it starts on instead, and it can still shift up and down afterwards. ${Object.entries(GEARS).map(([b, gs]) => `${BRANDS[b]?.name || b}: ${gs.map((g) => g.key).join(', ')}`).join('; ')}. Leave it out for anything that changes code, debugs or decides; pick a lower gear only for clearly mechanical work (bulk reading, summarizing, writing up from a given outline)`),
@@ -3117,6 +3121,11 @@ function dismissInbox(clientId, id) {
 function optionalPrompt(name) {
   try { return fs.readFileSync(path.join(ROOT, 'prompts', 'optional', name), 'utf8').trim(); } catch { return ''; }
 }
+// A desk sends real work to child sessions on its own unless it turned that off (splitWork false: the Switches on
+// the Inspector, or the setup wizard), with prompts/optional/split-work.md. Starting one when the user asks stays for every desk.
+const splitOn = (client) => client?.splitWork !== false;
+// Everything Docket adds to a session's instructions, in order.
+const sessionRules = (s) => [APPEND_PROMPT, promptAppends(), splitOn(clientById(s.client)) ? optionalPrompt('split-work.md') : '', shiftRules(s), planRules(s)].filter(Boolean).join('\n\n');
 // Extra instructions every session reads when it starts: prompts/*.md, in name order.
 function promptAppends() {
   const dir = path.join(ROOT, 'prompts');
@@ -3190,7 +3199,7 @@ function grokOptions(s, client, resume) {
     permissionMode: s.settings.permissionMode,
     ...(s.settings.effort ? { effort: s.settings.effort } : {}),
     // `grok agent stdio` does not read --rules (checked 2026-10-27), so the engine sends these ahead of the first message.
-    rules: forEngine('grok', [APPEND_PROMPT, promptAppends(), shiftRules(s), planRules(s)].filter(Boolean).join('\n\n')),
+    rules: forEngine('grok', sessionRules(s)),
     mcpServers: [acpServer('portal', portalTools(s.id)), acpServer('playwright', browserTools(client, s.id))],
   };
 }
@@ -3213,7 +3222,7 @@ function codexOptions(s, client, resume) {
     ...(isShift(s) ? { model: shiftModel(s, client) } : codexModel(s.settings.model) ? { model: s.settings.model } : {}),
     ...(s.settings.effort ? { effort: s.settings.effort } : {}),
     // Codex takes Docket's instructions as its own "developer instructions", at every start and pickup.
-    rules: forEngine('codex', [APPEND_PROMPT, promptAppends(), shiftRules(s), planRules(s)].filter(Boolean).join('\n\n')),
+    rules: forEngine('codex', sessionRules(s)),
     config: { mcp_servers: { portal: codexServer(portalTools(s.id)), playwright: codexServer(browserTools(client, s.id)) } },
   };
 }
@@ -3419,7 +3428,7 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
     includePartialMessages: true,
     agentProgressSummaries: true,
     promptSuggestions: true,
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: [APPEND_PROMPT, promptAppends(), shiftRules(s), planRules(s)].filter(Boolean).join('\n\n') },
+    systemPrompt: { type: 'preset', preset: 'claude_code', append: sessionRules(s) },
     mcpServers: { portal: portalTools(id), playwright: browserTools(client, id) },
     plugins: [{ type: 'local', path: PLUGIN_DIR }],
   };
@@ -5271,6 +5280,9 @@ function cleanCompany(c, taken) {
   const before = upgradeCompany(clientById(id) || {});
   // settingSources: the Claude settings layers its sessions load, set on the profile page; kept when not sent.
   const settingSources = cleanSettingSources(c.settingSources !== undefined ? c.settingSources : before.settingSources);
+  // splitWork: false when its sessions should not send work to child sessions on their own (splitOn); set in the
+  // setup wizard and on the profile page, kept when not sent. On is the default and is not written.
+  const splitWork = (c.splitWork !== undefined ? c.splitWork : before.splitWork) !== false;
   const asked = c.defaultEngine !== undefined ? c.defaultEngine : c.engine !== undefined ? c.engine : before.defaultEngine;
   const grokHome = String((c.grokHome !== undefined ? c.grokHome : before.grokHome) || '').trim();
   if (grokHome && !path.isAbsolute(grokHome)) return { error: `${name}: the Grok home folder must be a full path, like ${exampleFolder(process.platform, os.homedir(), 'grok_home', name)}` };
@@ -5334,7 +5346,7 @@ function cleanCompany(c, taken) {
   for (const [label, dir, sub] of [['Claude home', home, 'claude-home'], ['Grok home', grokHome, 'grok-home'], ['Codex home', codexHome, 'codex-home']]) {
     if (dir && isInside(dir, ROOT)) return { error: `${name}: the ${label} folder ${dir} is inside Docket's own folder (${ROOT}). It holds the sign-in, so it must be somewhere else, like ${path.join(homeRoots().claude, `${name}-desk`, sub)}` };
   }
-  return { id, name, home, folder: folder || home, ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
+  return { id, name, home, folder: folder || home, ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
 }
 function saveCompanies(list) {
   for (const c of list) {
@@ -5787,7 +5799,7 @@ function docketTexts() {
   return [
     { name: 'Docket\'s own instructions', note: 'written in server.mjs', text: APPEND_PROMPT },
     ...md(dir).map((n) => ({ name: `prompts/${n}`, path: path.join(dir, n), note: 'every session', text: fs.readFileSync(path.join(dir, n), 'utf8').trim() })),
-    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'plans.md' ? "only desks on Docket's own plan system" : 'only some sessions',
+    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'split-work.md' ? 'only desks that split work into sessions (Switches)' : n === 'plans.md' ? "only desks on Docket's own plan system" : 'only some sessions',
       text: optionalPrompt(n) })),
   ];
 }
@@ -5922,6 +5934,8 @@ async function profileRoutes(req, res, url, p) {
         if (!LAYERS.includes(key)) return json(res, 404, { error: 'No such settings layer' });
         const now = (client.settingSources || LAYERS).filter((l) => l !== key);
         save({ settingSources: cleanSettingSources(on ? [...now, key] : now) });
+      } else if (kind === 'split') {
+        save({ splitWork: on ? undefined : false });
       } else if (kind === 'plugin') {
         const installed = profileFor(client, true).sections.find((s) => s.id === 'skills')?.groups.find((g) => g.title === 'Plugins')?.items || [];
         if (!installed.some((it) => it.toggle?.key === key)) return json(res, 404, { error: 'That plugin is not installed on this desk' });

@@ -654,7 +654,7 @@ aside.tasks.hidden { display: none; }
 .wiz-box { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 /* The folders step: reuse a setup or start fresh, and the folders found in the person's AI history. */
 .wiz-radio { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
-.wiz-radio input { margin-top: 3px; }
+.wiz-radio input { margin-top: 3px; flex: none; }
 .wiz-radio small, .wiz-found small { display: block; font-weight: 400; color: var(--muted); }
 .wiz-found { display: flex; flex-direction: column; gap: 4px; margin-top: -6px; }
 .wiz-found button { text-align: left; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
@@ -1466,6 +1466,7 @@ const HELP = [
     ['w-home', 'Claude home folder', 'Where this desk\'s sign-in, settings, memory and saved sessions are kept'],
     ['w-brand-home', 'Grok or Codex home folder', 'Where this desk\'s sign-in and settings for that brand are kept'],
     ['w-default', 'Default brand for new sessions', 'The brand a new session starts on unless you pick another beside the model'],
+    ['w-split', 'Send work to its own session', 'On: a session hands real work to a new session of its own and stays free to talk. Off: each session does the work itself, and starts a new one only when asked'],
     ['w-folder', 'Working folder', 'Where new sessions start'],
     ['w-folder-pick', 'A folder found on this computer', 'Use this folder as the working folder. Docket found it in your own AI history on this computer'],
     ['w-reuse', 'Use the setup you already have', 'This desk uses the folder that brand already signs in from on this computer, keeping its sign-in, memory and past chats'],
@@ -5108,7 +5109,8 @@ async function terminalEnv(c) {
 // ---------- the setup wizard: adding a company step by step ----------
 // Shown at start-up when there is no company yet (first: true, nothing behind it to go back to), and from
 // ☰ > Desks > Add a company. Resolves with the new company's id, or null if it was cancelled.
-const WIZ_STEPS = ['Name', 'AI brand', 'Folders', 'Sign in', 'Done'];
+const WIZ_STEPS = ['Name', 'AI brand', 'Sessions', 'Folders', 'Sign in', 'Done'];
+const [NAME, BRAND, SPLIT, FOLDERS, SIGNIN, DONE] = WIZ_STEPS.keys();
 // The brands besides Claude, as the wizard offers them: what each is, and how to install its program. Their
 // names, home folder columns and default folders come from CO_BRANDS and defaultHome, as on the Companies screen.
 const WIZ_BRANDS = {
@@ -5123,13 +5125,14 @@ function companyWizard({ first = false } = {}) {
   return new Promise((resolve) => {
     // kind: how it uses Claude ('claude' account, 'bedrock', or '' for no Claude); brands: the others picked, with
     // their home folders in homes; def: the default brand for new sessions ('' is Claude).
-    const w = { step: 0, name: '', kind: '', brands: [], homes: {}, homesTyped: {}, reuse: {}, def: '', home: '', folder: '', email: '', awsProfile: '', awsRegion: '', id: null,
+    // split: its sessions send real work to child sessions on their own (the desk's splitWork).
+    const w = { step: NAME, name: '', kind: '', brands: [], split: true, homes: {}, homesTyped: {}, reuse: {}, def: '', home: '', folder: '', email: '', awsProfile: '', awsRegion: '', id: null,
       homeTyped: false, folderTyped: false, check: null, checking: false, error: '', signedIn: null, si: null, code: '', inUse: {}, keepInUse: {} };
     const card = $('wizCard');
     $('wiz').classList.toggle('first', first); $('wiz').hidden = false;
     const close = (v) => { wizSync = null; $('wiz').hidden = true; card.innerHTML = ''; document.removeEventListener('keydown', onKey, true); resolve(v); };
     // A Grok or Codex sign-in moved on: redraw the step, and go to Done once every brand picked is signed in.
-    wizSync = () => { if (w.step !== 3) return; if (allSigned()) w.step = 4; render(); };
+    wizSync = () => { if (w.step !== SIGNIN) return; if (allSigned()) w.step = DONE; render(); };
     const onKey = (e) => {
       if (e.key === 'Escape' && !first && !w.id) { e.stopPropagation(); close(null); }
       if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); card.querySelector('[data-main]:not([disabled])')?.click(); }
@@ -5187,7 +5190,7 @@ function companyWizard({ first = false } = {}) {
         const r = await api('/api/setup/home-check?' + new URLSearchParams(q)).catch(() => ({}));
         for (const [e, h] of q) w.inUse[hk(h)] = r[e] || { home: h, found: null };
       }
-      if (w.step === 2) paintInUse();
+      if (w.step === FOLDERS) paintInUse();
     }, 250); };
     const inUseHtml = (e) => {
       const r = inUseOf(e); if (!r) return '';
@@ -5214,10 +5217,10 @@ function companyWizard({ first = false } = {}) {
     const profile = () => (w.check?.awsProfiles || []).find((p) => p.name === w.awsProfile);
 
     function body() {
-      if (w.step === 0) return `${first ? '<p>Welcome to Docket. To start, set up the desk whose AI sessions (Claude, Grok or Codex) you will run here. You can add more later, from ☰ > Desks</p>' : ''}
+      if (w.step === NAME) return `${first ? '<p>Welcome to Docket. To start, set up the desk whose AI sessions (Claude, Grok or Codex) you will run here. You can add more later, from ☰ > Desks</p>' : ''}
         <p>Each desk has its own sign-in, settings, memory and saved sessions, kept apart from the others.</p>
         <label class="f">Desk name<input id="wName"${tip('w-name')} value="${esc(w.name)}" placeholder="For example, Acme" maxlength="40" autocomplete="off"></label>`;
-      if (w.step === 1) {
+      if (w.step === BRAND) {
         if (!w.check) return '<p>Checking what this computer has…</p>';
         const c = w.check;
         return `<p>Which AI does ${esc(w.name)} use? Most desks use Claude, as a Claude account or through Amazon Bedrock; if you are not sure which, ask whoever set it up for the desk. Tick Grok or Codex as well, or instead. More can be added later, in ☰ > Desks</p>
@@ -5244,7 +5247,10 @@ function companyWizard({ first = false } = {}) {
             <p>${b.link ? `(Instructions for other computers: <a href="${esc(b.link)}" target="_blank" rel="noopener"${tip('w-link')}>${esc(b.linkText)}</a>.) ` : `${esc(b.where)} `}Then press Check again.</p></div>`; }).join('')}
           ${picked().length && !pickOk() ? `<div><button data-w="recheck"${tip('w-recheck')}>Check again</button></div>` : ''}`;
       }
-      if (w.step === 2) {
+      if (w.step === SPLIT) return `<p>How should ${esc(w.name)}'s sessions handle real work, like a build or a fix?</p>
+        <label class="wiz-radio"><input type="checkbox" id="wSplit"${tip('w-split')} ${w.split ? 'checked' : ''}><span><b>Send work to its own session</b>
+          <small>A session you start hands real work to a new session of its own, listed under it, so your conversation stays free to talk while the work runs. Untick it to have each session do the work itself; it still starts a new session when you ask for one. You can change this later, in the desk's Inspector, under Switches.</small></span></label>`;
+      if (w.step === FOLDERS) {
         const clash = (p) => takenHome(p) ? '<div class="wiz-err">Another desk already uses this folder. Each desk needs its own, or they would share one sign-in.</div>' : '';
         const inside = (e, typed) => { const d = !typed && w.check?.roots && defaultHome(roots(), w.name, e); return d?.clash ? ` Not ${esc(d.clash)}: that is inside Docket's own folder (${OS.caps}).` : ''; };
         const all = picked(), f = w.check?.folders;
@@ -5270,7 +5276,7 @@ function companyWizard({ first = false } = {}) {
           ${all.length > 1 ? `<label class="f">Default brand for new sessions<small>The brand a new session starts on. Each session can still pick another beside the model.</small><select id="wDefault"${tip('w-default')}>${all.map((e) => `<option value="${e === 'claude' ? '' : e}" ${(w.def || 'claude') === e ? 'selected' : ''}>${BRAND_NAMES[e]}</option>`).join('')}</select></label>` : ''}
           ${w.kind === 'claude' ? `<label class="f">Email (optional)<small>Fills in the Claude sign-in page for you.</small><input id="wEmail"${tip('w-email')} value="${esc(w.email)}" placeholder="you@desk.com" autocomplete="off"></label>` : ''}`;
       }
-      if (w.step === 3) {
+      if (w.step === SIGNIN) {
         if (!w.brands.length) return w.kind === 'bedrock' ? bedrockSignin() : claudeSignin();
         if (!w.kind && w.si?.busy) return `<p>${esc(w.si.busy)}</p>`;
         // Grok and Codex: one box each, with the sign-in's state and its steps as the Companies screen draws them
@@ -5334,22 +5340,22 @@ function companyWizard({ first = false } = {}) {
     }
     function buttons() {
       const b = [];
-      if (!first && !w.id && w.step < 3) b.push(`<button class="left" data-w="cancel"${tip('w-cancel')}>Cancel</button>`);
-      if (w.step > 0 && w.step < 4 && !w.si?.busy && !w.si?.url) b.push(`<button data-w="back"${tip('w-back')}>Back</button>`);
-      const act = w.step === 3 && signinAction();
-      if (w.step === 3 && !allSigned()) b.push(act && act[0] === 'login' && w.already ? `<button data-w="keep"${tip('w-keep')}>Keep ${w.already.email ? esc(w.already.email) : 'this account'}</button>` : `<button data-w="skip"${tip('w-skip')}>Sign in later</button>`);
+      if (!first && !w.id && w.step < SIGNIN) b.push(`<button class="left" data-w="cancel"${tip('w-cancel')}>Cancel</button>`);
+      if (w.step > NAME && w.step < DONE && !w.si?.busy && !w.si?.url) b.push(`<button data-w="back"${tip('w-back')}>Back</button>`);
+      const act = w.step === SIGNIN && signinAction();
+      if (w.step === SIGNIN && !allSigned()) b.push(act && act[0] === 'login' && w.already ? `<button data-w="keep"${tip('w-keep')}>Keep ${w.already.email ? esc(w.already.email) : 'this account'}</button>` : `<button data-w="skip"${tip('w-skip')}>Sign in later</button>`);
       if (act) { b.push(`<button class="primary" data-main data-w="${act[0]}"${act[4] ? ` data-engine="${act[4]}"` : ''}${tip(act[2])} ${act[3] ? '' : 'disabled'}>${act[1]}</button>`); return b.join(''); }
-      const can = w.step === 0 ? !!w.name.trim() : w.step === 1 ? pickOk() : w.step === 2 ? !!(homeOf('claude').trim() && w.folder.trim() && w.brands.every((e) => String(homeOf(e)).trim())) && !unanswered() : w.step === 3 ? allSigned() : true;
-      b.push(`<button class="primary" data-main data-w="next"${tip('w-next')} ${can && !w.busy ? '' : 'disabled'}>${w.step === 4 ? `Open ${esc(w.name)}` : w.busy ? 'Saving…' : 'Next'}</button>`);
+      const can = w.step === NAME ? !!w.name.trim() : w.step === BRAND ? pickOk() : w.step === FOLDERS ? !!(homeOf('claude').trim() && w.folder.trim() && w.brands.every((e) => String(homeOf(e)).trim())) && !unanswered() : w.step === SIGNIN ? allSigned() : true;
+      b.push(`<button class="primary" data-main data-w="next"${tip('w-next')} ${can && !w.busy ? '' : 'disabled'}>${w.step === DONE ? `Open ${esc(w.name)}` : w.busy ? 'Saving…' : 'Next'}</button>`);
       return b.join('');
     }
     function render() {
       card.innerHTML = `<h2 id="wizTitle">${first && w.step === 0 ? 'Set up Docket' : w.name && w.step ? `Set up ${esc(w.name)}` : 'Add a desk'}</h2>
-        <div class="wiz-steps">${WIZ_STEPS.map((s, i) => { const done = i < w.step && !(i === 3 && !allSigned()); return `<span class="${i === w.step ? 'on' : done ? 'done' : ''}">${done ? '✓ ' : ''}${i + 1}. ${s}</span>`; }).join('')}</div>
+        <div class="wiz-steps">${WIZ_STEPS.map((s, i) => { const done = i < w.step && !(i === SIGNIN && !allSigned()); return `<span class="${i === w.step ? 'on' : done ? 'done' : ''}">${done ? '✓ ' : ''}${i + 1}. ${s}</span>`; }).join('')}</div>
         ${body()}${w.error ? `<div class="wiz-err">${esc(w.error)}</div>` : ''}
         <div class="wiz-btns">${buttons()}</div>`;
       card.querySelector('input:not([readonly])')?.focus();
-      if (w.step === 2) inspect();
+      if (w.step === FOLDERS) inspect();
     }
     // What was typed, kept as it is typed so going back and forth loses nothing.
     card.oninput = (e) => {
@@ -5365,6 +5371,7 @@ function companyWizard({ first = false } = {}) {
       if (t.dataset.reuse) { w.reuse[t.dataset.reuse] = t.value === '1'; render(); }
       if (t.dataset.home) { w.homes[t.dataset.home] = t.value; w.homesTyped[t.dataset.home] = true; inspect(); }
       if (t.id === 'wDefault') w.def = t.value;
+      if (t.id === 'wSplit') w.split = t.checked;
       if (t.id === 'wEmail') w.email = t.value;
       if (t.id === 'wCode') { w.code = t.value; card.querySelector('[data-w="code"]').disabled = !w.code.trim(); }
       if (t.id === 'wRegion') w.awsRegion = t.value;
@@ -5373,10 +5380,10 @@ function companyWizard({ first = false } = {}) {
     // Every company has a Claude home (the server needs one), so one without Claude still sends it, with Claude
     // left out (brandsOff). A brand not picked sends an empty home folder, which takes it away again after Back.
     const save = (extra = {}) => api('/api/clients/save-one', { id: w.id, name: w.name, home: homeOf('claude'), folder: w.folder, email: w.kind === 'claude' ? w.email : '',
-      ...Object.fromEntries(OTHER.map(([e, , k]) => [k, w.brands.includes(e) ? homeOf(e) : ''])), brandsOff: w.kind ? [] : ['claude'], defaultEngine: w.def,
+      ...Object.fromEntries(OTHER.map(([e, , k]) => [k, w.brands.includes(e) ? homeOf(e) : ''])), brandsOff: w.kind ? [] : ['claude'], defaultEngine: w.def, splitWork: w.split,
       ...(w.kind === 'bedrock' && w.awsProfile.trim() ? { awsProfile: w.awsProfile, awsRegion: w.awsRegion || 'us-east-1' } : {}), ...extra });
     const enterSignin = async () => {
-      w.step = 3; w.signedIn = null; w.si = null; w.already = null; w.forced = null;
+      w.step = SIGNIN; w.signedIn = null; w.si = null; w.already = null; w.forced = null;
       if (w.kind === 'bedrock') {
         const profs = w.check?.awsProfiles || [];
         if (!w.awsProfile && profs.length) w.awsProfile = (profs.find((p) => p.sso) || profs[0]).name;
@@ -5389,7 +5396,7 @@ function companyWizard({ first = false } = {}) {
       w.si = null; render();
     };
     // Claude signed in: on to Done, unless Grok or Codex still has to sign in (the button then moves on to it).
-    const claudeIn = () => { w.signedIn = true; w.si = null; if (allSigned()) w.step = 4; };
+    const claudeIn = () => { w.signedIn = true; w.si = null; if (allSigned()) w.step = DONE; };
     card.onclick = async (e) => {
       const kind =e.target.closest('[data-kind]')?.dataset.kind;
       // Claude comes one way at most (a Claude account or Bedrock); Grok and Codex tick on and off beside it.
@@ -5404,22 +5411,23 @@ function companyWizard({ first = false } = {}) {
       if (a === 'recheck') return check();
       if ((a === 'back' || a === 'skip') && S.signin?.client === w.id) cancelLogin(); // a Grok or Codex sign-in under way
       if (a === 'back') { if (w.si && w.kind) api(`/api/clients/${w.id}/login-cancel`, {}).catch(() => {}); w.si = null; w.step--; return render(); }
-      if (a === 'skip') { if (w.id && w.kind) api(`/api/clients/${w.id}/login-cancel`, {}).catch(() => {}); w.si = null; w.step = 4; return render(); }
+      if (a === 'skip') { if (w.id && w.kind) api(`/api/clients/${w.id}/login-cancel`, {}).catch(() => {}); w.si = null; w.step = DONE; return render(); }
       if (a === 'next') {
-        if (w.step === 0) { w.step = 1; if (!w.check) check(); else render(); return; }
-        if (w.step === 1) { // the default brand stays one that is picked; with one brand, it is that one
-          w.step = 2; defaults();
+        if (w.step === NAME) { w.step = BRAND; if (!w.check) check(); else render(); return; }
+        if (w.step === BRAND) { // the default brand stays one that is picked; with one brand, it is that one
+          w.step = SPLIT; defaults();
           if (!picked().includes(w.def || 'claude')) w.def = picked()[0] === 'claude' ? '' : picked()[0];
           return render();
         }
-        if (w.step === 2) {
+        if (w.step === SPLIT) { w.step = FOLDERS; return render(); }
+        if (w.step === FOLDERS) {
           // A company is saved now, so it can sign in on the next step; a Bedrock-only one once its AWS profile is chosen.
           if (w.kind === 'bedrock' && !w.brands.length) return enterSignin();
           w.busy = true; render();
           try { w.id = (await save()).id; } catch (err) { w.error = err.message; w.busy = false; return render(); }
           w.busy = false; return enterSignin();
         }
-        if (w.step === 3) { w.step = 4; return render(); }
+        if (w.step === SIGNIN) { w.step = DONE; return render(); }
         return close(w.id);
       }
       if (a === 'keep') { claudeIn(); return render(); }
@@ -5457,7 +5465,7 @@ function companyWizard({ first = false } = {}) {
           if (tab) { tab.location = url; opened = true; }
           w.si = { url }; render();
           const r = await api(`/api/clients/${w.id}/login-code`, {});
-          if (w.step !== 3) return;
+          if (w.step !== SIGNIN) return;
           if (r.loggedIn) { claudeIn(); } else w.si = { error: `That didn't work${r.detail ? ': ' + r.detail : ''}. Try again.` };
         } catch (err) { if (tab && !opened) tab.close(); w.si = { error: err.message }; }
         return render();
