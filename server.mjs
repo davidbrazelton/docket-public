@@ -40,6 +40,7 @@ import { groupProcesses, folderSize, cpuPercent, diskKeeper } from './machine-us
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
 import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
+import { createPlanStore, readyTasks, whyNoneReady, STATES } from './plans.mjs';
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
 import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
@@ -1041,6 +1042,196 @@ function crossingTools(parent) {
   return [...make(false), ...make(true)];
 }
 
+// ---------- Docket's own plan system (#180, plans.mjs) ----------
+// On for a desk whose plan system is Docket's own: planSystem "docket" on its entry in the desk list (the setting on
+// the Desks screen, the wizard step and the card after the update come later). Each desk's plans are files in a
+// folder of its own, so two desks never share a plan.
+const plansOn = (client) => client?.planSystem === 'docket';
+const planStores = new Map();
+function plansOf(client) {
+  const dir = path.resolve(DATA_DIR, 'plans', client.id);
+  if (!planStores.has(dir)) planStores.set(dir, createPlanStore({ dir }));
+  return planStores.get(dir);
+}
+// A session's title when Docket knows one ('' rather than Untitled).
+const knownTitle = (client, id) => { const t = id ? sessionTitle(client, id) : ''; return t === 'Untitled' ? '' : t; };
+// The plan a session coordinates, and the tasks it holds (not yet done) in any plan of its desk.
+function sessionPlans(client, id, all = plansOf(client).list()) {
+  return { own: all.find((p) => p.coordinator === id) || null,
+    holds: all.flatMap((p) => p.tasks.filter((t) => t.holder === id && t.state !== 'done').map((t) => ({ plan: p, task: t }))) };
+}
+// "p-ab12/T3" or a plan id and a task id.
+function taskRef(ref, planId) {
+  const m = String(ref || '').match(/^(p-[a-z0-9]+)\/(T\d+)$/i);
+  return m ? { plan: m[1].toLowerCase(), task: m[2].toUpperCase() } : { plan: planId || '', task: String(ref || '').toUpperCase() };
+}
+// Which plan a tool means when it names none. Workers: the plan of the session that started them (their
+// coordinator). Readers: their own plan first.
+function planFor(client, s, given, { want = 'read', task } = {}) {
+  if (given) return given;
+  const all = plansOf(client).list(), mine = sessionPlans(client, s.id, all);
+  const ofParent = () => { const pid = parentOf(client, s.id); return pid ? all.find((p) => p.coordinator === pid)?.id : ''; };
+  if (want === 'claim') return ofParent() || mine.own?.id || '';
+  if (want === 'update') return mine.holds.find((h) => h.task.id === task)?.plan.id || mine.own?.id || ofParent() || '';
+  return mine.own?.id || mine.holds[0]?.plan.id || ofParent() || '';
+}
+const holderText = (client, t) => t.holder ? `${t.holderTitle || knownTitle(client, t.holder) || 'a session'} (${t.holder})` : '';
+// A plan as text for a session: progress, then each task with its state, holder, order, links and own plan.
+function planText(client, p) {
+  const store = plansOf(client), all = store.list(), r = store.rollup(p.id, all);
+  const lines = [`Plan ${p.id}: ${p.title}`, `File: ${p.file}`, `Coordinator: ${p.coordinator ? `${p.coordinatorTitle || knownTitle(client, p.coordinator) || 'a session'} (${p.coordinator})` : 'none'}`];
+  if (p.parent) lines.push(`Part of: plan ${p.parent.plan}, task ${p.parent.task}`);
+  lines.push(`Progress: ${r.done} of ${r.total} done`);
+  if (p.goal) lines.push('', p.goal);
+  lines.push('');
+  for (const t of p.tasks) {
+    const sub = t.plan && all.find((x) => x.id === t.plan), sr = sub && store.rollup(sub.id, all);
+    lines.push(`[${t.state === 'done' ? 'x' : ' '}] ${t.id} ${t.title} · ${t.state.replace(/_/g, ' ')}${t.holder ? ` · held by ${holderText(client, t)}` : ''}${t.after.length ? ` · after ${t.after.join(', ')}` : ''}`);
+    if (t.brief) lines.push(`    Brief: ${t.brief.replace(/\n/g, '\n    ')}`);
+    if (t.note) lines.push(`    Note: ${t.note.replace(/\n/g, '\n    ')}`);
+    for (const l of t.links) lines.push(`    Link: ${l}`);
+    if (sub) lines.push(`    Its own plan: ${sub.id} "${sub.title}", ${sr.done} of ${sr.total} done`);
+  }
+  const ready = readyTasks(p);
+  lines.push('', ready.length ? `Free to start now: ${ready.map((t) => t.id).join(', ')}` : whyNoneReady(p));
+  return lines.join('\n');
+}
+// Every page showing this desk redraws its plans; the coordinator's chat hears which tasks just became free.
+function plansChanged(client, plan, nowReady = [], actor = '') {
+  broadcast({ t: 'plans', client: client.id });
+  const c = plan && plan.coordinator !== actor && live.get(plan.coordinator);
+  if (c && nowReady.length) addEvent(c, { k: 'note', text: `Plan "${plan.title}": ${nowReady.map((t) => `${t.id} ${t.title}`).join('; ')} ${nowReady.length === 1 ? 'is' : 'are'} now free to start.` });
+}
+// The page's view of a desk's plans: each with its progress and the sessions in it.
+function plansSummary(client) {
+  if (!plansOn(client)) return { on: false, plans: [] };
+  const store = plansOf(client), all = store.list();
+  return { on: true, plans: all.map((p) => ({ id: p.id, title: p.title, file: p.file, coordinator: p.coordinator, parent: p.parent, ...store.rollup(p.id, all),
+    holders: [...new Set(p.tasks.filter((t) => t.holder && t.state !== 'done').map((t) => t.holder))] })) };
+}
+function planDetail(client, id) {
+  const store = plansOf(client), all = store.list(), p = all.find((x) => x.id === id);
+  if (!p) return null;
+  return { ...p, ...store.rollup(p.id, all), coordinatorTitle: p.coordinatorTitle || knownTitle(client, p.coordinator),
+    parentTitle: p.parent ? all.find((x) => x.id === p.parent.plan)?.title || '' : '',
+    tasks: p.tasks.map((t) => {
+      const sub = t.plan && all.find((x) => x.id === t.plan);
+      return { ...t, holderTitle: knownTitle(client, t.holder) || t.holderTitle, ready: readyTasks(p).includes(t), sub: sub ? { id: sub.id, title: sub.title, ...store.rollup(sub.id, all) } : null };
+    }) };
+}
+
+// The plan tools, only on a desk whose plan system is Docket's own (prompts/optional/plans.md says how to use them).
+function planToolDefs(parent) {
+  const client = clientById(parent.client), store = plansOf(client);
+  const reply = (text, isError = false) => ({ content: [{ type: 'text', text }], ...(isError ? { isError: true } : {}) });
+  const run = (fn) => { try { return fn(); } catch (e) { return reply(e.message, true); } };
+  const taskSpec = z.object({
+    title: z.string().describe('Short title of the task'),
+    brief: z.string().optional().describe('What to do and what done looks like, complete enough for a fresh session'),
+    after: z.array(z.union([z.string(), z.number()])).optional().describe('The tasks this one waits on: ids like "T1", or the place in this same list (1 for the first task given here)'),
+    links: z.array(z.string()).optional().describe('Tickets, issues, pull requests or files this task is about, as web addresses or full paths'),
+  });
+  const planArg = z.string().optional();
+  return [
+    tool('plan_create',
+      "Attach a new plan to this session, making it the plan's coordinator: a title, a goal, and its tasks in order. A session working a task in another plan gets a plan that hangs off that task (both files name each other); with no task held, the new plan is a master plan. One plan per session: add to it with plan_add_tasks.",
+      {
+        title: z.string().describe('The plan\'s title, under 60 characters'),
+        goal: z.string().optional().describe('What the whole plan achieves, a few sentences'),
+        tasks: z.array(taskSpec).describe('The tasks, in the order they should be done'),
+        for_task: z.string().optional().describe('Only when this session holds more than one task: the one this plan is for, as "<plan id>/<task id>"'),
+      },
+      async ({ title, goal, tasks, for_task }) => run(() => {
+        const mine = sessionPlans(client, parent.id);
+        if (mine.own) return reply(`This session already coordinates plan ${mine.own.id} ("${mine.own.title}"). Add tasks to it with plan_add_tasks.`, true);
+        let up = null;
+        if (for_task) up = taskRef(for_task);
+        else if (mine.holds.length === 1) up = { plan: mine.holds[0].plan.id, task: mine.holds[0].task.id };
+        else if (mine.holds.length > 1) return reply(`This session holds ${mine.holds.map((h) => `${h.plan.id}/${h.task.id}`).join(', ')}. Say which one this plan is for with for_task.`, true);
+        const p = store.create({ title, goal, tasks, coordinator: parent.id, coordinatorTitle: parent.title, parent: up });
+        logEvent('plan made', `${p.id} "${p.title}" by ${sessionTag(parent)}${up ? `, for ${up.plan}/${up.task}` : ''}`);
+        plansChanged(client, p);
+        return reply(`Made plan ${p.id}${up ? `, hanging off task ${up.task} of plan ${up.plan}` : ' (a master plan)'}.\n\n${planText(client, store.read(p.id))}`);
+      })),
+    tool('plan_add_tasks',
+      "Add tasks to the plan this session coordinates.",
+      { tasks: z.array(taskSpec).describe('The new tasks; "after" may name existing tasks (T2) or places in this list'), plan_id: planArg.describe('Plan id; defaults to the plan this session coordinates') },
+      async ({ tasks, plan_id: plan }) => run(() => {
+        const id = plan || sessionPlans(client, parent.id).own?.id;
+        if (!id) return reply('This session coordinates no plan. Make one with plan_create.', true);
+        const r = store.addTasks(id, tasks, parent.id);
+        plansChanged(client, r.plan);
+        return reply(`Added ${r.added.map((t) => `${t.id} ${t.title}`).join('; ')} to plan ${id}.`);
+      })),
+    tool('plan_next_task',
+      "Claim the next task that is free to start (open, and everything it waits on done) in a plan, for this session. Two sessions never get the same task. Use it when the coordinator asked you to take the next task; the plan defaults to the plan of the session that started you.",
+      { plan_id: planArg.describe('Plan id; defaults to the plan of the session that started this one') },
+      async ({ plan_id: plan }) => run(() => {
+        const id = planFor(client, parent, plan, { want: 'claim' });
+        if (!id) return reply('No plan to claim from: the session that started this one has no plan. Give the plan id.', true);
+        const r = store.claim(id, null, parent.id, parent.title);
+        if (!r.task) return reply(r.why);
+        plansChanged(client, r.plan);
+        return reply(`You now hold ${r.task.id} "${r.task.title}" in plan ${id}.\n${r.task.brief ? `Brief: ${r.task.brief}\n` : ''}When it is done, call plan_update_task with state done and a one-line note.`);
+      })),
+    tool('plan_claim_task',
+      "Claim one named task for this session. Refused when another session holds it, it is done, or a task it waits on is not done yet.",
+      { task_id: z.string().describe('Task id like "T2", or "<plan id>/T2"'), plan_id: planArg.describe('Plan id; defaults to the plan of the session that started this one') },
+      async ({ task_id: task, plan_id: plan }) => run(() => {
+        const ref = taskRef(task, plan), id = planFor(client, parent, ref.plan, { want: 'claim' });
+        if (!id) return reply('Give the plan id: the session that started this one has no plan.', true);
+        const r = store.claim(id, ref.task, parent.id, parent.title);
+        if (!r.already) plansChanged(client, r.plan);
+        return reply(`${r.already ? 'You already hold' : 'You now hold'} ${r.task.id} "${r.task.title}" in plan ${id}.${r.task.brief ? `\nBrief: ${r.task.brief}` : ''}`);
+      })),
+    tool('plan_update_task',
+      "Change a task you hold, or (as the plan's coordinator) any task in your plan: set its state, add a short note, attach links (tickets, issues, pull requests, files). States: done; waiting_on_user (needs the user's answer); sent_back (the coordinator checked it and the holder must fix it); claimed (back to work); open (let it go so another session can take it).",
+      {
+        task_id: z.string().describe('Task id like "T2", or "<plan id>/T2"'),
+        state: z.enum(STATES).optional(),
+        note: z.string().optional().describe('One or two lines: what was done, or what is missing'),
+        links: z.array(z.string()).optional().describe('Web addresses or full paths to attach'),
+        plan_id: planArg.describe('Plan id; defaults to the plan where this session holds that task, then its own plan'),
+      },
+      async ({ task_id: task, state: st, note, links, plan_id: plan }) => run(() => {
+        const ref = taskRef(task, plan), id = planFor(client, parent, ref.plan, { want: 'update', task: ref.task });
+        if (!id) return reply('Give the plan id: this session holds no such task and coordinates no plan.', true);
+        const r = store.update(id, ref.task, { state: st, note, links }, parent.id, parent.title);
+        plansChanged(client, r.plan, r.nowReady, parent.id);
+        const all = store.list(), done = r.plan.tasks.every((t) => t.state === 'done');
+        const up = done && r.plan.parent && `Every task in this plan is done, so task ${r.plan.parent.task} of plan ${r.plan.parent.plan} may be done too.`;
+        return reply([`${r.task.id} "${r.task.title}" is now ${r.task.state.replace(/_/g, ' ')}.`,
+          r.nowReady.length ? `Now free to start: ${r.nowReady.map((t) => `${t.id} ${t.title}`).join('; ')}.` : '',
+          up || '', `Plan progress: ${store.rollup(id, all).done} of ${store.rollup(id, all).total} done.`].filter(Boolean).join('\n'));
+      })),
+    tool('plan_read',
+      "Read a plan in full: every task, its state, who holds it, what it waits on, its links, and the progress of any plan under it. Defaults to the plan this session coordinates, then the plan it holds a task in, then the plan of the session that started it.",
+      { plan_id: planArg.describe('Plan id') },
+      async ({ plan_id: plan }) => run(() => {
+        const id = planFor(client, parent, plan);
+        const p = id && store.read(id);
+        return p ? reply(planText(client, p)) : reply(id ? `No plan ${id} on this desk.` : 'This session has no plan and holds no task. plan_list shows the desk\'s plans.', true);
+      })),
+    tool('plan_list',
+      "List this desk's plans: id, title, coordinator, progress, and which plan each one hangs off.",
+      {},
+      async () => run(() => {
+        const s = plansSummary(client);
+        return reply(s.plans.map((p) => `${p.id}  ${p.title}  ·  ${p.done} of ${p.total} done  ·  coordinator ${knownTitle(client, p.coordinator) || p.coordinator || 'none'}${p.parent ? `  ·  under ${p.parent.plan}/${p.parent.task}` : '  ·  master plan'}`).join('\n') || 'This desk has no plans yet.');
+      })),
+    tool('plan_take_over',
+      "Make this session the coordinator of an existing plan, so a fresh session can carry on an old one's plan. Only when the user or the plan's old coordinator asks.",
+      { plan_id: z.string().describe('Plan id') },
+      async ({ plan_id: plan }) => run(() => {
+        const mine = sessionPlans(client, parent.id).own;
+        if (mine && mine.id !== plan) return reply(`This session already coordinates plan ${mine.id}; a session coordinates one plan.`, true);
+        const p = store.setCoordinator(plan, parent.id, parent.title);
+        plansChanged(client, p);
+        return reply(`This session now coordinates plan ${p.id}.\n\n${planText(client, p)}`);
+      })),
+  ];
+}
+
 // Docket's tools for one session (parent: the session calling them). They run here in the app;
 // each session reaches them through tools-helper.mjs, a separate small program that asks the app
 // for this list and passes calls back (see /api/tools), so sessions don't hold the app's code.
@@ -1336,6 +1527,7 @@ function portalToolDefs(parent) {
             .map((x) => `${x.id}  [${x.status}]  ${x.title || '(untitled)'}${x.parentId ? `  (spun off from ${x.parentId})` : ''}`);
           return { content: [{ type: 'text', text: rows.join('\n') || 'No running sessions.' }] };
         }),
+      ...(plansOn(clientById(parent.client)) ? planToolDefs(parent) : []),
   ];
 }
 // The helper proves it was started by this Docket with a token kept on this computer.
@@ -2998,7 +3190,7 @@ function grokOptions(s, client, resume) {
     permissionMode: s.settings.permissionMode,
     ...(s.settings.effort ? { effort: s.settings.effort } : {}),
     // `grok agent stdio` does not read --rules (checked 2026-10-27), so the engine sends these ahead of the first message.
-    rules: forEngine('grok', [APPEND_PROMPT, promptAppends(), shiftRules(s)].filter(Boolean).join('\n\n')),
+    rules: forEngine('grok', [APPEND_PROMPT, promptAppends(), shiftRules(s), planRules(s)].filter(Boolean).join('\n\n')),
     mcpServers: [acpServer('portal', portalTools(s.id)), acpServer('playwright', browserTools(client, s.id))],
   };
 }
@@ -3021,7 +3213,7 @@ function codexOptions(s, client, resume) {
     ...(isShift(s) ? { model: shiftModel(s, client) } : codexModel(s.settings.model) ? { model: s.settings.model } : {}),
     ...(s.settings.effort ? { effort: s.settings.effort } : {}),
     // Codex takes Docket's instructions as its own "developer instructions", at every start and pickup.
-    rules: forEngine('codex', [APPEND_PROMPT, promptAppends(), shiftRules(s)].filter(Boolean).join('\n\n')),
+    rules: forEngine('codex', [APPEND_PROMPT, promptAppends(), shiftRules(s), planRules(s)].filter(Boolean).join('\n\n')),
     config: { mcp_servers: { portal: codexServer(portalTools(s.id)), playwright: codexServer(browserTools(client, s.id)) } },
   };
 }
@@ -3086,6 +3278,8 @@ const shiftHookEnv = (id) => ({ DOCKET_URL: `http://127.0.0.1:${PORT}`, DOCKET_S
 const shiftModel = (s, client) => s.gear || usableGear(client, s.engine, startGearOf(s.engine, null, client?.startGear?.[s.engine])).id;
 // The shifting rules (prompts/optional/model-shifting.md), with this brand's gears in place of {gears}, {start},
 // {mid} and {top}.
+// Docket's plan rules (prompts/optional/plans.md), only on a desk whose plan system is Docket's own (#180).
+const planRules = (s) => plansOn(clientById(s.client)) ? optionalPrompt('plans.md') : '';
 function shiftRules(s) {
   if (!isShift(s)) return '';
   const gears = visibleGears(clientById(s.client), s.engine), start = findGear(s.engine, s.gear) || gears[0];
@@ -3225,7 +3419,7 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
     includePartialMessages: true,
     agentProgressSummaries: true,
     promptSuggestions: true,
-    systemPrompt: { type: 'preset', preset: 'claude_code', append: [APPEND_PROMPT, promptAppends(), shiftRules(s)].filter(Boolean).join('\n\n') },
+    systemPrompt: { type: 'preset', preset: 'claude_code', append: [APPEND_PROMPT, promptAppends(), shiftRules(s), planRules(s)].filter(Boolean).join('\n\n') },
     mcpServers: { portal: portalTools(id), playwright: browserTools(client, id) },
     plugins: [{ type: 'local', path: PLUGIN_DIR }],
   };
@@ -5062,6 +5256,9 @@ function cleanCompany(c, taken) {
   }
   // handoffPattern is set by editing the company list file; an edit on the page keeps it.
   const handoffPattern = cleanHandoffPattern(c.handoffPattern !== undefined ? c.handoffPattern : clientById(id)?.handoffPattern);
+  // planSystem (#180): which plan system the desk uses: docket (Docket's own), folder (an outside one, shown read-only), or
+  // none. Set by editing the desk list file for now; an edit on the page keeps it.
+  const planSystem = ['docket', 'folder', 'none'].find((v) => v === (c.planSystem !== undefined ? c.planSystem : clientById(id)?.planSystem)) || '';
   // docketHooks.off: the Docket hooks this company turned off (the Companies screen); the wizard does not send it, so it is kept.
   const docketHooks = cleanDocketHooks(c.docketHooks !== undefined ? c.docketHooks : clientById(id)?.docketHooks);
   // grokHome sets Grok up for this company: its Grok home folder (its Grok sign-in and settings). defaultEngine
@@ -5137,7 +5334,7 @@ function cleanCompany(c, taken) {
   for (const [label, dir, sub] of [['Claude home', home, 'claude-home'], ['Grok home', grokHome, 'grok-home'], ['Codex home', codexHome, 'codex-home']]) {
     if (dir && isInside(dir, ROOT)) return { error: `${name}: the ${label} folder ${dir} is inside Docket's own folder (${ROOT}). It holds the sign-in, so it must be somewhere else, like ${path.join(homeRoots().claude, `${name}-desk`, sub)}` };
   }
-  return { id, name, home, folder: folder || home, ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
+  return { id, name, home, folder: folder || home, ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
 }
 function saveCompanies(list) {
   for (const c of list) {
@@ -5304,6 +5501,8 @@ async function sessionFiles(client, id) {
   }
   const browserDirOut = path.join(UPLOADS, id, 'browser');
   if (fs.existsSync(browserDirOut)) for (const n of fs.readdirSync(browserDirOut)) add(path.join(browserDirOut, n), 'browser');
+  // The plan this session coordinates, and the plans it holds tasks in (#180), badged "plan" on the page.
+  if (plansOn(client)) for (const p of plansOf(client).list()) if (p.coordinator === id || p.tasks.some((t) => t.holder === id)) found.set(path.resolve(p.file), { kind: 'plan' });
 
   const out = [];
   for (const [p, { kind }] of found) {
@@ -5588,7 +5787,7 @@ function docketTexts() {
   return [
     { name: 'Docket\'s own instructions', note: 'written in server.mjs', text: APPEND_PROMPT },
     ...md(dir).map((n) => ({ name: `prompts/${n}`, path: path.join(dir, n), note: 'every session', text: fs.readFileSync(path.join(dir, n), 'utf8').trim() })),
-    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : 'only some sessions',
+    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'plans.md' ? "only desks on Docket's own plan system" : 'only some sessions',
       text: optionalPrompt(n) })),
   ];
 }
@@ -6681,6 +6880,17 @@ const server = http.createServer(async (req, res) => {
           group: gid ? await groupCost(client, gid) : null });
       }
       catch (e) { return json(res, 500, { error: 'Could not read prices or logs: ' + e.message }); }
+    }
+    if (req.method === 'GET' && p === '/api/plans') { // a desk's plans, for the board badges and the Plan section
+      const client = clientById(url.searchParams.get('client'));
+      if (!client) return json(res, 404, { error: 'Unknown desk' });
+      return json(res, 200, plansSummary(client));
+    }
+    const plm = p.match(/^\/api\/plans\/(p-[a-z0-9]+)$/);
+    if (plm && req.method === 'GET') {
+      const client = clientById(url.searchParams.get('client'));
+      const d = client && plansOn(client) && planDetail(client, plm[1]);
+      return d ? json(res, 200, d) : json(res, 404, { error: 'No such plan on this desk' });
     }
     const fm = p.match(/^\/api\/sessions\/([\w-]+)\/files$/);
     if (fm && req.method === 'GET') {

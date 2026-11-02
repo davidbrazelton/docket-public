@@ -383,6 +383,14 @@ aside.tasks.hidden { display: none; }
 .task .end { display: flex; align-items: center; }
 .task .dur { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 .tag { font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px; color: var(--muted); }
+.tag.plan-tag { color: var(--accent); border-color: var(--accent); font-variant-numeric: tabular-nums; }
+.plan-head { padding: 6px 14px 2px; font-size: 13px; font-weight: 600; }
+.plan-head .plan-sub { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
+.plan-head a, .plan-task a { color: inherit; }
+.plan-task .ic.st-done { color: var(--ok, #2e9d5b); } .plan-task .ic.st-claimed { color: var(--accent); } .plan-task .ic.st-waiting_on_user, .plan-task .ic.st-sent_back { color: var(--warn); }
+.plan-task .lb.mine { font-weight: 600; }
+.plan-task .sub { white-space: normal; }
+.file-row .plan-badge { font-size: 10px; border-radius: 999px; padding: 0 6px; margin-left: 6px; background: var(--accent-soft); color: var(--accent); }
 .tag.near-full { color: var(--bad); flex: none; }
 .tag.stalled { border-color: var(--warn); color: var(--warn); font-weight: 600; flex: none; }
 
@@ -1080,7 +1088,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   </main>
   <aside class="tasks" id="tasks">
     <div class="resizer" id="rightResizer" role="separator" aria-orientation="vertical" aria-label="Resize the details panel" data-tip="resize-right" tabindex="0"></div>
-    <div class="tasks-head"><span class="sec-toggles" id="secToggles" role="group" aria-label="Sections of the details panel"><button data-sec="cost" data-tip="sec-cost" aria-label="Cost">$</button><button data-sec="files" data-tip="sec-files" aria-label="Files">📄</button><button data-sec="prs" data-tip="sec-prs" aria-label="Pull requests"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4.75 1.5a2.25 2.25 0 0 0-.75 4.37v4.26a2.25 2.25 0 1 0 1.5 0V5.87A2.25 2.25 0 0 0 4.75 1.5Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm0 8.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5ZM11.25 10.13V6.5A2.5 2.5 0 0 0 8.75 4H7.56l1.22-1.22-1.06-1.06L4.69 4.75l3.03 3.03 1.06-1.06L7.56 5.5h1.19a1 1 0 0 1 1 1v3.63a2.25 2.25 0 1 0 1.5 0Zm-.75 1.37a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"/></svg></button><button data-sec="tasks" data-tip="sec-tasks" aria-label="Tasks"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 3.75l1.25 1.25 2.25-2.5M2 8.25l1.25 1.25 2.25-2.5M2 12.75l1.25 1.25 2.25-2.5M8 4h6M8 8.5h6M8 13h6"/></svg></button><button data-sec="mcp" data-tip="sec-mcp" aria-label="Connected services"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M6 1.5v3M10 1.5v3M3.75 4.5h8.5V7a4.25 4.25 0 0 1-8.5 0ZM8 11.25v3.25"/></svg></button></span><span id="tasksTitle"></span></div>
+    <div class="tasks-head"><span class="sec-toggles" id="secToggles" role="group" aria-label="Sections of the details panel"><button data-sec="cost" data-tip="sec-cost" aria-label="Cost">$</button><button data-sec="plan" data-tip="sec-plan" aria-label="Plan">📋</button><button data-sec="files" data-tip="sec-files" aria-label="Files">📄</button><button data-sec="prs" data-tip="sec-prs" aria-label="Pull requests"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4.75 1.5a2.25 2.25 0 0 0-.75 4.37v4.26a2.25 2.25 0 1 0 1.5 0V5.87A2.25 2.25 0 0 0 4.75 1.5Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm0 8.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5ZM11.25 10.13V6.5A2.5 2.5 0 0 0 8.75 4H7.56l1.22-1.22-1.06-1.06L4.69 4.75l3.03 3.03 1.06-1.06L7.56 5.5h1.19a1 1 0 0 1 1 1v3.63a2.25 2.25 0 1 0 1.5 0Zm-.75 1.37a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"/></svg></button><button data-sec="tasks" data-tip="sec-tasks" aria-label="Tasks"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 3.75l1.25 1.25 2.25-2.5M2 8.25l1.25 1.25 2.25-2.5M2 12.75l1.25 1.25 2.25-2.5M8 4h6M8 8.5h6M8 13h6"/></svg></button><button data-sec="mcp" data-tip="sec-mcp" aria-label="Connected services"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M6 1.5v3M10 1.5v3M3.75 4.5h8.5V7a4.25 4.25 0 0 1-8.5 0ZM8 11.25v3.25"/></svg></button></span><span id="tasksTitle"></span></div>
     <div class="tasks-body" id="tasksBody"></div>
   </aside>
 </div>
@@ -1284,6 +1292,8 @@ const HELP = [
   ]],
   ['Details panel (right)', [
     ['sec-cost', '$ Cost', 'Cost: what this session and this desk have spent'],
+    ['sec-plan', '📋 Plan', 'Plan: the plan this session coordinates, or the task it holds in one: each task, its state, which session holds it, and its links'],
+    ['plan-badge', 'Plan badge', 'This session coordinates a plan: how many of its tasks are done, counting the tasks of the plans under it'],
     ['sec-files', '📄 Files', 'Files: files Claude made or showed you in this session'],
     ['sec-prs', 'Pull requests', 'Pull requests: changes this session sent to GitHub for review, its tickets (Jira, GitHub issues or Azure DevOps work items), the git branches it worked on, and the lines it changed'],
     ['lines', 'Lines changed', 'Lines this session added and removed in the files it edited, helper agents included: the same total as on the Usage page'],
@@ -1568,6 +1578,8 @@ const S = {
   branchNow: {},   // session id -> the branch it is on now, listed first in branches
   worktree: {},    // session id -> the git worktree folder its branch is in, when not its working folder
   files: {},       // session id -> files it produced
+  plans: { client: null, on: false, plans: [] }, // the open desk's plans (#180): progress and who is in each
+  planDetail: {},  // plan id -> { at, plan } with every task, for the Plan section
   costs: {},       // session id -> cost at API prices
   showArchived: false, // the list is showing the archive instead of the normal sessions
   events: [], tasks: {}, attachments: [],
@@ -1884,7 +1896,7 @@ function draftEngine() {
 }
 
 // ---------- files a session produced ----------
-const KIND_LABEL = { presented: (b) => 'from ' + b, written: (b) => 'written by ' + b, made: () => 'made during the session', browser: () => 'browser', edited: () => 'edited' };
+const KIND_LABEL = { plan: () => 'the plan file', presented: (b) => 'from ' + b, written: (b) => 'written by ' + b, made: () => 'made during the session', browser: () => 'browser', edited: () => 'edited' };
 function fileIcon(name) {
   const e = name.split('.').pop().toLowerCase();
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(e)) return '🖼️';
@@ -1918,7 +1930,7 @@ function fileRow(f, sessionId) {
   const ago2 = f.modified ? ago(f.modified) : '';
   return `<div class="file-row" title="${esc(f.path)}" data-row-file="${esc(f.path)}" data-session="${sessionId}" data-exists="${f.exists ? 1 : ''}" data-can-open="${f.canOpen ? 1 : ''}">
     <span class="fi">${fileIcon(f.name)}</span>
-    <button class="fn" data-file-open="${esc(f.path)}" data-session="${sessionId}" ${f.exists && f.canOpen ? '' : 'disabled'} title="${!f.canOpen ? `Programs and scripts open only from ${FILE_MANAGER}` : TAB_VIEW.test(f.name) ? 'Open in Docket' : 'Open in its own program'}">${esc(f.name)}</button>
+    <button class="fn" data-file-open="${esc(f.path)}" data-session="${sessionId}" ${f.exists && f.canOpen ? '' : 'disabled'} title="${!f.canOpen ? `Programs and scripts open only from ${FILE_MANAGER}` : TAB_VIEW.test(f.name) ? 'Open in Docket' : 'Open in its own program'}">${esc(f.name)}</button>${f.kind === 'plan' ? '<span class="plan-badge">plan</span>' : ''}
     <span class="fs">${esc(f.folder)} · ${f.exists ? (ago2 === 'now' || !ago2 ? 'just now' : ago2 + ' ago') + ' · ' + KIND_LABEL[f.kind](brand(S.live[sessionId])) : 'missing'}</span>
     <span class="fbs">${ROW_MORE}</span>
   </div>`;
@@ -3360,7 +3372,7 @@ function sessionRow(s, depth) {
   const more = run && run.unread > (run.topUnread ? 1 : 0) ? `<span class="tag unread-n" title="Runs of this schedule with a reply you have not read. The Details panel lists every run.">${run.unread} unread</span>` : '';
   const snip = snippetFor(s);
   return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${!depth && rowDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
-      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotClass(s) === 'failed' ? ` title="${esc(failedTip(s))}"` : ''}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
+      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotClass(s) === 'failed' ? ` title="${esc(failedTip(s))}"` : ''}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${planBadge(s.id)}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
       <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // The list is only replaced when what it shows actually changed. A redraw is held while the pointer is down on the
@@ -3492,6 +3504,7 @@ document.addEventListener('click', async (e) => {
 });
 function renderList() {
   pruneBoxes();
+  if (S.plans.client !== S.client) loadPlans();
   $('inbox').innerHTML = S.mode === 'sessions' ? inboxHtml() : '';
   $('listBar').hidden = S.mode !== 'sessions';
   if (S.mode === 'schedules') return renderScheduleList();
@@ -6354,7 +6367,8 @@ function renderTasks() {
   const tasksHtml = sectionHtml('tasks', `Tasks running ${running.length}`, running.map(item).join(''), !!folded.tasksRunning, 'tasksRunning')
     + sectionHtml('tasks', `Tasks finished ${finished.length}`, finished.map(item).join(''), !!folded.tasksFinished, 'tasksFinished');
   // Each shown section under its own heading, in the order the person dragged them into; a folded one is just its heading.
-  const parts = { cost: on.cost && ['Cost', costHtml(S.costs[S.selected])], runs: schedRunsHtml(), files: on.files && [outputs.length ? `Files ${outputs.length}` : 'Files', filesHtml],
+  const plan = on.plan && planSection(S.selected);
+  const parts = { cost: on.cost && ['Cost', costHtml(S.costs[S.selected])], runs: schedRunsHtml(), plan, files: on.files && [outputs.length ? `Files ${outputs.length}` : 'Files', filesHtml],
     prs: on.prs && ['Pull requests', prHtml], tasks: on.tasks && [null, tasksHtml], mcp: on.mcp && S.selected !== 'draft' && ['Connected services', mcpSection()] };
   const body = sectionOrder(store.get('sectionOrder', [])).map((k) => !parts[k]?.[1] ? '' : parts[k][0] === null ? parts[k][1] : sectionHtml(k, parts[k][0], parts[k][1], !!folded[k])).join('');
   $('tasksBody').innerHTML = S.selected === 'draft' ? '<div class="group">Start a session to see its details</div>'
@@ -6363,6 +6377,52 @@ function renderTasks() {
   renderSectionToggles();
   detailsCount(running.length);
 }
+// ---------- plans (#180) ----------
+// A desk on Docket's own plan system: a session coordinating a plan shows its progress on its row, and the Plan
+// section lists the plan it coordinates and the tasks it holds in other plans. Fetched again whenever a plan changes.
+async function loadPlans() {
+  const client = S.client; S.plans.client = client;
+  const d = client ? await api(`/api/plans?client=${encodeURIComponent(client)}`).catch(() => null) : null;
+  if (S.client !== client) return;
+  S.plans = { client, on: !!d?.on, plans: d?.plans || [] };
+  S.planDetail = {};
+  renderList(); if (!S.schedOpen) renderTasks();
+}
+const ownPlan = (id) => S.plans.plans.find((p) => p.coordinator === id);
+function planBadge(id) {
+  const p = S.plans.on && ownPlan(id); if (!p) return '';
+  return `<span class="tag plan-tag" title="${esc(`${tipText('plan-badge')}\n${p.title}: ${p.done} of ${p.total} done`)}">📋 ${p.done}/${p.total}</span>`;
+}
+function planDetail(id) {
+  const c = S.planDetail[id];
+  if (!c) { S.planDetail[id] = { at: Date.now(), plan: null }; api(`/api/plans/${id}?client=${encodeURIComponent(S.client)}`).then((plan) => { S.planDetail[id] = { at: Date.now(), plan }; if (!S.schedOpen) renderTasks(); }).catch(() => {}); }
+  return c?.plan || null;
+}
+const PLAN_ICON = { open: '○', claimed: '●', done: '✓', waiting_on_user: '⏸', sent_back: '↩' };
+const PLAN_WORD = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on you', sent_back: 'sent back' };
+const sessionLink = (id, title) => id ? `<a href="#" data-plan-open="${esc(id)}" title="Open this session">${esc(title || 'a session')}</a>` : '';
+const linkHtml = (l) => /^https?:\/\//.test(l) ? `<a href="${esc(l)}" target="_blank" rel="noopener" title="${esc(l)}">${esc(l.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60))}</a>` : esc(l.split(/[\\/]/).pop());
+function planHtml(p, me) {
+  const head = `<div class="plan-head">${esc(p.title)} · ${p.done} of ${p.total} done<span class="plan-sub">${p.coordinator === me ? 'Coordinated by this session' : `Coordinated by ${sessionLink(p.coordinator, p.coordinatorTitle)}`}${p.parent ? ` · part of ${esc(p.parentTitle || p.parent.plan)}, task ${esc(p.parent.task)}` : ' · master plan'}</span></div>`;
+  return head + p.tasks.map((t) => {
+    const sub = [PLAN_WORD[t.state] + (t.ready ? ', free to start' : ''), t.holder ? (t.holder === me ? 'held by this session' : `held by ${sessionLink(t.holder, t.holderTitle)}`) : '',
+      t.after.length && t.state !== 'done' ? 'after ' + t.after.join(', ') : '', t.sub ? `its plan: ${t.sub.done} of ${t.sub.total} done` : '', ...t.links.map(linkHtml), t.note ? esc(t.note) : ''].filter(Boolean);
+    return `<div class="task plan-task" title="${esc(t.brief || t.title)}"><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '○'}</span><span class="lb${t.holder === me && t.state !== 'done' ? ' mine' : ''}">${esc(t.id)} ${esc(t.title)}</span><span class="end"></span><span class="sub">${sub.join(' · ')}</span></div>`;
+  }).join('');
+}
+// The Plan section for one session, or null when it coordinates no plan and holds no task.
+function planSection(id) {
+  if (!S.plans.on || !id || id === 'draft') return null;
+  const ids = [...new Set([ownPlan(id)?.id, ...S.plans.plans.filter((p) => p.holders.includes(id)).map((p) => p.id)].filter(Boolean))];
+  if (!ids.length) return null;
+  const shown = ids.map((pid) => planDetail(pid)).filter(Boolean);
+  const own = ownPlan(id);
+  return [own ? `Plan · ${own.done} of ${own.total} done` : 'Plan', shown.length ? shown.map((p) => planHtml(p, id)).join('') : '<div class="hint">Loading…</div>'];
+}
+$('tasksBody').addEventListener('click', (e) => {
+  const a = e.target.closest('[data-plan-open]'); if (!a) return;
+  e.preventDefault(); openSession(a.dataset.planOpen);
+});
 // The lines the session added and removed, from its cost (refreshed with it); nothing when it changed none.
 function linesHtml(l) {
   if (!l || !(l.added || l.removed)) return '';
@@ -6432,12 +6492,12 @@ $('tasksBody').addEventListener('click', (e) => {
   e.preventDefault(); openSession(a.dataset.open);
 });
 // Which sections of the details panel are shown (remembered).
-const sections = () => ({ cost: true, files: true, prs: true, tasks: true, timeline: false, mcp: false, ...store.get('sections', {}) });
+const sections = () => ({ cost: true, plan: true, files: true, prs: true, tasks: true, timeline: false, mcp: false, ...store.get('sections', {}) });
 // ---------- details sections ----------
 // The details panel's sections in the order the person dragged them into, each folded to its heading or open,
 // both remembered in this browser the way the session groups' folding is. A section a later version adds,
 // missing from a saved order, goes in after the section it follows by default, so it is never lost.
-const SECTION_ORDER = ['cost', 'runs', 'files', 'prs', 'tasks', 'mcp'];
+const SECTION_ORDER = ['cost', 'runs', 'plan', 'files', 'prs', 'tasks', 'mcp'];
 function sectionOrder(saved, all = SECTION_ORDER) {
   const out = (Array.isArray(saved) ? saved : []).filter((k, i, a) => all.includes(k) && a.indexOf(k) === i);
   all.forEach((k, i) => {
@@ -7129,6 +7189,8 @@ function connect() {
       S.events = S.events.filter((x) => !((x.k === 'text' || x.k === 'retry') && x.id === m.evId));
       document.querySelector(`[data-retry="${CSS.escape(m.evId)}"]`)?.remove();
       document.querySelector(`[data-text="${CSS.escape(m.evId)}"]`)?.closest('.reply')?.remove();
+    } else if (m.t === 'plans' && m.client === S.client) {
+      loadPlans();
     } else if (m.t === 'files' && mine) {
       refreshFiles();
     } else if (m.t === 'tool_result' && mine) {

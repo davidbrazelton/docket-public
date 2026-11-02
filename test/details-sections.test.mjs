@@ -16,15 +16,17 @@ test('with nothing saved the sections come in their default order', () => {
 });
 
 test('a saved order is kept, and a section it does not name goes after the one it follows by default', () => {
-  assert.deepEqual(sectionOrder(['tasks', 'files', 'cost', 'prs', 'mcp', 'runs']), ['tasks', 'files', 'cost', 'prs', 'mcp', 'runs']);
+  assert.deepEqual(sectionOrder(['tasks', 'files', 'cost', 'prs', 'mcp', 'runs', 'plan']), ['tasks', 'files', 'cost', 'prs', 'mcp', 'runs', 'plan']);
+  // saved before "plan" existed: it follows runs
+  assert.deepEqual(sectionOrder(['tasks', 'files', 'cost', 'prs', 'mcp', 'runs']), ['tasks', 'files', 'cost', 'prs', 'mcp', 'runs', 'plan']);
   // saved before "runs" and "mcp" existed: runs follows cost, mcp follows tasks
-  assert.deepEqual(sectionOrder(['tasks', 'prs', 'files', 'cost']), ['tasks', 'mcp', 'prs', 'files', 'cost', 'runs']);
+  assert.deepEqual(sectionOrder(['tasks', 'prs', 'files', 'cost']), ['tasks', 'mcp', 'prs', 'files', 'cost', 'runs', 'plan']);
   // a new first section goes first
   assert.deepEqual(sectionOrder(['b', 'a'], ['new', 'a', 'b']), ['new', 'b', 'a']);
 });
 
 test('names no longer used and repeats are dropped from a saved order', () => {
-  assert.deepEqual(sectionOrder(['gone', 'mcp', 'mcp', 'cost']), ['mcp', 'cost', 'runs', 'files', 'prs', 'tasks']);
+  assert.deepEqual(sectionOrder(['gone', 'mcp', 'mcp', 'cost']), ['mcp', 'cost', 'runs', 'plan', 'files', 'prs', 'tasks']);
 });
 
 test('a dragged section lands before or after the one it is dropped on', () => {
