@@ -4,8 +4,7 @@ A page on your computer for starting, resuming and watching AI coding sessions, 
 
 ## What you need
 
-- **Node.js** 20 or newer (the LTS version from nodejs.org).
-- **Git.**
+- **Node.js** 20 or newer (the LTS version from nodejs.org), and **Git**. The Windows installer below brings its own of both.
 - **At least one AI tool** from the table below.
 - Optional: the **GitHub CLI** (`gh`) to show pull request status on sessions, and the **AWS CLI** for a desk that runs Claude through Amazon Bedrock.
 
@@ -25,9 +24,17 @@ Each desk picks one or more of these, and each signs in on its own. Docket check
 - **Jira** and **Azure DevOps**: ticket and pull request status, for desks set up for them in ☰ > Desks.
 - **AWS CLI**: only for a desk that runs Claude through Amazon Bedrock.
 
-## Install on Windows
+## Install on Windows the easy way
 
-In PowerShell:
+**[Download for Windows](https://github.com/davidbrazelton/docket-public/releases/latest/download/Docket-Setup.exe)** (Docket-Setup.exe, about 50 MB), then double-click it. It needs no admin rights and nothing installed beforehand: it carries its own Node.js and Git, downloads Docket into `%LOCALAPPDATA%\Programs\Docket`, makes it start when you sign in, adds **Docket** to the Start menu and opens it. The private browser sessions use downloads by itself in the background the first time Docket starts. You still need an AI tool (the table above); Docket shows how to install one.
+
+The installer is not code-signed yet, so Windows may show a blue **Windows protected your PC** window: click **More info**, then **Run anyway**.
+
+To remove it: **Settings > Apps > Installed apps > Docket > Uninstall**. That stops Docket and deletes its folder, with Docket's own settings and desk list. Each desk's own folders (its AI tool's sign-in and past sessions) are elsewhere and stay.
+
+## Install on Windows from the terminal
+
+If you already have Node.js and Git, or want Docket in a folder of your choice, in PowerShell:
 
 ```powershell
 git clone https://github.com/davidbrazelton/docket-public.git C:\Work\docket

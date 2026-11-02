@@ -99,9 +99,9 @@ test('folderOpenCommand: the Windows script is valid PowerShell', { skip: proces
   assert.equal(r.stdout.trim(), '0', r.stdout + r.stderr);
 });
 
-test('toolFolders: WinGet and the AWS tool on Windows, Homebrew on a Mac', () => {
-  assert.deepEqual(toolFolders({ platform: 'win32', home: 'C:\\Users\\pat', env: { ProgramFiles: 'C:\\Program Files', LOCALAPPDATA: 'C:\\Users\\pat\\AppData\\Local' } }),
-    ['C:\\Users\\pat\\.local\\bin', 'C:\\Program Files\\Amazon\\AWSCLIV2', 'C:\\Users\\pat\\AppData\\Local\\Microsoft\\WinGet\\Links']);
+test('toolFolders: WinGet, npm and the AWS tool on Windows, Homebrew on a Mac', () => {
+  assert.deepEqual(toolFolders({ platform: 'win32', home: 'C:\\Users\\pat', env: { ProgramFiles: 'C:\\Program Files', LOCALAPPDATA: 'C:\\Users\\pat\\AppData\\Local', APPDATA: 'C:\\Users\\pat\\AppData\\Roaming' } }),
+    ['C:\\Users\\pat\\.local\\bin', 'C:\\Program Files\\Amazon\\AWSCLIV2', 'C:\\Users\\pat\\AppData\\Local\\Microsoft\\WinGet\\Links', 'C:\\Users\\pat\\AppData\\Roaming\\npm']);
   assert.deepEqual(toolFolders({ platform: 'win32', home: 'C:\\Users\\pat', env: {} }), ['C:\\Users\\pat\\.local\\bin', 'C:\\Program Files\\Amazon\\AWSCLIV2']);
   assert.deepEqual(toolFolders({ platform: 'darwin', home: '/Users/pat', env: {} }), ['/Users/pat/.local/bin', '/opt/homebrew/bin', '/usr/local/bin']);
 });

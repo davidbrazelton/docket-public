@@ -14,13 +14,15 @@ export function openCommand(file, how, platform = process.platform) {
 }
 
 // Where an installer puts a program that may not be on the PATH Docket started with.
-// WinGet\Links is where winget puts a program like Codex (winget install OpenAI.Codex); Homebrew uses
-// /opt/homebrew/bin on Apple silicon and /usr/local/bin on Intel, and a launchd start has neither on its PATH.
+// WinGet\Links is where winget puts a program like Codex (winget install OpenAI.Codex); AppData\Roaming\npm is where
+// npm install -g puts one, which is on no PATH when Node.js came with Docket-Setup.exe rather than its own installer.
+// Homebrew uses /opt/homebrew/bin on Apple silicon and /usr/local/bin on Intel, and a launchd start has neither on its PATH.
 export function toolFolders({ platform = process.platform, home, env = process.env }) {
   const p = platform === 'win32' ? path.win32 : path.posix;
   if (platform !== 'win32') return [p.join(home, '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin'];
   return [p.join(home, '.local', 'bin'), p.join(env.ProgramFiles || 'C:\\Program Files', 'Amazon', 'AWSCLIV2'),
-    ...(env.LOCALAPPDATA ? [p.join(env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links')] : [])];
+    ...(env.LOCALAPPDATA ? [p.join(env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links')] : []),
+    ...(env.APPDATA ? [p.join(env.APPDATA, 'npm')] : [])];
 }
 
 // A full file path with an extension, as written in a session's text. Windows: a drive letter (C:\… or C:/…).
