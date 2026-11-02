@@ -929,6 +929,8 @@ a.pf-sum:hover { background: var(--panel-2); }
 .pf-item.failed, .mcp-row.failed { border-color: var(--bad); }
 .pf-item.missing { border-style: dashed; }
 .pf-gnote { font-size: 12px; color: var(--muted); margin: -2px 0 6px; }
+.pf-sec h3 .pf-brand { display: inline-flex; align-items: center; gap: 4px; text-transform: none; letter-spacing: 0; font-size: 11px; border: 1px solid var(--line); border-radius: 999px; padding: 0 7px 0 4px; margin-right: 6px; color: var(--text); vertical-align: 1px; }
+.pf-sec h3 .pf-brand .blogo svg { width: 12px; height: 12px; }
 .mcp-sum { font-size: 12px; color: var(--muted); margin: 6px 0; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .mcp-sum details { flex-basis: 100%; }
 .mcp-sum pre { white-space: pre-wrap; font-size: 11px; margin: 4px 0 0; padding: 6px 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
@@ -7313,11 +7315,13 @@ function renderProfile() {
     }
     const extra = (check?.servers || []).filter((x) => !used.has(x.name));
     mcpSec.groups = mcpSec.groups.filter((g) => g.title !== 'Also found by the check');
-    if (extra.length) mcpSec.groups.splice(2, 0, { title: 'Also found by the check', items: extra.map((x) => ({ name: x.name, detail: x.target, status: x.status,
+    if (extra.length) mcpSec.groups.splice(2, 0, { title: 'Also found by the check', brand: 'claude', items: extra.map((x) => ({ name: x.name, detail: x.target, status: x.status,
       statusText: x.status === 'needs-auth' ? 'needs sign-in' : x.status === 'other' ? x.text : x.status, error: x.status === 'failed' ? x.text.replace(/^Failed to connect\s*(—\s*)?/i, '') : '' })) });
     // the count: also the ones the check found, and not the ones only another profile has
-    mcpSec.count = mcpSec.groups.reduce((n, g) => n + g.items.filter((i) => !i.missing && !/^No |^None /.test(i.name)).length, 0);
+    mcpSec.count = mcpSec.groups.reduce((n, g) => n + g.items.filter((i) => !i.missing && !i.notRead && !/^No |^None /.test(i.name)).length, 0);
   }
+  // A desk with more than one brand labels each group with the brand it belongs to.
+  const many = (d.client.brands || []).length > 1;
   const itemHtml = (it) => {
     const key = `i${k++}`; pf.texts[key] = it;
     const meta = [it.note, it.size ? tokensText(it.size) : '', it.error].filter(Boolean).join(' · ');
@@ -7338,7 +7342,7 @@ function renderProfile() {
     <div class="pf-cols"><aside class="pf-side">${profileSummaryHtml()}</aside><div class="pf-body"><div class="pf-inner">${d.sections.map((s) => `<section class="pf-sec" id="pf-${s.id}"><h2>${esc(s.title)}</h2><div class="pf-note">${esc(s.note || '')}</div>
       ${s.check ? `<div class="mcp-sum"><button id="pfMcpCheck"${tip('pf-check')}>${check ? 'Check again' : 'Check connections'}</button><span id="pfMcpOut">${check ? esc(mcpCounts(check.servers)) + ` · checked ${esc(new Date(check.at).toLocaleString())}` : 'Not checked since Docket started.'}</span>
         ${check ? `<details><summary>What claude mcp list printed</summary><pre>${esc(check.text)}</pre></details>` : ''}</div>` : ''}
-      ${s.groups.map((g) => `${g.title ? `<h3>${esc(g.title)}</h3>` : ''}${g.note ? `<div class="pf-gnote">${esc(g.note)}</div>` : ''}${g.items.length ? g.items.map(itemHtml).join('') : '<div class="pf-empty">None</div>'}`).join('')}</section>`).join('')}</div></div></div>`;
+      ${s.groups.map((g) => `${g.title || (many && g.brand) ? `<h3>${many && g.brand ? `<span class="pf-brand">${brandLogo(g.brand)}${esc(BRAND_NAMES[g.brand] || g.brand)}</span>` : ''}${esc(g.title)}</h3>` : ''}${g.note ? `<div class="pf-gnote">${esc(g.note)}</div>` : ''}${g.items.length ? g.items.map(itemHtml).join('') : '<div class="pf-empty">None</div>'}`).join('')}</section>`).join('')}</div></div></div>`;
   $('profilePage').querySelector('.pf-body').scrollTop = top;
   (document.getElementById(focused) || $('pfBack')).focus(); // the dialog keeps the keyboard after it redraws
   $('pfRefresh').onclick = () => loadProfile(true);
@@ -7353,17 +7357,20 @@ function renderProfile() {
 function profileSummaryHtml() {
   const d = pf.data, head = '<div class="group"><span>Profile</span></div>';
   if (!d) return head + '<div class="files-sub">Reading the profile folder…</div>';
-  const real = (g) => g.items.filter((i) => !/^No |^None /.test(i.name));
+  const real = (g) => g.items.filter((i) => !i.notRead && !/^No |^None /.test(i.name));
   const chars = (items) => items.reduce((n, i) => n + (i.size || 0), 0);
   const group = (sec, title) => d.sections.find((s) => s.id === sec)?.groups.find((g) => g.title === title);
   let all = 0;
   const rows = d.sections.map((s) => {
     const n = chars(s.groups.flatMap(real)); all += n;
-    const used = s.groups.filter((g) => real(g).length);
-    const sub = s.id === 'mcp' ? (d.mcpCheck ? `${mcpCounts(d.mcpCheck.servers)} · checked ${new Date(d.mcpCheck.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Connections not checked since Docket started')
+    // Codex's and Grok's groups are counted by brand name after Claude's
+    const used = s.groups.filter((g) => real(g).length && (!g.brand || g.brand === 'claude'));
+    const others = s.groups.filter((g) => real(g).length && !used.includes(g));
+    const brandSub = [...new Set(others.map((g) => g.brand))].map((b) => `${BRAND_NAMES[b]} ${others.filter((g) => g.brand === b).reduce((n, g) => n + real(g).length, 0)}`);
+    const sub = [s.id === 'mcp' ? (d.mcpCheck ? `${mcpCounts(d.mcpCheck.servers)} · checked ${new Date(d.mcpCheck.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}` : 'Connections not checked since Docket started')
       : s.id === 'hooks' ? (used.length ? `at ${used.length} moment${used.length === 1 ? '' : 's'}` : '')
       : s.id === 'memory' ? (used.length ? `in ${used.length} working folder${used.length === 1 ? '' : 's'}` : '')
-      : used.map((g) => `${g.title.replace(/\s*\(.*\)$/, '')} ${real(g).length}`).join(' · ');
+      : used.map((g) => `${g.title.replace(/\s*\(.*\)$/, '')} ${real(g).length}`).join(' · '), ...brandSub].filter(Boolean).join(' · ');
     return `<a class="pf-sum" href="#" data-pf-go="${s.id}"${tip('pf-go')}><span>${esc(s.title)}</span><b>${s.count}</b>${sub || n ? `<span class="sub">${esc([sub, tokensText(n)].filter(Boolean).join(' · '))}</span>` : ''}</a>`;
   }).join('');
   // What loads before the first message: the CLAUDE.md files, the output style in use, the company folder's memory index,

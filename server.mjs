@@ -28,7 +28,7 @@ import { connectionOf, parseAwsConfig, kindOfKey } from './connection.mjs';
 import { sessionTimeline, sessionSkills, buildProfile, parseMcpList, TIMELINE_CATS } from './profile.mjs';
 import { hooksFor, hooksOffFor, cleanDocketHooks } from './docket-hooks.mjs';
 import { LAYERS, cleanSettingSources, writePluginOn, GROK_COMPAT, writeGrokCompat } from './switches.mjs';
-import { makeGrokHome, writeGrokHooks, signedInFrom, deviceLink, isInside } from './grok-home.mjs';
+import { makeGrokHome, writeGrokHooks, signedInFrom, deviceLink, isInside, HOOK_FILE as GROK_HOOK_FILE } from './grok-home.mjs';
 import { homeRootsFor } from './home-roots.mjs';
 import { homeInUse, freeHome } from './home-in-use.mjs';
 import { workFolders, existingHomes } from './work-folders.mjs';
@@ -5614,7 +5614,7 @@ function profileFor(client, force) {
     { name: 'portal', detail: `${process.execPath} ${path.join(ROOT, 'tools-helper.mjs')}`, note: 'Docket\'s own tools (sessions, files, schedules)' },
     { name: 'playwright', detail: `${process.execPath} ${PLAYWRIGHT_MCP} --isolated --headless`, note: 'the private browser with this desk\'s saved sign-ins' },
   ];
-  const profile = buildProfile(client, { isDefaultHome: isDefaultHome(client), docket: docketTexts(), docketTools, docketMcp, docketHooks: hooksFor(client, PLUGIN_DIR), latestFile: newestRecord(client) });
+  const profile = buildProfile(client, { isDefaultHome: isDefaultHome(client), docket: docketTexts(), docketTools, docketMcp, docketHooks: hooksFor(client, PLUGIN_DIR), latestFile: newestRecord(client), brands: brandsOf(client), grokHookFile: GROK_HOOK_FILE });
   profileCache.set(client.id, { at: Date.now(), profile });
   return profile;
 }
@@ -5647,7 +5647,7 @@ async function profileRoutes(req, res, url, p) {
     if (skills.length) return json(res, 200, { from: 'session', skills: slashList(client, live.get(km[1]), skills) });
     const seen = new Set(), out = [];
     const { sections } = profileFor(client);
-    const groups = [...(sections.find((s) => s.id === 'skills')?.groups || []).filter((g) => g.title === 'Skills' || g.title === 'Slash commands'),
+    const groups = [...(sections.find((s) => s.id === 'skills')?.groups || []).filter((g) => g.brand === 'claude' && (g.title === 'Skills' || g.title === 'Slash commands')),
       ...(sections.find((s) => s.id === 'defaults')?.groups || []).filter((g) => g.title === 'Built-in skills')];
     for (const g of groups) for (const it of g.items) {
       const name = String(it.name || '').replace(/^\//, '');

@@ -249,11 +249,32 @@ function instructionTree(file, label, seen = new Set(), depth = 0) {
   }
   return out;
 }
-const HOOK_ORDER = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'SubagentStart', 'SubagentStop', 'Stop', 'PreCompact', 'SessionEnd'];
+const HOOK_ORDER = ['SessionStart', 'UserPromptSubmit', 'PreModelRequest', 'PostModelRequest', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'SubagentStart', 'SubagentStop', 'Stop', 'Interrupt', 'PreCompact', 'PostCompact', 'SessionEnd'];
 const HOOK_WHEN = { SessionStart: 'When a session starts or resumes', UserPromptSubmit: 'Each time a message is sent', PreToolUse: 'Before a tool runs (can block it)',
   PermissionRequest: 'When Claude asks permission', PostToolUse: 'After a tool runs', PostToolUseFailure: 'After a tool fails', Notification: 'When Claude Code sends a notification',
-  SubagentStart: 'When an agent starts', SubagentStop: 'When an agent finishes', Stop: 'When Claude finishes a reply', PreCompact: 'Before the conversation is compacted', SessionEnd: 'When a session ends' };
+  SubagentStart: 'When an agent starts', SubagentStop: 'When an agent finishes', Stop: 'When Claude finishes a reply', PreCompact: 'Before the conversation is compacted', SessionEnd: 'When a session ends',
+  PreModelRequest: 'Before each request to the model', PostModelRequest: 'After each answer from the model', Interrupt: 'When a reply is stopped', PostCompact: 'After the conversation is compacted' };
+// The moment, in the words of the brand whose hook it is.
+const hookWhen = (ev, who = 'Claude') => (HOOK_WHEN[ev] || ev).replace(/Claude( Code)?/g, who);
 const SCRIPT_RE = /(?:[A-Za-z]:)?[\\/][^\s"'`;|&<>]+\.(?:mjs|cjs|js|ts|py|ps1|sh|cmd|bat)\b/g;
+
+// Hooks in Claude's shape ({ Event: [{ matcher, hooks: [{ type, command, timeout, statusMessage }] }] }) from each source
+// ([hooks, label, file]), grouped by the moment they run, in the order they run. Codex (hooks.json and [hooks] in
+// config.toml) and Grok (hooks/*.json and [[hooks.*]] in config.toml) write theirs in the same shape.
+function hookGroups(sources, item, who = 'Claude') {
+  const byEvent = new Map();
+  for (const [hooks, source, sourcePath] of sources) for (const [ev, groups] of Object.entries(hooks || {})) for (const g of Array.isArray(groups) ? groups : []) for (const h of g?.hooks || []) {
+    if (!byEvent.has(ev)) byEvent.set(ev, []);
+    const command = (process.platform === 'win32' && h.commandWindows) || h.command;
+    const cmd = command || h.prompt || h.url || (h.server && `${h.server} ${h.tool || ''}`.trim()) || h.type;
+    const scripts = [...new Set((String(command || '').match(SCRIPT_RE) || []).map((p) => path.resolve(p)).filter((p) => fs.existsSync(p)))];
+    byEvent.get(ev).push(item({ name: g.matcher ? `Only for: ${g.matcher}` : 'Every time', detail: cmd, code: true, path: sourcePath, size: 0,
+      note: [source, h.timeout && `stops after ${h.timeout}s`, h.statusMessage && `shows "${h.statusMessage}"`, h.type !== 'command' && h.type].filter(Boolean).join(' · '),
+      links: scripts.map((p) => item({ name: path.basename(p), path: p })) }));
+  }
+  const evs = [...byEvent.keys()].sort((a, b) => ((HOOK_ORDER.indexOf(a) + 1) || 99) - ((HOOK_ORDER.indexOf(b) + 1) || 99));
+  return evs.map((ev) => ({ title: `${hookWhen(ev, who)} (${ev})`, items: byEvent.get(ev) }));
+}
 
 // ---------- the skills one session can use, for the / pick list in the chat box ----------
 // Claude Code writes the full list once (skill_listing, isInitial) and later only what was added, plus
@@ -287,8 +308,9 @@ export function sessionSkills(file) {
 }
 
 // Lists what the profile has. Every item with a path can be opened (its text) from the page; paths are the allowlist.
-// extras: { docket: [{ name, text, path?, note }], docketTools: [names], latest: file of the newest session record }
-export function buildProfile(client, { isDefaultHome, docket = [], docketTools = [], docketMcp = [], docketHooks = [], latestFile } = {}) {
+// extras: { docket: [{ name, text, path?, note }], docketTools: [names], latest: file of the newest session record,
+// brands: the brands the desk has on (brandsOf), by default Claude and each brand whose home the desk has }
+export function buildProfile(client, { isDefaultHome, docket = [], docketTools = [], docketMcp = [], docketHooks = [], latestFile, brands = ['claude', 'grok', 'codex'].filter((b) => b === 'claude' || client[b + 'Home']), grokHookFile } = {}) {
   const home = client.home, folder = client.folder || home;
   const allowed = new Set();
   const item = (o) => { if (o.path) { o.path = path.resolve(o.path); allowed.add(o.path.toLowerCase()); if (o.size === undefined) o.size = sizeOf(o.path); } return o; };
@@ -312,22 +334,10 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   }
 
   // Hooks
-  const byEvent = new Map();
-  const addHooks = (hooks, source, sourcePath) => {
-    for (const [ev, groups] of Object.entries(hooks || {})) for (const g of groups || []) for (const h of g.hooks || []) {
-      if (!byEvent.has(ev)) byEvent.set(ev, []);
-      const cmd = h.command || h.prompt || h.url || h.type;
-      const scripts = [...new Set((String(h.command || '').match(SCRIPT_RE) || []).map((p) => path.resolve(p)).filter((p) => fs.existsSync(p)))];
-      byEvent.get(ev).push(item({ name: g.matcher ? `Only for: ${g.matcher}` : 'Every time', detail: cmd, code: true, path: sourcePath, size: 0,
-        note: [source, h.timeout && `stops after ${h.timeout}s`, h.statusMessage && `shows "${h.statusMessage}"`, h.type !== 'command' && h.type].filter(Boolean).join(' · '),
-        links: scripts.map((p) => item({ name: path.basename(p), path: p })) }));
-    }
-  };
-  for (const s of settingFiles) addHooks(s.j.hooks, s.label, s.f);
-  for (const p of plugins) if (p.dir) { const f = path.join(p.dir, 'hooks', 'hooks.json'); const j = readJson(f); if (j) addHooks(j.hooks || j, `plugin ${p.key}${p.on ? '' : ' (off)'}`, f); }
-  const evs = [...byEvent.keys()].sort((a, b) => ((HOOK_ORDER.indexOf(a) + 1) || 99) - ((HOOK_ORDER.indexOf(b) + 1) || 99));
+  const hookSources = settingFiles.map((s) => [s.j.hooks, s.label, s.f]);
+  for (const p of plugins) if (p.dir) { const f = path.join(p.dir, 'hooks', 'hooks.json'); const j = readJson(f); if (j) hookSources.push([j.hooks || j, `plugin ${p.key}${p.on ? '' : ' (off)'}`, f]); }
   sections.push({ id: 'hooks', title: 'Hooks', note: 'Commands Claude Code runs by itself at set moments. Sessions in other folders also run that folder\'s own .claude/settings.json hooks.',
-    groups: evs.map((ev) => ({ title: `${HOOK_WHEN[ev] || ev} (${ev})`, items: byEvent.get(ev) })) });
+    groups: hookGroups(hookSources, item) });
 
   // Instructions
   const inst = [];
@@ -439,15 +449,248 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   if (client.grokHome) {
     const cfg = path.join(client.grokHome, 'config.toml'), now = readGrokCompat(readText(cfg));
     const what = { hooks: 'Claude\'s hooks (settings.json)', rules: 'Claude\'s rules (CLAUDE.md)', skills: 'Claude\'s skills', agents: 'Claude\'s agents', mcps: 'Claude\'s connected services', sessions: 'Claude\'s past sessions' };
-    switchGroups.push({ title: 'What Grok sessions take from Claude', note: `[compat.claude] in ${cfg}. Only that one key changes; the rest of the file stays as it is.`,
+    switchGroups.push({ title: 'What Grok sessions take from Claude', brand: 'grok', note: `[compat.claude] in ${cfg}. Only that one key changes; the rest of the file stays as it is.`,
       items: GROK_COMPAT.map((k) => item({ name: k, detail: what[k], path: fs.existsSync(cfg) ? cfg : undefined, size: 0,
         toggle: { kind: 'grok', key: k, on: now[k] !== false, note: now[k] === undefined ? 'not set: Grok\'s default' : '' } })) });
   }
   sections.push({ id: 'switches', title: 'Switches', note: 'Each change applies to sessions started after it; open sessions keep what they started with. Plugins and Docket\'s hooks have their checkboxes in their own sections.',
     groups: switchGroups });
 
-  for (const s of sections) s.count = s.groups.reduce((n, g) => n + g.items.filter((i) => !/^No |^None /.test(i.name)).length, 0);
-  return { client: { id: client.id, name: client.name, home, folder }, sections, allowed };
+
+  // Codex and Grok: each brand the desk has on adds its own groups to the same sections, after Claude's.
+  // Every group says whose it is (brand); Docket's instructions and tools reach every brand, so they have none.
+  for (const s of sections) for (const g of s.groups) if (g.brand === undefined) g.brand = s.id === 'docket' && /^(Instructions|Tools)/.test(g.title) ? null : 'claude';
+  const more = brands.map((b) => b === 'codex' && client.codexHome ? codexProfile(client.codexHome, folder, item)
+    : b === 'grok' && client.grokHome ? grokProfile(client.grokHome, folder, item, { docketHooks, hookFile: grokHookFile }) : null).filter(Boolean);
+  for (const b of more) for (const s of sections) s.groups.push(...(b[s.id] || []));
+  for (const s of sections) s.groups = s.groups.filter((g) => g.brand === null || brands.includes(g.brand));
+  const shown = sections.filter((s) => s.groups.length);
+  for (const s of shown) s.count = s.groups.reduce((n, g) => n + g.items.filter((i) => !i.notRead && !/^No |^None /.test(i.name)).length, 0);
+  return { client: { id: client.id, name: client.name, home, folder, brands: brands.filter((b) => b === 'claude' || client[b + 'Home']) }, sections: shown, allowed };
+}
+
+// ---------- Codex and Grok: what their homes give a session, in the same sections as Claude's ----------
+// A small TOML reader, enough for config.toml: tables, arrays of tables ([[hooks.PreToolUse]]), dotted and quoted
+// names, strings, numbers, booleans, dates and times (kept as written), arrays and inline tables. null when the text
+// is not TOML it can read.
+export function parseToml(src) {
+  const t = String(src ?? '').replace(/^\uFEFF/, '');
+  const root = {};
+  let i = 0;
+  const fail = (m) => { throw new Error(m); };
+  const ws = () => { while (t[i] === ' ' || t[i] === '\t') i++; };
+  const blank = () => { for (;;) { ws(); if (t[i] === '#') while (i < t.length && t[i] !== '\n') i++; if (t[i] === '\r' || t[i] === '\n') i++; else return; } };
+  const eol = () => { ws(); if (t[i] === '#') while (i < t.length && t[i] !== '\n') i++; if (t[i] === '\r') i++; if (i < t.length && t[i] !== '\n') fail('expected the end of the line'); i++; };
+  const ESC = { b: '\b', t: '\t', n: '\n', f: '\f', r: '\r', e: '\x1b', '"': '"', '\\': '\\' };
+  const unescape = (s) => s.replace(/\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|.)/g, (m, c) => c.length > 1 ? String.fromCodePoint(parseInt(c.slice(1), 16)) : ESC[c] ?? c);
+  const str = () => {
+    const q = t[i];
+    if (t.startsWith(q.repeat(3), i)) {
+      i += 3; if (t[i] === '\r') i++; if (t[i] === '\n') i++;
+      const end = t.indexOf(q.repeat(3), i); if (end < 0) fail('unclosed string');
+      let body = t.slice(i, end); i = end + 3;
+      while (t[i] === q) { body += q; i++; }
+      return q === "'" ? body : unescape(body.replace(/\\[ \t]*\r?\n\s*/g, ''));
+    }
+    const start = ++i;
+    if (q === "'") { const end = t.indexOf("'", i); if (end < 0 || t.slice(i, end).includes('\n')) fail('unclosed string'); i = end + 1; return t.slice(start, end); }
+    while (i < t.length && t[i] !== '"' && t[i] !== '\n') i += t[i] === '\\' ? 2 : 1;
+    if (t[i] !== '"') fail('unclosed string');
+    return unescape(t.slice(start, i++));
+  };
+  const BARE = /[A-Za-z0-9_-]+/y;
+  const keyPart = () => { ws(); if (t[i] === '"' || t[i] === "'") return str(); BARE.lastIndex = i; const m = BARE.exec(t); if (!m) fail('expected a name'); i += m[0].length; return m[0]; };
+  const keyPath = () => { const k = [keyPart()]; for (;;) { ws(); if (t[i] !== '.') return k; i++; k.push(keyPart()); } };
+  const put = (o, keys, v) => {
+    for (const k of keys.slice(0, -1)) { if (o[k] === undefined) o[k] = {}; o = o[k]; if (typeof o !== 'object' || o === null || Array.isArray(o)) fail('a name used twice'); }
+    o[keys[keys.length - 1]] = v;
+  };
+  const DATE = /\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})?)?|\d{2}:\d{2}:\d{2}(?:\.\d+)?/y;
+  const ATOM = /[^\s,\]}#]+/y;
+  const value = () => {
+    ws();
+    const c = t[i];
+    if (c === '"' || c === "'") return str();
+    if (c === '[') {
+      i++; const arr = [];
+      for (;;) { blank(); if (t[i] === ']') { i++; return arr; } arr.push(value()); blank(); if (t[i] === ',') { i++; continue; } if (t[i] === ']') { i++; return arr; } fail('expected , or ]'); }
+    }
+    if (c === '{') {
+      i++; const o = {}; blank(); if (t[i] === '}') { i++; return o; }
+      for (;;) { const k = keyPath(); ws(); if (t[i] !== '=') fail('expected ='); i++; put(o, k, value()); blank(); if (t[i] === ',') { i++; blank(); continue; } if (t[i] === '}') { i++; return o; } fail('expected , or }'); }
+    }
+    DATE.lastIndex = i; let m = DATE.exec(t);
+    if (m) { i += m[0].length; return m[0]; }
+    ATOM.lastIndex = i; m = ATOM.exec(t);
+    if (!m) fail('expected a value');
+    i += m[0].length;
+    const w = m[0], n = w.replace(/_/g, '');
+    if (w === 'true' || w === 'false') return w === 'true';
+    if (/^[+-]?(\d+(\.\d+)?([eE][+-]?\d+)?|0x[0-9a-fA-F]+|0o[0-7]+|0b[01]+)$/.test(n)) return Number(n.replace(/^\+/, ''));
+    if (/^[+-]?(inf|nan)$/.test(w)) return w.endsWith('nan') ? NaN : w.startsWith('-') ? -Infinity : Infinity;
+    fail('unknown value');
+  };
+  const tableAt = (keys, many) => {
+    let o = root;
+    keys.forEach((k, n) => {
+      if (n === keys.length - 1 && many) { if (o[k] === undefined) o[k] = []; if (!Array.isArray(o[k])) fail('a name used twice'); const x = {}; o[k].push(x); o = x; return; }
+      if (o[k] === undefined) o[k] = {};
+      o = Array.isArray(o[k]) ? o[k][o[k].length - 1] : o[k];
+      if (typeof o !== 'object' || o === null) fail('a name used twice');
+    });
+    return o;
+  };
+  try {
+    let cur = root;
+    for (;;) {
+      blank();
+      if (i >= t.length) return root;
+      if (t[i] === '[') {
+        const many = t[i + 1] === '['; i += many ? 2 : 1;
+        const k = keyPath(); ws();
+        if (!t.startsWith(many ? ']]' : ']', i)) fail('expected ]');
+        i += many ? 2 : 1; cur = tableAt(k, many); eol(); continue;
+      }
+      const k = keyPath(); ws();
+      if (t[i] !== '=') fail('expected =');
+      i++; put(cur, k, value()); eol();
+    }
+  } catch { return null; }
+}
+
+// What these readers do not know yet shows as a row saying so, never a guess.
+const notRead = (detail) => ({ name: 'Not read yet', detail, notRead: true });
+const none = (name, detail) => ({ name, detail });
+const toml = (f) => { const text = readText(f); if (text === null) return { j: null, bad: false }; const j = parseToml(text); return { j, bad: !j }; };
+const tomlRow = (f, label, r, item) => r.bad ? item({ name: `${label} could not be read`, detail: 'Not TOML this page can read; open it to see it', path: f }) : null;
+// Skill folders (<name>/SKILL.md), and .md files (commands, agents, prompts), with what each says about itself.
+const skillItems = (d, note, item, prefix = '') => listDir(d).map((n) => path.join(d, n, 'SKILL.md')).filter((f) => fs.existsSync(f)).map((f) => {
+  const fm = frontmatter(readText(f));
+  return item({ name: prefix + (fm.name || path.basename(path.dirname(f))), detail: fm.description || '', path: f, note });
+});
+const mdItems = (d, note, item, prefix = '') => listDir(d).filter((n) => n.endsWith('.md')).map((n) => {
+  const f = path.join(d, n), fm = frontmatter(readText(f));
+  return item({ name: prefix + (fm.name || n.replace(/\.md$/, '')), detail: fm.description || '', path: f, note });
+});
+// The files of a memory folder and of the folders in it, one level down, the index (MEMORY.md) first.
+const memoryItems = (d, item) => listDir(d).flatMap((n) => isDir(path.join(d, n)) ? listDir(path.join(d, n)).map((m) => path.join(n, m)) : [n])
+  .filter((n) => !isDir(path.join(d, n)) && !path.basename(n).startsWith('.'))
+  .sort((a, b) => (b === 'MEMORY.md') - (a === 'MEMORY.md') || a.localeCompare(b))
+  .map((n) => { const f = path.join(d, n), fm = /\.md$/i.test(n) ? frontmatter(readText(f)) : {}; return item({ name: fm.name || n, detail: fm.description || '', path: f, badge: fm.type || '' }); });
+// [mcp_servers.<name>] tables: names and how each starts, never their env, headers or keys.
+const tomlServers = (servers, note, f, item) => Object.entries(servers && typeof servers === 'object' ? servers : {}).map(([n, s]) => item({ name: n,
+  detail: s?.url || [s?.command, ...(Array.isArray(s?.args) ? s.args : [])].filter(Boolean).join(' '), badge: s?.url ? 'http' : 'command',
+  note: [note, s?.enabled === false && 'turned off'].filter(Boolean).join(' · '), path: f, size: 0 }));
+// The instruction file a folder gives Codex: AGENTS.override.md when there is one (it is read instead), else AGENTS.md.
+function agentsFiles(dir, where, item) {
+  const over = path.join(dir, 'AGENTS.override.md'), main = path.join(dir, 'AGENTS.md'), hasOver = fs.existsSync(over);
+  const out = [];
+  if (hasOver) out.push(item({ name: `AGENTS.override.md ${where}`, detail: over, path: over, badge: 'in use' }));
+  if (fs.existsSync(main)) out.push(item({ name: `AGENTS.md ${where}`, detail: main, path: main, ...(hasOver ? { badge: 'not read', note: 'AGENTS.override.md beside it is read instead' } : {}) }));
+  return out;
+}
+
+// A desk's Codex home (codexHome, CODEX_HOME). Where Codex looks, as read in Codex's own code (github.com/openai/codex,
+// codex-rs, 2026-11-02): hooks in <home>/hooks.json and the [hooks] tables of <home>/config.toml, in Claude's shape,
+// plus a trusted folder's .codex/hooks.json and .codex/config.toml, and each plugin's hooks/hooks.json; MCP servers in
+// [mcp_servers.<name>]; plugins in [plugins."<name>@<marketplace>"] (enabled = true or false), installed under
+// <home>/plugins/cache/<marketplace>/<name>/<version>; skills in <home>/skills, ~/.agents/skills and the folder's
+// .agents/skills; memory in <home>/memories. Returns { section id: [groups] }, every group marked brand: 'codex'.
+export function codexProfile(home, folder, item) {
+  const cfgFile = path.join(home, 'config.toml'), cfg = toml(cfgFile), c = cfg.j || {};
+  const projDir = path.join(folder, '.codex'), projFile = path.join(projDir, 'config.toml'), proj = toml(projFile), pc = proj.j || {};
+  const plugins = Object.entries(c.plugins && typeof c.plugins === 'object' ? c.plugins : {}).map(([id, v]) => {
+    const [name, market] = id.split('@');
+    const base = path.join(home, 'plugins', 'cache', market || '', name);
+    const version = market ? listDir(base).filter((n) => isDir(path.join(base, n))).sort().pop() : '';
+    return { id, on: v?.enabled !== false, dir: version ? path.join(base, version) : '', version };
+  });
+  const off = (p) => p.on ? '' : ' (off)';
+  const g = (title, items, empty) => ({ title, brand: 'codex', items: items.length ? items : empty ? [empty] : [] });
+
+  // Hooks
+  const hooksJson = path.join(home, 'hooks.json'), projHooks = path.join(projDir, 'hooks.json');
+  const sources = [[readJson(hooksJson)?.hooks, 'hooks.json in the Codex home', hooksJson], [c.hooks, 'config.toml in the Codex home', cfgFile],
+    [readJson(projHooks)?.hooks, '.codex/hooks.json in the desk folder', projHooks], [pc.hooks, '.codex/config.toml in the desk folder', projFile]];
+  for (const p of plugins) if (p.dir) { const f = path.join(p.dir, 'hooks', 'hooks.json'); const j = readJson(f); if (j) sources.push([j.hooks || j, `plugin ${p.id}${off(p)}`, f]); }
+  const hookGs = hookGroups(sources, item, 'Codex').map((x) => ({ ...x, brand: 'codex' }));
+  const extra = [tomlRow(cfgFile, 'config.toml', cfg, item), tomlRow(projFile, '.codex/config.toml in the desk folder', proj, item),
+    c.features?.hooks === false && { name: 'Hooks turned off', detail: '[features] hooks = false in config.toml', badge: 'off' }].filter(Boolean);
+  const hooks = [...(hookGs.length ? hookGs : [g('', [], none('No hooks in this Codex home', hooksJson))]), ...extra.map((r) => g('', [r]))];
+
+  // Instructions
+  const inst = [...agentsFiles(home, '(every Codex session in this desk)', item), ...agentsFiles(folder, 'in the desk folder', item)];
+  const rules = listDir(path.join(home, 'rules')).filter((n) => n.endsWith('.rules')).map((n) => item({ name: n, detail: 'which commands Codex may run without asking', path: path.join(home, 'rules', n) }));
+  const instructions = [g('AGENTS.md', inst, none('No AGENTS.md in this Codex home', path.join(home, 'AGENTS.md'))), ...(rules.length ? [g('Command rules (rules/ in the Codex home)', rules)] : [])];
+
+  // Connected services
+  const mcp = [g('Set up for Codex', [...tomlServers(c.mcp_servers, 'Codex home config.toml', cfgFile, item), ...tomlServers(pc.mcp_servers, '.codex/config.toml in the desk folder', projFile, item)],
+    none('None set up', cfgFile))];
+
+  // Skills, prompts, plugins
+  const skills = [...skillItems(path.join(home, 'skills'), 'made in this Codex home', item), ...skillItems(path.join(home, 'skills', '.system'), 'comes with Codex', item),
+    ...skillItems(path.join(os.homedir(), '.agents', 'skills'), 'in ~/.agents/skills (every Codex home)', item), ...skillItems(path.join(folder, '.agents', 'skills'), 'in the desk folder', item),
+    ...plugins.filter((p) => p.dir).flatMap((p) => skillItems(path.join(p.dir, 'skills'), `plugin ${p.id}${off(p)}`, item, p.id.split('@')[0] + ':'))];
+  const prompts = mdItems(path.join(home, 'prompts'), 'made in this Codex home', item, '/prompts:');
+  const pluginItems = plugins.map((p) => {
+    const manifest = p.dir && path.join(p.dir, '.codex-plugin', 'plugin.json');
+    return item({ name: p.id, size: 0, detail: p.dir || 'not found under plugins/cache in the Codex home', badge: p.on ? 'on' : 'off', note: p.version ? `version ${p.version}` : '', path: manifest && fs.existsSync(manifest) ? manifest : undefined });
+  });
+  const skillGs = [g('Skills', skills, none('No skills', path.join(home, 'skills'))), ...(prompts.length ? [g('Prompts (type /prompts:name)', prompts)] : []), ...(pluginItems.length ? [g('Plugins', pluginItems)] : [])];
+
+  // Memory
+  const memDir = path.join(home, 'memories');
+  const memory = [g('Codex memories (memories/ in the Codex home)', memoryItems(memDir, item), none('No memory saved yet', memDir))];
+
+  return { hooks, instructions, mcp, skills: skillGs, memory,
+    docket: [g('How Docket starts a Codex session', [{ name: 'Codex home', detail: `CODEX_HOME=${home}` }, { name: 'Docket hooks', detail: 'not given to Codex sessions yet' }])] };
+}
+
+// A desk's Grok home (grokHome, GROK_HOME). Where Grok looks, as far as Docket has checked (grok-home.mjs, copy-company.mjs,
+// and the Grok README): rules in <home>/AGENTS.md and <home>/rules/, and the folder's AGENTS.md; hooks in
+// [[hooks.<Event>]] tables of <home>/config.toml and every <home>/hooks/*.json, in Claude's shape, added up across
+// layers, plus a trusted folder's .grok/hooks/; MCP servers in [mcp_servers.<name>]; skills, commands, agents and
+// prompts folders; memory in memory/ and memories/. Grok plugins are not read yet. Its [compat.claude] switches have their
+// checkboxes in the Switches section, so they are not listed again here.
+// docketHooks: the Docket plugin's hooks, which Docket writes to <home>/hooks/<hookFile> before each Grok session.
+export function grokProfile(home, folder, item, { docketHooks = [], hookFile = 'docket.json' } = {}) {
+  const cfgFile = path.join(home, 'config.toml'), cfg = toml(cfgFile), c = cfg.j || {};
+  const g = (title, items, empty) => ({ title, brand: 'grok', items: items.length ? items : empty ? [empty] : [] });
+
+  // Hooks
+  const sources = [[c.hooks, 'config.toml in the Grok home', cfgFile]];
+  const hookDir = path.join(home, 'hooks'), projHooks = path.join(folder, '.grok', 'hooks');
+  for (const n of listDir(hookDir).filter((n) => n.endsWith('.json') && n !== hookFile).sort()) { const f = path.join(hookDir, n), j = readJson(f); if (j) sources.push([j.hooks || j, `hooks/${n} in the Grok home`, f]); }
+  for (const n of listDir(projHooks).filter((n) => n.endsWith('.json')).sort()) { const f = path.join(projHooks, n), j = readJson(f); if (j) sources.push([j.hooks || j, `.grok/hooks/${n} in the desk folder (trusted folders only)`, f]); }
+  const hookGs = hookGroups(sources, item, 'Grok').map((x) => ({ ...x, brand: 'grok' }));
+  const hooks = [...(hookGs.length ? hookGs : [g('', [], none('No hooks of this Grok home\'s own', hookDir))]), ...[tomlRow(cfgFile, 'config.toml', cfg, item)].filter(Boolean).map((r) => g('', [r]))];
+
+  // Instructions
+  const agentsMd = [[path.join(home, 'AGENTS.md'), 'AGENTS.md (every Grok session in this desk)'], [path.join(folder, 'AGENTS.md'), 'AGENTS.md in the desk folder']]
+    .filter(([f]) => fs.existsSync(f)).map(([f, name]) => item({ name, detail: f, path: f }));
+  const rules = listDir(path.join(home, 'rules')).filter((n) => !isDir(path.join(home, 'rules', n))).sort().map((n) => item({ name: n, detail: 'rules/ in the Grok home', path: path.join(home, 'rules', n) }));
+  const instructions = [g('AGENTS.md and rules', [...agentsMd, ...rules], none('No AGENTS.md or rules in this Grok home', path.join(home, 'AGENTS.md')))];
+
+  // Connected services
+  const mcp = [g('Set up for Grok', tomlServers(c.mcp_servers, 'Grok home config.toml', cfgFile, item), none('None set up', cfgFile))];
+
+  // Skills, commands, agents, prompts, plugins
+  const skills = [g('Skills', skillItems(path.join(home, 'skills'), 'made in this Grok home', item), none('No skills', path.join(home, 'skills'))),
+    ...[['commands', 'Commands'], ['agents', 'Agents'], ['prompts', 'Prompts']].map(([d, title]) => g(title, mdItems(path.join(home, d), 'made in this Grok home', item, d === 'commands' ? '/' : ''))).filter((x) => x.items.length),
+    g('Plugins', [notRead('Grok plugins: where Grok keeps them has not been checked')])];
+
+  // Memory
+  const mem = ['memory', 'memories'].flatMap((d) => memoryItems(path.join(home, d), item).map((it) => ({ ...it, note: `${d}/ in the Grok home` })));
+  const memory = [g('Grok memory (memory/ and memories/ in the Grok home)', mem, none('No memory saved yet', path.join(home, 'memory')))];
+
+  // Docket's additions: its hook file, rewritten before each Grok session
+  const file = path.join(hookDir, hookFile);
+  const own = docketHooks.map((h) => item({ name: h.name, detail: h.detail || h.command, path: fs.existsSync(file) ? file : undefined, size: 0,
+    note: [`${hookWhen(h.event, 'Grok')} (${h.event})`, h.matcher && `only for: ${h.matcher}`, 'Grok sessions', h.off ? 'turned off for this desk (Desks screen)' : 'on'].filter(Boolean).join(' · ') }));
+  const docket = [g(`Hooks (hooks/${hookFile} in the Grok home, written before each Grok session)`, own, none('No Docket hooks', file)),
+    g('How Docket starts a Grok session', [{ name: 'Grok home', detail: `GROK_HOME=${home}` }])];
+
+  return { hooks, instructions, mcp, skills, memory, docket };
 }
 
 // claude mcp list prints one line per server: "<name>: <url or command> - ✔ Connected" (or "✘ Failed to connect — why",
