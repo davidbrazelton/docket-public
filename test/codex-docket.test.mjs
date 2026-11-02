@@ -9,11 +9,18 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
-const PORT = 4486, RUNNER_PORT = 4496;
+// Ports the computer says are free, not fixed ones: other copies of Docket on this computer run this file at the same
+// time, and a run that stops "its" runner by a fixed port would stop another run's, cutting off its turns (#582).
+const freePort = () => new Promise((resolve, reject) => {
+  const srv = net.createServer().once('error', reject);
+  srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
+});
+const PORT = await freePort(), RUNNER_PORT = await freePort();
 const URL_ = `http://127.0.0.1:${PORT}`;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'docket-260-'));
 const STATE = path.join(tmp, 'state.json');
