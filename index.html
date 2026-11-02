@@ -1234,7 +1234,7 @@ const HELP = [
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
     ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups) and which chips each row shows'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
-    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that need you, wait on your answer, are working, or have a warm cache. The orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off.', 'Showing only what needs attention. Click to show everything.'],
+    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that need you (a reply or an error you have not opened yet), wait on your answer, are working, or have a warm cache. The orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off.', 'Showing only what needs attention. Click to show everything.'],
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
     ['commentchips', '👁 > Comment chips', 'Comment chips: show a speech bubble on a session\'s row when one of its tickets or pull requests has a new comment', 'Each row shows a speech bubble when a comment is waiting. Turn it off to hide them; Details still shows them.'],
@@ -1675,8 +1675,11 @@ const S = {
 };
 // Its turn ended with background jobs (commands, subagents) running: not done until they hand back.
 const inBackground = (s) => s.live && s.status === 'idle' && (s.runningTasks > 0 || s.background);
-// Waiting on you: a running session that finished or asked, or a saved one that was waiting when the portal stopped.
-const needsYou = (s) => s.live ? (s.status === 'requires_action' || (s.status === 'idle' && s.unread && !inBackground(s))) : !!s.waiting;
+// ---------- needs you
+// Waiting on you: a running session that finished or asked, one stopped by an error you have not opened since,
+// or a saved one that was waiting when the portal stopped.
+const needsYou = (s) => s.live ? (s.status === 'requires_action' || (s.unread && ((s.status === 'idle' && !inBackground(s)) || (s.status === 'ended' && !!s.lastError)))) : !!s.waiting;
+// end of needs you
 // A row's place in the list: when it last turned orange (or started), never its latest activity,
 // so sessions stay still while they work. Saved sessions use when they last spoke.
 const placeAt = (s) => (s.live ? s.readyAt : 0) || s.lastModified || s.createdAt || 0;
@@ -4444,9 +4447,9 @@ function keyHtml() {
     ${head('Session dots', true)}
     ${row(dot('running'), 'The session is working on a reply right now. Also shown while a session is starting up, and while it is compacting (summarizing the older part of a long conversation so it can keep going).')}
     ${row(dot('background'), 'The reply is finished, but jobs it started in the background are still running. It is not done until they finish and the session reads their results.')}
-    ${row(dot('needs'), 'Needs you. The session asked a question or for permission, or finished a reply you have not opened yet. Also a saved session that was waiting on you when Docket last stopped.', '', play('ready') + play('question'))}
+    ${row(dot('needs'), 'Needs you. The session asked a question or for permission, or finished a reply (or stopped with an error, shown by the red ring) you have not opened yet. Also a saved session that was waiting on you when Docket last stopped.', '', play('ready') + play('question'))}
     ${row(dot('idle'), 'Running and finished, and you have seen the reply. Nothing is waiting.')}
-    ${row(dot('failed'), 'The last reply ended in an error, for example an expired sign-in. Open it to read the error; sending a message clears it.')}
+    ${row(dot('failed'), 'The last reply ended in an error, for example an expired sign-in. Until you open it, it is listed under Needs you and counts in ✦, also after Docket restarts. Open it to read the error; sending a message clears the red ring.')}
     ${row(dot('stopped'), 'Cut off partway through a reply, usually because Docket or the computer restarted. Open it and press Continue.')}
     ${row(dot('ended'), 'Saved, not running. Open it any time to pick it up again.')}
     ${row(`<span class="gdots">${dot('running')}${dot('idle')}${dot('needs')}</span>`, 'In group view, each group header shows one small dot for each kind of status inside it (not one per session), without blinking. They sit at the right edge in a fixed order, showing only the kinds present: blue (working), hollow blue (background jobs), green, yellow (needs you), ringed red (error), red, grey.')}

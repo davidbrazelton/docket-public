@@ -13,6 +13,7 @@ import { createScheduler } from './scheduler.mjs';
 import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
+import { savedWaiting, unreadAfterRestart } from './needs-you.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring } from './tasks.mjs';
 import { waitingOnUser, closeRefusal, endsWaiting, awaitingAnswer, reportRoute } from './reports.mjs';
@@ -564,7 +565,7 @@ const pushSession = (s) => {
   // from the runner as it closes; announcing it then would put it back in the page's list.
   if (live.get(s.id) !== s) return;
   s.lastPushed = Date.now();
-  const waiting = !!(s.unread && (s.status === 'requires_action' || (s.status === 'idle' && !s.heldTurn)));
+  const waiting = savedWaiting({ ...s, lastError: state.sessions[s.id]?.lastError });
   // The list orders sessions by when they last became ready to look at (turned orange), so
   // work inside a session never moves its row. Mark unread puts the dot back without moving it.
   if (waiting && !s.wasWaiting && !s.keepPlace) { s.readyAt = Date.now(); if (state.sessions[s.id]) state.sessions[s.id].readyAt = s.readyAt; }
@@ -3973,7 +3974,7 @@ async function reattachSessions() {
     s.ready = Promise.resolve(); s.configReady = true;
     Object.assign(s, remoteSession(s));
     // A session that was orange before the restart stays orange, in the same place in the list.
-    if (now.asks.length || (wasWaiting && !now.busy) || state.sessions[r.id]?.unsent) { setUnread(s, 'restart'); s.wasWaiting = wasWaiting; }
+    if (unreadAfterRestart({ asks: now.asks.length, wasWaiting, busy: now.busy, unsent: state.sessions[r.id]?.unsent })) { setUnread(s, 'restart'); s.wasWaiting = wasWaiting; }
     setStatus(s, now.asks.length ? 'requires_action' : now.busy ? 'running' : 'idle');
     // The jobs it had running are not in the messages read from here on: find them again on disk, and
     // hold the turn for them as before the restart, so the session neither reads idle nor reports early.
