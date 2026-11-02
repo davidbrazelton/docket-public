@@ -2133,10 +2133,12 @@ function rowMenu(row, x, y) {
     items = item('done', 'done', 'Mark done', why) + `<div class="ver">${esc(why)}</div>`;
     run = () => api(`/api/sessions/${sessionId}/task-done`, { task }).catch((err) => alert(err.message));
   } else if (row.dataset.rowFile) {
-    const p = row.dataset.rowFile, sessionId = row.dataset.session, ok = !!row.dataset.exists, shows = ok && TAB_VIEW.test(p);
+    // A file card in the chat is drawn before the details panel's list arrives, so that list has the last word.
+    const p = row.dataset.rowFile, sessionId = row.dataset.session, known = (S.files[sessionId] || []).find((f) => f.path === p);
+    const ok = known ? known.exists : !!row.dataset.exists, canOpen = known ? known.canOpen : !!row.dataset.canOpen, shows = ok && TAB_VIEW.test(p);
     const img = shows && IMAGE_FILE.test(p), what = img ? 'image ' : '', view = viewUrl(sessionId, p);
     items = (shows ? item('docket', 'docket', `Open ${what}in Docket`) + item('tab', 'tab', `Open ${what}in new tab`) + item('window', 'window', `Open ${what}in new window`) : '')
-      + (ok && row.dataset.canOpen ? item('open', 'program', `Open ${what}in its own program`) : '')
+      + (ok && canOpen ? item('open', 'program', `Open ${what}in its own program`) : '')
       + (ok ? item('folder', 'folder', `Show in ${FILE_MANAGER}`) + '<hr>' : '')
       + (img ? item('image', 'copy', 'Copy image') + item('address', 'copy', 'Copy image address') : '')
       + item('copy', 'copy', 'Copy path');
@@ -2206,17 +2208,20 @@ function note(row, text) {
   n.style.top = Math.max(8, r.top + (r.height - n.offsetHeight) / 2) + 'px';
   setTimeout(() => { n.style.opacity = '0'; }, 1100); setTimeout(() => n.remove(), 1500);
 }
-$('tasksBody').addEventListener('click', (e) => {
-  const b = e.target.closest('[data-row-more]'); if (!b) return;
-  e.preventDefault(); e.stopPropagation(); // a ⋯ inside a pull request link must not follow it
-  const r = b.getBoundingClientRect();
-  rowMenu(b.closest('[data-row-file], [data-row-link], [data-row-task], [data-row-folder]'), r.right - 4, r.bottom + 2);
-}, true);
-$('tasksBody').addEventListener('contextmenu', (e) => {
-  const row = e.target.closest('[data-row-file], [data-row-link], [data-row-task], [data-row-folder]'); if (!row) return;
-  e.preventDefault(); rowMenu(row, e.clientX, e.clientY);
-});
-$('tasksBody').addEventListener('scroll', closeMenu);
+// The details panel and the file cards in the chat share these rows, so both get the same ⋯ and right-click menu.
+for (const box of [$('tasksBody'), $('transcript')]) {
+  box.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-row-more]'); if (!b) return;
+    e.preventDefault(); e.stopPropagation(); // a ⋯ inside a pull request link must not follow it
+    const r = b.getBoundingClientRect();
+    rowMenu(b.closest('[data-row-file], [data-row-link], [data-row-task], [data-row-folder]'), r.right - 4, r.bottom + 2);
+  }, true);
+  box.addEventListener('contextmenu', (e) => {
+    const row = e.target.closest('[data-row-file], [data-row-link], [data-row-task], [data-row-folder]'); if (!row) return;
+    e.preventDefault(); rowMenu(row, e.clientX, e.clientY);
+  });
+  box.addEventListener('scroll', closeMenu);
+}
 
 // ---------- pull requests ----------
 const PR_LABEL = { open: 'Open', draft: 'Draft', merged: 'Merged', closed: 'Closed', conflict: 'Conflict', unknown: 'Unknown' };
