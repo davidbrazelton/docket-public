@@ -1168,7 +1168,7 @@ const HELP = [
     ['ctx-editor-vscode', 'Open in VS Code', 'Open the folder this session works in, in VS Code'],
     ['ctx-editor-vs', 'Open in Visual Studio', 'Open the folder this session works in, in Visual Studio: its solution if it has just one, else the folder'],
     ['ctx-timeline', 'Timeline in the chat', 'Show the timeline in the chat: tool runs, hooks, instructions and more, in order between the messages. One setting for every session.'],
-    ['ctx-chime', 'Chime', 'Ticked: this session plays a sound when it needs you. Click to mute it here only, or to turn it back on.'],
+    ['ctx-chime', 'Chime', 'On: this session plays a sound when it needs you. Click to mute it here only, or to turn it back on.'],
     ['ctx-mute', 'Mute chime', 'Turn the picked sessions\' sounds off, or back on'],
     ['ctx-rename', 'Rename', 'Give it a new title'],
     ['ctx-end', 'End', 'Close this session (it stays under Earlier and can be resumed)'],
@@ -3737,7 +3737,8 @@ function sessionMenuItems(f) {
   if (f.cwd) items.push(['terminal', 'Terminal…']);
   if (f.cwd) for (const ed of f.editors || []) items.push([`editor-${ed.id}`, `Open in ${ed.name}`]); // the ones installed here
   items.push(['timeline', 'Timeline in the chat', { checked: f.timeline }]);
-  items.push(['chime', 'Chime', { checked: f.soundOn && !f.muted, disabled: !f.soundOn }]);
+  const chimeOn = f.soundOn && !f.muted; // reads like Sound in ☰ > Settings
+  items.push(['chime', chimeOn ? '🔔 Chime: on' : '🔕 Chime: off', { checked: chimeOn, disabled: !f.soundOn, stated: true }]);
   items.push(['hr'], ['group', 'Group…']);
   if (!f.archived) items.push(['parent', 'Move under…']);
   if (!f.archived && f.parentId) items.push(['top', 'Make top level']);
@@ -3745,11 +3746,11 @@ function sessionMenuItems(f) {
   items.push(['rename', 'Rename'], ['hr']);
   if (f.live) items.push(['end', 'End']);
   items.push(['delete', 'Delete…']);
-  return items.map(([k, label, o]) => (k === 'hr' ? ['hr'] : [k, label, { checked: o?.checked, disabled: !!o?.disabled }]));
+  return items.map(([k, label, o]) => (k === 'hr' ? ['hr'] : [k, label, { checked: o?.checked, disabled: !!o?.disabled, ...(o?.stated && { stated: true }) }]));
 }
-// A toggle shows ✓ while on; every item keeps a column for it so the labels line up.
+// A toggle shows ✓ while on, unless its label already says on or off (stated); every item keeps a column for it so the labels line up.
 const sessionMenuHtml = (items) => items.map(([k, label, o]) => k === 'hr' ? '<hr>'
-  : `<button role="${o.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" data-act="${k}"${o.checked === undefined ? '' : ` aria-checked="${!!o.checked}"`}${o.disabled ? ' disabled title="Sound is off for all sessions. Turn it on in ☰ > Settings."' : tip('ctx-' + k)}><span class="ck">${o.checked ? '✓' : ''}</span>${esc(label)}</button>`).join('');
+  : `<button role="${o.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" data-act="${k}"${o.checked === undefined ? '' : ` aria-checked="${!!o.checked}"`}${o.disabled ? ' disabled title="Sound is off for all sessions. Turn it on in ☰ > Settings."' : tip('ctx-' + k)}><span class="ck">${o.checked && !o.stated ? '✓' : ''}</span>${esc(label)}</button>`).join('');
 // end of session menu
 function sessionMenuFacts(s) {
   const kids = s.archived ? [] : descendants(s.id).filter((x) => !x.archived);

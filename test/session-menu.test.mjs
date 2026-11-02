@@ -63,9 +63,14 @@ test('the editors installed here follow Terminal, and need a folder', () => {
 
 test('Chime and Timeline show their state', () => {
   const on = (f, k) => sessionMenuItems({ ...base, ...f }).find(([x]) => x === k)[2];
-  assert.deepEqual(on({}, 'chime'), { checked: true, disabled: false });
-  assert.deepEqual(on({ muted: true }, 'chime'), { checked: false, disabled: false });
-  assert.deepEqual(on({ soundOn: false }, 'chime'), { checked: false, disabled: true });
+  assert.deepEqual(on({}, 'chime'), { checked: true, disabled: false, stated: true });
+  assert.deepEqual(on({ muted: true }, 'chime'), { checked: false, disabled: false, stated: true });
+  assert.deepEqual(on({ soundOn: false }, 'chime'), { checked: false, disabled: true, stated: true });
+  const label = (f) => sessionMenuItems({ ...base, ...f }).find(([x]) => x === 'chime')[1];
+  assert.equal(label({}), '🔔 Chime: on');
+  assert.equal(label({ muted: true }), '🔕 Chime: off');
+  assert.equal(label({ soundOn: false }), '🔕 Chime: off');
+  assert.match(sessionMenuHtml(sessionMenuItems(base)), /data-act="chime"[^>]*><span class="ck"><\/span>🔔 Chime: on/, 'no ✓ when the label says on');
   assert.equal(on({ timeline: true }, 'timeline').checked, true);
   const html = sessionMenuHtml(sessionMenuItems({ ...base, timeline: true }));
   assert.match(html, /role="menuitemcheckbox" data-act="timeline" aria-checked="true"/);
