@@ -1,0 +1,97 @@
+<!doctype html>
+<!-- The public install page, published as docs/index.html in the public copy and served by GitHub Pages.
+     publish/build.mjs fills in the {{...}} parts: davidbrazelton/docket-public the public repo, and the download link, AI tools table and
+     Mac steps taken from publish/README.md, so the page and the README always say the same. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Docket: run your AI coding sessions from one page</title>
+<meta name="description" content="Docket is a page on your computer for starting, resuming and watching AI coding sessions with Claude Code, Codex or Grok.">
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --text: #1d1d1f; --muted: #5f6368; --line: #e2e2de;
+    --accent: #2457c5; --accent-text: #ffffff; --code: #f0f0ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a; --card: #1f2125; --text: #ececec; --muted: #a3a7ad; --line: #33363c;
+      --accent: #5b8cff; --accent-text: #0d1220; --code: #2a2d33;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 20px 64px; }
+  h1 { font-size: 2.4rem; margin: 0 0 8px; letter-spacing: -0.02em; }
+  h2 { font-size: 1.35rem; margin: 0 0 12px; }
+  p { margin: 0 0 12px; }
+  .lead { font-size: 1.15rem; color: var(--muted); max-width: 640px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 24px; margin-top: 24px; }
+  a { color: var(--accent); }
+  .download { display: inline-block; margin: 8px 0 12px; padding: 16px 28px; border-radius: 10px; background: var(--accent);
+    color: var(--accent-text); font-size: 1.2rem; font-weight: 600; text-decoration: none; }
+  .download:hover, .download:focus-visible { filter: brightness(1.08); }
+  .note { color: var(--muted); font-size: 0.95rem; }
+  code { background: var(--code); border-radius: 4px; padding: 1px 5px; font: 0.9em ui-monospace, Consolas, monospace; }
+  pre { background: var(--code); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 0 0 12px; }
+  pre code { background: none; padding: 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  footer { margin-top: 32px; color: var(--muted); font-size: 0.95rem; }
+  footer a { margin-right: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Docket</h1>
+  <p class="lead">A page on your computer for starting, resuming and watching AI coding sessions. It works with Claude Code, Codex and Grok, so your work does not depend on any one AI company's desktop app.</p>
+
+  <section id="windows">
+    <h2>Install on Windows</h2>
+    <a class="download" href="https://github.com/davidbrazelton/docket-public/releases/latest/download/Docket-Setup.exe">Download for Windows</a>
+    <p>Double-click <code>Docket-Setup.exe</code> once it has downloaded. It needs no admin rights and brings everything it needs, then opens Docket and starts it each time you sign in.</p>
+    <p class="note">The installer is not code-signed yet, so Windows may say <strong>Windows protected your PC</strong>: click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+  </section>
+
+  <section id="mac">
+    <h2>Install on a Mac</h2>
+    <p>There is no Mac installer yet, so the Mac install uses Terminal. First install Node.js, Git and at least one AI tool from the table below, for example with Homebrew: <code>brew install node git gh</code>. Then open Terminal and run:</p>
+    <pre><code>git clone https://github.com/davidbrazelton/docket-public.git ~/Work/docket
+cd ~/Work/docket
+npm install
+npx playwright install chromium
+./install-mac.sh</code></pre>
+    <p>Docket then starts by itself each time you sign in to the Mac, and opens at <code>http://localhost:4400</code>.</p>
+  </section>
+
+  <section id="ai-tools">
+    <h2>Supported AI tools</h2>
+    <p>You need at least one of these. Each one signs in on its own, and Docket shows how to install a missing one.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>AI tool</th><th>Made by</th><th>Install</th><th>Signs in with</th></tr></thead>
+        <tbody>
+          <tr><td>Claude Code</td><td>Anthropic</td><td><code>npm install -g @anthropic-ai/claude-code</code></td><td>a Claude account, or Amazon Bedrock (your company's AWS account)</td></tr>
+          <tr><td>Codex</td><td>OpenAI</td><td><code>npm install -g @openai/codex</code> (Windows also: <code>winget install -e --id OpenAI.Codex</code>)</td><td>a ChatGPT account (Plus, Pro, Business or Enterprise)</td></tr>
+          <tr><td>Grok</td><td>xAI</td><td>Mac: <code>curl -fsSL https://x.ai/cli/install.sh | bash</code><br>Windows: <code>irm https://x.ai/cli/install.ps1 | iex</code></td><td>a Grok account</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="updates">
+    <h2>Updates arrive by themselves</h2>
+    <p>Docket checks for a new version every few minutes. The first time one arrives it asks whether to take updates automatically or only when you say so. Your sessions keep working while it updates.</p>
+  </section>
+
+  <footer>
+    <a href="https://github.com/davidbrazelton/docket-public">The code on GitHub</a>
+    <a href="https://github.com/davidbrazelton/docket-public#readme">Full instructions (README)</a>
+    <a href="https://github.com/davidbrazelton/docket-public/blob/master/LICENSE">MIT license</a>
+  </footer>
+</main>
+</body>
+</html>
