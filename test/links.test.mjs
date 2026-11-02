@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { newLinkScan, scanLinkText, branchesInCommand, ticketKeys, adoBase, parseAdoPrUrl, adoPR, adoPRsForBranch, adoWorkItemIds, adoItemKeyFrom, adoCategory, adoPRWorkItemIds, adoWorkItems, jiraTicket, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
+import { newLinkScan, scanLinkText, branchesInCommand, ticketKeys, adoBase, parseAdoPrUrl, adoPR, adoPRsForBranch, adoWorkItemIds, adoItemKeyFrom, adoCategory, adoPRWorkItemIds, adoWorkItems, jiraTicket, jiraTickets, ticketFinished, jiraMe, ticketUnread, jiraFromClaudeJson, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
   filesIssue, parseIssueUrl, branchIssue, githubTicket, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghDerivedDefault, foldersInCommand, sessionBranches } from '../links.mjs';
 
 const fixture = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'session-links.jsonl'), 'utf8');
@@ -70,7 +70,8 @@ test('a GitHub issue shows like a Jira ticket: open in progress, completed done,
   assert.deepEqual(githubTicket(i, { state: 'OPEN', title: 'T' }),
     { kind: 'github', ref: i.url, key: '#7', url: i.url, repo: 'a/b', summary: 'T', status: 'Open', category: 'indeterminate' });
   assert.deepEqual([githubTicket(i, { state: 'CLOSED', stateReason: 'COMPLETED' }), githubTicket(i, { state: 'CLOSED', stateReason: 'NOT_PLANNED' })].map((t) => [t.status, t.category]),
-    [['Closed', 'done'], ['Not planned', 'unknown']]);
+    [['Closed', 'done'], ['Not planned', 'dropped']]);
+  assert.equal(githubTicket(i, { state: 'CLOSED', stateReason: 'DUPLICATE' }).category, 'dropped');
   assert.deepEqual([githubTicket(i, { state: 'UNKNOWN' })].map((t) => [t.status, t.category]), [['Unknown', 'unknown']]); // the sign-in cannot read it
 });
 
@@ -172,6 +173,9 @@ test('Jira status: its name, colored by its category; unknown keys left out', as
   assert.deepEqual(jiraTicket('https://example.atlassian.net/', issue('ABC-1', 'Needs Code Review', 'indeterminate')),
     { key: 'ABC-1', url: 'https://example.atlassian.net/browse/ABC-1', summary: 'S ABC-1', status: 'Needs Code Review', category: 'indeterminate', lastComment: null });
   assert.equal(jiraTicket('https://x', issue('ABC-2', 'Odd', 'weird')).category, 'unknown');
+  // Jira only has three categories: blocked and dropped come from the status name, whatever its category
+  assert.deepEqual([['Blocked', 'indeterminate'], ['On Hold', 'new'], ["Won't Do", 'done'], ['Won\u2019t Fix', 'done'], ['Cancelled', 'done'], ['Duplicate', 'done'], ['Rejected', 'done']]
+    .map(([n, c]) => jiraTicket('https://x', issue('ABC-3', n, c)).category), ['blocked', 'blocked', 'dropped', 'dropped', 'dropped', 'dropped', 'dropped']);
   let asked;
   const fetchFn = async (url) => { asked = url; return { ok: true, json: async () => ({ issues: [issue('ABC-1', 'Done', 'done')] }) }; };
   const got = await jiraTickets({ url: 'https://example.atlassian.net', user: 'u', token: 't', keys: ['ABC-1', 'ABC-404'], fetchFn });
@@ -241,6 +245,16 @@ test('work item states color like Jira tickets', () => {
   assert.equal(adoCategory(undefined, 'Active'), 'indeterminate');
   assert.equal(adoCategory(undefined, 'To Do'), 'new');
   assert.equal(adoCategory(undefined, 'Something odd'), 'unknown');
+  assert.equal(adoCategory('Removed', 'Removed'), 'dropped');
+  assert.equal(adoCategory('Removed', 'Gone'), 'dropped'); // the Removed category, whatever the name
+  assert.equal(adoCategory(undefined, 'Cut'), 'dropped');
+  assert.equal(adoCategory('Completed', 'Cut'), 'dropped'); // the name wins over Completed
+  assert.equal(adoCategory('InProgress', 'Blocked'), 'blocked');
+  assert.equal(adoCategory(undefined, 'On Hold'), 'blocked');
+});
+
+test('done and dropped tickets are finished; the rest may still move', () => {
+  assert.deepEqual(['done', 'dropped', 'new', 'indeterminate', 'blocked', 'unknown'].map(ticketFinished), [true, true, false, false, false, false]);
 });
 
 test('work items linked to a pull request, then their title, type and state', async () => {

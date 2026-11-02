@@ -204,13 +204,22 @@ export function branchIssue(branch) {
   return 0;
 }
 // One issue as GitHub's GraphQL sends it, in the shape the page shows Jira tickets: open is in progress (a session
-// worked on it), closed as completed is done, closed as not planned or a duplicate is grey, and one the sign-in cannot
-// read is Unknown. ref is what the × unlinks.
+// worked on it), closed as completed is done, closed as not planned or a duplicate is dropped, and one the sign-in
+// cannot read is Unknown. ref is what the × unlinks.
 export function githubTicket(i, d) {
   const status = d.state === 'OPEN' ? 'Open' : d.state !== 'CLOSED' ? 'Unknown' : d.stateReason === 'NOT_PLANNED' ? 'Not planned' : d.stateReason === 'DUPLICATE' ? 'Duplicate' : 'Closed';
   return { kind: 'github', ref: i.url, key: `#${i.number}`, url: i.url, repo: i.repo, summary: d.title || '', status,
-    category: d.state === 'OPEN' ? 'indeterminate' : status === 'Closed' ? 'done' : 'unknown' };
+    category: d.state === 'OPEN' ? 'indeterminate' : status === 'Closed' ? 'done' : status === 'Unknown' ? 'unknown' : 'dropped' };
 }
+// Jira and Azure DevOps only say new / indeterminate / done; blocked and dropped come from the status name.
+const BLOCKED_NAMES = ['blocked', 'on hold', 'on-hold', 'hold'];
+const DROPPED_NAMES = ['removed', 'cut', "won't do", "won't fix", 'wont do', 'wont fix', 'cancelled', 'canceled', 'duplicate', 'rejected', 'not planned', 'declined', 'abandoned', 'obsolete'];
+export function categoryByName(name) {
+  const n = String(name || '').trim().toLowerCase().replace(/[\u2018\u2019]/g, "'");
+  return BLOCKED_NAMES.includes(n) ? 'blocked' : DROPPED_NAMES.includes(n) ? 'dropped' : '';
+}
+// A ticket that will not move again (done or dropped): checked less often, and its comments not polled.
+export const ticketFinished = (category) => category === 'done' || category === 'dropped';
 
 // The ticket keys in branch names. keys: the company's Jira project keys (any case in the branch), or none for any
 // key-shaped word in capitals.
@@ -368,9 +377,9 @@ export function adoItemKeyFrom(text) {
 }
 export const adoItemPage = (base, project, id) => `${base}/${encodeURIComponent(project)}/_workitems/edit/${id}`;
 // A state's category from its name, for when Azure DevOps cannot say (the names of its own processes).
-const STATE_NAMES = { new: ['new', 'to do', 'proposed', 'approved', 'open', 'design'], indeterminate: ['active', 'in progress', 'committed', 'doing', 'resolved', 'ready', 'in review', 'testing'], done: ['done', 'closed', 'completed', 'removed', 'cut'] };
+const STATE_NAMES = { new: ['new', 'to do', 'proposed', 'approved', 'open', 'design'], indeterminate: ['active', 'in progress', 'committed', 'doing', 'resolved', 'ready', 'in review', 'testing'], done: ['done', 'closed', 'completed'] };
 export function adoCategory(stateCategory, name) {
-  const c = { Proposed: 'new', InProgress: 'indeterminate', Resolved: 'indeterminate', Completed: 'done', Removed: 'done' }[stateCategory];
+  const c = categoryByName(name) || { Proposed: 'new', InProgress: 'indeterminate', Resolved: 'indeterminate', Completed: 'done', Removed: 'dropped' }[stateCategory];
   if (c) return c;
   const n = String(name || '').trim().toLowerCase();
   return Object.keys(STATE_NAMES).find((k) => STATE_NAMES[k].includes(n)) || 'unknown';
@@ -409,7 +418,7 @@ export async function adoWorkItems({ base, pat, ids, categories = new Map(), fet
 }
 
 // ---------- Jira ----------
-// One ticket as Jira sends it: its status name, and new / indeterminate / done for the color. lastComment is who
+// One ticket as Jira sends it: its status name, and new / indeterminate / done (or blocked / dropped by name) for the color. lastComment is who
 // wrote the newest comment and when (never its text); byMe when that is the signed-in user's accountId, me.
 export function jiraTicket(url, issue, me) {
   const st = issue?.fields?.status;
@@ -419,7 +428,7 @@ export function jiraTicket(url, issue, me) {
   // byMe null: who "me" is is not known, so the comment is never called someone else's
   const lastComment = last ? { by: last.author?.displayName || '', byMe: me ? last.author?.accountId === me : null, at: Date.parse(last.created) } : null;
   return { key: issue?.key, url: `${String(url).replace(/\/+$/, '')}/browse/${issue?.key}`, summary: issue?.fields?.summary || '',
-    status: st?.name || '', category: ['new', 'indeterminate', 'done'].includes(cat) ? cat : 'unknown', lastComment };
+    status: st?.name || '', category: categoryByName(st?.name) || (['new', 'indeterminate', 'done'].includes(cat) ? cat : 'unknown'), lastComment };
 }
 // The signed-in Jira user's accountId, for telling their comments from others'.
 export async function jiraMe({ url, user, token, fetchFn = fetch }) {

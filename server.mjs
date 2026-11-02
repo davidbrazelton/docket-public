@@ -46,7 +46,7 @@ import { cleanMode, pullsByItself, updatePrompt, changeReason } from './update-m
 import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE } from './recall.mjs';
 import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPrUrl, adoPRsForBranch, adoPRById, adoWorkItemIds, adoItemKey, isAdoItemKey, adoItemKeyFrom, adoPRWorkItemIds, adoWorkItems, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, linkTtl, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
   parseIssueUrl, branchIssue, githubTicket, CLOSES, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, sessionBranches,
-  prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe } from './links.mjs';
+  prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe, ticketFinished } from './links.mjs';
 import { currentBranch } from './git-head.mjs';
 import { copyPlan, runCopy, copyGroups, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
 import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
@@ -4865,26 +4865,26 @@ async function sessionLinks(client, ids) {
       x.items = [...new Set([...x.items, ...linked])].filter((k) => !x.hidden.has('ticket:' + k));
     }
     const ik = (k) => `${ado.base}|${k}`;
-    const todo = [...new Set(per.flatMap((x) => x.items))].filter((k) => { const h = adoItems.get(ik(k)); return !fresh(h, linkTtl(!h?.item || h.item.category === 'done')); });
+    const todo = [...new Set(per.flatMap((x) => x.items))].filter((k) => { const h = adoItems.get(ik(k)); return !fresh(h, linkTtl(!h?.item || ticketFinished(h.item.category))); });
     if (todo.length) {
       if (Date.now() - adoStates.at > 86400000) adoStates = { at: Date.now(), map: new Map() };
       try {
         const got = new Map((await adoWorkItems({ base: ado.base, pat: ado.pat, ids: todo.map((k) => Number(k.slice(3))), categories: adoStates.map })).map((t) => [t.key, t]));
         for (const k of todo) adoItems.set(ik(k), { at: Date.now(), item: got.get(k) || null });
       } catch { // kept as it was, and tried again in two minutes
-        for (const k of todo) { const t = adoItems.get(ik(k))?.item || null; adoItems.set(ik(k), { at: Date.now() - linkTtl(!t || t.category === 'done') + 120000, item: t }); }
+        for (const k of todo) { const t = adoItems.get(ik(k))?.item || null; adoItems.set(ik(k), { at: Date.now() - linkTtl(!t || ticketFinished(t.category)) + 120000, item: t }); }
       }
     }
   }
   if (jira) {
     const jk = (k) => `${jira.url}|${k}`;
-    const todo = [...new Set(per.flatMap((x) => x.keys))].filter((k) => { const h = jiraStatus.get(jk(k)); return !fresh(h, linkTtl(!h?.ticket || h.ticket.category === 'done')); });
+    const todo = [...new Set(per.flatMap((x) => x.keys))].filter((k) => { const h = jiraStatus.get(jk(k)); return !fresh(h, linkTtl(!h?.ticket || ticketFinished(h.ticket.category))); });
     if (todo.length) {
       try {
         const got = new Map((await jiraTickets({ ...jira, keys: todo, me: await jiraMeFor(jira) })).map((t) => [t.key, t]));
         for (const k of todo) jiraStatus.set(jk(k), { at: Date.now(), ticket: got.get(k) || null });
       } catch { // kept as it was, and tried again in two minutes
-        for (const k of todo) { const t = jiraStatus.get(jk(k))?.ticket || null; jiraStatus.set(jk(k), { at: Date.now() - linkTtl(!t || t.category === 'done') + 120000, ticket: t }); }
+        for (const k of todo) { const t = jiraStatus.get(jk(k))?.ticket || null; jiraStatus.set(jk(k), { at: Date.now() - linkTtl(!t || ticketFinished(t.category)) + 120000, ticket: t }); }
       }
     }
   }
@@ -4903,7 +4903,7 @@ async function sessionLinks(client, ids) {
     const tickets = [...(jira ? x.keys.map((k) => jiraStatus.get(`${jira.url}|${k}`)?.ticket).filter(Boolean)
       .map((t) => (ticketUnread(t, state.ticketSeen?.[t.key]) ? { ...t, unread: true } : t)) : []),
       ...x.issues.map((i) => issueTicket(client, i)).filter(Boolean).map((t) => withLastComment(t, t.ref, t.status === 'Open')),
-      ...(ado ? x.items.map((k) => adoItems.get(`${ado.base}|${k}`)?.item).filter(Boolean).map((t) => withLastComment(t, `${ado.base}|${t.key}`, t.category !== 'done')) : [])];
+      ...(ado ? x.items.map((k) => adoItems.get(`${ado.base}|${k}`)?.item).filter(Boolean).map((t) => withLastComment(t, `${ado.base}|${t.key}`, !ticketFinished(t.category))) : [])];
     // branches too, for the Details panel; links.mjs already leaves out master and main
     const wt = x.scan?.dirs.get(x.current) || '';
     if (list.length || tickets.length || x.branches.length) out[x.id] = { prs: list, tickets, branches: x.branches, current: x.current, worktree: fs.existsSync(wt) ? wt : '' };
@@ -4949,7 +4949,7 @@ function talkSoon(client, ado, links) {
   const tickets = links.flatMap((l) => l.tickets);
   const issues = uniq(tickets.filter((t) => t.kind === 'github' && t.status === 'Open' && stale(t.ref)), (t) => talkKey(t.ref));
   // a work item is asked again only when its comment count moved (the count comes with its status)
-  const items = !ado ? [] : uniq(tickets.filter((t) => t.kind === 'ado' && t.category !== 'done' && talk.get(talkKey(`${ado.base}|${t.key}`))?.count !== t.comments), (t) => t.key);
+  const items = !ado ? [] : uniq(tickets.filter((t) => t.kind === 'ado' && !ticketFinished(t.category) && talk.get(talkKey(`${ado.base}|${t.key}`))?.count !== t.comments), (t) => t.key);
   const gh = [...prs.filter((p) => p.kind === 'github'), ...issues.map((i) => ({ ...parseIssueUrl(i.ref), issue: true })).filter((i) => i.url)];
   const adoPrs = ado ? prs.filter((p) => p.kind === 'ado') : [];
   if (!gh.length && !adoPrs.length && !items.length) return;
