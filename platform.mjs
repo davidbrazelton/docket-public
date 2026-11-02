@@ -184,25 +184,33 @@ export function windowsTerminalCommand({ shell, script, file, exe, wt }) {
   return `start "" ${wt ? 'wt.exe -w new -d . ' : ''}${run}`;
 }
 
-// Every running program with its parent and memory, for ☰ > Memory and disk. Windows: one PowerShell call
-// (WorkingSetSize is in bytes). macOS and Linux: ps, whose rss is in kilobytes and whose last column is the program
-// path, which may hold spaces ("Google Chrome for Testing Helper (Renderer)").
+// Every running program with its parent, memory and the processor time it has used so far, for ☰ > Memory and disk
+// and the gauges. Windows: one PowerShell call (WorkingSetSize is in bytes; KernelModeTime and
+// UserModeTime in 100-nanosecond steps). macOS and Linux: ps, whose rss is in kilobytes, whose time is
+// [[dd-]hh:]mm:ss[.ss], and whose last column is the program path, which may hold spaces ("Google Chrome for
+// Testing Helper (Renderer)").
 export function processListCommand(platform = process.platform) {
   if (platform === 'win32') return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command',
-    'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,WorkingSetSize | ConvertTo-Json -Compress'] };
-  return { cmd: 'ps', args: ['-axo', 'pid=,ppid=,rss=,comm='] };
+    'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,WorkingSetSize,KernelModeTime,UserModeTime | ConvertTo-Json -Compress'] };
+  return { cmd: 'ps', args: ['-axo', 'pid=,ppid=,rss=,time=,comm='] };
 }
-// The output of processListCommand as [{ pid, ppid, name, mem }]: name is the program's own name in lower case,
-// without its folder or .exe; mem is in bytes.
+// ps's time column in seconds.
+const psSeconds = (t) => {
+  const [d, rest] = t.includes('-') ? t.split('-') : [0, t];
+  return rest.split(':').reduce((a, x) => a * 60 + Number(x), 0) + Number(d) * 86400 || 0;
+};
+// The output of processListCommand as [{ pid, ppid, name, mem, cpu }]: name is the program's own name in lower
+// case, without its folder or .exe; mem is in bytes; cpu is the processor time used so far, in seconds.
 export function parseProcessList(text, platform = process.platform) {
   const name = (s) => String(s || '').split(/[\\/]/).pop().replace(/\.exe$/i, '').toLowerCase();
   if (platform === 'win32') {
     let l; try { l = JSON.parse(text); } catch { return []; }
     return (Array.isArray(l) ? l : [l]).filter(Boolean)
-      .map((p) => ({ pid: Number(p.ProcessId), ppid: Number(p.ParentProcessId), name: name(p.Name), mem: Number(p.WorkingSetSize) || 0 }));
+      .map((p) => ({ pid: Number(p.ProcessId), ppid: Number(p.ParentProcessId), name: name(p.Name), mem: Number(p.WorkingSetSize) || 0,
+        cpu: ((Number(p.KernelModeTime) || 0) + (Number(p.UserModeTime) || 0)) / 1e7 }));
   }
-  return String(text).split('\n').map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.+?)\s*$/)).filter(Boolean)
-    .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), name: name(m[4]), mem: Number(m[3]) * 1024 }));
+  return String(text).split('\n').map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+([\d:.-]+)\s+(.+?)\s*$/)).filter(Boolean)
+    .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), name: name(m[5]), mem: Number(m[3]) * 1024, cpu: psSeconds(m[4]) }));
 }
 
 // The helper that hears the computer go to sleep, wake, or shut down: Node cannot hear these itself.

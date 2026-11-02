@@ -70,7 +70,7 @@ header.top .brand { font-weight: 600; margin-right: 8px; color: var(--accent); }
 .badge { background: var(--warn); color: var(--on-warn); border-radius: 999px; font-size: 11px; padding: 0 6px; font-weight: 600; }
 header.top .spacer { flex: 1; }
 header.top > button { white-space: nowrap; }
-header.top #pauseBtn { padding: 4px 8px; } /* ⏸ Pause all, the last thing in the bar */
+header.top #pauseBtn { padding: 4px 8px; } /* ⏸ Pause all, beside Terminal */
 header.top .nav-btns { display: flex; gap: 2px; margin-left: -6px; }
 header.top .nav-btns button { padding: 4px 6px; display: flex; align-items: center; }
 header.top .nav-ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
@@ -78,6 +78,37 @@ header.top .nav-ic { width: 18px; height: 18px; fill: none; stroke: currentColor
 .ctx.nav-menu button { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ctx.nav-menu .nm-desk { color: var(--muted); margin-left: 6px; font-size: 12px; }
 header.top .nav-btns button:disabled { opacity: .35; cursor: default; }
+/* The top bar's icons: the Sessions list button by ☰; after Terminal and Pause, the AI brands and the browser
+   sign-ins (main color when signed in or holding sign-ins, muted when not), the gauges (neutral; CPU amber when it
+   stays high), and the Details panel button last. A panel button is filled in the main color while its panel shows. */
+header.top .pane-btn { position: relative; display: flex; align-items: center; padding: 4px 6px; }
+header.top .pane-ic { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+header.top .pane-btn.on { color: var(--accent); }
+header.top .pane-btn.on .fillp { fill: currentColor; }
+header.top .pane-btn .badge { position: absolute; right: -4px; top: -3px; font-size: 9px; padding: 0 4px; }
+header.top .top-icons { display: flex; align-items: center; margin-left: -8px; }
+header.top .sep { width: 1px; height: 18px; background: var(--line); margin: 0 3px; }
+.brand-icons, .gauges { display: flex; }
+header.top .sites-btn, header.top .bi-btn, header.top .g-btn { border: none; padding: 4px 6px; display: flex; align-items: center; color: var(--muted); }
+header.top .sites-btn, header.top .bi-btn { opacity: .55; }
+header.top .sites-btn.on, header.top .bi-btn.on { color: var(--accent); opacity: 1; }
+header.top .sites-btn svg, header.top .bi-btn svg, header.top .g-btn svg { width: 16px; height: 16px; display: block; }
+header.top .bi-btn svg path { fill: currentColor; }
+header.top .g-btn { gap: 3px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+header.top .g-btn.warn { color: var(--warn); }
+#termTopBtn .ti { display: none; width: 16px; height: 16px; }
+.clients .ci { display: none; }
+@media (max-width: 900px) { header.top { gap: 8px; } header.top .brand { display: none; } }
+/* narrow: the other desks show their initials, Terminal its icon, and the gauges give way (☰ > Gauges has them) */
+@media (max-width: 640px) {
+  header.top { gap: 6px; padding: 8px 10px; }
+  header.top .gauges, header.top .gsep { display: none; }
+  #termTopBtn { padding: 4px 6px; display: flex; align-items: center; }
+  #termTopBtn .tl { display: none; }
+  #termTopBtn .ti { display: block; }
+  .clients button:not(.on) .cn { display: none; }
+  .clients button:not(.on) .ci { display: inline; }
+}
 .hv-day { font-weight: 600; color: var(--text); margin: 8px 0 2px; }
 .hv-day:first-child { margin-top: 0; }
 .dlg-body .hv-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; background: none; border: 1px solid transparent; border-radius: 8px; padding: 6px 8px; color: var(--text); cursor: pointer; font: inherit; }
@@ -89,6 +120,8 @@ header.top .nav-btns button:disabled { opacity: .35; cursor: default; }
 
 /* layout */
 .app { display: grid; grid-template-columns: var(--left-w, 300px) 1fr auto; min-height: 0; gap: var(--card-gap); }
+.app:has(> aside.side.shut) { grid-template-columns: 1fr auto; }
+aside.side.shut { display: none; }
 aside.side { position: relative; border-right: 1px solid var(--divider); background: var(--panel); display: flex; flex-direction: column; min-height: 0; border-radius: var(--card-r); box-shadow: var(--card-shadow); }
 .side-head { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--divider); }
 .list { position: relative; overflow: auto; flex: 1; padding: 6px var(--row-inset) 20px; } /* relative: a removed row fades out in place */
@@ -720,16 +753,13 @@ body.resizing.rows { cursor: row-resize; }
 .task-runs .hint { font-size: 12px; color: var(--muted); padding: 4px 0; }
 .err-text { color: var(--bad); font-size: 13px; }
 .browser-box { border-top: 1px solid var(--line); padding: 10px 14px 12px; font-size: 12px; }
-/* the bottom line: today's cost on the left, the 🌐 Sites button on the right */
-.side-foot { display: flex; align-items: center; border-top: 1px solid var(--line); padding-right: 8px; }
-.side-foot .sites-btn { margin-left: auto; border: none; padding: 4px 6px; font-size: 14px; }
-.side-foot .sites-btn.on { background: var(--accent-soft); color: var(--accent); }
-/* the remote icon next to the globe while a remote connection is on; its menu opens upward */
-.rc-wrap { position: relative; margin-left: auto; display: flex; }
+/* the bottom line: today's cost */
+.side-foot { display: flex; align-items: center; border-top: 1px solid var(--line); }
+/* the remote icon in the top bar while a remote connection is on */
+.rc-wrap { position: relative; display: flex; }
 .rc-wrap[hidden] { display: none; }
-.rc-wrap:not([hidden]) + .sites-btn { margin-left: 0; }
-.side-foot .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
-.tl-menu.rc-pop { top: auto; bottom: calc(100% + 4px); left: auto; right: 0; min-width: 260px; }
+header.top .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
+.tl-menu.rc-pop { left: auto; right: 0; min-width: 260px; }
 .rc-pop .rc-item { display: flex; align-items: center; gap: 8px; padding: 6px; font-size: 13px; }
 .rc-pop .rc-item span { flex: 1; }
 .clients .rc-mark { font-size: 12px; }
@@ -744,9 +774,7 @@ body.resizing.rows { cursor: row-resize; }
 .browser-box button { font-size: 12px; padding: 3px 9px; }
 .browser-box input { width: 100%; font-size: 12px; padding: 4px 8px; margin-bottom: 6px; }
 .browser-box:empty { display: none; }
-aside.side.sites-mode .search-row, aside.side.sites-mode .list-bar, aside.side.sites-mode .pick-bar { display: none; }
-.sites-view { padding: 8px 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
-.sites-view .sv-head { font-weight: 600; font-size: 13px; }
+.sites-view { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--text); }
 .sites-view .sv-note { font-size: 12px; color: var(--muted); line-height: 1.45; }
 .sites-view .sv-open { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .site-rows { border-top: 1px solid var(--line); }
@@ -812,13 +840,13 @@ aside.side.sites-mode .search-row, aside.side.sites-mode .list-bar, aside.side.s
 
 @media (max-width: 900px) {
   .app { grid-template-columns: 1fr; }
-  aside.side { display: none; }
+  aside.side, aside.side.shut { display: none; }
   aside.side.open { display: flex; position: fixed; inset: calc(49px + var(--card-gap)) 0 0 0; z-index: 5; }
   aside.tasks { position: fixed; right: 0; top: calc(49px + var(--card-gap)); bottom: 0; z-index: 4; width: min(330px, 100vw); }
   .resizer { display: none; }
   .inner { padding: 0 16px; }
 }
-/* ---------- a session's Timeline (a Details section) and a company's profile page ---------- */
+/* ---------- a session's Timeline (a Details section) and a desk's Inspector ---------- */
 /* The timeline, woven into the chat. Its bar sits above the chat; its lines sit between the messages. */
 .tl-bar { position: relative; z-index: 3; background: var(--panel); border-bottom: 1px solid var(--line); padding: 5px 18px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .tl-bar[hidden] { display: none; }
@@ -884,20 +912,24 @@ body:has(> .start-banner:not([hidden])) { grid-template-rows: auto auto 1fr; }
 .profile-page[hidden] { display: none; }
 .pf-cols { display: flex; flex: 1; min-height: 0; }
 .pf-side { width: 270px; flex: none; overflow: auto; border-right: 1px solid var(--line); background: var(--panel); }
-@media (max-width: 900px) { .pf-side { display: none; } }
+.pf-side a.pf-sum.on { background: var(--accent-soft); box-shadow: inset 3px 0 var(--accent); }
+.pf-side a.pf-sum.on > span:first-child { font-weight: 600; color: var(--accent); }
+@media (max-width: 700px) { /* the section list above the content, one chip per section */
+  .pf-cols { flex-direction: column; }
+  .pf-side { width: auto; border-right: 0; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; max-height: 40%; }
+  .pf-side .group, .pf-side div.pf-sum, .pf-side .pf-sum .sub { display: none; }
+  .pf-side a.pf-sum, .pf-side a.pf-sum.on { display: flex; gap: 6px; padding: 3px 10px; border-radius: 999px; box-shadow: none; }
+}
 .pf-head { display: flex; gap: 10px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
 .pf-head h1 { font-size: 16px; margin: 0; }
 .pf-head .pf-home { font-size: 12px; color: var(--muted); font-family: ui-monospace, Consolas, monospace; flex: 1; }
-.pf-index { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 18px; border-bottom: 1px solid var(--line); }
-.pf-index a { font-size: 12px; color: var(--text); text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; }
-.pf-index a:hover { background: var(--panel-2); }
 .pf-body { overflow: auto; flex: 1; }
 .pf-sum { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 14px; text-decoration: none; color: inherit; font-size: 13px; }
 a.pf-sum:hover { background: var(--panel-2); }
 .pf-sum b { font-variant-numeric: tabular-nums; }
 .pf-sum .sub { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }
 .pf-inner { max-width: 980px; margin: 0 auto; padding: 10px 22px 60px; }
-.pf-sec h2 { font-size: 15px; margin: 22px 0 2px; }
+.pf-sec h2 { font-size: 15px; margin: 12px 0 2px; }
 .pf-sec .pf-note { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .pf-sec h3 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 12px 0 4px; font-weight: 600; }
 .pf-item { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); margin-bottom: 4px; font-size: 13px; }
@@ -967,14 +999,15 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="paused-cover" id="pausedCover" role="dialog" aria-modal="true" aria-labelledby="pausedName" hidden><div class="boot-card"><div class="boot-name" id="pausedName">Docket is paused</div><div class="boot-msg" id="pausedMsg"></div><ul class="paused-list" id="pausedList"></ul><button class="primary" id="resumeAllBtn" data-tip="resume-all">Resume all</button></div></div>
 <header class="top">
   <button class="ghost" id="menuBtn" data-tip="menu" aria-label="Menu" aria-haspopup="menu">☰</button>
+  <button class="ghost pane-btn" id="sideBtn" data-tip="side-toggle" aria-label="Sessions list" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M5.5 6.5h3v11h-3z" stroke="none"/><path d="M10 4v16"/></svg></button>
   <span class="nav-btns" role="group" aria-label="Sessions you viewed"><button class="ghost" id="backBtn" data-tip="back" aria-label="Back" aria-haspopup="menu" disabled><svg class="nav-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg></button><button class="ghost" id="fwdBtn" data-tip="fwd" aria-label="Forward" aria-haspopup="menu" disabled><svg class="nav-ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3l5 5-5 5"/></svg></button></span>
   <span class="brand">Docket</span>
   <nav class="clients" id="clients"></nav>
   <span class="spacer"></span>
   <span class="conn" id="conn" hidden>Portal not reachable, retrying…</span>
-  <button id="tasksBtn" data-tip="details">Details</button>
-  <button id="termTopBtn" data-tip="terminal" aria-haspopup="true">Terminal</button>
+  <button id="termTopBtn" data-tip="terminal" aria-haspopup="true" aria-label="Terminal"><span class="tl">Terminal</span><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg></button>
   <button class="ghost" id="pauseBtn" data-tip="pause-all" aria-label="Pause all sessions">⏸︎</button>
+  <span class="top-icons"><span class="sep" aria-hidden="true"></span><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
 </header>
 <div class="start-banner" id="startBanner" role="status" hidden><span id="startBannerText"></span><button class="primary" id="startSignin" data-tip="start-signin">Start Docket at sign-in (recommended)</button><button id="startShortcut" data-tip="start-shortcut">Just add a shortcut</button><button id="startNever" data-tip="start-never">Don't ask again</button></div>
 <div class="app">
@@ -991,7 +1024,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     <div class="pick-bar" id="pickBar" hidden></div>
     <div class="list" id="list"></div>
     <div class="browser-box" id="browserBox"></div>
-    <div class="side-foot"><button class="today-spend" id="todaySpend" data-tip="today-spend" hidden></button><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><button class="ghost sites-btn" data-mode="sites" data-tip="tab-sites" aria-label="Sites">🌐</button></div>
+    <div class="side-foot"><button class="today-spend" id="todaySpend" data-tip="today-spend" hidden></button></div>
   </aside>
   <main>
     <section class="preview" id="preview" hidden aria-label="File preview">
@@ -1042,7 +1075,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   </main>
   <aside class="tasks" id="tasks">
     <div class="resizer" id="rightResizer" role="separator" aria-orientation="vertical" aria-label="Resize the details panel" data-tip="resize-right" tabindex="0"></div>
-    <div class="tasks-head"><span class="sec-toggles" id="secToggles" role="group" aria-label="Sections of the details panel"><button data-sec="cost" data-tip="sec-cost" aria-label="Cost">$</button><button data-sec="files" data-tip="sec-files" aria-label="Files">📄</button><button data-sec="prs" data-tip="sec-prs" aria-label="Pull requests"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4.75 1.5a2.25 2.25 0 0 0-.75 4.37v4.26a2.25 2.25 0 1 0 1.5 0V5.87A2.25 2.25 0 0 0 4.75 1.5Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm0 8.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5ZM11.25 10.13V6.5A2.5 2.5 0 0 0 8.75 4H7.56l1.22-1.22-1.06-1.06L4.69 4.75l3.03 3.03 1.06-1.06L7.56 5.5h1.19a1 1 0 0 1 1 1v3.63a2.25 2.25 0 1 0 1.5 0Zm-.75 1.37a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"/></svg></button><button data-sec="tasks" data-tip="sec-tasks" aria-label="Tasks"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 3.75l1.25 1.25 2.25-2.5M2 8.25l1.25 1.25 2.25-2.5M2 12.75l1.25 1.25 2.25-2.5M8 4h6M8 8.5h6M8 13h6"/></svg></button><button data-sec="mcp" data-tip="sec-mcp" aria-label="Connected services"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M6 1.5v3M10 1.5v3M3.75 4.5h8.5V7a4.25 4.25 0 0 1-8.5 0ZM8 11.25v3.25"/></svg></button></span><span id="tasksTitle"></span><button class="ghost" id="tasksClose" aria-label="Close" data-tip="details-close">✕</button></div>
+    <div class="tasks-head"><span class="sec-toggles" id="secToggles" role="group" aria-label="Sections of the details panel"><button data-sec="cost" data-tip="sec-cost" aria-label="Cost">$</button><button data-sec="files" data-tip="sec-files" aria-label="Files">📄</button><button data-sec="prs" data-tip="sec-prs" aria-label="Pull requests"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M4.75 1.5a2.25 2.25 0 0 0-.75 4.37v4.26a2.25 2.25 0 1 0 1.5 0V5.87A2.25 2.25 0 0 0 4.75 1.5Zm0 1.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Zm0 8.5a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5ZM11.25 10.13V6.5A2.5 2.5 0 0 0 8.75 4H7.56l1.22-1.22-1.06-1.06L4.69 4.75l3.03 3.03 1.06-1.06L7.56 5.5h1.19a1 1 0 0 1 1 1v3.63a2.25 2.25 0 1 0 1.5 0Zm-.75 1.37a.75.75 0 1 1 0 1.5.75.75 0 0 1 0-1.5Z"/></svg></button><button data-sec="tasks" data-tip="sec-tasks" aria-label="Tasks"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M2 3.75l1.25 1.25 2.25-2.5M2 8.25l1.25 1.25 2.25-2.5M2 12.75l1.25 1.25 2.25-2.5M8 4h6M8 8.5h6M8 13h6"/></svg></button><button data-sec="mcp" data-tip="sec-mcp" aria-label="Connected services"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M6 1.5v3M10 1.5v3M3.75 4.5h8.5V7a4.25 4.25 0 0 1-8.5 0ZM8 11.25v3.25"/></svg></button></span><span id="tasksTitle"></span></div>
     <div class="tasks-body" id="tasksBody"></div>
   </aside>
 </div>
@@ -1051,7 +1084,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="install-offer" id="cacheOffer" role="dialog" aria-labelledby="cacheOfferTitle" hidden></div>
 <div class="install-offer" id="updateOffer" role="dialog" aria-labelledby="updateOfferTitle" hidden></div>
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Larger view of the image" hidden><img id="lbImg" alt=""><button class="lb-close" id="lbClose" data-tip="lb-close" aria-label="Close">✕</button><button class="lb-prev" id="lbPrev" data-tip="lb-prev" aria-label="Previous image">‹</button><button class="lb-next" id="lbNext" data-tip="lb-next" aria-label="Next image">›</button><div class="lb-count" id="lbCount"></div></div>
-<div class="dlg-back" id="pfDlg" hidden><section class="dlg profile-page" id="profilePage" hidden role="dialog" aria-modal="true" aria-label="Desk settings"></section></div>
+<div class="dlg-back" id="pfDlg" hidden><section class="dlg profile-page" id="profilePage" hidden role="dialog" aria-modal="true" aria-label="Desk Inspector"></section></div>
 <div class="dlg-back" id="dlg" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"><div class="dlg-title" id="dlgTitle"></div><div class="dlg-body" id="dlgBody"></div><div class="dlg-btns" id="dlgBtns"></div></div></div>
 <div class="tour" id="tour" hidden><div class="tour-hole" id="tourHole"></div><div class="tour-card" id="tourCard" role="dialog" aria-modal="true" aria-labelledby="tourTitle" aria-describedby="tourText"><div class="tour-step" id="tourStep"></div><h3 id="tourTitle"></h3><p id="tourText"></p><div class="tour-btns"><button class="ghost" id="tourSkip" data-tip="tour-skip">Skip</button><span class="spacer"></span><button id="tourBack" data-tip="tour-back">Back</button><button class="primary" id="tourNext" data-tip="tour-next">Next</button></div></div></div>
 <script>
@@ -1105,7 +1138,8 @@ const HELP = [
     ['back', '‹ Back', `Back to the session you viewed before (${OS.nav[0]}). Right-click for the steps behind, to jump several at once`],
     ['fwd', '› Forward', `Forward again to the session you went back from (${OS.nav[1]}). Right-click for the steps ahead`],
     ['company', 'Desk buttons', 'Switch to this desk\'s sessions. The orange number counts sessions that need you, plus cards from other desks waiting for Start. You can add more desks (☰ > Desks > + Add a desk): each keeps its own sign-in, settings and memory, so a new one is a safe place to try a plugin or framework while the desk you work in stays as it is.'],
-    ['details', 'Details', 'Show or hide the details panel on the right'],
+    ['side-toggle', 'Sessions list', 'Show or hide the Sessions list on the left. Docket remembers the choice. On a narrow window it opens the list over the page'],
+    ['details', 'Details', 'Show or hide the details panel on the right. Docket remembers the choice. The number counts the tasks running. On a narrow window the panel opens over the page, and Escape closes it too'],
     ['terminal', 'Terminal', 'Open a terminal in this desk\'s folder, signed in as this desk'],
     ['pause-all', '⏸ Pause all', 'Pause all sessions: stop every working session in every desk, for example before the computer sleeps. Docket stays paused, with scheduled runs waiting, until you press Resume all.'],
     ['resume-all', 'Resume all', 'Tell each paused session to check its test servers and browsers still answer, then carry on. Sessions you wrote to while paused are left alone.'],
@@ -1113,7 +1147,10 @@ const HELP = [
   ['Session list (left)', [
     ['tab-sessions', 'Sessions', 'Your conversations with Claude for this desk: running ones on top, earlier ones below'],
     ['tab-schedules', 'Schedules', 'Sessions that start by themselves at set times, like every weekday at 9'],
-    ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser'],
+    ['g-cpu', 'CPU gauge', "How much of this computer's processor Docket is using: the app, the runner, the sessions and their helpers, as Task Manager counts it. Amber when it stays over 80%. Click for ☰ > Memory and disk"],
+    ['g-mem', 'Memory gauge', 'How much memory Docket is using: the app, the runner, the sessions and their helpers. Click for ☰ > Memory and disk'],
+    ['g-disk', 'File space gauge', "The size of Docket's folder, as last measured (every 20 minutes). Click for ☰ > Memory and disk"],
+    ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is'],
     ['new', '+ New session', 'Start a new conversation with Claude'],
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
     ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups) and which chips each row shows'],
@@ -1249,7 +1286,6 @@ const HELP = [
     ['sec-tasks', 'Tasks', 'Tasks: Claude\'s to-do list and the jobs it runs in the background'],
     ['sec-mcp', 'Connected services', 'Connected services: outside tools this session can use, and whether each one is connected'],
     ['dsec-head', 'A section\'s heading', 'Click to fold the section to its heading or open it again. Drag it up or down to change the order; the buttons at the top of the panel follow the same order.'],
-    ['details-close', '✕', 'Hide the details panel'],
     ['group-select', 'Group', 'Which group this session is in'],
     ['mcp-refresh', 'Refresh', 'Ask the session again which services are connected'],
     ['resize-right', 'The panel\'s edge', 'Drag to make the details panel wider or narrower. Double-click to reset.'],
@@ -1292,7 +1328,7 @@ const HELP = [
   ]],
   ['☰ menu', [
     ['menu-desks', 'Desks', 'Manage the desks on this computer, or open any desk\'s settings'],
-    ['menu-profile', 'Desks > Desk Settings', 'That desk\'s settings: its profile, skills, hooks and connected services'],
+    ['menu-profile', 'Desks > Desk Inspector', 'What every session on that desk starts with: its instructions, hooks, skills, connected services and switches'],
     ['menu-sessions', 'Sessions', 'Show the session list (on a narrow window it hides behind this menu)'],
     ['menu-companies', 'Desks > Manage', 'Add, rename, reorder or remove desks on this computer'],
     ['menu-remote', 'Remote Desks', 'Let another computer on the office network use one desk here, or use a desk on another computer from here. Each connection needs a code from an authenticator app and someone clicking Allow on the computer that has the desk'],
@@ -1312,7 +1348,7 @@ const HELP = [
     ['menu-gauges', 'Gauges', 'AI Usage, and the memory and disk Docket uses'],
     ['menu-usage', 'Gauges > AI Usage', 'What the AI has cost, by day, account, desk, group and session, with charts (opens in its own window)'],
     ['menu-machine', 'Gauges > Memory and Disk', 'How much memory Docket and its sessions use right now, and how much disk space its folders take'],
-    ['mu-again', 'Count again', 'Memory and disk: count the folder sizes again now, instead of using the ones counted in the last few minutes'],
+    ['mu-again', 'Refresh', 'Memory and disk: measure the folder sizes again now, instead of showing the last measurement'],
     ['menu-helps', 'Help', 'The Key, the Instructions, and the tour of the page'],
     ['menu-key', 'Help > Key', 'What the dots, colors and sounds mean'],
     ['menu-help', 'Help > Instructions', 'What every button and symbol does (shortcut: ?)'],
@@ -1343,10 +1379,10 @@ const HELP = [
     ['menu-restartnow', 'About > Update now anyway', 'Docket is waiting for sessions to finish before it restarts to take in an update. This restarts it now instead'],
     ['menu-waiting', 'About > Waiting to delete', 'Files and folders sessions asked Docket to delete that a session or program is still using. Docket tries again every minute and sends each one to the Recycle Bin (or removes an empty folder) once it is free. Each is in portal-events.log.'],
   ]],
-  ['Desk Settings', [
-    ['pf-back', 'Close', 'Close the desk\'s settings (Escape)'],
-    ['pf-refresh', 'Refresh', 'Read the desk\'s settings again'],
-    ['pf-go', 'Section links', 'Jump to this section of the profile'],
+  ['Desk Inspector', [
+    ['pf-back', 'Close', 'Close the Inspector (Escape)'],
+    ['pf-refresh', 'Refresh', 'Read the desk\'s Claude, Codex and Grok homes again'],
+    ['pf-go', 'Section list', 'Show this section of the Inspector'],
     ['pf-check', 'Check connections', 'Ask Claude Code to connect to each service and say which ones work (up to a minute)'],
     ['pf-link', 'Runs', 'Show what this one runs'],
     ['pf-show', 'Show in folder', `Show this file in ${OS.files}`],
@@ -1703,6 +1739,7 @@ async function restoreAfterReload() {
 async function init() {
   applyTheme(store.get('theme', null));
   if (store.get('tasksHidden', false)) $('tasks').classList.add('hidden');
+  if (store.get('sideHidden', false)) $('side').classList.add('shut');
   // A first visit (this browser has never opened a company) gets the welcome tour once the page is up.
   const firstVisit = store.get('client', null) === null && !store.get('tourSeen', false);
   S.clients = await api('/api/clients?quick=1');
@@ -1714,14 +1751,14 @@ async function init() {
     S.clients = await api('/api/clients?quick=1');
     $('booting').style.display = '';
   }
-  const fromHash = location.hash.slice(1).split('/')[0], wantProfile = location.hash.slice(1).split('/')[1] === 'profile';
+  const fromHash = location.hash.slice(1).split('/')[0], wantProfile = isInspectorHash(location.hash) && inspectorSection(location.hash);
   // The address or the last company used, as long as it is still in the list.
   S.client = [fromHash, store.get('client', null)].find((id) => S.clients.some((c) => c.id === id)) || S.clients[0].id;
   $('bootMsg').textContent = `Loading ${S.clients.find((c) => c.id === S.client)?.name || ''} sessions…`;
   await Promise.all([loadSessions(S.client), loadGroups(S.client)]);
   selectClient(S.client);
   await restoreAfterReload();
-  if (wantProfile) openProfile();
+  if (wantProfile !== false) openProfile(S.client, wantProfile); // the section read before the company switch rewrites the address
   connect();
   setInterval(tick, 1000);
   $('booting').classList.add('done');
@@ -1751,10 +1788,8 @@ function waitingCount(clientId) {
 function renderClients() {
   $('clients').innerHTML = S.clients.map((c) => {
     const n = waitingCount(c.id);
-    // The tip lists each brand's sign-in, so it can be checked without opening ☰ > Desks.
-    const signins = c.remote ? '' : '\n' + brandsOfClient(c).map((b) => `${b.name}: ${brandStateText(c, b)}`).join('\n'); // a remote desk's sign-ins stay on its computer
     const rc = remoteMarkTip(c);
-    return `<button class="${c.id === S.client ? 'on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${signins}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}">${esc(c.name)}${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+    return `<button class="${c.id === S.client ? 'on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${esc(c.name)}</span><span class="ci">${esc(c.name.split(/\s+/).map((w) => w[0] || '').join('').slice(0, 3))}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
   }).join('');
   const total = waitingCount(S.client);
   const name = S.clients.find((c) => c.id === S.client)?.name;
@@ -1762,7 +1797,17 @@ function renderClients() {
   const asApp = matchMedia('(display-mode: standalone), (display-mode: window-controls-overlay)').matches;
   document.title = `${total ? `(${total}) ` : ''}${name || ''}${asApp && name ? '' : `${name ? ' · ' : ''}Docket`}`;
   renderNavBtns(); // a list that just arrived can show a step was deleted
-  drawRemoteIcon();
+  drawRemoteIcon(); drawBrandIcons();
+}
+// One icon per brand the open desk uses, in the top bar (#513, was in the desk tab's tip, #238): the
+// main color while signed in, muted while not. Clicking one that is not signed in starts its sign-in. A remote desk's
+// sign-ins stay on its computer, so it shows none.
+function drawBrandIcons() {
+  const c = S.clients.find((x) => x.id === S.client);
+  $('brandIcons').innerHTML = !c || c.remote ? '' : brandsOfClient(c).map((b) => {
+    const can = b.signedIn === false && !(b.engine === 'claude' && c.forced);
+    return `<button class="ghost bi-btn${b.signedIn === true ? ' on' : ''}"${can ? ` data-login="${esc(b.engine)}"` : ''} title="${esc(`${b.name}: ${brandStateText(c, b)}${can ? '\nClick to sign in.' : ''}`)}" aria-label="${esc(`${b.name}: ${brandStateText(c, b)}`)}">${BRAND_LOGOS[b.engine] || BRAND_LOGOS.claude}</button>`;
+  }).join('');
 }
 $('clients').onclick = (e) => { const b = e.target.closest('[data-c]'); if (b) selectClient(b.dataset.c); };
 window.addEventListener('hashchange', () => { const id = location.hash.slice(1).split('/')[0]; if (id !== S.client && S.clients.some((c) => c.id === id)) selectClient(id); });
@@ -1775,7 +1820,7 @@ function selectClient(id, openId) {
   showSignin(); renderBrowser(); refreshSpend();
   renderClients(); renderList(); refreshPRs(); loadShells(); // the AI programs differ by desk
   if (c?.remote && !c.remote.connected) { newDraft(); $('list').querySelector(`[data-rd-code="${id}"]`)?.focus(); return; } // connect it first
-  if (S.mode === 'schedules' || (S.mode === 'sites' && openId)) { setMode(openId ? 'sessions' : 'schedules', openId); return; }
+  if (S.mode === 'schedules') { setMode(openId ? 'sessions' : 'schedules', openId); return; }
   if (openId) { if (openId === 'draft') newDraft(); else openSession(openId).catch(() => {}); return; }
   const last = store.get('sel:' + id, null);
   if (last && (S.live[last] || (S.history[id] || []).some((r) => r.id === last))) openSession(last); else newDraft();
@@ -2229,41 +2274,50 @@ function branchesSoon(ev) {
 setInterval(refreshPRs, 120000);
 
 // ---------- private browser (one per client, remembers sign-ins) ----------
-// The 🌐 tab lists the sites and adds or deletes them. The box at the bottom of the left column only
-// shows while the sign-in window is open and another tab is showing, so Done is always in reach.
+// The 🌐 button opens a dialog that lists the sites and adds or deletes them; it shows in the main color while
+// any sign-in is saved. The box at the bottom of the left column only shows while the sign-in window is open and the
+// dialog is not, so Done is always in reach.
+const sitesOpen = () => !$('dlg').hidden && !!$('dlgBody').querySelector('.sites-view');
 function renderBrowser() {
   const c = S.clients.find((x) => x.id === S.client); if (!c) return;
   const b = c.browser || { sites: [], open: false };
-  $('browserBox').innerHTML = b.open && S.mode !== 'sites'
+  $('sitesBtn').classList.toggle('on', b.sites.length > 0);
+  $('browserBox').innerHTML = b.open && !sitesOpen()
     ? `<div class="bh"><span>Private browser</span></div>
        <div class="sites">A browser window is open. Sign in to the sites ${esc(c.name)} sessions need, then click Done.</div>
        <div class="btns"><button class="primary" id="brDone"${tip('site-done')}>Done</button></div>`
     : '';
   if ($('brDone')) $('brDone').onclick = () => browserPost(c, 'done');
-  if (S.mode === 'sites') renderList();
+  if (sitesOpen()) $('dlgBody').innerHTML = sitesHtml(c);
 }
 async function browserPost(c, what, body) {
   const st = await api(`/api/clients/${c.id}/browser-${what}`, body || {});
   c.browser = st; renderBrowser();
 }
-function renderSitesList() {
-  const c = S.clients.find((x) => x.id === S.client); if (!c) return setList('');
+function sitesHtml(c) {
   const b = c.browser || { sites: [], open: false };
   const rows = b.sites.map((site) => `<div class="site-row"><span class="sn" title="${esc(site)}">${esc(site)}</span><button data-forget-site="${esc(site)}" title="Delete the saved sign-in for ${esc(site)}">Delete</button></div>`).join('');
-  setList(`<div class="sites-view">
-    <div class="sv-head">Signed-in sites</div>
+  return `<div class="sites-view">
     <div class="sv-note">These sign-ins belong to ${esc(c.name)} on this computer only. ${esc(c.name)} sessions use them in their private browser; other desks and other computers do not see them.</div>
     ${b.open ? `<div class="sv-open"><span>A sign-in window is open. Sign in to the sites ${esc(c.name)} sessions need, then click Done.</span><button class="primary" id="svDone"${tip('site-done')}>Done</button></div>` : ''}
     <div class="site-rows">${rows || '<div class="sv-empty">No sign-ins saved yet.</div>'}</div>
     ${b.open ? '' : `<div class="sv-add"><input id="svUrl" placeholder="Site to sign in to (optional)" aria-label="Site to sign in to"${tip('site-url')}><button id="svAdd"${tip('site-add')}>+ Add a site</button></div>`}
     ${b.sites.length ? `<button class="sv-forget" id="svForget"${tip('site-forget')}>Forget all sign-ins</button>` : ''}
-  </div>`);
+  </div>`;
 }
-$('list').addEventListener('click', (e) => {
-  if (S.mode !== 'sites') return;
+async function openSites() {
+  const c = S.clients.find((x) => x.id === S.client); if (!c) return;
+  const done = dialog({ title: `Signed-in sites for ${c.name}`, body: sitesHtml(c), buttons: [{ label: 'Close', value: null }] });
+  renderBrowser(); // the Done box in the left column steps aside while the dialog has its own
+  await done;
+  renderBrowser();
+}
+$('sitesBtn').onclick = openSites;
+$('dlgBody').addEventListener('click', (e) => {
+  if (!e.target.closest('.sites-view')) return;
   const c = S.clients.find((x) => x.id === S.client); if (!c) return;
   const t = e.target.closest('button'); if (!t) return;
-  const fail = (err) => { alert(err.message); S.listHtml = null; renderList(); };
+  const fail = (err) => { alert(err.message); renderBrowser(); };
   if (t.id === 'svDone') browserPost(c, 'done').catch(fail);
   else if (t.id === 'svAdd') {
     let url = $('svUrl').value.trim(); if (url && !/^https?:\/\//.test(url)) url = 'https://' + url;
@@ -2278,7 +2332,7 @@ $('list').addEventListener('click', (e) => {
     browserPost(c, 'forget-site', { site }).catch(fail);
   }
 });
-$('list').addEventListener('keydown', (e) => { if (S.mode === 'sites' && e.key === 'Enter' && e.target.id === 'svUrl') $('svAdd')?.click(); });
+$('dlgBody').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'svUrl') $('svAdd')?.click(); });
 
 // ---------- schedules ----------
 const pad2 = (n) => String(n).padStart(2, '0');
@@ -2321,13 +2375,8 @@ function setMode(mode, openId) {
     if (!confirm('You have unsaved changes to this schedule. Leave without saving?')) return;
     schedDirty = false;
   }
-  const from = S.mode;
   S.mode = mode;
   for (const b of document.querySelectorAll('#side [data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
-  $('side').classList.toggle('sites-mode', mode === 'sites');
-  renderBrowser();
-  // The sites list keeps the session in the middle; coming from a schedule, the last session opens there.
-  if (mode === 'sites' && from !== 'schedules') { renderList(); return; }
   $('newBtn').textContent = mode === 'schedules' ? '+ New schedule' : '+ New session';
   $('search').value = '';
   renderTextSearchBtn();
@@ -2343,7 +2392,7 @@ function setMode(mode, openId) {
     if (last && (S.live[last] || (S.history[S.client] || []).some((r) => r.id === last))) openSession(last); else newDraft();
   }
 }
-for (const el of document.querySelectorAll('.side-tabs, .sites-btn')) el.onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b && b.dataset.mode !== S.mode) setMode(b.dataset.mode); };
+for (const el of document.querySelectorAll('.side-tabs')) el.onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b && b.dataset.mode !== S.mode) setMode(b.dataset.mode); };
 
 async function loadSchedules() {
   S.sched = await api(`/api/schedules?client=${S.client}`);
@@ -2520,7 +2569,7 @@ function renderSchedulePanel() {
   for (const el of $('tasksBody').querySelectorAll('input, select, textarea')) { el.addEventListener('input', () => { if (el.id !== 'sTitle' || !d) dirty(); showWhenFields(); }); el.addEventListener('change', showWhenFields); }
   $('sSave').onclick = () => saveSchedule(d?.id);
   $('tasksBody').querySelector('.runs')?.addEventListener('click', (e) => { const a = e.target.closest('[data-open]'); if (!a) return; e.preventDefault(); setModeKeepSelection(a.dataset.open); });
-  $('tasksBtn').textContent = 'Details';
+  detailsCount(0);
   $('tasksTitle').textContent = 'Schedule';
 }
 async function refreshScheduleDetail() {
@@ -2538,7 +2587,6 @@ function setModeKeepSelection(sessionId) {
   schedDirty = false; S.schedOpen = null; $('tasks').classList.remove('wide');
   S.mode = 'sessions';
   for (const b of document.querySelectorAll('#side [data-mode]')) b.classList.toggle('on', b.dataset.mode === 'sessions');
-  $('side').classList.remove('sites-mode'); renderBrowser();
   $('newBtn').textContent = '+ New session'; renderTextSearchBtn();
   openSession(sessionId);
 }
@@ -3082,7 +3130,7 @@ let textTimer = null, textSeq = 0;
 function askTextSearch() {
   clearTimeout(textTimer);
   const q = $('search').value.trim().toLowerCase();
-  if (!S.textSearch || !q || S.mode === 'schedules' || S.mode === 'sites') { S.textHits = null; renderSearchNote(); return; }
+  if (!S.textSearch || !q || S.mode === 'schedules') { S.textHits = null; renderSearchNote(); return; }
   S.textAsked = S.client + '\n' + q;
   textTimer = setTimeout(async () => {
     const seq = ++textSeq, client = S.client;
@@ -3095,7 +3143,7 @@ function askTextSearch() {
   }, 250);
 }
 function renderSearchNote() {
-  const on = S.textSearch && $('search').value.trim() && S.mode !== 'schedules' && S.mode !== 'sites';
+  const on = S.textSearch && $('search').value.trim() && S.mode !== 'schedules';
   $('searchNote').hidden = !(on && S.textHits?.building);
   $('searchNote').textContent = 'Still reading conversations, so some may be missing. Titles and folders match meanwhile.';
 }
@@ -3440,7 +3488,6 @@ function renderList() {
   $('inbox').innerHTML = S.mode === 'sessions' ? inboxHtml() : '';
   $('listBar').hidden = S.mode !== 'sessions';
   if (S.mode === 'schedules') return renderScheduleList();
-  if (S.mode === 'sites') return renderSitesList();
   if (remoteOff(S.client)) { setListBar(); return setList(remoteGoneHtml(S.clients.find((c) => c.id === S.client))); }
   S.runInfo = new Map();
   const q = $('search').value.trim().toLowerCase();
@@ -3849,7 +3896,7 @@ $('menuBtn').onclick = (e) => {
   e.stopPropagation();
   if (document.getElementById('ctx')) { closeMenu(); return; }
   const desks = [...S.clients.filter((c) => c.id === S.client), ...S.clients.filter((c) => c.id !== S.client)]; // this desk first
-  const items = [...(innerWidth <= 900 ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage'], 'hr', ...desks.map((c) => ['profile:' + c.id, `${c.name} Settings`])]], ...(S.remoteOn ? [['remote', 'Remote Desks']] : []), ['history', 'Recently viewed'], 'hr',
+  const items = [...(innerWidth <= 900 ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage'], 'hr', ...desks.map((c) => ['profile:' + c.id, `${c.name} Inspector`])]], ...(S.remoteOn ? [['remote', 'Remote Desks']] : []), ['history', 'Recently viewed'], 'hr',
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
@@ -4137,7 +4184,7 @@ function keyHtml() {
     ${row('<span class="near-full">Title</span> <span class="tag near-full">92%</span>', `Red title: the conversation is nearly full (${Math.round(COMPACT_WARN_SHARE * 100)}% of the way) and will soon be compacted, that is, summarised so it can keep going. The small red number beside the title says how full it is. The context reading at the bottom of the open session ("% context") turns red at the same point. Both turn back to normal after that.`)}
     ${row('✦<span class="n">3</span>', 'The orange number on the ✦ Needs attention button counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off. Click ✦ to see only what is happening now.')}
     ${row('<span class="ic running">●</span><span class="ic done">✓</span><span class="ic error">✕</span>', 'Steps inside a conversation: blinking blue while running, green when done, red when it failed. The background jobs list also uses red ■ for stopped and gray ? when Docket lost track of how it ended.')}
-    ${row('<span class="mcp-st connected"></span><span class="mcp-st needs-auth"></span><span class="mcp-st failed"></span><span class="mcp-st disabled"></span>', 'Connected services (in a session’s details and the desk profile): green connected, orange needs a sign-in or still connecting, red failed, gray turned off or not checked.')}
+    ${row('<span class="mcp-st connected"></span><span class="mcp-st needs-auth"></span><span class="mcp-st failed"></span><span class="mcp-st disabled"></span>', 'Connected services (in a session’s details and the desk’s Inspector): green connected, orange needs a sign-in or still connecting, red failed, gray turned off or not checked.')}
     ${row('<span class="conn">not reachable</span>', 'A red pill at the top means this page lost its connection to Docket’s program running behind it. It keeps retrying by itself.')}
     <h4>When sounds play</h4>
     <p class="key-note">${esc(SOUND_WORDS.rules)}</p>
@@ -4155,8 +4202,9 @@ async function showKey() {
 }
 
 // ---------- ☰ > Gauges > Memory and Disk: memory right now, and the size of Docket's folders ----------
-// The server counts folder sizes in the background and keeps them a few minutes; until they are in, the window
-// says "counting…" and asks again every two seconds while it is open.
+// The server measures folder sizes in the background every 20 minutes and saves them, so the window shows
+// the last measurement at once. Refresh measures again; while a measurement runs, the window asks every two
+// seconds and shows the new sizes when it is done.
 const sizeText = (b) => b == null ? '' : b >= 1024 ** 3 ? (b / 1024 ** 3).toFixed(1) + ' GB' : b >= 1024 ** 2 ? Math.round(b / 1024 ** 2) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
 const countText = (n, one, many) => n == null ? '' : `${n.toLocaleString()} ${n === 1 ? one : many}`;
 function machineHtml(r) {
@@ -4172,7 +4220,7 @@ function machineHtml(r) {
   }
   h += '<h3>Disk</h3>';
   const d = r.disk;
-  if (!d) return h + '<div class="mu-note">counting…</div>';
+  if (!d) return h + `<div class="mu-note">${r.counting ? 'Measuring the folders for the first time…' : 'Not measured yet.'} <button class="ghost" id="muAgain"${r.counting ? ' disabled' : ''}${tip('mu-again')}>${r.counting ? 'Measuring…' : 'Refresh'}</button></div>`;
   if (d.docket) {
     h += row('Docket folder', files(d.docket), sizeText(d.docket.bytes), 'total', d.docket.path);
     h += d.docket.rows.map((x) => row(x.label, files(x), sizeText(x.bytes), 'sub')).join('');
@@ -4183,10 +4231,11 @@ function machineHtml(r) {
     h += d.history.map((x) => row(x.label, files(x), sizeText(x.bytes), 'sub', x.path)).join('');
   }
   if (d.drive) h += row('Free on this drive', `of ${sizeText(d.drive.size)}`, sizeText(d.drive.free), 'total');
-  const ago = Math.round((Date.now() - d.at) / 60000);
-  h += `<div class="mu-note">Folder sizes counted ${ago < 1 ? 'just now' : ago === 1 ? 'a minute ago' : ago + ' minutes ago'}, and again when this window opens after ${r.keepMinutes} minutes. <button class="ghost" id="muAgain"${tip('mu-again')}>Count again</button></div>`;
+  const at = new Date(d.at).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  h += `<div class="mu-note">${r.counting ? `Measuring now… showing the sizes from ${at} until it finishes.` : `Folder sizes measured ${agoText(d.at)} (${at}). Measured again every ${r.everyMinutes} minutes.`} <button class="ghost" id="muAgain"${r.counting ? ' disabled' : ''}${tip('mu-again')}>${r.counting ? 'Measuring…' : 'Refresh'}</button></div>`;
   return h;
 }
+const agoText = (at) => { const m = Math.round((Date.now() - at) / 60000); return m < 1 ? 'just now' : m === 1 ? 'a minute ago' : m < 120 ? m + ' minutes ago' : Math.round(m / 60) + ' hours ago'; };
 async function showMachineUse() {
   const pending = dialog({ title: 'Memory and disk', body: '<div class="mu" id="muBody"><div class="mu-note">Looking…</div></div>', buttons: [{ label: 'Close', value: null, primary: true }] });
   document.querySelector('#dlg .dlg').classList.add('wide'); $('dlgBody').style.maxHeight = '75vh';
@@ -4196,8 +4245,9 @@ async function showMachineUse() {
     let r; try { r = await api('/api/machine-use' + (fresh ? '?fresh=1' : '')); } catch (err) { r = { memoryError: err.message, disk: null }; }
     const body = document.getElementById('muBody'); if (!body) return;
     body.innerHTML = machineHtml(r);
-    const again = document.getElementById('muAgain'); if (again) again.onclick = () => { again.disabled = true; load(true); };
-    if (!r.disk) timer = setTimeout(load, 2000);
+    const again = document.getElementById('muAgain'); if (again) again.onclick = () => { again.disabled = true; again.textContent = 'Measuring…'; load(true); };
+    if (r.counting) timer = setTimeout(load, 2000);
+    if (r.memory) pollGauges();
   };
   load(false);
   await pending;
@@ -4205,6 +4255,28 @@ async function showMachineUse() {
   const b = document.getElementById('muBody'); if (b) b.id = '';
   document.querySelector('#dlg .dlg').classList.remove('wide'); $('dlgBody').style.maxHeight = '';
 }
+
+// ---------- the gauges in the top bar: Docket's CPU, memory and file space ----------
+// Asked every 15 seconds while the page is in view; the app keeps each reading 10 seconds and the folder sizes
+// from its last measurement, so this never waits on a count. CPU turns amber over 80% two readings in a row.
+let cpuHigh = 0;
+const shortSize = (b) => b == null ? '–' : b >= 1024 ** 3 ? (b / 1024 ** 3).toFixed(1) + 'G' : Math.round(b / 1024 ** 2) + 'M';
+function drawGauges(r) {
+  const set = (id, val, lines, warn) => { const b = $(id); b.querySelector('.gv').textContent = val; b.title = [...lines, 'Click for ☰ > Memory and disk.'].join('\n'); b.classList.toggle('warn', !!warn); };
+  cpuHigh = r.cpu > 80 ? cpuHigh + 1 : 0;
+  set('gCpu', r.cpu == null ? '–' : r.cpu + '%', [r.cpu == null ? 'Docket CPU: measuring…' : `Docket CPU: ${r.cpu}% of this computer (the app, the runner, the sessions and their helpers)`], cpuHigh >= 2);
+  const m = r.memory;
+  set('gMem', m ? shortSize(m.total) : '–', m ? [`Docket memory: ${sizeText(m.total)}`, ...m.rows.filter((x) => x.count).map((x) => `${x.label}: ${sizeText(x.mem)}`)] : ['Docket memory: could not be read']);
+  const d = r.disk;
+  set('gDisk', d ? shortSize(d.docket) : '–', d ? [`Docket folder: ${sizeText(d.docket)}`, ...(d.copies ? [`Leftover working copies: ${sizeText(d.copies)}`] : []),
+    ...(d.history ? [`Claude session history: ${sizeText(d.history)}`] : []), ...(d.drive ? [`Free on this drive: ${sizeText(d.drive.free)} of ${sizeText(d.drive.size)}`] : []),
+    r.counting ? 'Measuring again now' : `Measured ${agoText(d.at)}`] : [r.counting ? 'File space: measuring for the first time…' : 'File space: not measured yet']);
+}
+async function pollGauges() { if (!document.hidden) drawGauges(await api('/api/machine-gauges').catch(() => ({ cpu: null, memory: null, disk: null }))); }
+for (const id of ['gCpu', 'gMem', 'gDisk']) $(id).onclick = showMachineUse;
+setInterval(pollGauges, 15_000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollGauges(); });
+pollGauges();
 
 // ---------- ☰ > Remote Desks: a desk here used from another computer, and desks on other computers used here ----------
 // This computer's side: an authenticator app (scanned once), the desk the other computer may use, on or off, and
@@ -4695,7 +4767,7 @@ const termMenu = (info) => info && (info.shells.length > 1 || info.clis.length >
 const termLabel = () => termMenu(S.shells) ? 'Terminal ▾' : 'Terminal';
 const loadShells = () => api(`/api/terminal/shells?client=${S.client || ''}`).then((r) => {
   S.shells = { ...r, client: S.client };
-  for (const id of ['termTopBtn', 'termBtn']) { const b = document.getElementById(id); if (b) b.textContent = termLabel(); }
+  for (const id of ['termTopBtn', 'termBtn']) { const b = document.getElementById(id); const t = b?.querySelector('.tl') || b; if (t) t.textContent = termLabel(); }
   return r;
 }).catch(() => null);
 const placeUnder = (m, el) => {
@@ -6274,7 +6346,7 @@ function renderTasks() {
     : groupBar(S.selected) + dirRows(S.selected) + (body || '<div class="files-sub">All sections are hidden. Turn them on with the buttons at the top of this panel.</div>');
   $('mcpSlot')?.replaceWith(mcpEl);
   renderSectionToggles();
-  $('tasksBtn').textContent = running.length ? `Details · ${running.length}` : 'Details';
+  detailsCount(running.length);
 }
 // The lines the session added and removed, from its cost (refreshed with it); nothing when it changed none.
 function linesHtml(l) {
@@ -6419,7 +6491,32 @@ $('tasksBody').addEventListener('drop', (e) => {
   dragSec = null; renderTasks();
 });
 $('tasksBtn').onclick = () => { $('tasks').classList.toggle('hidden'); store.set('tasksHidden', $('tasks').classList.contains('hidden')); };
-$('tasksClose').onclick = () => { $('tasks').classList.add('hidden'); store.set('tasksHidden', true); };
+// The Details button's number: the tasks running (#513, was "Details · 2").
+function detailsCount(n) {
+  $('tasksN').textContent = n; $('tasksN').hidden = !n;
+  $('tasksBtn').title = tipText('details') + (n ? `\n${n} task${n === 1 ? '' : 's'} running` : '');
+}
+// The Sessions list button: hides the list on a wide window, remembered like Details; on a narrow one it opens
+// the list over the page, the same as ☰ > Sessions.
+$('sideBtn').onclick = () => {
+  if (innerWidth <= 900) return $('side').classList.toggle('open');
+  $('side').classList.toggle('shut'); store.set('sideHidden', $('side').classList.contains('shut'));
+};
+// Both panel buttons show whether their panel is shown, however it was opened or closed.
+function paneBtns() {
+  const side = innerWidth <= 900 ? $('side').classList.contains('open') : !$('side').classList.contains('shut');
+  for (const [id, on] of [['sideBtn', side], ['tasksBtn', !$('tasks').classList.contains('hidden')]]) { $(id).classList.toggle('on', on); $(id).setAttribute('aria-pressed', String(on)); }
+}
+for (const el of [$('side'), $('tasks')]) new MutationObserver(paneBtns).observe(el, { attributes: true, attributeFilter: ['class'] });
+addEventListener('resize', paneBtns);
+paneBtns();
+// The Details panel has no ✕ of its own any more: the top-bar icon shows and hides it. On a narrow window, where
+// the panel and the Sessions list open over the page, Escape closes them too, once no dialog or menu is left to close.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || e.defaultPrevented || innerWidth > 900 || !$('dlg').hidden || $('preview').classList.contains('as-window') && !$('preview').hidden || document.querySelector('#ctx, .tl-menu:not([hidden])')) return;
+  if (!$('tasks').classList.contains('hidden')) { $('tasks').classList.add('hidden'); store.set('tasksHidden', true); }
+  else if ($('side').classList.contains('open')) $('side').classList.remove('open');
+});
 setInterval(renderComposerBar, 30000);
 function tick() {
   const s = S.live[S.selected];
@@ -7183,7 +7280,7 @@ function renderTlBar() {
   bar.innerHTML = `<span class="tl-filt"><button id="tlFiltBtn"${tip('tl-filters')} aria-haspopup="true" aria-expanded="${tl.menu}">🕘 Filters: ${on} of ${cats.length}</button>
       <div class="tl-menu" ${tl.menu ? '' : 'hidden'}><div class="tl-all"><a href="#" data-all="1"${tip('tl-all')}>All</a><a href="#" data-all="0"${tip('tl-none')}>None</a></div>${items}
       <div class="tl-mnote">Messages and tool runs are in the chat already. Messages here adds only marks such as "Conversation compacted"; a tool category puts the time and size on its cards.</div></div></span>
-    <span class="tl-sum"><span title="From the session's record file. Hooks that ran without printing anything are not written there, so only hooks that added something, showed a message, failed or timed out appear; the desk's profile page lists every hook.">${shown.length} entries · ${tokensText(total) || 'nothing'} for Claude to read ⓘ</span><button id="tlRefresh"${tip('tl-refresh')}>Refresh</button></span>`;
+    <span class="tl-sum"><span title="From the session's record file. Hooks that ran without printing anything are not written there, so only hooks that added something, showed a message, failed or timed out appear; the desk's Inspector lists every hook.">${shown.length} entries · ${tokensText(total) || 'nothing'} for Claude to read ⓘ</span><button id="tlRefresh"${tip('tl-refresh')}>Refresh</button></span>`;
   if (menuTop) bar.querySelector('.tl-menu').scrollTop = menuTop;
 }
 function tlEntryHtml(e) {
@@ -7275,7 +7372,7 @@ document.addEventListener('keydown', (e) => { if (tl.menu && e.key === 'Escape')
 const mcpView = { id: null, seq: 0 };
 const mcpEl = Object.assign(document.createElement('div'), { className: 'mcp-sec' });
 const MCP_ORDER = ['failed', 'needs-auth', 'pending', 'connected', 'disabled'];
-const MCP_FROM = { docket: 'Docket', sdk: 'Docket', claudeai: 'claude.ai', user: 'the profile', local: 'the profile, this folder only', project: 'the folder\'s .mcp.json', plugin: 'a plugin', dynamic: 'added while running', managed: 'IT settings', enterprise: 'IT settings' };
+const MCP_FROM = { docket: 'Docket', sdk: 'Docket', claudeai: 'claude.ai', user: 'this desk', local: 'this desk, this folder only', project: 'the folder\'s .mcp.json', plugin: 'a plugin', dynamic: 'added while running', managed: 'IT settings', enterprise: 'IT settings' };
 const MCP_LABEL = { connected: 'connected', failed: 'failed', 'needs-auth': 'needs sign-in', pending: 'connecting', disabled: 'turned off' };
 function mcpSection() {
   const id = S.selected && S.selected !== 'draft' && !S.schedOpen ? S.selected : null;
@@ -7289,7 +7386,7 @@ async function loadSessionMcp(id) {
     const d = await api(`/api/sessions/${id}/mcp`);
     if (seq !== mcpView.seq) return;
     const list = d.servers.slice().sort((a, b) => ((MCP_ORDER.indexOf(a.status) + 1) || 9) - ((MCP_ORDER.indexOf(b.status) + 1) || 9) || a.name.localeCompare(b.name));
-    const head = d.from === 'none' ? 'Shows only while the session is running in Docket. Send it a message to start it, or see the desk profile for what every session gets.'
+    const head = d.from === 'none' ? 'Shows only while the session is running in Docket. Send it a message to start it, or see the desk’s Inspector for what every session gets.'
       : `${esc(mcpCounts(list))} · ${d.from === 'live' ? 'as of' : 'when it started,'} ${esc(clock(d.at))}`;
     mcpEl.innerHTML = `<div class="tl-note" style="display:flex;gap:8px;align-items:center"><span style="flex:1">${head}</span><button id="mcpRefresh"${tip('mcp-refresh')} style="font-size:12px;padding:2px 8px">Refresh</button></div>
       <div class="mcp-list">${list.map((x) => `<div class="mcp-row ${x.status === 'failed' ? 'failed' : ''}" title="${esc(x.target)}"><span class="mcp-n">${esc(x.name)}</span><span class="mcp-st ${MCP_LABEL[x.status] ? x.status : 'other'}">${esc(MCP_LABEL[x.status] || x.status)}</span>
@@ -7298,27 +7395,44 @@ async function loadSessionMcp(id) {
 }
 mcpEl.onclick = (e) => { if (e.target.id === 'mcpRefresh') loadSessionMcp(mcpView.id); };
 
-// ---------- a company's profile page: what its Claude home has installed ----------
+// ---------- a desk's Inspector: what its Claude, Codex and Grok homes have installed ----------
 // Any desk's, from ☰ > Desks, in a dialog over the page (it is not about a session, so the session stays where it was).
-// #<company>/profile still opens it. Show only: each item opens to its text, or shows in File Explorer. Close, Escape or a click outside closes it.
-const pf = { id: null, data: null, texts: {} };
-function openProfile(id = S.client) {
+// A list of sections on the left, the chosen one's content on the right. While it is open the address is
+// #<desk>/inspector/<section>; #<desk>/profile still opens it. Show only: each item opens to its text, or shows in File Explorer.
+// Close, Escape or a click outside closes it.
+const pf = { id: null, data: null, texts: {}, sec: '', back: null };
+const isInspectorHash = (h) => ['inspector', 'profile'].includes(h.slice(1).split('/')[1]);
+const inspectorSection = (h) => h.slice(1).split('/')[2] || '';
+// The section shown when the address names none, or one this desk does not have.
+const pfSection = (sections, want) => sections.find((s) => s.id === want) || sections.find((s) => s.id === 'instructions') || sections[0];
+// end of the Inspector's address
+const pfAddress = () => { if (pf.id) history.replaceState(null, '', `#${pf.id}/inspector${pf.sec ? '/' + pf.sec : ''}`); };
+function openProfile(id = S.client, sec) {
   const c = S.clients.find((x) => x.id === id); if (!c) return;
   closeMenu();
+  if ($('profilePage').hidden && !isInspectorHash(location.hash)) pf.back = location.hash; // the address to go back to on close
   $('pfDlg').hidden = $('profilePage').hidden = false;
-  if (pf.id !== c.id) { pf.id = c.id; pf.data = null; pf.texts = {}; }
-  if (!pf.data) $('profilePage').innerHTML = `<div class="pf-head"><h1>${esc(c.name)} Settings</h1><span class="pf-home"></span><button id="pfBack"${tip('pf-back')}>Close</button></div><div class="files-sub">Reading the profile folder…</div>`;
+  if (sec !== undefined) pf.sec = sec;
+  if (pf.id !== c.id) { pf.id = c.id; pf.data = null; pf.texts = {}; if (sec === undefined) pf.sec = ''; }
+  pfAddress();
+  if (!pf.data) $('profilePage').innerHTML = `<div class="pf-head"><h1>${esc(c.name)} Inspector</h1><span class="pf-home"></span><button id="pfBack"${tip('pf-back')}>Close</button></div><div class="files-sub">Reading the desk's Claude home…</div>`;
+  else renderProfile();
   $('pfBack').focus();
   loadProfile(false);
 }
 function closeProfile() {
   if ($('profilePage').hidden) return;
   $('pfDlg').hidden = $('profilePage').hidden = true;
+  if (isInspectorHash(location.hash)) history.replaceState(null, '', pf.back || '#' + S.client);
+}
+function pfGo(id) { // show one section
+  pf.sec = id; pfAddress(); renderProfile();
+  $('profilePage').querySelector('.pf-body').scrollTop = 0;
 }
 $('pfDlg').addEventListener('click', (e) => { if (e.target === $('pfDlg') || e.target.closest('#pfBack')) closeProfile(); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('profilePage').hidden && $('dlg').hidden) { e.stopPropagation(); closeProfile(); } }, true);
 // newURL, not location: the company switch that runs first rewrites the address
-window.addEventListener('hashchange', (e) => { if (new URL(e.newURL).hash.slice(1).split('/')[1] === 'profile') openProfile(); });
+window.addEventListener('hashchange', (e) => { const h = new URL(e.newURL).hash; if (isInspectorHash(h)) openProfile(S.client, inspectorSection(h)); });
 async function loadProfile(refresh) {
   const id = pf.id;
   try {
@@ -7344,7 +7458,7 @@ function renderProfile() {
     mcpSec.groups = mcpSec.groups.filter((g) => g.title !== 'Also found by the check');
     if (extra.length) mcpSec.groups.splice(2, 0, { title: 'Also found by the check', brand: 'claude', items: extra.map((x) => ({ name: x.name, detail: x.target, status: x.status,
       statusText: x.status === 'needs-auth' ? 'needs sign-in' : x.status === 'other' ? x.text : x.status, error: x.status === 'failed' ? x.text.replace(/^Failed to connect\s*(—\s*)?/i, '') : '' })) });
-    // the count: also the ones the check found, and not the ones only another profile has
+    // the count: also the ones the check found, and not the ones only another desk has
     mcpSec.count = mcpSec.groups.reduce((n, g) => n + g.items.filter((i) => !i.missing && !i.notRead && !/^No |^None /.test(i.name)).length, 0);
   }
   // A desk with more than one brand labels each group with the brand it belongs to.
@@ -7363,10 +7477,10 @@ function renderProfile() {
       : `<div class="${cls}"><div class="pf-row">${row}</div>${links}</div>`;
   };
   const focused = document.activeElement?.id;
-  $('profilePage').innerHTML = `<div class="pf-head"><h1>${esc(d.client.name)} Settings</h1><span class="pf-home" title="The Claude home folder this desk's sessions use">${esc(d.client.home)}</span>
+  const s = pfSection(d.sections, pf.sec);
+  $('profilePage').innerHTML = `<div class="pf-head"><h1>${esc(d.client.name)} Inspector</h1><span class="pf-home" title="The Claude home folder this desk's sessions use">${esc(d.client.home)}</span>
       <button id="pfRefresh"${tip('pf-refresh')}>Refresh</button><button id="pfBack"${tip('pf-back')}>Close</button></div>
-    <div class="pf-index">${d.sections.map((s) => `<a href="#" data-pf-go="${s.id}"${tip('pf-go')}>${esc(s.title)} ${s.count}</a>`).join('')}</div>
-    <div class="pf-cols"><aside class="pf-side">${profileSummaryHtml()}</aside><div class="pf-body"><div class="pf-inner">${d.sections.map((s) => `<section class="pf-sec" id="pf-${s.id}"><h2>${esc(s.title)}</h2><div class="pf-note">${esc(s.note || '')}</div>
+    <div class="pf-cols"><nav class="pf-side" aria-label="Sections of the Inspector">${profileSummaryHtml(s?.id)}</nav><div class="pf-body"><div class="pf-inner">${[s].filter(Boolean).map((s) => `<section class="pf-sec" id="pf-${s.id}"><h2>${esc(s.title)}</h2><div class="pf-note">${esc(s.note || '')}</div>
       ${s.check ? `<div class="mcp-sum"><button id="pfMcpCheck"${tip('pf-check')}>${check ? 'Check again' : 'Check connections'}</button><span id="pfMcpOut">${check ? esc(mcpCounts(check.servers)) + ` · checked ${esc(new Date(check.at).toLocaleString())}` : 'Not checked since Docket started.'}</span>
         ${check ? `<details><summary>What claude mcp list printed</summary><pre>${esc(check.text)}</pre></details>` : ''}</div>` : ''}
       ${s.groups.map((g) => `${g.title || (many && g.brand) ? `<h3>${many && g.brand ? `<span class="pf-brand">${brandLogo(g.brand)}${esc(BRAND_NAMES[g.brand] || g.brand)}</span>` : ''}${esc(g.title)}</h3>` : ''}${g.note ? `<div class="pf-gnote">${esc(g.note)}</div>` : ''}${g.items.length ? g.items.map(itemHtml).join('') : '<div class="pf-empty">None</div>'}`).join('')}</section>`).join('')}</div></div></div>`;
@@ -7379,11 +7493,11 @@ function renderProfile() {
     catch (e) { $('pfMcpOut').textContent = e.message; $('pfMcpCheck').disabled = false; }
   };
 }
-// The settings dialog's side column (was the details panel while the profile page was open): one line per section with its count and the size of its text,
-// what a session in the company folder starts with, and everything added up. A line jumps to its section.
-function profileSummaryHtml() {
-  const d = pf.data, head = '<div class="group"><span>Profile</span></div>';
-  if (!d) return head + '<div class="files-sub">Reading the profile folder…</div>';
+// The Inspector's section list: one line per section with its count and the size of its text (on is the one shown),
+// what a session in the company folder starts with, and everything added up. A line shows its section.
+function profileSummaryHtml(on) {
+  const d = pf.data, head = '<div class="group"><span>Sections</span></div>';
+  if (!d) return head + '<div class="files-sub">Reading the desk\'s Claude home…</div>';
   const real = (g) => g.items.filter((i) => !i.notRead && !/^No |^None /.test(i.name));
   const chars = (items) => items.reduce((n, i) => n + (i.size || 0), 0);
   const group = (sec, title) => d.sections.find((s) => s.id === sec)?.groups.find((g) => g.title === title);
@@ -7398,7 +7512,7 @@ function profileSummaryHtml() {
       : s.id === 'hooks' ? (used.length ? `at ${used.length} moment${used.length === 1 ? '' : 's'}` : '')
       : s.id === 'memory' ? (used.length ? `in ${used.length} working folder${used.length === 1 ? '' : 's'}` : '')
       : used.map((g) => `${g.title.replace(/\s*\(.*\)$/, '')} ${real(g).length}`).join(' · '), ...brandSub].filter(Boolean).join(' · ');
-    return `<a class="pf-sum" href="#" data-pf-go="${s.id}"${tip('pf-go')}><span>${esc(s.title)}</span><b>${s.count}</b>${sub || n ? `<span class="sub">${esc([sub, tokensText(n)].filter(Boolean).join(' · '))}</span>` : ''}</a>`;
+    return `<a class="pf-sum${s.id === on ? ' on' : ''}" href="#${esc(d.client.id)}/inspector/${s.id}" data-pf-go="${s.id}"${s.id === on ? ' aria-current="page"' : ''}${tip('pf-go')}><span>${esc(s.title)}</span><b>${s.count}</b>${sub || n ? `<span class="sub">${esc([sub, tokensText(n)].filter(Boolean).join(' · '))}</span>` : ''}</a>`;
   }).join('');
   // What loads before the first message: the CLAUDE.md files, the output style in use, the company folder's memory index,
   // Docket's instructions and Claude Code's own system prompt. Skills and other memory files load only when needed.
@@ -7409,7 +7523,7 @@ function profileSummaryHtml() {
     ...(group('docket', 'Instructions')?.items || []), ...(group('defaults', 'Claude Code\'s own instructions')?.items || [])]);
   return head + rows + `<div class="group"><span>Text sizes</span></div>
     <div class="pf-sum" title="The CLAUDE.md files, the output style in use, the memory index of the desk folder, Docket's instructions and Claude Code's own instructions. A session in another folder also reads that folder's own."><span>Every session starts with</span><b>${esc(tokensText(start) || 'none')}</b></div>
-    <div class="pf-sum" title="Every file listed on the profile added up. Skills, agents and most memory files are read only when a session needs them."><span>All sections added up</span><b>${esc(tokensText(all) || 'none')}</b></div>`;
+    <div class="pf-sum" title="Every file listed in the Inspector added up. Skills, agents and most memory files are read only when a session needs them."><span>All sections added up</span><b>${esc(tokensText(all) || 'none')}</b></div>`;
 }
 const mcpCounts = (list) => {
   const n = (st) => list.filter((x) => x.status === st).length;
@@ -7427,7 +7541,7 @@ async function pfFill(el, it) {
     view.innerHTML = tools(r.path) + (r.markdown ? `<div class="md-body">${md(r.text)}</div>` : `<pre>${esc(r.text)}</pre>`);
   } catch (e) { view.innerHTML = tools(it.path) + `<div class="pf-empty">${esc(e.message)}</div>`; delete view.dataset.done; }
 }
-$('profilePage').addEventListener('change', async (e) => { // an on/off checkbox: save it, then read the profile again
+$('profilePage').addEventListener('change', async (e) => { // an on/off checkbox: save it, then read the desk again
   const box = e.target.closest?.('[data-pf-switch]'); if (!box) return;
   const it = pf.texts[box.dataset.pfSwitch], id = pf.data.client.id;
   box.disabled = true;
@@ -7438,7 +7552,7 @@ $('profilePage').addEventListener('change', async (e) => { // an on/off checkbox
 $('profilePage').addEventListener('toggle', (e) => { const el = e.target; if (el.dataset?.pf && el.open) pfFill(el, pf.texts[el.dataset.pf]); }, true);
 $('profilePage').addEventListener('click', async (e) => {
   const go = e.target.closest('[data-pf-go]'), show = e.target.closest('[data-pf-show]'), link = e.target.closest('[data-pf-link]');
-  if (go) { e.preventDefault(); document.getElementById('pf-' + go.dataset.pfGo)?.scrollIntoView({ block: 'start' }); }
+  if (go) { e.preventDefault(); pfGo(go.dataset.pfGo); }
   if (show) { e.preventDefault(); api(`/api/clients/${pf.data.client.id}/profile/show`, { path: show.dataset.pfShow }).catch((err) => alert(err.message)); }
   if (link) { // a hook's script: open it under the hook
     e.preventDefault();
@@ -7448,7 +7562,7 @@ $('profilePage').addEventListener('click', async (e) => {
     else el.open = !el.open;
   }
 });
-$('clients').addEventListener('contextmenu', (e) => { // right-click a company: its profile
+$('clients').addEventListener('contextmenu', (e) => { // right-click a desk: its Inspector
   const b = e.target.closest('[data-c]'); if (!b) return;
   e.preventDefault();
   if (b.dataset.c !== S.client) selectClient(b.dataset.c);

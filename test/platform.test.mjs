@@ -275,23 +275,23 @@ test('psTerminalScript runs in PowerShell', { skip: !win && 'not Windows' }, () 
 test('processListCommand: one PowerShell call on Windows, ps elsewhere', () => {
   const w = processListCommand('win32');
   assert.equal(w.cmd, 'powershell.exe');
-  assert.match(w.args.at(-1), /Win32_Process.*ProcessId,ParentProcessId,Name,WorkingSetSize.*ConvertTo-Json/);
-  assert.deepEqual(processListCommand('darwin'), { cmd: 'ps', args: ['-axo', 'pid=,ppid=,rss=,comm='] });
+  assert.match(w.args.at(-1), /Win32_Process.*ProcessId,ParentProcessId,Name,WorkingSetSize,KernelModeTime,UserModeTime.*ConvertTo-Json/);
+  assert.deepEqual(processListCommand('darwin'), { cmd: 'ps', args: ['-axo', 'pid=,ppid=,rss=,time=,comm='] });
 });
 
 test('parseProcessList on Windows: the JSON list, or the single object PowerShell gives for one program', () => {
-  assert.deepEqual(parseProcessList('[{"ProcessId":10,"ParentProcessId":4,"Name":"Claude.exe","WorkingSetSize":2048},{"ProcessId":11,"ParentProcessId":10,"Name":"node.exe","WorkingSetSize":null}]', 'win32'),
-    [{ pid: 10, ppid: 4, name: 'claude', mem: 2048 }, { pid: 11, ppid: 10, name: 'node', mem: 0 }]);
-  assert.deepEqual(parseProcessList('{"ProcessId":10,"ParentProcessId":4,"Name":"chrome.exe","WorkingSetSize":5}', 'win32'), [{ pid: 10, ppid: 4, name: 'chrome', mem: 5 }]);
+  assert.deepEqual(parseProcessList('[{"ProcessId":10,"ParentProcessId":4,"Name":"Claude.exe","WorkingSetSize":2048,"KernelModeTime":5000000,"UserModeTime":20000000},{"ProcessId":11,"ParentProcessId":10,"Name":"node.exe","WorkingSetSize":null}]', 'win32'),
+    [{ pid: 10, ppid: 4, name: 'claude', mem: 2048, cpu: 2.5 }, { pid: 11, ppid: 10, name: 'node', mem: 0, cpu: 0 }]);
+  assert.deepEqual(parseProcessList('{"ProcessId":10,"ParentProcessId":4,"Name":"chrome.exe","WorkingSetSize":5}', 'win32'), [{ pid: 10, ppid: 4, name: 'chrome', mem: 5, cpu: 0 }]);
   assert.deepEqual(parseProcessList('', 'win32'), []);
 });
 
-test('parseProcessList on a Mac: kilobytes to bytes, program paths with spaces', () => {
-  const out = '    1     0  12000 /sbin/launchd\n  501   1  2048 /Users/pat/.local/bin/claude\n  502   501   100 /Applications/Google Chrome for Testing.app/Contents/Frameworks/Google Chrome for Testing Helper (Renderer)\n\n';
+test('parseProcessList on a Mac: kilobytes to bytes, processor time to seconds, program paths with spaces', () => {
+  const out = '    1     0  12000 2-01:00:05.50 /sbin/launchd\n  501   1  2048   1:02.25 /Users/pat/.local/bin/claude\n  502   501   100 0:00.00 /Applications/Google Chrome for Testing.app/Contents/Frameworks/Google Chrome for Testing Helper (Renderer)\n\n';
   assert.deepEqual(parseProcessList(out, 'darwin'), [
-    { pid: 1, ppid: 0, name: 'launchd', mem: 12000 * 1024 },
-    { pid: 501, ppid: 1, name: 'claude', mem: 2048 * 1024 },
-    { pid: 502, ppid: 501, name: 'google chrome for testing helper (renderer)', mem: 100 * 1024 },
+    { pid: 1, ppid: 0, name: 'launchd', mem: 12000 * 1024, cpu: 2 * 86400 + 3600 + 5.5 },
+    { pid: 501, ppid: 1, name: 'claude', mem: 2048 * 1024, cpu: 62.25 },
+    { pid: 502, ppid: 501, name: 'google chrome for testing helper (renderer)', mem: 100 * 1024, cpu: 0 },
   ]);
 });
 

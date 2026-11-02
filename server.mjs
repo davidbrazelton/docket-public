@@ -36,7 +36,7 @@ import { sourceHomes, findGroups, planRun, writeReport, readReports, reportPaths
 import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash,
   startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, findLite } from './platform.mjs';
 import { cleanGateway, gatewayFor, loginOf, claudeRouteOf, claudeGateway, visibleGears, usableGear, modelFor, gearModelMap, liteArgs, liteCommand, loginLink, loginDone, pkceUnsupported, whoamiUser, tokenFrom, gatewayRefused, gatewayHost } from './gateway.mjs';
-import { groupProcesses, folderSize } from './machine-use.mjs';
+import { groupProcesses, folderSize, cpuPercent, diskKeeper } from './machine-use.mjs';
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
 import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
@@ -3364,16 +3364,29 @@ setInterval(() => { const now = Date.now(); if (clockJumped(lastTick, now)) onWa
 
 // ---------- the runner: a separate program that holds the live sessions (runner.mjs) ----------
 // ---------- ☰ > Gauges > Memory and Disk ----------
-// Memory is read each time the window asks (one process listing, about a second). Folder sizes take longer, so
-// they are counted in the background, kept for a few minutes, and the window shows "counting…" until they are in.
-const DISK_KEEP_MS = 5 * 60_000;
-let diskUse = null, diskCounting = null;
+// Memory and CPU come from one process listing (about a second), kept 10 seconds so the gauges on every open page
+// and the window share it; CPU is the change in processor time since the listing before. Folder sizes take
+// longer: they are counted in the background every 20 minutes and saved in the data folder (diskKeeper), so the
+// window and the gauges show the last count at once, even straight after a restart.
+const DISK_EVERY_MS = 20 * 60_000, MACHINE_KEEP_MS = 10_000;
+let machine = null, machineReading = null, cpuBefore = null;
 async function memoryUse() {
   const { cmd, args } = processListCommand();
   const out = await new Promise((resolve, reject) => execFile(cmd, args, { windowsHide: true, maxBuffer: 64 << 20, timeout: 20_000 },
     (err, stdout) => (err ? reject(err) : resolve(stdout))));
   const runnerPid = (await runnerHealth())?.pid;
   return { ...groupProcesses(parseProcessList(out), { appPid: process.pid, runnerPid }), free: os.freemem(), size: os.totalmem() };
+}
+// { memory, memoryError, cpu (a percent, or null until there are two listings), at }.
+function machineNow() {
+  if (machine && Date.now() - machine.at < MACHINE_KEEP_MS) return Promise.resolve(machine);
+  return machineReading ||= memoryUse().then((memory) => {
+    const now = { cpu: memory.cpu, at: Date.now() };
+    const cpu = cpuPercent(cpuBefore, now, os.cpus().length);
+    cpuBefore = now;
+    return machine = { memory, memoryError: '', cpu, at: now.at };
+  }, (err) => (machine = { memory: null, memoryError: err.message, cpu: null, at: Date.now() }))
+    .finally(() => { machineReading = null; });
 }
 
 // ---------- Starting Docket after a restart ----------
@@ -3453,15 +3466,10 @@ async function countDisk() {
   try { const st = await fs.promises.statfs(ROOT); drive = { free: st.bavail * st.bsize, size: st.blocks * st.bsize }; } catch {}
   return { docket: docket && { path: ROOT, ...docket, rows }, copies, history, drive, at: Date.now(), took: Date.now() - started };
 }
-// The disk sizes kept, or null while they are being counted; asks for a count when there are none or they are old.
-function diskUseNow(fresh) {
-  if ((fresh || !diskUse || Date.now() - diskUse.at > DISK_KEEP_MS) && !diskCounting) {
-    diskCounting = countDisk().then((d) => { diskUse = d; }, (err) => logEvent('could not count folder sizes', err?.stack || err))
-      .finally(() => { diskCounting = null; });
-    if (fresh) diskUse = null;
-  }
-  return diskUse;
-}
+const diskUse = diskKeeper({ file: path.join(DATA_DIR, 'disk-use.json'), count: countDisk, log: (err) => logEvent('could not count folder sizes', err?.stack || err) });
+// The first count a minute after starting, unless the saved one is recent; then every 20 minutes.
+setTimeout(() => { if (!diskUse.get() || Date.now() - diskUse.get().at > DISK_EVERY_MS) diskUse.refresh(); }, 60_000).unref();
+setInterval(() => diskUse.refresh(), DISK_EVERY_MS).unref();
 
 // The app can restart while the runner keeps every session working. The app starts the runner
 // when it is not running, talks to it on this computer, and reads each session's messages as a
@@ -5699,7 +5707,7 @@ async function profileRoutes(req, res, url, p) {
         save({ settingSources: cleanSettingSources(on ? [...now, key] : now) });
       } else if (kind === 'plugin') {
         const installed = profileFor(client, true).sections.find((s) => s.id === 'skills')?.groups.find((g) => g.title === 'Plugins')?.items || [];
-        if (!installed.some((it) => it.toggle?.key === key)) return json(res, 404, { error: 'That plugin is not installed in this profile' });
+        if (!installed.some((it) => it.toggle?.key === key)) return json(res, 404, { error: 'That plugin is not installed on this desk' });
         writePluginOn(path.join(client.home, 'settings.json'), key, !!on);
       } else if (kind === 'grok') {
         if (!client.grokHome) return json(res, 400, { error: 'This desk has no Grok home' });
@@ -5711,10 +5719,10 @@ async function profileRoutes(req, res, url, p) {
     profileCache.delete(client.id);
     return json(res, 200, { ok: true });
   }
-  // A file's text, or show it in File Explorer: only files the profile page lists.
+  // A file's text, or show it in File Explorer: only files the Inspector lists.
   const want = pm[2] === 'file' ? url.searchParams.get('path') : (await readBody(req)).path;
   const full = typeof want === 'string' && want ? path.resolve(want) : '';
-  if (!full || !profileFor(client).allowed.has(full.toLowerCase())) return json(res, 404, { error: 'That file is not on this profile page' });
+  if (!full || !profileFor(client).allowed.has(full.toLowerCase())) return json(res, 404, { error: 'That file is not in this desk\'s Inspector' });
   if (pm[2] === 'show' && req.method === 'POST') {
     showFile(full, 'folder');
     return json(res, 200, { ok: true });
@@ -6287,12 +6295,14 @@ const server = http.createServer(async (req, res) => {
       } catch (err) { return json(res, 400, { error: err.message }); }
       return json(res, 404, { error: 'Not found' });
     }
-    // ☰ > Gauges > Memory and Disk: memory now, and the folder sizes once counted (?fresh=1 counts them again).
-    if (req.method === 'GET' && p === '/api/machine-use') {
-      const disk = diskUseNow(url.searchParams.get('fresh') === '1');
-      let memory = null, memoryError = '';
-      try { memory = await memoryUse(); } catch (err) { memoryError = err.message; }
-      return json(res, 200, { memory, memoryError, disk, counting: !!diskCounting, keepMinutes: DISK_KEEP_MS / 60_000 });
+    // ☰ > Gauges > Memory and Disk: memory now, and the folder sizes last counted (?fresh=1 counts them again;
+    // counting says one is under way). The gauges ask for the same in short, every 15 seconds.
+    if (req.method === 'GET' && (p === '/api/machine-use' || p === '/api/machine-gauges')) {
+      if (url.searchParams.get('fresh') === '1') diskUse.refresh();
+      const m = await machineNow(), d = diskUse.get(), counting = diskUse.counting();
+      if (p === '/api/machine-use') return json(res, 200, { memory: m.memory, memoryError: m.memoryError, disk: d, counting, everyMinutes: DISK_EVERY_MS / 60_000 });
+      return json(res, 200, { cpu: m.cpu, memory: m.memory && { total: m.memory.total, rows: m.memory.rows }, counting,
+        disk: d && { docket: d.docket?.bytes ?? null, copies: d.copies?.bytes ?? null, history: d.history.reduce((a, x) => a + x.bytes, 0), drive: d.drive, at: d.at } });
     }
     // Whether Docket stops a turn whose step is stuck past its limit (checkStalls); on unless turned off.
     if (req.method === 'GET' && p === '/api/pause') return json(res, 200, { paused: pauseView() });

@@ -35,7 +35,37 @@ export function groupProcesses(list, { appPid, runnerPid }) {
   const order = ['claude', 'grok', 'codex', 'node', 'browser', 'other'];
   const rows = [one(appPid, 'Docket app'), one(runnerPid, 'Session runner'),
     ...order.map((k) => groups.get(k)).filter(Boolean)];
-  return { rows, total: rows.reduce((s, r) => s + r.mem, 0) };
+  // The processor time all of them have used so far, for cpuPercent.
+  const cpu = [...seen].reduce((s, pid) => s + (byPid.get(pid)?.cpu || 0), 0);
+  return { rows, total: rows.reduce((s, r) => s + r.mem, 0), cpu };
+}
+
+// Docket's share of the whole computer's processor between two readings of groupProcesses' cpu ({ cpu, at }), as
+// Task Manager and Activity Monitor's CPU column count it over all cores. A program that ended in between takes
+// its time with it, so a drop reads as 0, not less.
+export function cpuPercent(before, after, cores) {
+  if (!before || !after || after.at <= before.at || !cores) return null;
+  const pct = ((after.cpu - before.cpu) / ((after.at - before.at) / 1000) / cores) * 100;
+  return Math.min(100, Math.max(0, Math.round(pct)));
+}
+
+// The folder sizes: counting them is slow, so the app counts them in the background now and then and keeps
+// the last count in a file, with the time it was taken, so it is there at once after a restart. get() is the last
+// count (or null before the first); refresh() counts again and saves, and while a count is running every other
+// refresh() gets that same count instead of starting another.
+export function diskKeeper({ file, count, log = () => {} }) {
+  let saved = null, running = null;
+  try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
+  const refresh = () => running ||= (async () => {
+    try {
+      saved = await count();
+      await fs.promises.mkdir(path.dirname(file), { recursive: true });
+      await fs.promises.writeFile(file + '.tmp', JSON.stringify(saved));
+      await fs.promises.rename(file + '.tmp', file);
+    } catch (err) { log(err); }
+    return saved;
+  })().finally(() => { running = null; });
+  return { get: () => saved, refresh, counting: () => !!running };
 }
 
 // The size of a folder and the number of files in it, counting every folder inside it. Links are counted as

@@ -107,7 +107,7 @@ function readTimelineLines(c, lines, docket, memDir) {
           const mem = f.type === 'AutoMem';
           const imported = !mem && !/(^|[\\/])CLAUDE(\.local)?\.md$/i.test(f.path || '');
           add({ at, cat: mem ? 'memory' : 'instructions', path: f.path, text: f.content || '',
-            title: mem ? 'Memory index' : imported ? `${path.basename(f.path)} (pulled in by @)` : `CLAUDE.md (${f.type === 'Project' ? 'folder' : f.type === 'User' ? 'profile' : f.type})`, detail: f.path });
+            title: mem ? 'Memory index' : imported ? `${path.basename(f.path)} (pulled in by @)` : `CLAUDE.md (${f.type === 'Project' ? 'folder' : f.type === 'User' ? 'this desk' : f.type})`, detail: f.path });
         }
         continue;
       }
@@ -318,7 +318,7 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
 
   // settings files, in the order Claude Code applies them
   const settingFiles = [
-    [path.join(home, 'settings.json'), 'profile settings'], [path.join(home, 'settings.local.json'), 'profile settings (this computer)'],
+    [path.join(home, 'settings.json'), 'desk settings'], [path.join(home, 'settings.local.json'), 'desk settings (this computer)'],
     [path.join(folder, '.claude', 'settings.json'), 'desk folder settings'], [path.join(folder, '.claude', 'settings.local.json'), 'desk folder settings (this computer)'],
   ].map(([f, label]) => ({ f, label, j: readJson(f) })).filter((x) => x.j);
 
@@ -341,7 +341,7 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
 
   // Instructions
   const inst = [];
-  inst.push(...instructionTree(path.join(home, 'CLAUDE.md'), 'CLAUDE.md (every session in this profile)').map(item));
+  inst.push(...instructionTree(path.join(home, 'CLAUDE.md'), 'CLAUDE.md (every session on this desk)').map(item));
   for (const [f, l] of [[path.join(folder, 'CLAUDE.md'), 'CLAUDE.md in the desk folder'], [path.join(folder, '.claude', 'CLAUDE.md'), '.claude/CLAUDE.md in the desk folder'], [path.join(folder, 'CLAUDE.local.md'), 'CLAUDE.local.md in the desk folder']])
     inst.push(...instructionTree(f, l).map(item));
   const styleSetting = settingFiles.map((s) => s.j.outputStyle).filter(Boolean).pop() || 'Default';
@@ -353,7 +353,7 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   }
   for (const b of ['Default', 'Explanatory', 'Learning']) styles.push({ name: b, detail: 'built into Claude Code', badge: b.toLowerCase() === styleSetting.toLowerCase() ? 'in use' : '' });
   sections.push({ id: 'instructions', title: 'Instructions', note: 'Read at the start of every session. A session working in another folder also reads that folder\'s CLAUDE.md files.',
-    groups: [{ title: 'CLAUDE.md and what it pulls in', items: inst.length ? inst : [{ name: 'No CLAUDE.md in this profile', detail: path.join(home, 'CLAUDE.md') }] }, { title: 'Output styles', items: styles }] });
+    groups: [{ title: 'CLAUDE.md and what it pulls in', items: inst.length ? inst : [{ name: 'No CLAUDE.md on this desk', detail: path.join(home, 'CLAUDE.md') }] }, { title: 'Output styles', items: styles }] });
 
   // Memory: one memory folder per working folder Claude has been used in
   const memGroups = [];
@@ -375,14 +375,14 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   // Skills, commands, agents, plugins
   const skills = [];
   const skillDir = (d, src, prefix = '') => { for (const n of listDir(d)) { const f = path.join(d, n, 'SKILL.md'); if (!fs.existsSync(f)) continue; const fm = frontmatter(readText(f)); skills.push(item({ name: prefix + (fm.name || n), detail: fm.description || '', path: f, note: src })); } };
-  skillDir(path.join(home, 'skills'), 'made in this profile');
+  skillDir(path.join(home, 'skills'), 'made on this desk');
   for (const b of listDir(path.join(home, 'skills', 'synced'))) if (!b.startsWith('.')) skillDir(path.join(home, 'skills', 'synced', b), 'shared by the claude.ai organization', 'anthropic-skills:');
   skillDir(path.join(folder, '.claude', 'skills'), 'in the desk folder');
   for (const p of plugins) if (p.dir) skillDir(path.join(p.dir, 'skills'), `plugin ${p.key}${p.on ? '' : ' (off)'}`, p.key.split('@')[0] + ':');
   const mdList = (dirs) => dirs.flatMap(([d, src]) => listDir(d).filter((n) => n.endsWith('.md')).map((n) => { const f = path.join(d, n), fm = frontmatter(readText(f)); return item({ name: fm.name || n.replace(/\.md$/, ''), detail: fm.description || '', path: f, note: src }); }));
-  const commands = mdList([[path.join(home, 'commands'), 'made in this profile'], [path.join(folder, '.claude', 'commands'), 'in the desk folder'], ...plugins.filter((p) => p.dir).map((p) => [path.join(p.dir, 'commands'), `plugin ${p.key}`])]);
+  const commands = mdList([[path.join(home, 'commands'), 'made on this desk'], [path.join(folder, '.claude', 'commands'), 'in the desk folder'], ...plugins.filter((p) => p.dir).map((p) => [path.join(p.dir, 'commands'), `plugin ${p.key}`])]);
   for (const c of commands) c.name = '/' + c.name;
-  const agents = mdList([[path.join(home, 'agents'), 'made in this profile'], [path.join(folder, '.claude', 'agents'), 'in the desk folder'], ...plugins.filter((p) => p.dir).map((p) => [path.join(p.dir, 'agents'), `plugin ${p.key}`])]);
+  const agents = mdList([[path.join(home, 'agents'), 'made on this desk'], [path.join(folder, '.claude', 'agents'), 'in the desk folder'], ...plugins.filter((p) => p.dir).map((p) => [path.join(p.dir, 'agents'), `plugin ${p.key}`])]);
   const pluginItems = plugins.map((p) => item({ name: p.key, size: 0, detail: p.dir || '', badge: p.on ? 'on' : 'off', note: p.version ? `version ${p.version}` : '',
     toggle: { kind: 'plugin', key: p.key, on: p.on, note: `covers all of its hooks, skills, commands, agents and services${p.over.length ? `; also set in ${p.over.join(', ')}, which wins` : ''}` }, path: p.dir && fs.existsSync(path.join(p.dir, '.claude-plugin', 'plugin.json')) ? path.join(p.dir, '.claude-plugin', 'plugin.json') : undefined }));
   sections.push({ id: 'skills', title: 'Skills, commands, agents and plugins', note: 'Skills load when a task needs them; commands run when you type /name; agents are helpers Claude can start.',
@@ -393,13 +393,13 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   const cfg = readJson(cfgFile) || {};
   const srv = (name, s, where, p) => item({ name, detail: s.url || [s.command, ...(s.args || [])].filter(Boolean).join(' '), badge: s.type || (s.url ? 'http' : 'command'), note: where, path: p, size: 0 });
   const mcp = [];
-  for (const [n, s] of Object.entries(cfg.mcpServers || {})) mcp.push(srv(n, s, 'profile (all folders)'));
+  for (const [n, s] of Object.entries(cfg.mcpServers || {})) mcp.push(srv(n, s, 'this desk (all folders)'));
   const norm = (p) => path.resolve(p).toLowerCase();
   for (const [k, v] of Object.entries(cfg.projects || {})) if (norm(k) === norm(folder)) for (const [n, s] of Object.entries(v.mcpServers || {})) mcp.push(srv(n, s, 'desk folder only'));
   const mcpJson = path.join(folder, '.mcp.json');
   for (const [n, s] of Object.entries(readJson(mcpJson)?.mcpServers || {})) mcp.push(srv(n, s, 'desk folder .mcp.json', mcpJson));
   for (const p of plugins) if (p.dir) { const f = path.join(p.dir, '.mcp.json'); for (const [n, s] of Object.entries(readJson(f)?.mcpServers || {})) mcp.push(srv(n, s, `plugin ${p.key}`, f)); }
-  const connectors = (cfg.claudeAiMcpEverConnected || []).map((n) => ({ name: n, key: n.startsWith('claude.ai ') ? n : `claude.ai ${n}`, detail: 'connected through claude.ai', note: 'used in this profile before' }));
+  const connectors = (cfg.claudeAiMcpEverConnected || []).map((n) => ({ name: n, key: n.startsWith('claude.ai ') ? n : `claude.ai ${n}`, detail: 'connected through claude.ai', note: 'used on this desk before' }));
   const own = docketMcp.map((d) => ({ name: d.name, detail: d.detail, badge: 'command', note: d.note, docket: true }));
   // A profile in its own folder reads <home>/.claude.json, not ~/.claude.json, so servers added in the
   // terminal (claude mcp add) on the standard profile do not reach this company's sessions.
@@ -408,8 +408,8 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   if (!isDefaultHome) {
     const mine = new Set(mcp.map((m) => m.name));
     const missing = Object.entries(readJson(path.join(os.homedir(), '.claude.json'))?.mcpServers || {}).filter(([n]) => !mine.has(n))
-      .map(([n, s]) => ({ name: n, detail: s.url || [s.command, ...(s.args || [])].filter(Boolean).join(' '), badge: 'not in this profile', missing: true }));
-    if (missing.length) groups.push({ title: 'In ~/.claude.json but not in this profile', note: `The terminal on the standard profile has these; this desk's sessions do not, because its profile is ${home}. Add one with claude mcp add while CLAUDE_CONFIG_DIR is set to that folder if this desk needs it.`, items: missing });
+      .map(([n, s]) => ({ name: n, detail: s.url || [s.command, ...(s.args || [])].filter(Boolean).join(' '), badge: 'not on this desk', missing: true }));
+    if (missing.length) groups.push({ title: 'In ~/.claude.json but not on this desk', note: `The terminal on the standard Claude home has these; this desk's sessions do not, because its Claude home is ${home}. Add one with claude mcp add while CLAUDE_CONFIG_DIR is set to that folder if this desk needs it.`, items: missing });
   }
   for (const it of [...mcp, ...own]) it.key ||= it.name;
   sections.push({ id: 'mcp', title: 'Connected services', note: 'Outside tools Claude can use (MCP servers). Check connections runs claude mcp list for this desk and marks each one connected, failed or waiting for a sign-in. Docket\'s own two are not part of that check; an open session shows all of its servers, Docket\'s included, in its Details panel.',
@@ -421,18 +421,18 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   const settingsItems = settingFiles.map((s) => item({ name: s.label, detail: s.f, path: s.f, size: 0,
     note: [s.j.model && `model ${s.j.model}`, s.j.outputStyle && `style ${s.j.outputStyle}`, s.j.env && `sets ${Object.keys(s.j.env).join(', ')}`].filter(Boolean).join(' · ') }));
   if (perms.allow?.length || perms.deny?.length || perms.additionalDirectories?.length) settingsItems.push({ name: 'Permissions', detail: [perms.allow?.length && `allowed: ${perms.allow.join(', ')}`, perms.deny?.length && `refused: ${perms.deny.join(', ')}`, perms.additionalDirectories?.length && `extra folders: ${perms.additionalDirectories.join(', ')}`].filter(Boolean).join(' · ') });
-  sections.push({ id: 'defaults', title: 'Claude Code\'s own defaults', note: def ? `What Claude Code adds without any setup, as the newest session in this profile saw it (${new Date(def.at).toLocaleString()}).` : 'No session in this profile yet, so the built-in lists are not known.',
+  sections.push({ id: 'defaults', title: 'Claude Code\'s own defaults', note: def ? `What Claude Code adds without any setup, as the newest session on this desk saw it (${new Date(def.at).toLocaleString()}).` : 'No session on this desk yet, so the built-in lists are not known.',
     groups: [{ title: 'Settings files', items: settingsItems }, ...(def ? def.groups : [])] });
 
   // Docket's additions
   const dk = docket.map((d) => item({ name: d.name, detail: d.note || '', path: d.path, size: d.text.length, text: d.path ? undefined : d.text }));
-  sections.push({ id: 'docket', title: 'Docket\'s additions', note: 'What Docket adds to every session it starts, on top of the profile.',
+  sections.push({ id: 'docket', title: 'Docket\'s additions', note: 'What Docket adds to every session it starts, on top of the desk\'s own setup.',
     groups: [{ title: 'Instructions', items: dk }, { title: 'Tools Docket gives every session', items: docketTools.map((t) => ({ name: t.name, detail: t.description || '' })) },
       { title: 'Hooks (the Docket plugin, plugin/ in the Docket folder)', items: docketHooks.map((h) => ({ name: h.name, detail: h.detail || h.command,
         note: [`${HOOK_WHEN[h.event] || h.event} (${h.event})`, h.matcher && `only for: ${h.matcher}`, 'Claude sessions',
-          h.off ? 'turned off for this desk' : h.ownCopy ? 'skipped: the settings of this profile already run it' : 'on'].filter(Boolean).join(' · '),
+          h.off ? 'turned off for this desk' : h.ownCopy ? 'skipped: this desk\'s settings already run it' : 'on'].filter(Boolean).join(' · '),
         toggle: { kind: 'docket-hook', key: h.name, on: !h.off, note: 'Claude and Grok sessions' } })) },
-      { title: 'How Docket starts a session', items: [{ name: 'Profile folder', detail: isDefaultHome ? 'the standard ~/.claude (CLAUDE_CONFIG_DIR not set)' : `CLAUDE_CONFIG_DIR=${home}` },
+      { title: 'How Docket starts a session', items: [{ name: 'Desk\'s Claude home', detail: isDefaultHome ? 'the standard ~/.claude (CLAUDE_CONFIG_DIR not set)' : `CLAUDE_CONFIG_DIR=${home}` },
         { name: 'Permission mode', detail: 'Bypass permissions unless the session is set otherwise' },
         ...(fs.existsSync(path.join(home, 'gh-config')) ? [{ name: 'GitHub sign-in', detail: `GH_CONFIG_DIR=${path.join(home, 'gh-config')}` }] : []),
         ...(client.awsProfile ? [{ name: 'Amazon Bedrock', detail: `AWS_PROFILE=${client.awsProfile}` }] : [])] }] });
@@ -441,7 +441,7 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
   // switched here: Claude has no flag for one hook, and a repo's hooks are committed.
   const layers = client.settingSources || LAYERS;
   const layerItems = [
-    ['user', 'User settings', 'the profile\'s settings.json: its hooks, plugins, permissions and model'],
+    ['user', 'User settings', 'this desk\'s settings.json: its hooks, plugins, permissions and model'],
     ['project', 'Project settings', 'each working folder\'s .claude/settings.json'],
     ['local', 'Local settings', 'each working folder\'s .claude/settings.local.json'],
   ].map(([k, name, detail]) => ({ name, detail, toggle: { kind: 'layer', key: k, on: layers.includes(k), note: k === 'project' ? 'off also leaves out every CLAUDE.md' : '' } }));

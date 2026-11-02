@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { groupProcesses, folderSize } from '../machine-use.mjs';
+import { groupProcesses, folderSize, cpuPercent, diskKeeper } from '../machine-use.mjs';
 
 const P = (pid, ppid, name, mem) => ({ pid, ppid, name, mem });
 
@@ -16,7 +16,7 @@ test('groupProcesses: the app, the runner, the session programs under the runner
     P(11, 10, 'chrome', 60), // the sign-in browser the app opened
     P(30, 1, 'claude', 5000), // a Claude started outside Docket
   ];
-  const { rows, total } = groupProcesses(list, { appPid: 10, runnerPid: 20 });
+  const { rows, total, cpu } = groupProcesses(list.map((p) => ({ ...p, cpu: 1 })), { appPid: 10, runnerPid: 20 });
   assert.deepEqual(rows, [
     { label: 'Docket app', count: 1, mem: 700 },
     { label: 'Session runner', count: 1, mem: 100 },
@@ -27,6 +27,58 @@ test('groupProcesses: the app, the runner, the session programs under the runner
     { key: 'other', label: 'Other helpers', count: 1, mem: 1 },
   ]);
   assert.equal(total, 700 + 100 + 500 + 40 + 55 + 110 + 1);
+  assert.equal(cpu, 11); // the processor time of the 11 Docket programs, not explorer or the outside Claude
+});
+
+test('cpuPercent: the share of all cores between two readings; none until there are two', () => {
+  assert.equal(cpuPercent(null, { cpu: 5, at: 1000 }, 4), null);
+  assert.equal(cpuPercent({ cpu: 10, at: 0 }, { cpu: 12, at: 10_000 }, 4), 5); // 2 s of processor in 10 s on 4 cores
+  assert.equal(cpuPercent({ cpu: 10, at: 0 }, { cpu: 8, at: 10_000 }, 4), 0); // a program ended in between
+  assert.equal(cpuPercent({ cpu: 0, at: 0 }, { cpu: 100, at: 1000 }, 2), 100);
+  assert.equal(cpuPercent({ cpu: 0, at: 5 }, { cpu: 1, at: 5 }, 2), null);
+});
+
+test('diskKeeper: a count is saved to the file and there at once for the next keeper (after a restart)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dk-')), file = path.join(dir, 'data', 'disk-use.json');
+  const a = diskKeeper({ file, count: async () => ({ docket: { bytes: 42 }, at: 123 }) });
+  assert.equal(a.get(), null);
+  assert.deepEqual(await a.refresh(), { docket: { bytes: 42 }, at: 123 });
+  assert.equal(a.counting(), false);
+  const b = diskKeeper({ file, count: async () => { throw new Error('not called'); } });
+  assert.deepEqual(b.get(), { docket: { bytes: 42 }, at: 123 });
+  assert.equal(fs.existsSync(file + '.tmp'), false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('diskKeeper: one count at a time; a second refresh while one runs gets that same one', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dk-')), file = path.join(dir, 'disk-use.json');
+  let calls = 0, finish;
+  const k = diskKeeper({ file, count: () => { calls++; return new Promise((r) => { finish = r; }); } });
+  const one = k.refresh(), two = k.refresh();
+  assert.equal(one, two);
+  assert.equal(k.counting(), true);
+  finish({ at: 1 });
+  assert.deepEqual(await two, { at: 1 });
+  assert.equal(calls, 1);
+  assert.equal(k.counting(), false);
+  k.refresh(); finish({ at: 2 }); // once it is done, the next refresh counts again
+  assert.deepEqual(await k.refresh(), { at: 2 });
+  assert.equal(calls, 2);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('diskKeeper: a count that fails keeps the last one, and the next refresh tries again', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dk-')), file = path.join(dir, 'disk-use.json');
+  fs.writeFileSync(file, JSON.stringify({ at: 7 }));
+  const errs = [];
+  let fail = true;
+  const k = diskKeeper({ file, count: async () => { if (fail) throw new Error('busy'); return { at: 8 }; }, log: (e) => errs.push(e.message) });
+  assert.deepEqual(await k.refresh(), { at: 7 });
+  assert.deepEqual(errs, ['busy']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { at: 7 });
+  fail = false;
+  assert.deepEqual(await k.refresh(), { at: 8 });
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('groupProcesses: no runner found, and a Mac browser helper name', () => {
