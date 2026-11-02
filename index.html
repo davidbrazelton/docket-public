@@ -699,6 +699,12 @@ header.top #feedbackBtn { padding: 4px 8px; }
 .layer > summary .ln { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .layer > summary .lv { font-variant-numeric: tabular-nums; }
 .layer .lbody { padding: 0 0 8px 12px; }
+/* the cost section's columns: agent time, your time, cost, lined up down every layer and row */
+.cost-box .ct { flex: none; width: 52px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cost-box .lv, .cost-row.timed > span:last-child { flex: none; min-width: 58px; text-align: right; }
+.cost-row.timed > span:first-child { flex: 1; min-width: 0; }
+.cost-cols { display: flex; gap: 8px; padding: 2px 0; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.cost-cols > span:first-child { flex: 1; }
 .ctx button[disabled] { color: var(--muted); cursor: default; }
 .cost-total { font-size: 22px; font-weight: 600; }
 .cost-sub { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
@@ -2076,18 +2082,21 @@ function costHtml(c) {
     .filter(([k, , n]) => n > 0 || c.dollars[k] > 0);
   const models = Object.values(c.byModel).sort((a, b) => b.cost - a.cost);
   const open = store.get('costLayers', {});
-  const layer = (key, label, value, body) => `<details class="layer" data-layer="${key}" ${open[key] ? 'open' : ''}><summary><span class="ln">${label}</span><span class="lv">${money(value)}</span></summary><div class="lbody">${body}</div></details>`;
+  // Agent time and your typing time beside each cost, from the same rows as the Usage page.
+  const times = (agent, user) => `<span class="ct" title="Agent time">${spanText(agent)}</span><span class="ct" title="Your time: typing your messages">${spanText(user)}</span>`;
+  const layer = (key, label, x, body) => `<details class="layer" data-layer="${key}" ${open[key] ? 'open' : ''}><summary><span class="ln">${label}</span>${times(x.agent, x.user)}<span class="lv">${money(x.cost)}</span></summary><div class="lbody">${body}</div></details>`;
+  const row = (cls, label, x) => `<div class="${cls} timed"><span>${label}</span>${times(x.agent, x.user)}<span>${money(x.cost)}</span></div>`;
   const link = (id, title, archived) => `<a href="#" data-goto="${esc(id)}"${tip('goto')} class="${archived ? 'muted-link' : ''}">${esc(title)}</a>`;
   // A session that is deleted (or whose log Claude Code removed) still counts, greyed and not a link.
   const name = (x) => x.gone ? `<span title="${x.gone === 'deleted' ? 'Deleted; its cost still counts' : 'Its log was removed; its cost still counts'}">${esc(x.title)} (${x.gone})</span>` : link(x.id, x.title, x.archived);
   const rowClass = (x) => `cost-row${x.gone ? ' cost-gone' : ''}`;
   const g = c.group, f = c.family;
-  const groupLayer = g ? layer('group', `Group · ${esc(g.name)}`, g.total, `<div class="cost-family">${g.sessions.map((x) => `<div class="${rowClass(x)}"><span>${name(x)}${x.archived ? ' <span class="tag">archived</span>' : ''}</span><span>${money(x.cost)}</span></div>`).join('')}</div>`) : '';
-  const familyLayer = f ? layer('family', `Family · ${esc(f.rootTitle)}`, f.total, `
-      <div class="cost-row"><span>${link(f.rootId, f.rootTitle)}, with its helpers</span><span>${money(f.own)}</span></div>
-      <div class="cost-row"><span>Sessions started from it (${f.children.length})</span><span>${money(f.childTotal)}</span></div>
-      <div class="cost-family">${f.children.map((k) => `<div class="${rowClass(k)}"><span style="padding-left:${(k.depth - 1) * 12}px">${name(k)}${k.oneShot ? ' <span class="tag" title="Run with claude -p from its parent\u2019s terminal">one-shot</span>' : ''}${k.archived ? ' <span class="tag">archived</span>' : ''}</span><span>${money(k.cost)}</span></div>`).join('')}</div>`) : '';
-  const sessionLayer = layer('session', 'This session', c.cost, `
+  const groupLayer = g ? layer('group', `Group · ${esc(g.name)}`, { cost: g.total, agent: g.agent, user: g.user }, `<div class="cost-family">${g.sessions.map((x) => row(rowClass(x), `${name(x)}${x.archived ? ' <span class="tag">archived</span>' : ''}`, x)).join('')}</div>`) : '';
+  const familyLayer = f ? layer('family', `Family · ${esc(f.rootTitle)}`, { cost: f.total, agent: f.agent, user: f.user }, `
+      ${row('cost-row', `${link(f.rootId, f.rootTitle)}, with its helpers`, { cost: f.own, agent: f.ownAgent, user: f.ownUser })}
+      ${row('cost-row', `Sessions started from it (${f.children.length})`, { cost: f.childTotal, agent: f.childAgent, user: f.childUser })}
+      <div class="cost-family">${f.children.map((k) => row(rowClass(k), `<span style="padding-left:${(k.depth - 1) * 12}px"></span>${name(k)}${k.oneShot ? ' <span class="tag" title="Run with claude -p from its parent\u2019s terminal">one-shot</span>' : ''}${k.archived ? ' <span class="tag">archived</span>' : ''}`, k)).join('')}</div>`) : '';
+  const sessionLayer = layer('session', 'This session', c, `
       <div class="cost-sub">${c.replies.toLocaleString()} replies · ${when(c.first)} to ${when(c.last)}</div>
       ${models.map((m) => `<div class="cost-row"><span>${esc(m.name)} · ${m.replies} replies</span><span>${money(m.cost)}</span></div>`).join('')}
       ${c.subagents > 0 ? `<div class="cost-row"><span>Its own replies</span><span>${money(c.main)}</span></div><div class="cost-row"><span>Helper agents (${c.subagentFiles})</span><span>${money(c.subagents)}</span></div>` : ''}
@@ -2097,6 +2106,7 @@ function costHtml(c) {
       ${c.compaction > 0 ? `<div class="cost-row" title="The compaction call is not in the log: each one is estimated from its context size, and the reply after it is counted too"><span>Compactions, estimated</span><span>${money(c.compaction)}</span></div>` : ''}
       ${c.unpricedModels.length ? `<div class="cost-note err-text">No price for ${esc(c.unpricedModels.join(', '))}; add it to pricing.json.</div>` : ''}`);
   return `<div class="cost-box">
+    <div class="cost-cols"><span></span><span class="ct">Agent</span><span class="ct">You</span><span class="lv">Cost</span></div>
     ${groupLayer}${familyLayer}${sessionLayer}
     <div class="cost-note" title="${esc(c.pricesAsOf || '')}">What this use would cost at Anthropic API prices${c.regional ? ', with Bedrock regional rates (1.1x list)' : ''}. A subscription is billed flat.</div>
     <div class="cost-note"><button class="ghost" id="usageCsv" title="${esc(c.csv || '')}" style="font-size:11px;padding:2px 6px">📂 Usage CSV</button> <button class="ghost" id="usagePage" title="The Usage page: costs by day, account, desk, group and session" style="font-size:11px;padding:2px 6px">📊 Usage report</button></div>

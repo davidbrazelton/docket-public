@@ -2053,12 +2053,16 @@ function usageConnections(rows) {
   }
   return [...out.values()].map((e) => ({ ...e, brands: [...e.brands], desks: [...e.desks] }));
 }
-// A session's cost from Docket's own record (data/usage-index.json), which stays after its log is gone.
+// A session's cost, agent seconds and typing seconds from Docket's own record (data/usage-index.json), which stays
+// after its log is gone: the same rows the Usage page reads (rowsOf adds the typing time), so the numbers match.
 // A session that still has a log is brought up to date first, so a reply that just finished counts.
 function recordedCost(client, id, refresh = true) {
   if (refresh) refreshUsage(client, id);
-  return (usage[id]?.rows || []).reduce((a, r) => a + (r.Cost || 0), 0);
+  const out = { cost: 0, agent: 0, user: 0 };
+  if (usage[id]) for (const r of rowsOf(id, usage[id])) { out.cost += r.Cost || 0; out.agent += r.AgentSeconds || 0; out.user += r.UserSeconds || 0; }
+  return out;
 }
+const addTimes = (xs) => xs.reduce((a, x) => ({ cost: a.cost + x.cost, agent: a.agent + x.agent, user: a.user + x.user }), { cost: 0, agent: 0, user: 0 });
 // Sessions of this company that Docket has a cost record for but no log any more: deleted in Docket
 // (they keep the group and parent they had then), or their log removed by Claude Code itself.
 // `known` holds the ids still listed, so nothing is counted twice.
@@ -2349,12 +2353,13 @@ async function groupCost(client, gid) {
   const sessions = [];
   const listed = (await membersOf(client, gid)).filter((m) => !wasDeleted(m.id));
   for (const m of listed) {
-    sessions.push({ id: m.id, title: m.title || 'Untitled', cost: recordedCost(client, m.id), archived: !!m.archived });
+    sessions.push({ id: m.id, title: m.title || 'Untitled', ...recordedCost(client, m.id), archived: !!m.archived });
     await new Promise((r) => setImmediate(r));
   }
   const known = new Set([...(await history(client)), ...live.values()].map((r) => r.id).filter((x) => !wasDeleted(x)));
-  for (const x of goneSessions(client, known)) if (x.groupId === gid) sessions.push({ id: x.id, title: x.title, cost: recordedCost(client, x.id, false), gone: x.deleted ? 'deleted' : 'log removed' });
-  return { id: g.id, name: g.name, color: g.color, total: sessions.reduce((a, x) => a + x.cost, 0), sessions: sessions.sort((a, b) => b.cost - a.cost) };
+  for (const x of goneSessions(client, known)) if (x.groupId === gid) sessions.push({ id: x.id, title: x.title, ...recordedCost(client, x.id, false), gone: x.deleted ? 'deleted' : 'log removed' });
+  const t = addTimes(sessions);
+  return { id: g.id, name: g.name, color: g.color, total: t.cost, agent: t.agent, user: t.user, sessions: sessions.sort((a, b) => b.cost - a.cost) };
 }
 // The top of a session's family (itself if it has no parent).
 function familyRoot(client, id) {
@@ -2376,13 +2381,12 @@ async function familyCost(client, id) {
   if (!members.length) return null;
   const children = [];
   for (const m of members) {
-    const cost = recordedCost(client, m.id, !m.gone);
-    children.push({ id: m.id, title: m.title || 'Untitled', depth: m.depth, cost, archived: !!m.archived, oneShot: !!m.oneShot, ...(m.gone ? { gone: m.gone } : {}) });
+    children.push({ id: m.id, title: m.title || 'Untitled', depth: m.depth, ...recordedCost(client, m.id, !m.gone), archived: !!m.archived, oneShot: !!m.oneShot, ...(m.gone ? { gone: m.gone } : {}) });
     await new Promise((r) => setImmediate(r));
   }
-  const own = recordedCost(client, id);
-  const childTotal = children.reduce((a, c) => a + c.cost, 0);
-  return { own, childTotal, total: own + childTotal, children: children.sort((a, b) => b.cost - a.cost) };
+  const own = recordedCost(client, id), sum = addTimes(children), all = addTimes([own, sum]);
+  return { own: own.cost, ownAgent: own.agent, ownUser: own.user, childTotal: sum.cost, childAgent: sum.agent, childUser: sum.user,
+    total: all.cost, agent: all.agent, user: all.user, children: children.sort((a, b) => b.cost - a.cost) };
 }
 
 // Look at every session of every client, a few at a time so the portal stays responsive.
@@ -7164,7 +7168,8 @@ const server = http.createServer(async (req, res) => {
         const family = await familyCost(client, root);
         const rootRow = family && ((await history(client)).find((r) => r.id === root) || live.get(root));
         const gid = effectiveGroup(client, cm[1]);
-        return json(res, 200, { ...sessionCost(file, cm[1], PRICING_FILE), csv: USAGE_CSV,
+        const { agent, user } = recordedCost(client, cm[1]); // its times from its rows, as the Usage page shows them
+        return json(res, 200, { ...sessionCost(file, cm[1], PRICING_FILE), agent, user, csv: USAGE_CSV,
           family: family && { ...family, rootId: root, rootTitle: rootRow?.title || 'Untitled' },
           group: gid ? await groupCost(client, gid) : null });
       }
