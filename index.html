@@ -426,6 +426,7 @@ aside.tasks.hidden { display: none; }
 .pr-row:hover { background: var(--panel-2); }
 .dir-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 4px 14px; font-size: 12px; }
 .dir-row .dir-l { color: var(--muted); }
+.dir-row .dir-act { font: inherit; color: var(--accent); background: none; border: 0; padding: 0 2px; cursor: pointer; white-space: nowrap; }
 .dir-row .dir-p { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, Consolas, monospace; }
 .br-row .br-ic { color: var(--muted); margin-top: 2px; } .br-row.br-now .br-ic, .br-now-t { color: var(--accent); } .br-row.br-now .pr-t { font-weight: 600; } .br-row .pr-sub a { text-decoration: none; } .br-row .pr-sub a:hover { text-decoration: underline; }
 .pr-row .pr-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3537,8 +3538,28 @@ function groupBar(id) {
   const opts = (s.parentId ? [['__parent', `Same as parent (${parentGid ? groupOf(parentGid)?.name || 'no group' : 'no group'})`]] : [])
     .concat([['', 'No group']], (S.groups[S.client] || []).filter((g) => !g.archived || g.id === s.groupId).map((g) => [g.id, g.name]), [['__new', 'New group…']], hasNoGroup(s) ? [['__auto', 'Auto Group…']] : []);
   return `<div class="group-bar"><span>Group</span>
-    <select id="groupSelect" aria-label="Group"${tip('group-select')}>${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
+    <select id="groupSelect" aria-label="Group"${tip('group-select')}>${opts.map(([v, l]) => `<option value="${esc(v)}" ${v === value ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`
+    + startFolderRow(s);
 }
+// The group's start folder, under the Group row: where new sessions in the group work. Blank means the desk's folder;
+// then the session's own working folder, when it is another one, can be made the group's start folder in one click.
+function startFolderRow(s) {
+  const g = s.groupId && groupOf(s.groupId);
+  if (!g) return '';
+  const desk = companyFolder(), work = s.cwd || '';
+  const act = (a, label) => `<button class="dir-act" data-start-folder="${a}" data-gid="${esc(g.id)}">${label}</button>`;
+  return `<div class="dir-row start-folder"><span class="dir-l">Start folder</span>`
+    + (g.folder ? `<span class="dir-p">${esc(g.folder)}</span>${act('change', 'Change')}`
+      : `<span class="dir-p">Desk folder (${esc(desk)})</span>${work && normPath(work) !== normPath(desk) ? act('use', 'Use this session&#39;s folder') : ''}`) + '</div>';
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-start-folder]'); if (!b) return;
+  const g = groupOf(b.dataset.gid); if (!g) return;
+  const s = S.live[S.selected] || (S.history[S.client] || []).find((r) => r.id === S.selected);
+  if (b.dataset.startFolder === 'change') await setGroupFolder(g);
+  else if (s?.cwd && await groupAct(g, 'folder', { folder: s.cwd })) await loadGroups(S.client);
+  renderTasks();
+});
 document.addEventListener('change', async (e) => {
   if (e.target.id !== 'groupSelect') return;
   let v = e.target.value;
