@@ -21,6 +21,7 @@ import { titleFromBrief, handoffFromTurn, handoffPlace, cleanHandoffPattern, wea
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
 import { transcriptTimes } from './chat-times.mjs';
+import { DOCKET_BLOCK, SESSION_BLOCK, messageFrom, lastTyped, mergeTouches } from './touches.mjs';
 import { GEARS, gearsOf, findGear, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear } from './gears.mjs';
 import { shiftUpFor } from './shift-up.mjs';
 import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines } from './costs.mjs';
@@ -932,14 +933,7 @@ function resultText(content) {
   return '';
 }
 
-// Who a message read back from a saved transcript came from, told by the lines sendToSession adds:
-// 'session' (another session wrote it), 'docket' (only Docket's or Claude Code's own lines), or '' (the person typed it).
-const DOCKET_BLOCK = /^(\(From Docket:|\(From the session portal:|<session-report>|\(Sent by the session|<task-notification>)/;
-const SESSION_BLOCK = /^(\(Sent by the session|\(From Docket: This session was started by the session|\(From Docket: this session continues the work)/;
-function messageFrom(texts, images) {
-  if (texts.some((t) => SESSION_BLOCK.test(t))) return 'session';
-  return !images && texts.every((t) => !t.trim() || DOCKET_BLOCK.test(t)) ? 'docket' : '';
-}
+// Who a message read back from a saved transcript came from (DOCKET_BLOCK, SESSION_BLOCK, messageFrom): touches.mjs.
 // Turn one Messages-API style message (live or from a saved transcript) into page events.
 function convertMessage(s, msg, { live: isLive, textCounter }) {
   const out = [];
@@ -2233,6 +2227,31 @@ function setPinned(clientId, id, pinned) {
   keepChanged(clientId);
 }
 const keepOf = (clientId) => ({ touched: state.touched[clientId] || {}, pins: state.pins[clientId] || [] });
+// ---------- filling in touch times
+// Touches were only recorded from 1.123.0 on, so once per desk they are filled in from the saved conversations (#617):
+// for each session not archived, the last message the person typed (touches.mjs, lastTyped), the later of that and
+// any touch already recorded. In the background after startup, one file at a time; state.touchesFilled marks a desk done.
+state.touchesFilled ||= {};
+async function fillTouches(client) {
+  const now = Date.now(), found = {};
+  const files = [...transcriptFiles(client), ...keptChatFiles(client)];
+  for (const [id, file] of files) {
+    if (wasDeleted(id) || isArchived(client, id)) continue;
+    try {
+      if (now - (await fs.promises.stat(file)).mtimeMs > TOUCH_DAYS * 864e5) continue; // nothing in it is recent enough
+      const at = lastTyped((await fs.promises.readFile(file, 'utf8')).split('\n'), { scheduled: !!state.sessions[id]?.scheduleId });
+      if (at) found[id] = at;
+    } catch {}
+  }
+  state.touched[client.id] = mergeTouches(state.touched[client.id], found, Date.now(), TOUCH_DAYS);
+  state.touchesFilled[client.id] = true;
+  logEvent(`touch times filled in: ${client.id}`, `${Object.keys(found).length} of ${files.length} sessions`);
+  keepChanged(client.id);
+}
+async function fillAllTouches() {
+  for (const c of CLIENTS) if (!state.touchesFilled[c.id]) await fillTouches(c).catch((e) => logEvent(`filling in touch times failed: ${c.id}`, e.message));
+}
+// end of filling in touch times
 function groupChanged(clientId) { historyCache.delete(clientId); saveState(); saveUsageSoon(); broadcast({ t: 'groups', client: clientId }); }
 async function membersOf(client, gid) {
   const rows = [...(await history(client)), ...[...live.values()].filter((x) => x.client === client.id).map(summary)];
@@ -7879,5 +7898,6 @@ server.listen(PORT, '127.0.0.1', () => {
   reattached = reattachUntilDone();
   // The restart check: paused automatically before a shutdown, so carry on now that Docket is back.
   reattached.then(findCutOffs);
+  setTimeout(() => fillAllTouches(), 15000); // once per desk, after the start is over
   reattached.then(() => { if (autoPauseOn() && autoPaused(state.paused)) setTimeout(() => resumeAll('restart').catch((e) => logEvent('resume after restart failed', e.message)), 10000); });
 });

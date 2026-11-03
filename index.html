@@ -137,8 +137,6 @@ aside.side { position: relative; border-right: 1px solid var(--divider); backgro
 .row.dim { opacity: .55; }
 .row.dim:hover, .row.dim.sel { opacity: .85; }
 .row .pin { font-size: 10px; flex: none; }
-.view-pop .view-sel { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 7px; }
-.view-pop .view-sel select { font: inherit; font-size: 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
 .near-full { color: var(--bad); }
 .row .meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
 /* Ticket and pull request tags sit last, after the brand logo, in a column that starts at the same spot on every row.
@@ -191,6 +189,9 @@ select.draft-group { max-width: 220px; font: inherit; color: var(--text); backgr
 /* Order, with the 👁 view menu at the right end of the same line */
 .list-bar { padding: 0 2px; }
 .list-bar[hidden] { display: none; }
+.list-bar #listOpts { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.list-bar #listOpts select { min-width: 0; flex: 0 1 auto; text-overflow: ellipsis; padding: 1px 2px; }
+.list-bar #listOpts #attnWindow { flex-shrink: 0; } /* short labels; the Order one gives way first in a narrow panel */
 .list-bar #attnBtn { margin-left: auto; }
 .list-bar button { width: 30px; height: 26px; padding: 0; font-size: 14px; }
 .list-bar button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
@@ -1182,6 +1183,14 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
+// ---------- desk settings
+// How the list is shown is kept per desk (#617), as `<name>@<desk id>`: the order, ✦ and what it keeps, and the 👁
+// options. A desk with none of its own yet reads the one all desks shared before, so no one's settings reset.
+const deskStore = {
+  get(k, d) { const own = store.get(`${k}@${S.client}`, undefined); return own === undefined ? store.get(k, d) : own; },
+  set(k, v) { store.set(`${k}@${S.client}`, v); },
+};
+// end of desk settings
 // A popped-out session (#611): /?popout=<id>&client=<desk> shows only that session's chat, and stays on it. It reads
 // the same storage as the main window but never writes which desk or session is open, so neither changes the other.
 const POPOUT = (() => { const q = new URLSearchParams(location.search); return q.get('popout') ? { id: q.get('popout'), client: q.get('client') || '' } : null; })();
@@ -1257,16 +1266,16 @@ const HELP = [
     ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is'],
     ['new', '+ New session', 'Start a new conversation with the AI'],
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
-    ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), which chips each row shows, and which read sessions ✦ Needs attention also keeps'],
+    ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), and which chips each row shows. Each desk keeps its own.'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
-    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that need you (a reply or an error you have not opened yet), wait on your answer, are working, or have a warm cache. Below them, dimmed: the ones you touched lately (sent a message or started; 👁 > ✦ also keeps sets how far back, Last workday at first) and the ones you pinned (right-click a session). A family shows whole: a session started from another one sits under it, its parent dimmed if only there for it. The orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then dimmed what you touched lately or pinned. Click to show everything.'],
-    ['attn-window', '👁 > ✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, dimmed, by when you last touched them (sent a message or started them; opening one does not count). Off: none. 12 hours. Since yesterday: from the start of yesterday. Last workday: from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included. 7 days. Pins: only pinned ones. Pinned sessions show under every choice.'],
+    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that need you (a reply or an error you have not opened yet), wait on your answer, are working, or have a warm cache. Below them, dimmed: the ones you touched lately (sent a message or started; the ✦ dropdown on the Order line sets how far back, Workday (the last workday) at first) and the ones you pinned (right-click a session). A family shows whole: a session started from another one sits under it, its parent dimmed if only there for it. The orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then dimmed what you touched lately or pinned. Click to show everything.'],
+    ['attn-window', '✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, dimmed, by when you last touched them (sent a message or started them; opening one does not count). Off: none. 12 hours. Yesterday: from the start of yesterday. Workday (the last workday): from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included. 7 days. Pins: only pinned ones. Pinned sessions show under every choice. Each desk keeps its own.'],
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
     ['commentchips', '👁 > Comment chips', 'Comment chips: show a speech bubble on a session\'s row when one of its tickets or pull requests has a new comment', 'Each row shows a speech bubble when a comment is waiting. Turn it off to hide them; Details still shows them.'],
     ['brandlogos', '👁 > Brand logos', 'Brand logos: show which AI runs each session, as a small logo on its row', 'Each row shows the logo of the AI that runs it. Turn it off to hide the logos.'],
     ['textsearch', '❝ Search conversations', 'Search conversations: also match what you and the AI wrote in each session', 'Searching what was said in each conversation too. Click to search titles and folders only.'],
-    ['order', 'Order', 'Which sessions go at the top of each section. Natural keeps every row in one place, the order the sessions were started; drag a row to move it.'],
+    ['order', 'Order', 'Which sessions go at the top of each section. Natural keeps every row in one place, the order the sessions were started; drag a row to move it. Each desk keeps its own.'],
     ['row', 'A session row', `Click to open it. Right-click for archive, group, rename and more. ${OS.pick} or Shift+click picks several at once.`],
     ['pick-clear', 'Clear', 'Clear the picked sessions (Esc)'],
     ['show-archive', 'archived', 'Show the sessions you archived'],
@@ -1824,7 +1833,7 @@ const listHold = () => {
 };
 const listTier = () => holding(listHold(), 'tier', rowTier);
 const listAt = () => holding(listHold(), 'at', placeAt);
-const listOrder = () => orderOf(store.get('listOrder', 'oldest'));
+const listOrder = () => orderOf(deskStore.get('listOrder', 'oldest'));
 const placeSort = (at = listAt(), tier = listTier()) => listOrder() === 'natural' ? byPlace('natural', startedAt) : byPlace(listOrder(), at, tier);
 // Families by their highest member's tier and place (see familyTier), the open session counted at its noted place.
 // Natural: where its top session was dragged to, else by when it was started, whatever its members are doing.
@@ -2054,6 +2063,7 @@ window.addEventListener('hashchange', () => { const id = location.hash.slice(1).
 // openId: the view to show there (a session id or 'draft') instead of the one last open in that company.
 function selectClient(id, openId) {
   S.client = id; store.set('client', id); history.replaceState(null, '', '#' + id);
+  readDeskSettings(); if (viewOpen()) renderViewMenu(); // each desk shows its list its own way
   showAccent();
   S.picked.clear(); S.pickAnchor = null; S.pickMsg = ''; renderPickBar();
   const c = S.clients.find((x) => x.id === id);
@@ -3063,11 +3073,6 @@ function setComposeHeight(h, save = true) {
 
 // ---------- groups ----------
 S.groups = {};
-S.groupView = store.get('groupView', true);
-// Pull request and ticket chips on each row, turned off in the 👁 view menu
-S.prChips = store.get('prChips', true);
-S.tkChips = store.get('ticketChips', true);
-S.commentChips = store.get('commentChips', true);
 async function loadGroups(clientId) { try { S.groups[clientId] = await api(`/api/groups?client=${clientId}`); } catch { S.groups[clientId] = []; } await Promise.all([loadPlaces(clientId), loadKeep(clientId)]); }
 // Where session rows were dragged to in Natural order, saved per company by the app.
 S.places = {};
@@ -3501,8 +3506,6 @@ function renderTextSearchBtn() {
 $('textSearchBtn').onclick = () => { S.textSearch = !S.textSearch; store.set('textSearch', S.textSearch); S.textHits = null; renderTextSearchBtn(); renderSearchNote(); renderList(); askTextSearch(); };
 renderTextSearchBtn();
 // Families show every level, each indented under the session that started it (no longer a choice).
-S.showEmptyGroups = store.get('showEmptyGroups', false);
-S.brandLogos = store.get('brandLogos', true);
 
 // The group picker at the top of the Details panel.
 // The folders a session works in, under its Group row: its working folder, and the git worktree its current
@@ -3536,8 +3539,8 @@ document.addEventListener('change', async (e) => {
 
 // ---------- keeping sessions in needs attention (tested in test/attn-keep.test.mjs) ----------
 // With ✦ on, a read, idle session also stays in the list, dimmed, while you touched it (sent it a message or started it;
-// opening it does not count) within the window picked in 👁, or while it is pinned. Times are local; workdays are Monday to Friday.
-const ATTN_WINDOWS = [['off', 'Off'], ['12h', '12 hours'], ['yesterday', 'Since yesterday'], ['workday', 'Last workday'], ['7d', '7 days'], ['pins', 'Pins']];
+// opening it does not count) within the window picked beside Order (the ✦ dropdown), or while it is pinned. Times are local; workdays are Monday to Friday.
+const ATTN_WINDOWS = [['off', 'Off'], ['12h', '12 hours'], ['yesterday', 'Yesterday'], ['workday', 'Workday'], ['7d', '7 days'], ['pins', 'Pins']];
 const attnWindowOf = (v) => ATTN_WINDOWS.some(([k]) => k === v) ? v : 'workday';
 const dayStart = (t, back = 0) => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - back); return +d; };
 // The start of the latest Monday-to-Friday day before today on which any session was touched. Weekend days after it
@@ -3582,7 +3585,6 @@ function attnShown(rows, { kind, match = () => true, since = null, touched = {},
   return { live, kept, family, has: (id) => live.has(id) || kept.has(id) || family.has(id) };
 }
 // end of keeping sessions in needs attention
-S.attnWindow = attnWindowOf(store.get('attnWindow'));
 S.dim = new Set(); // the rows the list draws dimmed, set by the ✦ list each time it is drawn
 function attnPick(match, kind) {
   const k = S.keep[S.client] || {}, touched = k.touched || {};
@@ -3592,7 +3594,7 @@ function attnPick(match, kind) {
 }
 // ---------- needs attention: what is happening now, and what you touched lately ----------
 // Needs you, a 1 hour cache with 10 minutes or less left, cut off mid-reply, working, waiting on your answer, or any cache still warm.
-// Below those, dimmed: sessions touched within the 👁 window or pinned, and parents that keep a family whole (attnShown).
+// Below those, dimmed: sessions touched within the ✦ window (on the Order line) or pinned, and parents that keep a family whole (attnShown).
 // Waiting on your answer: read, but its latest reply asks something or ends with next steps and nothing was
 // sent to it since (s.awaitingAnswer, worked out by the server). No time limit: it stays until you answer or archive it.
 const cacheEnding = (s) => { const left = s.stats && s.stats.cacheExpiresAt - Date.now(); return !!s.stats && s.stats.cacheTtl > 600 && left > 0 && left <= 10 * 60000; };
@@ -3608,7 +3610,6 @@ function attnKind(s) {
   if (cacheWarm(s)) return 'warm';
   return null;
 }
-S.attn = store.get('attnFilter', false);
 const attnKindHeld = (s) => holding(listHold(), 'kind', attnKind)(s);
 try { localStorage.removeItem('recentWindow'); } catch {} // the Recent look-back was removed
 // The bar over the list: the order switch, on the line above the list beside 👁.
@@ -3619,31 +3620,40 @@ try { localStorage.removeItem('recentWindow'); } catch {} // the Recent look-bac
 let listBarHtml = null;
 function setListBar() {
   $('listBar').hidden = false;
-  const html = `<span>Order:</span><select id="listOrder" aria-label="Which sessions go at the top of each section"${tip('order')}>${ORDER_CHOICES.map(([v, l]) => `<option value="${v}" ${listOrder() === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const html = `<span>Order:</span><select id="listOrder" aria-label="Which sessions go at the top of each section"${tip('order')}>${ORDER_CHOICES.map(([v, l]) => `<option value="${v}" ${listOrder() === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+    + `<select id="attnWindow" aria-label="Which read sessions ✦ Needs attention also keeps"${tip('attn-window')}>${ATTN_WINDOWS.map(([v, l]) => `<option value="${v}" ${S.attnWindow === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   if (html === listBarHtml) return;
   if (listSelectOpen()) { S.listWanted = true; return; }
   listBarHtml = html; $('listOpts').innerHTML = html;
 }
 // end of list bar
 document.addEventListener('change', (e) => {
-  if (e.target.id === 'listOrder') e.target.blur(); // the list is held while it has the focus
-  if (e.target.id === 'listOrder') { store.set('listOrder', e.target.value); $('list').scrollTop = 0; renderList(); }
+  if (['listOrder', 'attnWindow'].includes(e.target.id)) e.target.blur(); // the list is held while it has the focus
+  if (e.target.id === 'listOrder') { deskStore.set('listOrder', e.target.value); $('list').scrollTop = 0; renderList(); }
+  if (e.target.id === 'attnWindow') { S.attnWindow = attnWindowOf(e.target.value); deskStore.set('attnWindow', S.attnWindow); renderList(); }
 });
 // ---------- the 👁 view menu: every way of showing the list, in one place ----------
 // [state name, store key, label, tip key]. Brand logos only show once a company runs more than one brand.
-const VIEW_OPTS = [ // the ✦ window dropdown comes after these
-  ['groupView', 'groupView', 'Grouped', 'groupview'],
-  ['showEmptyGroups', 'showEmptyGroups', 'Show empty groups', 'show-empty'],
-  ['prChips', 'prChips', 'Pull request chips', 'prchips'],
-  ['tkChips', 'ticketChips', 'Ticket chips', 'tkchips'],
-  ['commentChips', 'commentChips', 'Comment chips', 'commentchips'],
-  ['brandLogos', 'brandLogos', 'Brand logos', 'brandlogos'],
+// The last: what each is when nothing was set yet. Each desk keeps its own (deskStore).
+const VIEW_OPTS = [
+  ['groupView', 'groupView', 'Grouped', 'groupview', true],
+  ['showEmptyGroups', 'showEmptyGroups', 'Show empty groups', 'show-empty', false],
+  ['prChips', 'prChips', 'Pull request chips', 'prchips', true],
+  ['tkChips', 'ticketChips', 'Ticket chips', 'tkchips', true],
+  ['commentChips', 'commentChips', 'Comment chips', 'commentchips', true],
+  ['brandLogos', 'brandLogos', 'Brand logos', 'brandlogos', true],
 ];
+// The open desk's list settings into S: at load, and again on each switch of desk (selectClient).
+function readDeskSettings() {
+  S.attn = deskStore.get('attnFilter', false);
+  S.attnWindow = attnWindowOf(deskStore.get('attnWindow'));
+  for (const [k, key, , , d] of VIEW_OPTS) S[k] = deskStore.get(key, d);
+}
+readDeskSettings();
 const viewOpen = () => !$('viewMenu').hidden;
 function renderViewMenu() {
   $('viewMenu').innerHTML = VIEW_OPTS.filter(([k]) => (k !== 'brandLogos' || multiBrand()) && (k !== 'showEmptyGroups' || S.groupView))
-    .map(([k, , label, key]) => `<label${tip(key, S[k])}><input type="checkbox" data-view="${k}"${tip(key, S[k])}${S[k] ? ' checked' : ''}><b>${label}</b></label>`).join('')
-    + `<label class="view-sel"${tip('attn-window')}><b>✦ also keeps</b><select id="attnWindow" aria-label="Which read sessions ✦ Needs attention also keeps"${tip('attn-window')}>${ATTN_WINDOWS.map(([v, l]) => `<option value="${v}"${S.attnWindow === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
+    .map(([k, , label, key]) => `<label${tip(key, S[k])}><input type="checkbox" data-view="${k}"${tip(key, S[k])}${S[k] ? ' checked' : ''}><b>${label}</b></label>`).join('');
 }
 // ✦ carries the attention count, so nothing waiting on you goes unseen; it is lit while the list shows only what needs attention.
 function renderAttnBtn() {
@@ -3654,17 +3664,16 @@ function renderAttnBtn() {
   b.title = tipText('attn', S.attn);
   b.innerHTML = '✦' + (n ? `<span class="n">${n}</span>` : '');
 }
-$('attnBtn').onclick = () => { S.attn = !S.attn; store.set('attnFilter', S.attn); $('list').scrollTop = 0; renderList(); };
+$('attnBtn').onclick = () => { S.attn = !S.attn; deskStore.set('attnFilter', S.attn); $('list').scrollTop = 0; renderList(); };
 function viewMenu(open) {
   $('viewMenu').hidden = !open; $('viewBtn').setAttribute('aria-expanded', String(open));
   if (open) renderViewMenu();
 }
 $('viewBtn').onclick = () => viewMenu(!viewOpen());
 $('viewMenu').addEventListener('change', (e) => {
-  if (e.target.id === 'attnWindow') { S.attnWindow = attnWindowOf(e.target.value); store.set('attnWindow', S.attnWindow); renderList(); return; }
   const o = VIEW_OPTS.find(([k]) => k === e.target.dataset.view); if (!o) return;
   const [k, key, , tipKey] = o;
-  S[k] = e.target.checked; store.set(key, S[k]);
+  S[k] = e.target.checked; deskStore.set(key, S[k]);
   e.target.closest('label').title = e.target.title = tipText(tipKey, S[k]);
   if (k === 'groupView') renderViewMenu(); // Show empty groups only means something while grouped
   renderList();

@@ -14,11 +14,11 @@ assert.ok(start > 0 && end > start, 'the list bar part of index.html has moved o
 function load() {
   const opts = { writes: 0, _html: '', set innerHTML(v) { this.writes++; this._html = v.replace(/ selected/g, ' selected=""').replace(/ >/g, '>'); }, get innerHTML() { return this._html; } };
   const bar = { hidden: true };
-  const env = { open: false, order: 'oldest', S: { listWanted: false } };
+  const env = { open: false, order: 'oldest', S: { listWanted: false, attnWindow: 'workday' } };
   const $ = (id) => (id === 'listOpts' ? opts : bar);
-  const setListBar = new Function('$', 'tip', 'ORDER_CHOICES', 'listOrder', 'listSelectOpen', 'S',
+  const setListBar = new Function('$', 'tip', 'ORDER_CHOICES', 'ATTN_WINDOWS', 'listOrder', 'listSelectOpen', 'S',
     page.slice(start, end) + '\nreturn setListBar;')($, () => '', [['oldest', 'Oldest'], ['newest', 'Newest']],
-    () => env.order, () => env.open, env.S);
+    [['workday', 'Last workday'], ['7d', '7 days']], () => env.order, () => env.open, env.S);
   return { setListBar, opts, env };
 }
 
@@ -46,4 +46,18 @@ test('while a dropdown is open the bar is left alone, and the list is asked to r
   env.open = false; setListBar();
   assert.equal(opts.writes, 2);
   assert.match(opts.innerHTML, /value="newest" selected/);
+});
+
+test('the ✦ also keeps dropdown is on the Order line, and the 👁 menu no longer has it (#617)', () => {
+  const { setListBar, opts, env } = load();
+  setListBar();
+  assert.match(opts.innerHTML, /<select id="listOrder"[^]*<select id="attnWindow"/);
+  assert.match(opts.innerHTML, /value="workday" selected/);
+  env.S.attnWindow = '7d'; setListBar();
+  assert.equal(opts.writes, 2, 'a changed window rewrites the bar');
+  assert.match(opts.innerHTML, /value="7d" selected/);
+  const menu = page.slice(page.indexOf('function renderViewMenu'), page.indexOf('// ✦ carries the attention count'));
+  assert.ok(menu.length > 0 && !menu.includes('attnWindow'));
+  assert.match(page, /if \(\['listOrder', 'attnWindow'\]\.includes\(e\.target\.id\)\) e\.target\.blur\(\);/, 'blurred after a change, like Order');
+  assert.doesNotMatch(page, /👁 > ✦/);
 });
