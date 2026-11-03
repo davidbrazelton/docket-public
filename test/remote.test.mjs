@@ -66,8 +66,9 @@ test('only private (office network) addresses may connect', () => {
 
 test('a remote may read the desk\'s sessions, start one, send, and answer; nothing that acts on the computer outside a session', () => {
   assert.deepEqual(remoteRoute('GET', '/api/clients'), { kind: 'clients' });
-  for (const p of ['/api/sessions', '/api/groups', '/api/places', '/api/schedules']) assert.deepEqual(remoteRoute('GET', p), { kind: 'desk' }, p);
+  for (const p of ['/api/sessions', '/api/groups', '/api/places', '/api/keep', '/api/schedules']) assert.deepEqual(remoteRoute('GET', p), { kind: 'desk' }, p);
   assert.deepEqual(remoteRoute('POST', '/api/sessions'), { kind: 'desk' });
+  assert.deepEqual(remoteRoute('POST', '/api/keep'), { kind: 'desk' }); // pinning a session for the ✦ list
   for (const a of ['events', 'timeline', 'skills', 'cost']) assert.deepEqual(remoteRoute('GET', `/api/sessions/abc-1/${a}`), { kind: 'session', id: 'abc-1' });
   for (const a of ['send', 'permission', 'interrupt', 'seen', 'unread', 'rename']) assert.deepEqual(remoteRoute('POST', `/api/sessions/abc-1/${a}`), { kind: 'session', id: 'abc-1' });
   const refused = [['POST', '/api/files/open'], ['GET', '/api/files/raw'], ['GET', '/api/files/content'], ['POST', '/api/terminal'], ['POST', '/api/editor'], ['POST', '/api/pick-folder'],

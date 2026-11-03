@@ -39,11 +39,12 @@ test('every action from the old header and the old right-click menu is in it', (
 });
 
 test('items come and go with the session', () => {
-  assert.deepEqual(keys({}), ['newunder', 'hr', 'archive', 'unread', 'hr', 'popout', 'terminal', 'timeline', 'chime', 'hr', 'group', 'parent', 'auto-group', 'rename', 'hr', 'end', 'delete']);
+  assert.deepEqual(keys({}), ['newunder', 'hr', 'archive', 'unread', 'pin', 'hr', 'popout', 'terminal', 'timeline', 'chime', 'hr', 'group', 'parent', 'auto-group', 'rename', 'hr', 'end', 'delete']);
   assert.deepEqual(keys({ archived: true, live: false, cwd: '' }), ['restore', 'hr', 'popout', 'timeline', 'chime', 'hr', 'group', 'rename', 'hr', 'delete']);
   assert.ok(!keys({ midReply: true }).includes('continue'), 'Continue moved to the banner over the session');
   assert.ok(!keys({ working: true }).includes('unread'));
   assert.ok(keys({ parentId: 'p' }).includes('top'));
+  assert.ok(keys({ pinned: true }).includes('unpin') && !keys({ pinned: true }).includes('pin'), 'a pinned session offers Unpin (#613)');
   const items = sessionMenuItems({ ...base, otherRuns: 2, kids: 3, unreadRuns: 3 });
   assert.equal(items.find(([k]) => k === 'archive')[1], 'Archive all 3 runs');
   assert.equal(items.find(([k]) => k === 'archive-all')[1], 'Archive with the 3 started from it');

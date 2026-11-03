@@ -133,6 +133,12 @@ aside.side { position: relative; border-right: 1px solid var(--divider); backgro
 .row.sel { background: var(--accent-soft); border-left-color: var(--accent); }
 .row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row.archived .t { color: var(--muted); } /* the open session after Archive: greyed until another one is opened */
+/* ✦ Needs attention: a session kept for being recent or pinned, or a parent shown to keep its family whole, is dimmed */
+.row.dim { opacity: .55; }
+.row.dim:hover, .row.dim.sel { opacity: .85; }
+.row .pin { font-size: 10px; flex: none; }
+.view-pop .view-sel { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 7px; }
+.view-pop .view-sel select { font: inherit; font-size: 12px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
 .near-full { color: var(--bad); }
 .row .meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
 /* Ticket and pull request tags sit last, after the brand logo, in a column that starts at the same spot on every row.
@@ -1251,9 +1257,10 @@ const HELP = [
     ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is'],
     ['new', '+ New session', 'Start a new conversation with the AI'],
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
-    ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups) and which chips each row shows'],
+    ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), which chips each row shows, and which read sessions ✦ Needs attention also keeps'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
-    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that need you (a reply or an error you have not opened yet), wait on your answer, are working, or have a warm cache. The orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off.', 'Showing only what needs attention. Click to show everything.'],
+    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that need you (a reply or an error you have not opened yet), wait on your answer, are working, or have a warm cache. Below them, dimmed: the ones you touched lately (sent a message or started; 👁 > ✦ also keeps sets how far back, Last workday at first) and the ones you pinned (right-click a session). A family shows whole: a session started from another one sits under it, its parent dimmed if only there for it. The orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then dimmed what you touched lately or pinned. Click to show everything.'],
+    ['attn-window', '👁 > ✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, dimmed, by when you last touched them (sent a message or started them; opening one does not count). Off: none. 12 hours. Since yesterday: from the start of yesterday. Last workday: from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included. 7 days. Pins: only pinned ones. Pinned sessions show under every choice.'],
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
     ['commentchips', '👁 > Comment chips', 'Comment chips: show a speech bubble on a session\'s row when one of its tickets or pull requests has a new comment', 'Each row shows a speech bubble when a comment is waiting. Turn it off to hide them; Details still shows them.'],
@@ -1295,6 +1302,8 @@ const HELP = [
     ['ctx-restore', 'Restore from archive', 'Move it back out of the archive'],
     ['ctx-read', 'Mark read', 'Mark the reply as seen, so it stops counting as waiting on you'],
     ['ctx-unread', 'Mark unread', 'Mark it as having a reply you have not read, so it stands out again'],
+    ['ctx-pin', 'Pin to ✦ Needs attention', 'Keep it in the ✦ Needs attention list, dimmed, until you unpin it, however long since you touched it. A 📌 marks it on its row. Archiving it takes the pin away'],
+    ['ctx-unpin', 'Unpin from ✦', 'Take its pin away: ✦ Needs attention keeps it again only while something is happening in it or you touched it lately'],
     ['ctx-group', 'Group…', 'Put it in a group'],
     ['ctx-parent', 'Move under…', 'List it under another session'],
     ['ctx-top', 'Make top level', 'Stop listing it under another session'],
@@ -3059,10 +3068,20 @@ S.groupView = store.get('groupView', true);
 S.prChips = store.get('prChips', true);
 S.tkChips = store.get('ticketChips', true);
 S.commentChips = store.get('commentChips', true);
-async function loadGroups(clientId) { try { S.groups[clientId] = await api(`/api/groups?client=${clientId}`); } catch { S.groups[clientId] = []; } await loadPlaces(clientId); }
+async function loadGroups(clientId) { try { S.groups[clientId] = await api(`/api/groups?client=${clientId}`); } catch { S.groups[clientId] = []; } await Promise.all([loadPlaces(clientId), loadKeep(clientId)]); }
 // Where session rows were dragged to in Natural order, saved per company by the app.
 S.places = {};
 async function loadPlaces(clientId) { try { S.places[clientId] = await api(`/api/places?client=${clientId}`); } catch { S.places[clientId] ||= []; } }
+// When each session was last touched (a message sent to it, or started), and the pinned ones: the app keeps them per desk.
+S.keep = {};
+async function loadKeep(clientId) { try { S.keep[clientId] = await api(`/api/keep?client=${clientId}`); } catch { S.keep[clientId] ||= { touched: {}, pins: [] }; } }
+const pinnedHere = (id) => !!S.keep[S.client]?.pins?.includes(id);
+async function setPin(id, pinned) {
+  const k = S.keep[S.client] ||= { touched: {}, pins: [] };
+  k.pins = pinned ? [...k.pins.filter((x) => x !== id), id] : k.pins.filter((x) => x !== id); renderList();
+  try { S.keep[S.client] = await api('/api/keep', { client: S.client, id, pinned }); } catch (err) { alert(err.message); await loadKeep(S.client); }
+  renderList();
+}
 const groupOf = (gid, clientId = S.client) => (S.groups[clientId] || []).find((g) => g.id === gid) || null;
 // A small dialog: resolves with the value of the button pressed (null for Cancel or Escape).
 // Closes the open dialog as if a button giving v was pressed: for a control inside it that opens another one.
@@ -3240,7 +3259,9 @@ function renderGroupView(q = '') {
   const archiveMode = S.showArchived;
   const groups = (S.groups[S.client] || []).filter((g) => archiveMode || !g.archived);
   const shownGroupIds = new Set(groups.map((g) => g.id));
-  const pool = oneRowPerSchedule(rows.filter((s) => archiveMode ? (s.archived || !!groupOf(s.groupId)?.archived) : keptOpen(s) || (!s.archived && (!S.attn || attnKindHeld(s)))).filter(match));
+  const attn = S.attn && !archiveMode && attnPick(match, attnKindHeld);
+  const pool = attn ? oneRowPerSchedule(rows.filter((s) => (keptOpen(s) && match(s)) || attn.has(s.id)))
+    : oneRowPerSchedule(rows.filter((s) => archiveMode ? (s.archived || !!groupOf(s.groupId)?.archived) : keptOpen(s) || !s.archived).filter(match));
   const sectionOf = (s) => (s.groupId && shownGroupIds.has(s.groupId)) ? s.groupId : '';
   if (!archiveMode) openGroupsOnArrival(rows, sectionOf);
   const familyHtml = (list) => {
@@ -3250,7 +3271,10 @@ function renderGroupView(q = '') {
     const members = (s, d = 0, seen = new Set()) => (seen.has(s.id) ? [] : (seen.add(s.id), [[s, d], ...(kids[s.id] || []).flatMap((c) => members(c, d + 1, seen))]));
     for (const k of Object.values(kids)) k.sort(placeSort());
     // Families waiting on you first, then working ones, then read ones, then closed ones (see familyTier).
-    return sortTops(list.filter((s) => !(s.parentId && ids.has(s.parentId) && s.parentId !== s.id)), kids)
+    // With ✦ on, families that are only there for being recent or pinned (every row dimmed) go below the live ones.
+    const tops = sortTops(list.filter((s) => !(s.parentId && ids.has(s.parentId) && s.parentId !== s.id)), kids);
+    const lit = (top) => members(top).some(([s]) => !S.dim.has(s.id));
+    return (S.dim.size ? [...tops.filter(lit), ...tops.filter((t) => !lit(t))] : tops)
       .map((top) => members(top).map(([s, d]) => sessionRow(s, familyDepth(d))).join('')).join('');
   };
   if (archiveMode && !S.groupView) {
@@ -3510,8 +3534,65 @@ document.addEventListener('change', async (e) => {
   await setSessionGroup(S.selected, v === '__parent' ? null : v);
 });
 
-// ---------- needs attention: only what is happening now ----------
+// ---------- keeping sessions in needs attention (tested in test/attn-keep.test.mjs) ----------
+// With ✦ on, a read, idle session also stays in the list, dimmed, while you touched it (sent it a message or started it;
+// opening it does not count) within the window picked in 👁, or while it is pinned. Times are local; workdays are Monday to Friday.
+const ATTN_WINDOWS = [['off', 'Off'], ['12h', '12 hours'], ['yesterday', 'Since yesterday'], ['workday', 'Last workday'], ['7d', '7 days'], ['pins', 'Pins']];
+const attnWindowOf = (v) => ATTN_WINDOWS.some(([k]) => k === v) ? v : 'workday';
+const dayStart = (t, back = 0) => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - back); return +d; };
+// The start of the latest Monday-to-Friday day before today on which any session was touched. Weekend days after it
+// fall inside the window but never start it, so Friday, Saturday and Sunday work all shows on Monday. None: today.
+function lastWorkdayStart(now, times) {
+  const today = dayStart(now);
+  let last = null;
+  for (const t of times) {
+    const wd = new Date(t).getDay();
+    if (t < today && wd !== 0 && wd !== 6 && (last === null || t > last)) last = t;
+  }
+  return last === null ? today : dayStart(last);
+}
+// When the window starts (ms since 1970), or null where no touch keeps a session (Off, and Pins: only pins).
+function keepSince(choice, now, times) {
+  switch (attnWindowOf(choice)) {
+    case '12h': return now - 12 * 3600e3;
+    case 'yesterday': return dayStart(now, 1);
+    case 'workday': return lastWorkdayStart(now, times);
+    case '7d': return now - 7 * 864e5;
+    default: return null;
+  }
+}
+// Which sessions the ✦ list shows. rows: every session of the desk. kind(s): its live kind, or null. match(s): the search.
+// live: has a kind. kept: touched since `since`, or pinned. family: a parent shown only so a family stays whole (every shown
+// session brings its chain of parents, so no child is drawn at the top level). Archived sessions are never shown.
+function attnShown(rows, { kind, match = () => true, since = null, touched = {}, pins = [] }) {
+  const byId = new Map(rows.filter((s) => !s.archived).map((s) => [s.id, s])), pinned = new Set(pins);
+  const live = new Set(), kept = new Set(), family = new Set();
+  for (const s of byId.values()) {
+    if (!match(s)) continue;
+    if (kind(s)) live.add(s.id);
+    else if (pinned.has(s.id) || (since !== null && touched[s.id] >= since)) kept.add(s.id);
+  }
+  for (const id of [...live, ...kept]) {
+    const seen = new Set([id]);
+    for (let p = byId.get(id).parentId; p && !seen.has(p) && byId.has(p); p = byId.get(p).parentId) {
+      seen.add(p);
+      if (!live.has(p) && !kept.has(p)) family.add(p);
+    }
+  }
+  return { live, kept, family, has: (id) => live.has(id) || kept.has(id) || family.has(id) };
+}
+// end of keeping sessions in needs attention
+S.attnWindow = attnWindowOf(store.get('attnWindow'));
+S.dim = new Set(); // the rows the list draws dimmed, set by the ✦ list each time it is drawn
+function attnPick(match, kind) {
+  const k = S.keep[S.client] || {}, touched = k.touched || {};
+  const a = attnShown(allSessionRows(), { kind, match, since: keepSince(S.attnWindow, Date.now(), Object.values(touched)), touched, pins: k.pins || [] });
+  S.dim = new Set([...a.kept, ...a.family]);
+  return a;
+}
+// ---------- needs attention: what is happening now, and what you touched lately ----------
 // Needs you, a 1 hour cache with 10 minutes or less left, cut off mid-reply, working, waiting on your answer, or any cache still warm.
+// Below those, dimmed: sessions touched within the 👁 window or pinned, and parents that keep a family whole (attnShown).
 // Waiting on your answer: read, but its latest reply asks something or ends with next steps and nothing was
 // sent to it since (s.awaitingAnswer, worked out by the server). No time limit: it stays until you answer or archive it.
 const cacheEnding = (s) => { const left = s.stats && s.stats.cacheExpiresAt - Date.now(); return !!s.stats && s.stats.cacheTtl > 600 && left > 0 && left <= 10 * 60000; };
@@ -3550,7 +3631,7 @@ document.addEventListener('change', (e) => {
 });
 // ---------- the 👁 view menu: every way of showing the list, in one place ----------
 // [state name, store key, label, tip key]. Brand logos only show once a company runs more than one brand.
-const VIEW_OPTS = [
+const VIEW_OPTS = [ // the ✦ window dropdown comes after these
   ['groupView', 'groupView', 'Grouped', 'groupview'],
   ['showEmptyGroups', 'showEmptyGroups', 'Show empty groups', 'show-empty'],
   ['prChips', 'prChips', 'Pull request chips', 'prchips'],
@@ -3561,7 +3642,8 @@ const VIEW_OPTS = [
 const viewOpen = () => !$('viewMenu').hidden;
 function renderViewMenu() {
   $('viewMenu').innerHTML = VIEW_OPTS.filter(([k]) => (k !== 'brandLogos' || multiBrand()) && (k !== 'showEmptyGroups' || S.groupView))
-    .map(([k, , label, key]) => `<label${tip(key, S[k])}><input type="checkbox" data-view="${k}"${tip(key, S[k])}${S[k] ? ' checked' : ''}><b>${label}</b></label>`).join('');
+    .map(([k, , label, key]) => `<label${tip(key, S[k])}><input type="checkbox" data-view="${k}"${tip(key, S[k])}${S[k] ? ' checked' : ''}><b>${label}</b></label>`).join('')
+    + `<label class="view-sel"${tip('attn-window')}><b>✦ also keeps</b><select id="attnWindow" aria-label="Which read sessions ✦ Needs attention also keeps"${tip('attn-window')}>${ATTN_WINDOWS.map(([v, l]) => `<option value="${v}"${S.attnWindow === v ? ' selected' : ''}>${l}</option>`).join('')}</select></label>`;
 }
 // ✦ carries the attention count, so nothing waiting on you goes unseen; it is lit while the list shows only what needs attention.
 function renderAttnBtn() {
@@ -3579,6 +3661,7 @@ function viewMenu(open) {
 }
 $('viewBtn').onclick = () => viewMenu(!viewOpen());
 $('viewMenu').addEventListener('change', (e) => {
+  if (e.target.id === 'attnWindow') { S.attnWindow = attnWindowOf(e.target.value); store.set('attnWindow', S.attnWindow); renderList(); return; }
   const o = VIEW_OPTS.find(([k]) => k === e.target.dataset.view); if (!o) return;
   const [k, key, , tipKey] = o;
   S[k] = e.target.checked; store.set(key, S[k]);
@@ -3591,17 +3674,31 @@ document.addEventListener('keydown', (e) => { if (viewOpen() && e.key === 'Escap
 function renderAttnList(q) {
   const match = sessionMatch(q);
   const kind = holding(listHold(), 'kind', attnKind), ends = holding(listHold(), 'ends', cacheEnds);
-  const rows = oneRowPerSchedule(allSessionRows().filter(match).filter(kind)).map((s) => [s, kind(s)]);
+  const a = attnPick(match, kind);
+  const list = oneRowPerSchedule(allSessionRows().filter((s) => a.has(s.id)));
   const left = (s) => ends(s) - Date.now();
-  const sections = [['needs', 'Needs you'], ['waiting', 'Waiting on your answer'], ['ending', 'Cache running out'], ['cut', 'Cut off mid-reply'], ['working', 'Working'], ['warm', 'Cache still warm']];
+  // Each family sits whole in the section of its most pressing member, in this order; one with no live member goes in the last.
+  const sections = [['needs', 'Needs you'], ['waiting', 'Waiting on your answer'], ['ending', 'Cache running out'], ['cut', 'Cut off mid-reply'], ['working', 'Working'], ['warm', 'Cache still warm'],
+    [null, ['off', 'pins'].includes(S.attnWindow) ? 'Pinned' : 'Recent and pinned']];
+  const shown = new Map(list.map((s) => [s.id, s])), kids = {};
+  for (const s of list) if (s.parentId && s.parentId !== s.id && shown.has(s.parentId)) (kids[s.parentId] ||= []).push(s);
+  for (const k of Object.values(kids)) k.sort(placeSort());
+  const members = (s, d = 0, seen = new Set()) => (seen.has(s.id) ? [] : (seen.add(s.id), [[s, d], ...(kids[s.id] || []).flatMap((c) => members(c, d + 1, seen))]));
+  const fams = list.filter((s) => !(s.parentId && shown.has(s.parentId) && s.parentId !== s.id)).map((top) => {
+    const m = members(top).map(([s]) => s), kinds = m.map((s) => a.live.has(s.id) ? kind(s) : null);
+    return { top, m, k: sections.find(([k]) => kinds.includes(k))[0] };
+  });
   let html = '';
   for (const [k, label] of sections) {
-    const all = rows.filter(([, x]) => x === k).map(([s]) => s);
-    const list = k === 'ending' || k === 'warm' ? all.sort((a, b) => left(a) - left(b)) : sortTops(all, {});
-    if (list.length) html += `<div class="group"><span>${label} (${list.length})</span></div>` + list.map((s) => sessionRow(s, 0)).join('');
+    const here = fams.filter((f) => f.k === k);
+    if (!here.length) continue;
+    const soonest = (f) => Math.min(...f.m.filter((s) => a.live.has(s.id) && kind(s) === k).map(left));
+    const sorted = k === 'ending' || k === 'warm' ? here.sort((x, y) => soonest(x) - soonest(y)) : sortTops(here, kids, (f) => f.top);
+    const n = here.reduce((c, f) => c + f.m.filter((s) => !a.family.has(s.id)).length, 0); // the parents shown to keep a family whole are not counted
+    html += `<div class="group"><span>${label} (${n})</span></div>` + sorted.map((f) => members(f.top).map(([s, d]) => sessionRow(s, familyDepth(d))).join('')).join('');
   }
   const open = allSessionRows().find(keptOpen);
-  if (open && match(open)) html += `<div class="group"><span>Open</span></div>` + sessionRow(open, 0);
+  if (open && match(open) && !shown.has(open.id)) html += `<div class="group"><span>Open</span></div>` + sessionRow(open, 0);
   setListBar();
   setList((html || '<div class="row meta">Nothing needs attention right now</div>'));
 }
@@ -3672,8 +3769,9 @@ function sessionRow(s, depth) {
   // The badge appears once a run other than the newest one is unread, so an older reply is never hidden.
   const more = run && run.unread > (run.topUnread ? 1 : 0) ? `<span class="tag unread-n" title="Runs of this schedule with a reply you have not read. The Details panel lists every run.">${run.unread} unread</span>` : '';
   const snip = snippetFor(s);
-  return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
-      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotTip(s)}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${planBadge(s.id)}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
+  const pin = !s.archived && pinnedHere(s.id) ? `<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
+  return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${S.attn && S.dim.has(s.id) ? 'dim' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
+      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotTip(s)}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${planBadge(s.id)}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
       <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // The list is only replaced when what it shows actually changed. A redraw is held while the pointer is down on the
@@ -3811,6 +3909,7 @@ function renderList() {
   if (S.mode === 'schedules') return renderScheduleList();
   if (remoteOff(S.client)) { setListBar(); return setList(remoteGoneHtml(S.clients.find((c) => c.id === S.client))); }
   S.runInfo = new Map();
+  S.dim = new Set();
   const q = $('search').value.trim().toLowerCase();
   if (S.textSearch && q && !textHitsFor(q) && S.textAsked !== S.client + '\n' + q) askTextSearch(); // another desk, or a search set by code
   const match = sessionMatch(q);
@@ -4120,6 +4219,7 @@ function sessionMenuItems(f) {
   }
   if (f.unreadRuns) items.push(['read', f.unreadRuns > 1 ? `Mark ${f.unreadRuns} runs read` : 'Mark read']);
   else if (!f.archived && !f.needsYou && !f.working) items.push(['unread', 'Mark unread']);
+  if (!f.archived) items.push(f.pinned ? ['unpin', 'Unpin from ✦'] : ['pin', 'Pin to ✦ Needs attention']);
   items.push(['hr']);
   items.push(['popout', 'Pop out']);
   if (f.cwd) items.push(['terminal', 'Terminal…']);
@@ -4156,7 +4256,7 @@ function sessionMenuFacts(s) {
   const unreadRuns = run ? run.runs.map(sessionById).filter((x) => x && isUnread(x)) : isUnread(s) ? [s] : [];
   return { kids, otherRuns, unreadRuns, f: { archived: !!s.archived, live: !!s.live, midReply: !!s.midReply, cwd: s.cwd || '', parentId: s.parentId || null,
     noGroup: hasNoGroup(s), needsYou: needsYou(s), working: !!(s.live && ['running', 'starting'].includes(s.status)),
-    muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
+    pinned: pinnedHere(s.id), muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
 }
 // at is { x, y } for a right-click (the menu opens at the cursor) or { el } for ⋯ (it opens under the button,
 // right edges lined up). Either way it stays on screen. Arrow keys move through it, Escape closes it.
@@ -4209,6 +4309,7 @@ function openSessionMenu(id, at) {
     if (act === 'top') await setSessionParent(id, null);
     if (act === 'auto-group') await autoGroup(id);
     if (act === 'use-plan') await usePlan(id);
+    if (act === 'pin' || act === 'unpin') await setPin(id, act === 'pin');
     if (act === 'unread') {
       S.keepUnread = id;
       try { await api(`/api/sessions/${id}/unread?client=${S.client}`, {}); } catch (err) { alert(err.message); }
@@ -7882,6 +7983,8 @@ function connect() {
       showUpdate(m.update);
     } else if (m.t === 'places') {
       loadPlaces(m.client).then(() => { if (m.client === S.client) renderList(); });
+    } else if (m.t === 'keep') {
+      loadKeep(m.client).then(() => { if (m.client === S.client) renderList(); });
     } else if (m.t === 'groups') {
       Promise.all([loadGroups(m.client), loadSessions(m.client, true)]).then(() => {
         if (m.client !== S.client) return;

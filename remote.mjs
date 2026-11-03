@@ -122,8 +122,8 @@ const SESSION_POST = /^\/api\/sessions\/([\w-]+)\/(send|permission|interrupt|see
 export function remoteRoute(method, p) {
   if (method === 'GET' && p === '/api/clients') return { kind: 'clients' };
   if (method === 'GET' && p === '/api/gears') return { kind: 'open' };
-  if (method === 'GET' && ['/api/sessions', '/api/groups', '/api/places', '/api/schedules'].includes(p)) return { kind: 'desk' };
-  if (method === 'POST' && p === '/api/sessions') return { kind: 'desk' };
+  if (method === 'GET' && ['/api/sessions', '/api/groups', '/api/places', '/api/keep', '/api/schedules'].includes(p)) return { kind: 'desk' };
+  if (method === 'POST' && (p === '/api/sessions' || p === '/api/keep')) return { kind: 'desk' }; // starting a session; pinning one
   const m = (method === 'GET' ? SESSION_GET : method === 'POST' ? SESSION_POST : null)?.exec(p);
   return m ? { kind: 'session', id: m[1] } : null;
 }

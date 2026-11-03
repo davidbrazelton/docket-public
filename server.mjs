@@ -2212,6 +2212,27 @@ function effectiveGroup(client, id) {
 // Where session rows were dragged to in the list's Natural order: per company, session ids top to bottom.
 // Only the dragged order is kept; sessions not in it sit where their start time puts them.
 state.places ||= {};
+// What keeps a read, idle session in the ✦ Needs attention list (index.html, keepSince): when you last touched it
+// (sent it a message or started it; opening it does not count), and your pins. Per desk: session id -> time, and pinned ids.
+// Touches older than TOUCH_DAYS are let go; archiving a session takes its pin away, deleting it takes both.
+state.touched ||= {};
+state.pins ||= {};
+const TOUCH_DAYS = 60;
+const keepChanged = (clientId) => { saveState(); broadcast({ t: 'keep', client: clientId }); };
+function touchSession(clientId, id) {
+  if (!clientId || !id) return;
+  const now = Date.now(), all = state.touched[clientId] ||= {};
+  all[id] = now;
+  for (const [k, at] of Object.entries(all)) if (now - at > TOUCH_DAYS * 864e5) delete all[k];
+  keepChanged(clientId);
+}
+function setPinned(clientId, id, pinned) {
+  const had = (state.pins[clientId] || []).includes(id);
+  if (had === !!pinned) return;
+  state.pins[clientId] = pinned ? [...(state.pins[clientId] || []), id].slice(-1000) : state.pins[clientId].filter((x) => x !== id);
+  keepChanged(clientId);
+}
+const keepOf = (clientId) => ({ touched: state.touched[clientId] || {}, pins: state.pins[clientId] || [] });
 function groupChanged(clientId) { historyCache.delete(clientId); saveState(); saveUsageSoon(); broadcast({ t: 'groups', client: clientId }); }
 async function membersOf(client, gid) {
   const rows = [...(await history(client)), ...[...live.values()].filter((x) => x.client === client.id).map(summary)];
@@ -2783,6 +2804,7 @@ function startProposal(id) {
   const parent = live.get(p.parentId) || { id: p.parentId, client: p.client, cwd: p.cwd };
   const child = startChild(parent, { title: p.title, prompt: p.prompt, cwd: p.cwd, engine: p.brand, startGear: p.startGear });
   settleProposal(id, 'started', '', child.id);
+  touchSession(p.client, child.id); // the person pressed Start
   // Tell the proposer, so it does not start the same work again with start_session.
   noticeToSession(p.client, p.parentId, `The user started your proposal "${p.title || 'Untitled'}" as session ${child.id}; do not start this work again. Its finished turns will come to you as session reports. Nothing to do now; reply in one line at most.`).catch(() => {});
   return child;
@@ -2877,7 +2899,7 @@ function offerSession(parent, { title, prompt, cwd, brand, startGear }) {
   });
 }
 function settleOffer(parent, ev, choice) {
-  if (choice === 'new') { const child = startChild(parent, { title: ev.title, prompt: ev.brief, cwd: ev.cwd || parent.cwd, engine: ev.brand, startGear: ev.startGear }); ev.state = 'new'; ev.startedId = child.id; }
+  if (choice === 'new') { const child = startChild(parent, { title: ev.title, prompt: ev.brief, cwd: ev.cwd || parent.cwd, engine: ev.brand, startGear: ev.startGear }); ev.state = 'new'; ev.startedId = child.id; touchSession(parent.client, child.id); }
   else ev.state = 'here';
   saveState();
   updateCard(parent, ev); // a page showing that chat redraws the card, running or not
@@ -4966,6 +4988,7 @@ function archiveSession(client, id, archived) {
 }
 function setArchived(clientId, id, archived) {
   state.sessions[id] = { ...(state.sessions[id] || { client: clientId }), archived };
+  if (archived) setPinned(clientId, id, false);
   saveState();
   historyCache.delete(clientId);
   broadcast({ t: 'archived', id, client: clientId, archived });
@@ -5001,6 +5024,8 @@ async function deleteSession(client, id) {
   }
   delete state.sessions[id];
   interrupted.delete(id);
+  setPinned(client.id, id, false);
+  if (state.touched[client.id]?.[id]) { delete state.touched[client.id][id]; keepChanged(client.id); }
   fs.promises.rm(chatFile(id), { force: true }).catch(() => {});
   state.deleted = [...(state.deleted || []).filter((x) => x !== id), id].slice(-500);
   saveState();
@@ -7281,6 +7306,16 @@ const server = http.createServer(async (req, res) => {
       }
       return json(res, 200, state.places[client.id] || []);
     }
+    if (p === '/api/keep') { // GET: { touched, pins } for the ✦ list. POST { client, id, pinned }: pin or unpin a session.
+      const b = req.method === 'POST' ? await readBody(req) : {};
+      const client = clientById(url.searchParams.get('client') || b.client);
+      if (!client) return json(res, 400, { error: 'Unknown client' });
+      if (req.method === 'POST') {
+        if (typeof b.id !== 'string' || !/^[\w-]{1,100}$/.test(b.id)) return json(res, 400, { error: 'Which session?' });
+        setPinned(client.id, b.id, !!b.pinned);
+      }
+      return json(res, 200, keepOf(client.id));
+    }
     if (p === '/api/groups' || p.startsWith('/api/groups/')) {
       const b = req.method === 'POST' ? await readBody(req) : {};
       const client = clientById(url.searchParams.get('client') || b.client);
@@ -7605,6 +7640,7 @@ const server = http.createServer(async (req, res) => {
         if (!known || known.client && known.client !== client.id) return json(res, 400, { error: "That session is not one of this desk's sessions" });
         if (wasDeleted(b.parentId)) return json(res, 410, { error: 'That session was deleted' });
         const child = startChild({ id: b.parentId, client: client.id, cwd: known.cwd }, { title: b.title, prompt: b.text, cwd: b.cwd || known.cwd, attachments: b.attachments || [], settings: b.settings || {}, byUser: true, engine: b.engine || undefined, note: b.context || '', groupId });
+        touchSession(client.id, child.id);
         return json(res, 200, summary(child));
       }
       const group = groupId && groupById(b.client, groupId);
@@ -7616,6 +7652,7 @@ const server = http.createServer(async (req, res) => {
       catch (e) { return json(res, 400, { error: e.message }); }
       if (b.title) state.sessions[s.id].titleBy = 'you';
       if (grouped) groupChanged(s.client);
+      touchSession(s.client, s.id);
       sendToSession(s, b);
       return json(res, 200, summary(s));
     }
@@ -7652,6 +7689,7 @@ const server = http.createServer(async (req, res) => {
           addEvent(target, { k: 'note', text: 'Resumed' });
         }
         if (isArchived(clientById(target.client), id)) setArchived(target.client, id, false);
+        touchSession(target.client, id);
         sendToSession(target, b);
         return json(res, 200, summary(target));
       }
