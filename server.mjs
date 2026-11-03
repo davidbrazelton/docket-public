@@ -3554,6 +3554,10 @@ async function ghForSession(s, client) {
     return token;
   } catch (e) { logEvent('gh account failed', e.message); return ''; }
 }
+// Claude Code's Artifact tool (publishes a file to a claude.ai artifact page) is off by default in the SDK; this
+// undocumented variable turns it on, with no browser tab on publish. Artifacts need a claude.ai sign-in, so not on
+// Bedrock or a gateway. Set before the desk's own env, which can still turn it off.
+const artifactEnv = (client) => isBedrock(client) || gatewayFor(client, 'claude') ? {} : { CLAUDE_CODE_ARTIFACT: '1', CLAUDE_CODE_ARTIFACT_AUTO_OPEN: '0' };
 function startSession({ clientId, cwd, title, parentId, resumeId, settings = {}, engine, record, gear }) {
   const s = makeSession({ clientId, cwd, title, parentId, resumeId, settings, engine, record, gear });
   const client = clientById(s.client), id = s.id;
@@ -3568,7 +3572,7 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
   if (keepsChat(s.engine) && resumeId && !conversation) brandNote(s, newConversationNote(s.engine));
   const options = engineOptions[s.engine] ? engineOptions[s.engine](s, client, conversation) : {
     cwd: s.cwd,
-    env: { ...envFor(client, 'claude', id), ...shiftHookEnv(id) },
+    env: { ...artifactEnv(client), ...envFor(client, 'claude', id), ...shiftHookEnv(id) },
     ...claudeSettings(client),
     // The settings layers the desk turned off on its profile page; left out, Claude Code loads all three.
     ...(client.settingSources ? { settingSources: client.settingSources } : {}),
@@ -5675,6 +5679,7 @@ async function sessionFiles(client, id) {
   const events = s ? s.events : await loadTranscript(client, id).catch(() => []);
   const started = s?.createdAt || (await history(client)).find((r) => r.id === id)?.createdAt || 0;
   const found = new Map(); // path -> { kind, rank }
+  const published = new Map(); // lower-case path -> the artifact page this session published it to
   const RANK = { presented: 0, written: 1, browser: 1, maybe: 2, edited: 3 };
   const mentioned = (t) => { for (const m of t.matchAll(PATH_RE)) if (OUTPUT_EXT.has(extOf(m[0]))) add(m[0], 'maybe'); };
   const add = (p, kind) => {
@@ -5692,7 +5697,11 @@ async function sessionFiles(client, id) {
       if (e.name === 'Write') add(inp.file_path, OUTPUT_EXT.has(extOf(inp.file_path || '')) ? 'written' : 'edited');
       else if (['Edit', 'MultiEdit', 'NotebookEdit'].includes(e.name)) add(inp.file_path || inp.notebook_path, 'edited');
       else if (e.name === 'SendUserFile') for (const p of inp.files || []) add(p, 'presented');
-      else if (e.name === 'Artifact' && inp.file_path) add(inp.file_path, 'presented');
+      else if (e.name === 'Artifact') for (const p of [inp.file_path, ...(inp.file_paths || [])]) if (p) {
+        add(p, 'presented');
+        const url = inp.url || String(e.result || '').match(ARTIFACT_URL)?.[0];
+        if (url && isFullPath(p)) published.set(path.resolve(p).toLowerCase(), url);
+      }
       else if (e.name === 'mcp__portal__present_file') for (const p of inp.paths || []) add(p, 'presented');
       const texts = [inp.command, e.result].filter((x) => typeof x === 'string');
       for (const t of texts) mentioned(t);
@@ -5716,9 +5725,78 @@ async function sessionFiles(client, id) {
     // A path only mentioned counts when the file changed during this session.
     if (kind === 'maybe') { if (!st || st.mtimeMs < started - 60000) continue; }
     out.push({ path: p, name: path.basename(p), folder: path.dirname(p), kind: kind === 'maybe' ? 'made' : kind,
-      exists: !!st, size: st?.size || 0, modified: st?.mtimeMs || 0, canOpen: !RISKY_EXT.has(extOf(p)) });
+      exists: !!st, size: st?.size || 0, modified: st?.mtimeMs || 0, canOpen: !RISKY_EXT.has(extOf(p)),
+      ...artifactOf(client, p, published), ...(canArtifact(client) && ARTIFACT_EXT.has(extOf(p)) ? { canPublish: true } : {}) });
   }
   return out.sort((a, b) => b.modified - a.modified);
+}
+
+// ---------- publishing a file as an artifact ----------
+// A file on a session's Files list becomes a claude.ai artifact page only when the person picks Publish as
+// artifact (artifact-new-guard turns down a session's own new pages). Docket publishes it in a short run of its
+// own, so the session's chat is not touched, and keeps the page's link per file in state.artifacts.
+const ARTIFACT_URL = /https:\/\/claude\.ai\/artifact\/[A-Za-z0-9_-]+/;
+const ARTIFACT_EXT = new Set(['html', 'htm', 'md', 'markdown']);
+const canArtifact = (client) => !!client && !isBedrock(client) && !gatewayFor(client, 'claude');
+// The page a file was published to: Docket's own record first, else what a session's Artifact call said.
+function artifactOf(client, p, published) {
+  const key = path.resolve(p).toLowerCase(), rec = state.artifacts?.[client.id]?.[key];
+  if (rec?.gone) return {}; // its page was deleted: the next publish makes a new one
+  const url = rec?.url || published?.get(key);
+  return url ? { artifact: url } : {};
+}
+async function publishArtifact(client, sessionId, filePath) {
+  if (!canArtifact(client)) throw new Error('Artifacts need a claude.ai sign-in, so this desk (on Amazon Bedrock or a gateway) cannot publish them');
+  const full = path.resolve(filePath);
+  const f = (await sessionFiles(client, sessionId)).find((x) => x.path.toLowerCase() === full.toLowerCase());
+  if (!f) throw new Error("That file is not on this session's list");
+  if (!f.exists) throw new Error('That file no longer exists');
+  if (!f.canPublish) throw new Error('Only an HTML or Markdown file can be published as an artifact');
+  const url = f.artifact || '';
+  const same = (a) => !!a && path.resolve(a).toLowerCase() === f.path.toLowerCase();
+  const prompt = url
+    // The tool refuses an update until the run has read the live version, so the read comes first, every time.
+    ? `Update the artifact ${url} from the file ${f.path}, in two Artifact tool calls: first action "read" with url ${url}; then action "publish" with file_path ${f.path} and url ${url}. The file is the new version, so publish it as it is. If the read says the artifact no longer exists, stop. Do nothing else, and reply with only the artifact's url.`
+    : `Publish the file ${f.path} as a new artifact with the Artifact tool (action "publish" with file_path; no url, and no quickstart). Do nothing else, and reply with only the artifact's url.`;
+  const abort = new AbortController(), timer = setTimeout(() => abort.abort(), 5 * 60000);
+  const q = query({ prompt, options: {
+    env: { ...artifactEnv(client), ...envFor(client) }, ...claudeSettings(client), cwd: f.folder, model: modelFor(client, 'claude', AUTO_GROUP_MODEL),
+    // Read too: the Artifact tool refuses to publish when the run's tool list leaves reading files out.
+    tools: ['Artifact', 'Read'], mcpServers: {}, strictMcpConfig: true, settingSources: [], maxTurns: 6, persistSession: false, abortController: abort,
+    permissionMode: 'default',
+    // Only this file, and only to its own page (or a new one when it has none).
+    canUseTool: async (name, input) => {
+      const action = input.action || 'publish';
+      if (name === 'Artifact' && action === 'publish' && same(input.file_path) && !input.file_paths && (input.url || '') === url) return { behavior: 'allow', updatedInput: input };
+      if (name === 'Artifact' && action === 'read' && url && input.url === url) return { behavior: 'allow', updatedInput: input };
+      if (name === 'Read' && same(input.file_path)) return { behavior: 'allow', updatedInput: input };
+      return { behavior: 'deny', message: 'Only the publish described in the request is allowed.' };
+    },
+  } });
+  let got = '', cost = 0, failed = '';
+  const publishes = new Set(); // the ids of the run's publish calls: only their results say the page was published
+  try {
+    for await (const m of q) {
+      if (m.type === 'assistant') for (const c of m.message?.content || []) if (c.type === 'tool_use' && c.name === 'Artifact' && (c.input?.action || 'publish') === 'publish') publishes.add(c.id);
+      if (m.type === 'user') for (const c of Array.isArray(m.message?.content) ? m.message.content : []) {
+        if (c.type !== 'tool_result') continue;
+        const t = typeof c.content === 'string' ? c.content : JSON.stringify(c.content || '');
+        if (publishes.has(c.tool_use_id) && !c.is_error) got = t.match(ARTIFACT_URL)?.[0] || url || got; else failed = clip(t, 300); // a read can say the page is gone without an error
+      }
+      if (m.type === 'result') cost = m.total_cost_usd || 0;
+    }
+  } finally { clearTimeout(timer); q.close(); }
+  logEvent('artifact publish', `${sessionId} ${f.path} -> ${got || 'failed: ' + failed} $${cost.toFixed(4)}`);
+  const record = ((state.artifacts ||= {})[client.id] ||= {});
+  if (!got && url && /^Artifact [\w-]+: artifact not found/.test(failed)) {
+    record[f.path.toLowerCase()] = { gone: true, url, at: Date.now() };
+    saveState();
+    throw new Error('Its artifact page no longer exists. Publish as artifact again to make a new page.');
+  }
+  if (!got) throw new Error(failed || 'The artifact was not published');
+  record[f.path.toLowerCase()] = { url: got, at: Date.now() };
+  saveState();
+  return { url: got };
 }
 
 // Opens a file in its default program, or shows it in File Explorer (Finder on a Mac). Only files on that session's list.
@@ -7275,6 +7353,13 @@ const server = http.createServer(async (req, res) => {
       if (view !== 'text') return json(res, 200, meta);
       if (f.size > 3e6) return json(res, 400, { error: 'That file is too large to preview' });
       return json(res, 200, { ...meta, markdown: /^(md|markdown)$/.test(e), text: fs.readFileSync(f.path, 'utf8') });
+    }
+    if (req.method === 'POST' && p === '/api/files/publish') { // Publish as artifact, on a file's menu
+      const b = await readBody(req);
+      const client = clientById(b.client);
+      if (!client || !/^[\w-]+$/.test(b.sessionId || '') || typeof b.path !== 'string') return json(res, 400, { error: 'Bad request' });
+      try { return json(res, 200, await publishArtifact(client, b.sessionId, b.path)); }
+      catch (e) { return json(res, 400, { error: e.message }); }
     }
     if (req.method === 'POST' && p === '/api/files/open') {
       const b = await readBody(req);

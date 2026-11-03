@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { pluginHooks, ownCopies, cleanDocketHooks, hooksFor, hooksOffFor } from '../docket-hooks.mjs';
 import { check } from '../plugin/hooks/bash-cmdline-guard.mjs';
 import { isOff } from '../plugin/hooks/off.mjs';
+import { check as artifactCheck } from '../plugin/hooks/artifact-new-guard.mjs';
 
 const PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugin');
 const GUARD = path.join(PLUGIN, 'hooks', 'bash-cmdline-guard.mjs');
@@ -22,7 +23,7 @@ const globex = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'comma
 
 test('the plugin lists its hooks by their script names', () => {
   const list = pluginHooks(PLUGIN);
-  assert.deepEqual(list.map((h) => [h.name, h.event, h.matcher]), [['bash-cmdline-guard', 'PreToolUse', 'Bash'], ['shift-first-edit', 'PreToolUse', 'Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|search_replace|write|run_terminal_command']]);
+  assert.deepEqual(list.map((h) => [h.name, h.event, h.matcher]), [['bash-cmdline-guard', 'PreToolUse', 'Bash'], ['shift-first-edit', 'PreToolUse', 'Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|search_replace|write|run_terminal_command'], ['artifact-new-guard', 'PreToolUse', 'Artifact']]);
   assert.ok(fs.existsSync(path.join(PLUGIN, '.claude-plugin', 'plugin.json')));
 });
 
@@ -82,4 +83,14 @@ test('a company gets every Docket hook unless it turns one off', () => {
   assert.equal(hooksOffFor({ home: h }, PLUGIN), '');
   assert.equal(hooksOffFor({ home: h, docketHooks: { off: ['bash-cmdline-guard'] } }, PLUGIN), 'bash-cmdline-guard');
   assert.equal(hooksOffFor({ home: h, docketHooks: { off: ['not-a-docket-hook'] } }, PLUGIN), '');
+});
+
+test('artifact guard: a session may update an existing artifact but not make a new one', () => {
+  const url = 'https://claude.ai/artifact/abc123';
+  assert.equal(artifactCheck({ action: 'publish', file_path: 'C:/r/report.html', url }), null);
+  assert.equal(artifactCheck({ file_path: 'C:/r/report.html', url }), null); // no action means publish
+  for (const a of ['list', 'read', 'open', 'pin', 'unpin', 'delete']) assert.equal(artifactCheck({ action: a, url }), null);
+  assert.equal(artifactCheck({ action: 'publish', file_path: 'C:/r/new.html' }).permissionDecision, 'deny');
+  assert.equal(artifactCheck({ file_path: 'C:/r/new.html', url: '  ' }).permissionDecision, 'deny');
+  assert.match(artifactCheck({ action: 'quickstart', intent: 'deck' }).permissionDecisionReason, /Publish as artifact/);
 });

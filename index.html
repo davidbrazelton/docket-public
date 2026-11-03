@@ -391,6 +391,8 @@ aside.tasks.hidden { display: none; }
 .plan-task .lb.mine { font-weight: 600; }
 .plan-task .sub { white-space: normal; }
 .file-row .plan-badge { font-size: 10px; border-radius: 999px; padding: 0 6px; margin-left: 6px; background: var(--accent-soft); color: var(--accent); }
+.file-row .art-badge { text-decoration: none; margin: 0 6px 0 0; }
+.file-row.publishing { opacity: .6; cursor: progress; }
 .tag.near-full { color: var(--bad); flex: none; }
 .tag.stalled { border-color: var(--warn); color: var(--warn); font-weight: 600; flex: none; }
 
@@ -2093,6 +2095,8 @@ const MENU_IC = {
   window: MI('M2.5 3.25h11v9.5h-11zM2.5 5.75h11M4.25 4.5h.01M5.75 4.5h.01'), // a window with its title bar
   copy: MI('M5.5 5.5h7.5v7.5H5.5zM3 10.5V3h7.5'), // two overlapping squares
   done: MI('M3 8.5l3 3 7-7'), // a check mark
+  publish: MI('M8 11V3M4.75 6.25L8 3l3.25 3.25M3 10.5v2.5h10v-2.5'), // an arrow up out of a tray
+  share: MI('M11.5 5.5a1.75 1.75 0 1 0 0-.01M4.5 9.75a1.75 1.75 0 1 0 0-.01M11.5 14a1.75 1.75 0 1 0 0-.01M6 8.9l4-2.3M6 10.6l4 2.3'), // three linked dots
 };
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg)$/i;
 const viewUrl = (sessionId, filePath) => '/view?' + new URLSearchParams({ client: S.client, sessionId, path: filePath });
@@ -2101,7 +2105,7 @@ function fileRow(f, sessionId) {
   return `<div class="file-row" title="${esc(f.path)}" data-row-file="${esc(f.path)}" data-session="${sessionId}" data-exists="${f.exists ? 1 : ''}" data-can-open="${f.canOpen ? 1 : ''}">
     <span class="fi">${fileIcon(f.name)}</span>
     <button class="fn" data-file-open="${esc(f.path)}" data-session="${sessionId}" ${f.exists && f.canOpen ? '' : 'disabled'} title="${!f.canOpen ? `Programs and scripts open only from ${FILE_MANAGER}` : TAB_VIEW.test(f.name) ? 'Open in Docket' : 'Open in its own program'}">${esc(f.name)}</button>${f.kind === 'plan' ? '<span class="plan-badge">plan</span>' : ''}
-    <span class="fs">${esc(f.folder)} · ${f.exists ? (ago2 === 'now' || !ago2 ? 'just now' : ago2 + ' ago') + ' · ' + KIND_LABEL[f.kind](brand(S.live[sessionId])) : 'missing'}</span>
+    <span class="fs">${f.artifact ? `<a class="plan-badge art-badge" href="${esc(f.artifact)}" target="_blank" rel="noopener" title="Published as an artifact: open its page on claude.ai">artifact</a>` : ''}${esc(f.folder)} · ${f.exists ? (ago2 === 'now' || !ago2 ? 'just now' : ago2 + ' ago') + ' · ' + KIND_LABEL[f.kind](brand(S.live[sessionId])) : 'missing'}</span>
     <span class="fbs">${ROW_MORE}</span>
   </div>`;
 }
@@ -2294,6 +2298,18 @@ document.addEventListener('click', async (e) => {
   catch (err) { alert(err.message); }
 });
 
+// Publish as artifact: Docket publishes the file in a short run of its own (a minute or so), then the row shows
+// the artifact badge. The session's own chat is not touched.
+async function publishFile(sessionId, p, row) {
+  const name = row.querySelector('.fn')?.textContent || p;
+  row.classList.add('publishing');
+  try {
+    const r = await api('/api/files/publish', { client: S.client, sessionId, path: p });
+    refreshFiles(sessionId);
+    if (confirm(`${name} is published (private until you share it):\n${r.url}\n\nOpen its page now?`)) window.open(r.url, '_blank', 'noopener');
+  } catch (err) { alert(`${name} was not published: ${err.message}`); }
+  finally { row.classList.remove('publishing'); }
+}
 // The menu for one file, pull request or ticket row, at x, y; kept inside the window.
 function rowMenu(row, x, y) {
   closeMenu();
@@ -2314,8 +2330,17 @@ function rowMenu(row, x, y) {
       + (ok && canOpen ? item('open', 'program', `Open ${what}in its own program`) : '')
       + (ok ? item('folder', 'folder', `Show in ${FILE_MANAGER}`) + '<hr>' : '')
       + (img ? item('image', 'copy', 'Copy image') + item('address', 'copy', 'Copy image address') : '')
-      + item('copy', 'copy', 'Copy path');
-    run = (act) => act === 'docket' ? previewFile(sessionId, p)
+      + item('copy', 'copy', 'Copy path')
+      // Publishing makes a claude.ai artifact page from the file; Share opens that page, whose own Share box picks the people.
+      + (ok && known?.canPublish ? '<hr>' + item('publish', 'publish', known.artifact ? 'Publish update to artifact' : 'Publish as artifact',
+        known.artifact ? 'Put this file\'s current version on its artifact page' : 'Make a private claude.ai artifact page from this file') : '')
+      + (known?.artifact ? (known.canPublish && ok ? '' : '<hr>') + item('art-open', 'tab', 'Open artifact page')
+        + item('art-share', 'share', 'Share…', 'Opens the artifact page on claude.ai: use its Share button to pick who can see it')
+        + item('art-copy', 'copy', 'Copy artifact link') : '');
+    run = (act) => act === 'publish' ? publishFile(sessionId, p, row)
+      : act === 'art-open' || act === 'art-share' ? window.open(known.artifact, '_blank', 'noopener')
+      : act === 'art-copy' ? copied(known.artifact, row)
+      : act === 'docket' ? previewFile(sessionId, p)
       : act === 'tab' ? window.open(view, '_blank', 'noopener')
       : act === 'window' ? window.open(view, '_blank', 'popup')
       : act === 'image' ? copiedImage(sessionId, p, row)

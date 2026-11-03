@@ -23,6 +23,17 @@
             "statusMessage": "Checking the Shift gear before a file edit or git commit"
           }
         ]
+      },
+      {
+        "matcher": "Artifact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/artifact-new-guard.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Checking that an artifact publish updates an existing page"
+          }
+        ]
       }
     ]
   }
