@@ -610,6 +610,11 @@ header.top #feedbackBtn { padding: 4px 8px; }
 .co .co-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
 .co .co-head input { flex: 1; font-weight: 600; }
 .co .co-head button { padding: 2px 8px; }
+.co .co-head { cursor: pointer; }
+.co .co-head .co-fold { border: none; background: none; padding: 2px 4px; color: var(--muted); }
+.co.shut > :not(.co-head) { display: none; } /* a closed desk shows only its header */
+.co.hidden-desk .co-head input { color: var(--muted); }
+.co .co-hidden-mark { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding: 0 8px; }
 .co .co-hooks { display: flex; flex-direction: column; gap: 4px; }
 .co .co-use { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .co .co-use input { padding: 0; }
@@ -1432,7 +1437,7 @@ const HELP = [
     ['menu-desks', 'Desks', 'Manage the desks on this computer, or open any desk\'s settings'],
     ['menu-profile', 'Desks > Desk Inspector', 'What every session on that desk starts with: its instructions, hooks, skills, connected services and switches'],
     ['menu-sessions', 'Sessions', 'Show the session list (on a narrow window it hides behind this menu)'],
-    ['menu-companies', 'Desks > Manage', 'Add, rename, reorder or remove desks on this computer'],
+    ['menu-companies', 'Desks > Manage', 'Add, rename, reorder, hide or remove desks on this computer. Each desk\'s settings open under its name; a hidden desk keeps everything but leaves the buttons at the top until it is shown again'],
     ['menu-remote', 'Remote Desks', 'Let another computer on the office network use one desk here, or use a desk on another computer from here. Each connection needs a code from an authenticator app and someone clicking Allow on the computer that has the desk'],
     ['menu-bringin', 'Tools > Bring in Past Sessions', 'Claude Code sessions from before Docket, found on this computer outside this desk\'s Claude home (never in another desk\'s): pick which to copy in, so the session list, search and costs show them. The originals stay where they are; a report is saved first, and Undo sends the copies to the Recycle Bin'],
     ['menu-copydesk', 'Tools > Copy a Desk', 'Make a new desk with a saved desk\'s setup (rules, skills, settings, hooks, plugins, MCP servers, groups), in homes of its own: pick the desk to copy, starting on this one. Its sessions, history and sign-ins are never copied, and the desk copied is not changed'],
@@ -1519,6 +1524,8 @@ const HELP = [
     ['acc-none', 'None (use the main color)', 'No color of its own: this desk uses the main color from ☰ > Settings > Color'],
     ['co-color', 'Color', 'Pick this desk\'s own main color. None uses the main color from ☰ > Settings > Color'],
     ['co-name', 'Desk name', 'The name on the desk\'s button at the top'],
+    ['co-fold', 'Open or close', 'Open this desk\'s settings. Opening or closing them here changes nothing about the desk', 'Close this desk\'s settings. Opening or closing them here changes nothing about the desk'],
+    ['co-hide', 'Hide or show', 'Hide this desk after Save: its button at the top and its sessions leave the list, and its Inspector leaves ☰ > Desks. Its sign-in, sessions, settings and folders all stay, and Show brings it back. One desk always stays shown', 'Hidden. Show it again after Save: its button at the top and its sessions come back'],
     ['co-hook', 'Docket hooks', 'Ticked: this Docket helper runs in this desk\'s sessions'],
     ['co-default-engine', 'Default brand for new sessions', 'The brand a new session starts on unless you pick another beside the model. Only ticked brands can be the default. Sessions already started keep theirs'],
     ['co-start-gear', 'Start gear', 'The model a Shift session on this brand starts on, before it shifts up or down by itself. The cheapest is the default. A session can be started on another with start_session\'s start_gear. Sessions already started keep theirs'],
@@ -1959,8 +1966,8 @@ async function init() {
     $('booting').style.display = '';
   }
   const fromHash = location.hash.slice(1).split('/')[0], wantProfile = isInspectorHash(location.hash) && inspectorSection(location.hash);
-  // The address or the last company used, as long as it is still in the list.
-  S.client = [fromHash, store.get('client', null)].find((id) => S.clients.some((c) => c.id === id)) || S.clients[0].id;
+  // The address or the last company used, as long as it is still in the list and not hidden.
+  S.client = [fromHash, store.get('client', null)].find((id) => shownDesks().some((c) => c.id === id)) || (shownDesks()[0] || S.clients[0]).id;
   $('bootMsg').textContent = `Loading ${S.clients.find((c) => c.id === S.client)?.name || ''} sessions…`;
   await Promise.all([loadSessions(S.client), loadGroups(S.client)]);
   selectClient(S.client);
@@ -1979,7 +1986,7 @@ async function init() {
   api('/api/startup').then(showStartupBanner).catch(() => {});
   showPlanOffer();
   // The other companies (their counts on the tabs), and the sign-in checks, arrive behind it.
-  Promise.all(S.clients.filter((c) => c.id !== S.client).map((c) => Promise.all([loadSessions(c.id), loadGroups(c.id)]))).then(renderClients);
+  Promise.all(shownDesks().filter((c) => c.id !== S.client).map((c) => Promise.all([loadSessions(c.id), loadGroups(c.id)]))).then(renderClients);
   api('/api/clients').then((full) => {
     for (const f of full) { const c = S.clients.find((x) => x.id === f.id); if (c) Object.assign(c, f); }
     renderClients(); drawSignin(); resumeLogin();
@@ -2005,9 +2012,12 @@ function waitingCount(clientId) {
     + (S.inbox[clientId] || []).length; // work handed over from another desk, waiting for Start
 
 }
+// The desks with a button at the top, in the list's order. A hidden desk (☰ > Desks > Manage) has none, so its
+// sessions are out of the list until it is shown again. The server keeps at least one shown.
+function shownDesks() { return S.clients.filter((c) => !c.hidden); }
 function renderClients() {
   if (menuHold(renderClients)) return; // waits while a menu is open (menu hold)
-  $('clients').innerHTML = S.clients.map((c) => {
+  $('clients').innerHTML = shownDesks().map((c) => {
     const n = waitingCount(c.id);
     const rc = remoteMarkTip(c);
     return `<button class="${c.id === S.client ? 'on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${esc(c.name)}</span><span class="ci">${esc(c.name.split(/\s+/).map((w) => w[0] || '').join('').slice(0, 3))}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
@@ -2031,7 +2041,7 @@ function drawBrandIcons() {
   }).join('');
 }
 $('clients').onclick = (e) => { const b = e.target.closest('[data-c]'); if (b) selectClient(b.dataset.c); };
-window.addEventListener('hashchange', () => { const id = location.hash.slice(1).split('/')[0]; if (id !== S.client && S.clients.some((c) => c.id === id)) selectClient(id); });
+window.addEventListener('hashchange', () => { const id = location.hash.slice(1).split('/')[0]; if (id !== S.client && shownDesks().some((c) => c.id === id)) selectClient(id); });
 // openId: the view to show there (a session id or 'draft') instead of the one last open in that company.
 function selectClient(id, openId) {
   S.client = id; store.set('client', id); history.replaceState(null, '', '#' + id);
@@ -4307,8 +4317,8 @@ const autoPauseLabel = () => `Pause on sleep: ${S.autoPause === false ? 'off' : 
 $('menuBtn').onclick = (e) => {
   e.stopPropagation();
   if (document.getElementById('ctx')) { closeMenu(); return; }
-  const desks = [...S.clients.filter((c) => c.id === S.client), ...S.clients.filter((c) => c.id !== S.client)]; // this desk first
-  const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage'], 'hr', ...desks.map((c) => ['profile:' + c.id, `${c.name} Inspector`])]], ...(S.remoteOn ? [['remote', 'Remote Desks']] : []), ['history', 'Recently viewed'], ...(S.clients.find((c) => c.id === S.client)?.planSystem === 'folder' ? [['plantree', 'Plan tree']] : []), 'hr',
+  // Desks: Manage, then each desk's Inspector in the desk buttons' order, hidden desks left out.
+  const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage'], 'hr', ...shownDesks().map((c) => ['profile:' + c.id, `${c.name} Inspector`])]], ...(S.remoteOn ? [['remote', 'Remote Desks']] : []), ['history', 'Recently viewed'], ...(S.clients.find((c) => c.id === S.client)?.planSystem === 'folder' ? [['plantree', 'Plan tree']] : []), 'hr',
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
@@ -5339,6 +5349,9 @@ function defaultHome(roots, name, engine) {
   const plain = at(n);
   return inside(plain) ? { path: at(n + '-desk'), clash: plain } : { path: plain };
 }
+// The desks whose settings are open on the Desks screen; the rest show only their header. Only the screen's view:
+// opening or closing one changes nothing about the desk.
+const coOpen = new WeakSet();
 // start: the list as it was when the screen first opened, kept across a trip to a company's color window.
 async function editCompanies(rows, error = '', start, scrollTo) {
   rows ||= (await api('/api/clients/edit')).map(({ env, ...c }) => ({ ...c, envRows: Object.entries(env || {}), jiraUrl: c.links?.jira?.url || '', jiraKeys: (c.links?.jira?.keys || []).join(', '), adoOrg: c.links?.azureDevOps?.org || '', adoProject: c.links?.azureDevOps?.project || '',
@@ -5346,6 +5359,7 @@ async function editCompanies(rows, error = '', start, scrollTo) {
     // A LiteLLM gateway, edited as flat fields like the links above.
     gatewayUrl: c.gateway?.url || '', gatewayClaudeRoute: c.gateway?.claudeRoute || '', gatewayLogin: c.gateway?.login || '', gatewayLite: c.gateway?.lite || '',
     ...Object.fromEntries(Object.entries(c.gateway?.models?.claude || {}).map(([k, v]) => ['gatewayModel_claude_' + k, v])) }));
+  if (rows.length === 1) coOpen.add(rows[0]); // one desk: nothing to look past, so its settings start open
   const roots = await api('/api/clients/home-roots').catch(() => null);
   const gears = await api('/api/gears').catch(() => null); // Shift's gears per brand
   // One Start gear choice per ticked brand: the model its Shift sessions start on.
@@ -5365,8 +5379,11 @@ async function editCompanies(rows, error = '', start, scrollTo) {
   const field = (i, key, label, hint, more = '') => `<label for="co${i}${key}">${label}</label><input id="co${i}${key}" title="${esc(hint)}" data-i="${i}" data-k="${key}" value="${esc(rows[i][key] || '')}" placeholder="${esc(hint)}"${more}>`;
   const body = () => `<div class="co-note" style="color:var(--muted)">This list is kept on this computer only. Tick the AI brands each desk uses: each has its own home folder (its sign-in, settings and memory), filled in for you when you tick it, and signs in on its own, shown beside its folder. You pick the brand for each new session beside the model; + Add a desk walks you through setting up a new one.</div>
     ${error ? `<div class="co-err">${esc(error)}</div>` : ''}
-    <div class="co-list">${rows.map((c, i) => `<div class="co">
-      <div class="co-head"><input data-i="${i}" data-k="name" value="${esc(c.name || '')}" placeholder="Desk name" aria-label="Desk name"${tip('co-name')}>
+    <div class="co-list">${rows.map((c, i) => `<div class="co${coOpen.has(c) ? '' : ' shut'}${c.hidden ? ' hidden-desk' : ''}">
+      <div class="co-head" data-fold="${i}"><button class="co-fold" data-fold="${i}" aria-expanded="${coOpen.has(c)}" aria-label="${coOpen.has(c) ? 'Close' : 'Open'} this desk's settings"${tip('co-fold', coOpen.has(c))}>${coOpen.has(c) ? '▾' : '▸'}</button>
+        <input data-i="${i}" data-k="name" value="${esc(c.name || '')}" placeholder="Desk name" aria-label="Desk name"${tip('co-name')}>
+        ${c.hidden ? '<span class="co-hidden-mark">Hidden</span>' : ''}
+        <button data-hide="${i}" aria-pressed="${!!c.hidden}"${tip('co-hide', !!c.hidden)}>${c.hidden ? 'Show' : 'Hide'}</button>
         <button data-move="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} title="Move up" aria-label="Move up">↑</button>
         <button data-move="${i}" data-d="1" ${i === rows.length - 1 ? 'disabled' : ''} title="Move down" aria-label="Move down">↓</button>
         <button data-remove="${i}" ${c.running ? `disabled title="${c.running} session${c.running === 1 ? '' : 's'} running; end them first"` : 'title="Remove from this list. Its folders and sessions are not deleted."'}>Remove</button></div>
@@ -5448,8 +5465,18 @@ async function editCompanies(rows, error = '', start, scrollTo) {
     const top = $('dlgBody').scrollTop; $('dlgBody').innerHTML = body(); $('dlgBody').scrollTop = top;
   };
   $('dlgBody').onclick = (e) => {
+    // A desk's header opens and closes its settings: its fold button, or the header itself outside its name and buttons.
+    const head = e.target.closest('[data-fold]');
+    if (head && (head.tagName === 'BUTTON' || e.target === head)) {
+      read();
+      const c = rows[+head.dataset.fold];
+      if (coOpen.has(c)) coOpen.delete(c); else coOpen.add(c);
+      const top = $('dlgBody').scrollTop; $('dlgBody').innerHTML = body(); $('dlgBody').scrollTop = top;
+      return;
+    }
     const b = e.target.closest('button'); if (!b || b.closest('.co-sign')) return;
     read();
+    if (b.dataset.hide) rows[+b.dataset.hide].hidden = !rows[+b.dataset.hide].hidden; // sent as false when shown: one left out is kept. Saved with the rest
     if (b.dataset.color) { colorFor = +b.dataset.color; return dlgClose('color'); } // the color window, then back here
     if (b.dataset.termenv) { colorFor = +b.dataset.termenv; return dlgClose('termenv'); } // its terminal blocks, then back here
     if (b.dataset.envAdd) (rows[+b.dataset.envAdd].envRows ||= []).push(['', '']);
@@ -6078,9 +6105,9 @@ async function reloadClients() {
   showPlanOffer(); // a desk may have chosen its plan system
   if (!S.clients.length) { location.reload(); return; } // the last desk went: start over in the setup wizard
   // Show the new list at once; a new company's sessions can take a while to read.
-  const fresh = S.clients.filter((c) => !S.history[c.id] || (c.remote?.connected && !wasOn.has(c.id))); // a remote desk connected again, here or in another page
-  // never empty: an empty list reloaded above. The sign-in panel too: an edit can change where a company signs in.
-  if (!S.clients.some((c) => c.id === S.client)) selectClient(S.clients[0].id); else { renderClients(); drawSignin(); }
+  const fresh = shownDesks().filter((c) => !S.history[c.id] || (c.remote?.connected && !wasOn.has(c.id))); // a remote desk connected again, here or in another page; a desk shown again
+  // never empty: an empty list reloaded above, and the server keeps one desk shown. The sign-in panel too: an edit can change where a company signs in.
+  if (!shownDesks().some((c) => c.id === S.client)) selectClient((shownDesks()[0] || S.clients[0]).id); else { renderClients(); drawSignin(); }
   await Promise.all(fresh.map((c) => Promise.all([loadSessions(c.id), loadGroups(c.id)])));
   if (fresh.some((c) => c.id === S.client)) selectClient(S.client); else { renderClients(); renderList(); }
 }
@@ -7514,7 +7541,7 @@ if (cacheChan) cacheChan.onmessage = (e) => { if (e.data?.items) showCacheToast(
 const withCacheLock = (fn) => (navigator.locks ? navigator.locks.request('docket-cache-warn', fn) : Promise.resolve(fn()));
 function cacheDue(warned, now) {
   const due = [];
-  for (const c of S.clients) {
+  for (const c of shownDesks()) { // a hidden desk's sessions are out of view, so they are not warned about
     const liveRows = Object.values(S.live).filter((s) => s.client === c.id);
     const liveIds = new Set(liveRows.map((s) => s.id));
     for (const s of [...liveRows, ...(S.history[c.id] || []).filter((r) => !liveIds.has(r.id))]) {
@@ -7756,7 +7783,7 @@ function connect() {
     if (S.wasConnected) { // the portal may have restarted: reload what it knows
       api('/api/update').then(showUpdate).catch(() => {}); // a restart that waited for a quiet moment is done
       S.live = {};
-      await Promise.all(S.clients.map((c) => loadSessions(c.id, true)));
+      await Promise.all(shownDesks().map((c) => loadSessions(c.id, true)));
       renderClients(); renderList();
       if (S.selected && S.selected !== 'draft') openSession(S.selected);
     }

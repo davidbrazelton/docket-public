@@ -5588,6 +5588,9 @@ function cleanCompany(c, taken) {
   const splitWork = (c.splitWork !== undefined ? c.splitWork : before.splitWork) !== false;
   // configReload: 'ask' when a session whose Claude config changed waits for Reload; Automatic (not written) reloads it at its next idle moment.
   const configReload = (c.configReload !== undefined ? c.configReload : before.configReload) === 'ask';
+  // hidden: the desk has no button at the top, so its sessions are out of the list, until it is shown again (☰ > Desks >
+  // Manage). Nothing of it changes. The wizard does not send it, so it is kept; shown is the default and is not written.
+  const hidden = (c.hidden !== undefined ? c.hidden : before.hidden) === true;
   const asked = c.defaultEngine !== undefined ? c.defaultEngine : c.engine !== undefined ? c.engine : before.defaultEngine;
   const grokHome = String((c.grokHome !== undefined ? c.grokHome : before.grokHome) || '').trim();
   if (grokHome && !path.isAbsolute(grokHome)) return { error: `${name}: the Grok home folder must be a full path, like ${exampleFolder(process.platform, os.homedir(), 'grok_home', name)}` };
@@ -5651,7 +5654,7 @@ function cleanCompany(c, taken) {
   for (const [label, dir, sub] of [['Claude home', home, 'claude-home'], ['Grok home', grokHome, 'grok-home'], ['Codex home', codexHome, 'codex-home']]) {
     if (dir && isInside(dir, ROOT)) return { error: `${name}: the ${label} folder ${dir} is inside Docket's own folder (${ROOT}). It holds the sign-in, so it must be somewhere else, like ${path.join(homeRoots().claude, `${name}-desk`, sub)}` };
   }
-  return { id, name, home, folder: folder || home, ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
+  return { id, name, home, folder: folder || home, ...(hidden ? { hidden: true } : {}), ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
 }
 function saveCompanies(list) {
   for (const c of list) {
@@ -6918,7 +6921,7 @@ const server = http.createServer(async (req, res) => {
         // startGears: the model a new Shift session starts on, per brand, for the model menu's "Shift (starts ...)".
         const startGears = Object.fromEntries(brandsOf(c).map((e) => [e, usableGear(c, e, startGearOf(e, null, c.startGear?.[e])).name]));
         // planSystem: '' while the desk has not chosen one, which the page offers once (the card after the update, #180).
-        return { id: c.id, name: c.name, folder: c.folder, color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', brands, startGears,
+        return { id: c.id, name: c.name, folder: c.folder, ...(c.hidden ? { hidden: true } : {}), color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', brands, startGears,
           bedrock: isBedrock(c), ...(gatewayFor(c, 'claude') ? { gateway: gatewayHost(c.gateway.url) } : {}), signedIn, forced: forcedOf(c), browser: browserStatus(c) };
       }));
       return json(res, 200, [...rows, ...await remoteRows(!quick)]); // remote desks come after this computer's own
@@ -6945,6 +6948,7 @@ const server = http.createServer(async (req, res) => {
         out.push(r);
       }
       if (!out.length) return json(res, 400, { error: 'Keep at least one desk' });
+      if (out.every((c) => c.hidden)) return json(res, 400, { error: 'Keep at least one desk shown' });
       const busy = CLIENTS.filter((c) => !ids.has(c.id) && [...live.values()].some((x) => x.client === c.id));
       if (busy.length) return json(res, 400, { error: `${busy.map((c) => c.name).join(', ')} still has sessions running here. End them first.` });
       // trash: the removed companies whose folders go to the Recycle Bin as well (only the ones Docket made).
