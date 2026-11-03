@@ -1289,6 +1289,7 @@ const HELP = [
     ['ctx-timeline', 'Timeline in the chat', 'Show the timeline in the chat: tool runs, hooks, instructions and more, in order between the messages. One setting for every session.'],
     ['ctx-chime', 'Chime', 'On: this session plays a sound when it needs you. Click to mute it here only, or to turn it back on.'],
     ['ctx-mute', 'Mute chime', 'Turn the picked sessions\' sounds off, or back on'],
+    ['ctx-use-plan', 'Use a plan for this work', 'Tell this session to make a plan for its work: a checklist of tasks it hands to sessions of their own, shown in the Plan section'],
     ['ctx-rename', 'Rename', 'Give it a new title'],
     ['ctx-end', 'End', 'Close this session (it stays under Earlier and can be resumed)'],
     ['ctx-delete', 'Delete…', 'Delete it and its conversation for good. Docket asks first.'],
@@ -1334,6 +1335,8 @@ const HELP = [
     ['fmove-group', 'Move it and make it the start folder', 'Move this session to that folder, and start every new session in its group there too'],
     ['fmove-no', 'No thanks', 'Keep this session in the folder it is in'],
     ['tsug-apply', 'Apply', 'Use the suggested title for this session'],
+    ['poffer-use', 'Use a plan', 'Tell this session to make a plan for its work, so you can follow its pieces in the Plan section'],
+    ['poffer-no', 'Not now', 'No plan for this session. Docket does not offer one here again; the session menu still has Use a plan for this work'],
     ['tsug-dismiss', 'Dismiss', 'Keep the current title'],
     ['send-again', 'Send again', 'Send this message again: it failed because the sign-in had run out'],
     ['perm-allow', 'Allow', 'Let the AI do this, this once'],
@@ -1519,9 +1522,8 @@ const HELP = [
     ['cache-later', 'Not now', 'Ask again in 30 days at the earliest, and only if pauses of 5 to 60 minutes keep costing a re-read'],
     ['cache-ok', 'OK', 'Close this note'],
     ['cache-never', 'Never', 'Never ask about this desk\'s prompt cache again'],
-    ['plan-yes', 'Turn on plans', 'Give this desk\'s new sessions Docket\'s plans. Sessions already running keep what they started with. Change it later in the desk\'s Inspector, under Switches'],
-    ['plan-no', 'No thanks', 'Leave plans off for this desk and don\'t ask again. Turn them on later in the desk\'s Inspector, under Switches'],
-    ['plan-ok', 'OK', 'Close this note'],
+    ['plan-yes', 'OK', 'Keep Docket\'s plans on for this desk. Change it later in the desk\'s Inspector, under Switches'],
+    ['plan-no', 'Turn them off', 'Turn plans off for this desk and don\'t ask again. Turn them on later in the desk\'s Inspector, under Switches'],
     ['co-cache', 'Prompt cache', 'How long Claude keeps its short-term memory of a session after each reply. Automatic is Claude Code\'s own choice: 1 hour on a Claude subscription, 5 minutes on an API key or Bedrock. 1 hour keeps it through longer pauses, and starting it costs a bit more each time. New sessions only'],
     ['co-env-name', 'Variable name', 'The name of an environment variable this desk\'s sessions, hooks, Terminal and env script get, like BATON_NOTES_ROOT. Names Docket sets itself (the homes, sign-in and connection) can\'t be used'],
     ['co-env-value', 'Variable value', 'Its value, on one line. Empty sets it to nothing'],
@@ -4085,6 +4087,7 @@ function sessionMenuItems(f) {
   if (!f.archived) items.push(['parent', 'Move under…']);
   if (!f.archived && f.parentId) items.push(['top', 'Make top level']);
   if (!f.archived && f.noGroup) items.push(['auto-group', 'Auto Group…']);
+  if (!f.archived && f.plansOn && !f.hasPlan) items.push(['use-plan', 'Use a plan for this work']);
   items.push(['rename', 'Rename'], ['hr']);
   if (f.live) items.push(['end', 'End']);
   items.push(['delete', 'Delete…']);
@@ -4094,6 +4097,13 @@ function sessionMenuItems(f) {
 const sessionMenuHtml = (items) => items.map(([k, label, o]) => k === 'hr' ? '<hr>'
   : `<button role="${o.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" data-act="${k}"${o.checked === undefined ? '' : ` aria-checked="${!!o.checked}"`}${o.disabled ? ' disabled title="Sound is off for all sessions. Turn it on in ☰ > Settings."' : tip('ctx-' + k)}><span class="ck">${o.checked && !o.stated ? '✓' : ''}</span>${esc(label)}</button>`).join('');
 // end of session menu
+// Docket's own plans are on for a desk unless it chose a plan folder or none (#605).
+const plansOnDesk = (id) => { const c = S.clients.find((x) => x.id === id); return !!c && !c.remote && !['none', 'folder'].includes(c.planSystem); };
+// Use a plan for this work: the session menu item, and Use a plan on the card that offers one. Docket tells the session.
+async function usePlan(id, card = '') {
+  try { await api(`/api/sessions/${id}/use-plan?client=${S.client}`, card ? { card } : {}); }
+  catch (err) { alert(err.message); }
+}
 function sessionMenuFacts(s) {
   const kids = s.archived ? [] : descendants(s.id).filter((x) => !x.archived);
   // A schedule's row stands for all its runs: Archive and Mark read take every run with them.
@@ -4102,7 +4112,7 @@ function sessionMenuFacts(s) {
   const unreadRuns = run ? run.runs.map(sessionById).filter((x) => x && isUnread(x)) : isUnread(s) ? [s] : [];
   return { kids, otherRuns, unreadRuns, f: { archived: !!s.archived, live: !!s.live, midReply: !!s.midReply, cwd: s.cwd || '', parentId: s.parentId || null,
     noGroup: hasNoGroup(s), needsYou: needsYou(s), working: !!(s.live && ['running', 'starting'].includes(s.status)),
-    muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
+    muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
 }
 // at is { x, y } for a right-click (the menu opens at the cursor) or { el } for ⋯ (it opens under the button,
 // right edges lined up). Either way it stays on screen. Arrow keys move through it, Escape closes it.
@@ -4153,6 +4163,7 @@ function openSessionMenu(id, at) {
     if (act === 'parent') await pickParent(id);
     if (act === 'top') await setSessionParent(id, null);
     if (act === 'auto-group') await autoGroup(id);
+    if (act === 'use-plan') await usePlan(id);
     if (act === 'unread') {
       S.keepUnread = id;
       try { await api(`/api/sessions/${id}/unread?client=${S.client}`, {}); } catch (err) { alert(err.message); }
@@ -5472,7 +5483,7 @@ function companyWizard({ first = false } = {}) {
     // split: its sessions send real work to child sessions on their own (the desk's splitWork). plans: its plan system,
     // docket, folder (a folder of plans another system keeps, shown read-only, in planFolder) or none; none by default,
     // since Docket's plans add tools and instructions to every session.
-    const w = { step: NAME, name: '', kind: '', brands: [], split: true, plans: 'none', planFolder: '', homes: {}, homesTyped: {}, reuse: {}, def: '', home: '', folder: '', email: '', awsProfile: '', awsRegion: '', id: null,
+    const w = { step: NAME, name: '', kind: '', brands: [], split: true, plans: 'docket', planFolder: '', homes: {}, homesTyped: {}, reuse: {}, def: '', home: '', folder: '', email: '', awsProfile: '', awsRegion: '', id: null,
       homeTyped: false, folderTyped: false, check: null, checking: false, error: '', signedIn: null, si: null, code: '', inUse: {}, keepInUse: {} };
     const card = $('wizCard');
     $('wiz').classList.toggle('first', first); $('wiz').hidden = false;
@@ -5598,12 +5609,12 @@ function companyWizard({ first = false } = {}) {
           <small>A session you start hands real work to a new session of its own, listed under it, so your conversation stays free to talk while the work runs. Untick it to have each session do the work itself; it still starts a new session when you ask for one. You can change this later, in the desk's Inspector, under Switches.</small></span></label>`;
       if (w.step === PLANS) return `<p>How should ${esc(w.name)}'s sessions keep plans for bigger pieces of work? You can change this later, in the desk's Inspector, under Switches.</p>
         <label class="wiz-radio"><input type="radio" name="wPlans" value="docket"${tip('w-plans')} ${w.plans === 'docket' ? 'checked' : ''}><span><b>Docket's plans</b>
-          <small>A session can write a plan: a checklist of tasks, in order, which it hands to sessions of their own. You follow them in the Plan section.</small></span></label>
+          <small>A session can write a plan: a checklist of tasks, in order, which it hands to sessions of their own. You follow them in the Plan section. On by default: it costs nothing until a session uses a plan.</small></span></label>
         <label class="wiz-radio"><input type="radio" name="wPlans" value="folder"${tip('w-plans-folder')} ${w.plans === 'folder' ? 'checked' : ''}><span><b>A plan folder, read-only</b>
           <small>Another system already keeps this desk's plans, as markdown checklists in a folder. Docket shows them in the Plan section and the Plan tree, and never changes them. Sessions get no plan tools or plan instructions from Docket.</small></span></label>
         ${w.plans === 'folder' ? `<label class="wiz-field">The plan folder <input id="wPlanFolder"${tip('w-plan-folder')} value="${esc(w.planFolder)}" placeholder="the full path, or leave it empty to set it later" spellcheck="false"></label>` : ''}
         <label class="wiz-radio"><input type="radio" name="wPlans" value="none"${tip('w-plans-none')} ${w.plans === 'none' ? 'checked' : ''}><span><b>None</b>
-          <small>No plans. Pick this if you are not sure.</small></span></label>`;
+          <small>No plans.</small></span></label>`;
       if (w.step === FOLDERS) {
         const clash = (p) => takenHome(p) ? '<div class="wiz-err">Another desk already uses this folder. Each desk needs its own, or they would share one sign-in.</div>' : '';
         const inside = (e, typed) => { const d = !typed && w.check?.roots && defaultHome(roots(), w.name, e); return d?.clash ? ` Not ${esc(d.clash)}: that is inside Docket's own folder (${OS.caps}).` : ''; };
@@ -6299,6 +6310,12 @@ function eventHtml(ev) {
         : `<div class="sbtn hint">${st === 'dismissed' ? `Kept in ${esc(ev.from)}` : `Moved to ${esc(ev.folder)}${st === 'moved-group' ? `, now the start folder for "${esc(ev.groupName)}"` : ''}`}</div>`;
       return `<div class="scard ${st === 'open' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Work in another folder?${earlier(ev)}</div><div class="st">This looks like work on ${esc(ev.app)}. Move it to ${esc(ev.folder)}?</div><div class="sb">It started in ${esc(ev.from)}, which holds every app, so it does not know which one it is on. Moving it picks the same conversation up again in that folder.</div>${tail}</div>`;
     }
+    case 'plan-offer': { // a session started its second child session with no plan (#605)
+      const st = ev.state;
+      const tail = st === 'open' ? `<div class="sbtn"><button class="primary" data-poffer="${esc(ev.id)}" data-act="use"${tip('poffer-use')}>Use a plan</button><button data-poffer="${esc(ev.id)}" data-act="no"${tip('poffer-no')}>Not now</button></div>`
+        : `<div class="sbtn hint">${st === 'used' ? 'The session was asked to make a plan' : 'No plan for now'}</div>`;
+      return `<div class="scard ${st === 'open' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Keep these sessions in a plan?${earlier(ev)}</div><div class="st">This session has started ${Number(ev.children) || 2} sessions of its own.</div><div class="sb">A plan keeps their pieces as a checklist you follow in the Plan section, and a fresh session can carry it on.</div>${tail}</div>`;
+    }
     case 'title-suggestion': {
       const tail = ev.state === 'open' ? `<div class="sbtn"><button class="primary" data-tsug="${esc(ev.id)}" data-act="apply"${tip('tsug-apply')}>Apply</button><button data-tsug="${esc(ev.id)}" data-act="dismiss"${tip('tsug-dismiss')}>Dismiss</button></div>`
         : `<div class="sbtn hint">${ev.state === 'applied' ? 'Applied' : 'Dismissed'}</div>`;
@@ -6592,6 +6609,14 @@ document.addEventListener('click', async (e) => {
     if (t.dataset.act === 'group') await loadGroups(S.client);
     if (S.selected === id) await openSession(id);
   } catch (err) { alert(err.message); if (S.selected === id) await openSession(id); }
+});
+document.addEventListener('click', async (e) => {
+  const t = e.target.closest('[data-poffer]'); if (!t) return;
+  const card = t.closest('[data-card]'); for (const b of card.querySelectorAll('button')) b.disabled = true;
+  const id = S.selected;
+  if (t.dataset.act === 'use') return usePlan(id, t.dataset.poffer);
+  try { await api(`/api/sessions/${id}/plan-offer?client=${S.client}`, { card: t.dataset.poffer }); }
+  catch (err) { alert(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
 });
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('[data-tsug]'); if (!t) return;
@@ -8358,40 +8383,33 @@ $('cacheOffer').onclick = async (e) => {
 api('/api/cache-offers').then(showCacheOffer).catch(() => {});
 
 // The card after the update that brought Docket's plans (#180): once for each desk on this computer with no plan system
-// chosen yet (planSystem ''), the desk on view first. Either button saves a choice on the desk, so it never comes back;
-// a desk made in the setup wizard chose already. Closing the page without a choice asks again next time.
-let planOfferDone = ''; // a desk that was just turned on, while its note shows
+// chosen yet (planSystem ''), the desk on view first. Plans are on for such a desk (#605), so it says so: OK saves
+// that, Turn them off saves none, and either way it never comes back; a desk made in the setup wizard chose already.
+// Closing the page without a choice shows it again next time.
 function showPlanOffer() {
   const el = $('planOffer');
-  if (planOfferDone) return;
   const open = S.clients.filter((c) => !c.remote && c.planSystem === '');
   const o = open.find((c) => c.id === S.client) || open[0];
   if (!o) { el.hidden = true; return; }
   if (el.dataset.client === o.id && !el.hidden) return; // already showing it: keep the keyboard where it is
   const name = esc(o.name);
   el.dataset.client = o.id;
-  el.innerHTML = `<span class="ico" aria-hidden="true">📋</span><div class="t" id="planOfferTitle">New: plans for ${name}</div>
-    <div class="d">For a bigger piece of work, a session can write a plan: a checklist of tasks, in order. It hands the tasks to sessions of their own, and you follow them in the Plan section.</div>
-    <div class="d">It is off until you turn it on, and you can change it later in ${name}'s Inspector, under Switches.</div>
-    <div class="b"><button data-plan="none"${tip('plan-no')}>No thanks</button><button class="primary" data-plan="docket"${tip('plan-yes')}>Turn on plans</button></div>`;
+  el.innerHTML = `<span class="ico" aria-hidden="true">📋</span><div class="t" id="planOfferTitle">Plans are on for ${name}</div>
+    <div class="d">For a bigger piece of work, a session can write a plan: a checklist of tasks, in order. It hands the tasks to sessions of their own, and you follow them in the Plan section. Ask for one with Use a plan for this work in a session's menu.</div>
+    <div class="d">They cost nothing until a session uses a plan. Change it later in ${name}'s Inspector, under Switches.</div>
+    <div class="b"><button data-plan="none"${tip('plan-no')}>Turn them off</button><button class="primary" data-plan="docket"${tip('plan-yes')}>OK</button></div>`;
   el.hidden = false;
 }
 $('planOffer').onclick = async (e) => {
   const b = e.target.closest('[data-plan]'), el = $('planOffer');
   if (!b) return;
-  if (b.dataset.plan === 'ok') { planOfferDone = ''; el.hidden = true; return showPlanOffer(); }
   const id = el.dataset.client, value = b.dataset.plan, c = S.clients.find((x) => x.id === id);
   for (const x of el.querySelectorAll('button')) x.disabled = true;
   try { await api(`/api/clients/${id}/profile/switch`, { kind: 'plans', key: 'plans', value }); }
   catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return alert(err.message); }
   if (c) c.planSystem = value; // the server's own message about the desk list follows
-  if (value !== 'docket') { el.hidden = true; return showPlanOffer(); }
-  // Running sessions keep what they started with, so say when it takes effect.
-  planOfferDone = id;
-  el.innerHTML = `<span class="ico" aria-hidden="true">📋</span><div class="t" id="planOfferTitle">${esc(c?.name || '')} now has plans</div>
-    <div class="d">Sessions that start from now on get them; sessions running now keep what they started with.</div>
-    <div class="b"><button class="primary" data-plan="ok"${tip('plan-ok')}>OK</button></div>`;
-  el.hidden = false;
+  el.hidden = true;
+  showPlanOffer();
 };
 </script>
 </body>

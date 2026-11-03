@@ -19,8 +19,8 @@ test('the Inspector shows the plan system as a choice, with what the desk has no
   const unset = choice();
   assert.equal(unset.kind, 'plans');
   assert.deepEqual(unset.options.map(([v]) => v), ['docket', 'folder', 'none'], 'the plan folder is a real third choice (#180 step 3)');
-  assert.equal(unset.value, 'none');
-  assert.equal(unset.note, 'not chosen yet');
+  assert.equal(unset.value, 'docket', 'on by default (#605)');
+  assert.equal(unset.note, 'on by default');
   assert.equal(choice('docket').value, 'docket');
   assert.equal(choice('none').note, '');
   assert.equal(choice('folder').value, 'folder');
@@ -32,9 +32,10 @@ test('a copied desk keeps its plan system', () => {
   assert.equal(c.planSystem, 'docket');
 });
 
-test('the setup wizard has a Plans step, none unless picked, and sends the choice', () => {
+test('the setup wizard has a Plans step, Docket\'s plans unless another is picked, and sends the choice', () => {
   assert.match(page, /const WIZ_STEPS = \['Name', 'AI brand', 'Sessions', 'Plans', 'Folders', 'Sign in', 'Done'\];/);
-  assert.match(page, /split: true, plans: 'none',/);
+  assert.match(page, /split: true, plans: 'docket',/);
+  assert.match(page, /On by default: it costs nothing until a session uses a plan\./);
   assert.match(page, /planSystem: w\.plans,/);
   assert.match(page, /if \(w\.step === SPLIT\) \{ w\.step = PLANS;/);
   assert.match(page, /w\.error = ''; w\.step = FOLDERS; return render\(\);/);
@@ -42,7 +43,7 @@ test('the setup wizard has a Plans step, none unless picked, and sends the choic
 
 // showPlanOffer from the page, run on a fake card and desk list.
 function offer(clients, current) {
-  const fn = page.slice(page.indexOf('let planOfferDone'), page.indexOf("$('planOffer').onclick"));
+  const fn = page.slice(page.indexOf('function showPlanOffer'), page.indexOf("$('planOffer').onclick"));
   assert.ok(fn.includes('function showPlanOffer'), 'showPlanOffer has moved');
   const el = { hidden: true, dataset: {}, innerHTML: '' };
   const esc = (s) => String(s);
@@ -56,6 +57,8 @@ test('the card after the update: once per desk with no plan system, the desk on 
   assert.equal(el.dataset.client, 'b');
   assert.match(el.innerHTML, /data-plan="docket"/);
   assert.match(el.innerHTML, /data-plan="none"/);
+  assert.match(el.innerHTML, /Plans are on for Beta/);
+  assert.match(el.innerHTML, /They cost nothing until a session uses a plan/);
   assert.equal(offer([{ id: 'a', name: 'Acme', planSystem: '' }, { id: 'b', name: 'Beta', planSystem: 'none' }], 'b').dataset.client, 'a');
   assert.equal(offer([{ id: 'a', planSystem: 'docket' }, { id: 'b', planSystem: 'none' }], 'a').hidden, true, 'every desk chose');
   assert.equal(offer([{ id: 'r', name: 'Far', remote: { connected: true } }], 'r').hidden, true, 'a remote desk is asked on its own computer');

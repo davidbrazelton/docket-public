@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { parseChecklist, mdRefs, buildTree, createFolderReader, readMarkers, markerPlan } from '../plan-folder.mjs';
 import { buildProfile } from '../profile.mjs';
 import { DOCKET_KEYS, copyEntry } from '../copy-company.mjs';
+import { plansOnFor, planUse } from '../plan-use.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const FX = path.join(here, 'fixtures', 'plan-folder');
@@ -165,12 +166,14 @@ test('the setting: a real third choice, kept on save and carried over by Copy as
 });
 
 test('a plan folder desk gets no plan tools and no plan instructions', () => {
-  assert.match(server, /const plansOn = \(client\) => client\?\.planSystem === 'docket';/);
+  assert.equal(plansOnFor('folder'), false);
+  assert.equal(planUse({ on: plansOnFor('folder'), own: true }), 'none');
+  assert.match(server, /const plansOn = \(client\) => !!client && plansOnFor\(client\.planSystem\);/);
   assert.match(server, /\.\.\.\(plansOn\(clientById\(parent\.client\)\) \? planToolDefs\(parent\) : \[\]\)/);
-  assert.match(server, /const planRules = \(s\) => plansOn\(clientById\(s\.client\)\) \? optionalPrompt\('plans\.md'\) : '';/);
+  assert.match(server, /if \(!plansOn\(client\) \|\| !s\.id\) return 'none';/);
 });
 
 test('the setup wizard offers the plan folder, with its folder', () => {
-  assert.match(page, /plans: 'none',/);
+  assert.match(page, /plans: 'docket',/);
   assert.match(page, /planSystem: w\.plans, \.\.\.\(w\.plans === 'folder'/);
 });
