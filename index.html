@@ -916,6 +916,10 @@ header.top #reloadAllBtn { padding: 4px 8px; color: var(--warn); }
 body:has(> .start-banner:not([hidden])) { grid-template-rows: auto auto 1fr; }
 .start-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 14px; background: var(--accent); color: var(--on-accent); font-size: 13px; border-radius: var(--card-r); }
 .start-banner[hidden] { display: none; }
+/* A popped-out session (#611): its own window with just the chat and the typing box. */
+html.popout body { grid-template-rows: 1fr; }
+html.popout .app { grid-template-columns: 1fr; }
+html.popout header.top, html.popout .start-banner, html.popout aside.side, html.popout aside.tasks, html.popout #sessMenuBtn { display: none !important; }
 .start-banner span { flex: 1 1 320px; }
 .start-banner button { background: var(--on-accent); color: var(--accent); border-color: var(--on-accent); }
 .start-banner button.primary { font-weight: 600; }
@@ -1167,6 +1171,11 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
+// A popped-out session (#611): /?popout=<id>&client=<desk> shows only that session's chat, and stays on it. It reads
+// the same storage as the main window but never writes which desk or session is open, so neither changes the other.
+const POPOUT = (() => { const q = new URLSearchParams(location.search); return q.get('popout') ? { id: q.get('popout'), client: q.get('client') || '' } : null; })();
+if (POPOUT) document.documentElement.classList.add('popout');
+const popOut = (id, client) => window.open('/?' + new URLSearchParams({ popout: id, client }), 'docket-popout-' + id, 'width=760,height=900');
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // ---------- platform ----------
 // A Mac names things differently and has its own keys. The page reads which computer it is on once, and every
@@ -1285,6 +1294,7 @@ const HELP = [
     ['ctx-parent', 'Move under…', 'List it under another session'],
     ['ctx-top', 'Make top level', 'Stop listing it under another session'],
     ['ctx-auto-group', 'Auto Group…', 'Let Claude read the session and suggest a group for it'],
+    ['ctx-popout', 'Pop out', 'Open this session in its own window: just its chat and the typing box, live. It stays on this session while this window carries on as usual.'],
     ['ctx-terminal', 'Terminal…', 'Open a terminal in this session\'s folder, signed in as this desk'],
     ['ctx-editor-vscode', 'Open in VS Code', 'Open the folder this session works in, in VS Code'],
     ['ctx-editor-vs', 'Open in Visual Studio', 'Open the folder this session works in, in Visual Studio: its solution if it has just one, else the folder'],
@@ -1940,6 +1950,7 @@ async function init() {
   const firstVisit = store.get('client', null) === null && !store.get('tourSeen', false);
   S.clients = await api('/api/clients?quick=1');
   loadPaused();
+  if (POPOUT) return initPopout();
   if (!S.clients.length) { // a new install: no desk yet, so set one up before anything else
     $('booting').style.display = 'none';
     const id = await companyWizard({ first: true });
@@ -1975,6 +1986,18 @@ async function init() {
   }).catch(() => {});
   api('/api/editors').then((r) => { S.editors = r.editors || []; renderHead(); }).catch(() => {});
 }
+// The pop-out window: its desk and session, live, and none of the main window's first-visit steps.
+async function initPopout() {
+  S.client = S.clients.some((c) => c.id === POPOUT.client) ? POPOUT.client : S.clients[0]?.id;
+  await Promise.all([loadSessions(S.client), loadGroups(S.client)]);
+  showAccent(); renderClients();
+  await openSession(POPOUT.id).catch(() => {});
+  connect();
+  setInterval(tick, 1000);
+  $('booting').classList.add('done');
+  setTimeout(() => $('booting').remove(), 300);
+  api('/api/editors').then((r) => { S.editors = r.editors || []; renderHead(); }).catch(() => {});
+}
 function waitingCount(clientId) {
   const liveIds = new Set(Object.values(S.live).filter((s) => s.client === clientId).map((s) => s.id));
   return Object.values(S.live).filter((s) => s.client === clientId && needsYou(s)).length
@@ -1993,7 +2016,7 @@ function renderClients() {
   const name = S.clients.find((c) => c.id === S.client)?.name;
   // The app window's title bar already starts with "Docket - ", so only a browser tab needs the name at the end.
   const asApp = matchMedia('(display-mode: standalone), (display-mode: window-controls-overlay)').matches;
-  document.title = `${total ? `(${total}) ` : ''}${name || ''}${asApp && name ? '' : `${name ? ' · ' : ''}Docket`}`;
+  document.title = POPOUT ? `${current()?.title || 'Session'} · ${name || 'Docket'}` : `${total ? `(${total}) ` : ''}${name || ''}${asApp && name ? '' : `${name ? ' · ' : ''}Docket`}`;
   renderNavBtns(); // a list that just arrived can show a step was deleted
   drawRemoteIcon(); drawBrandIcons();
 }
@@ -4088,6 +4111,7 @@ function sessionMenuItems(f) {
   if (f.unreadRuns) items.push(['read', f.unreadRuns > 1 ? `Mark ${f.unreadRuns} runs read` : 'Mark read']);
   else if (!f.archived && !f.needsYou && !f.working) items.push(['unread', 'Mark unread']);
   items.push(['hr']);
+  items.push(['popout', 'Pop out']);
   if (f.cwd) items.push(['terminal', 'Terminal…']);
   if (f.cwd) for (const ed of f.editors || []) items.push([`editor-${ed.id}`, `Open in ${ed.name}`]); // the ones installed here
   items.push(['timeline', 'Timeline in the chat', { checked: f.timeline }]);
@@ -4159,6 +4183,7 @@ function openSessionMenu(id, at) {
     closeMenu();
     const open = async () => { if (id !== S.selected) await openSession(id); };
     if (act === 'newunder') newDraft(null, id);
+    if (act === 'popout') popOut(id, S.client);
     if (act === 'archive') await archive(id, true, otherRuns.map((k) => k.id));
     if (act === 'archive-all') await archive(id, true, [...otherRuns, ...kids].map((k) => k.id));
     if (act === 'restore') await archive(id, false);
@@ -4429,6 +4454,7 @@ let viewNav = false; // true while Back or Forward opens a step, so it is not ad
 const viewChain = () => { const v = store.get('viewChain', null); return v && Array.isArray(v.list) ? v : { list: [], pos: -1 }; };
 const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
 function recordView(c, id) {
+  if (POPOUT) return; // Back, Forward and Recently viewed are the main window's
   const fromDraft = S.viewFromDraft; S.viewFromDraft = false;
   const ch = viewChain(), cur = ch.list[ch.pos];
   if (!viewNav) {
@@ -6063,6 +6089,7 @@ async function reloadClients() {
 const current = () => S.live[S.selected] || (S.history[S.client] || []).find((r) => r.id === S.selected);
 // parentId: start it under that session, like one the session started itself (folder defaults to its folder).
 function newDraft(groupId = null, parentId = null) {
+  if (POPOUT && S.selected) return; // a pop-out stays on its session (it only shows a draft once that session is deleted)
   closePreview();
   if (!leaveOk()) return;
   recordView(S.client, 'draft');
@@ -6158,12 +6185,13 @@ document.addEventListener('click', async (e) => {
 $('newBtn').onclick = () => (S.mode === 'schedules' ? openSchedule(null) : newDraft());
 
 async function openSession(id) {
+  if (POPOUT && id !== POPOUT.id) return; // a pop-out stays on its session
   if (pv && pv.sessionId !== id) closePreview();
   if (!leaveOk()) return;
   if (S.hold?.id !== id) S.hold = takeHold(S.live[id] || (S.history[S.client] || []).find((r) => r.id === id), HOLD_MEASURES) || { id };
   recordView(S.client, id);
   schedDirty = false; S.schedOpen = null; $('tasks').classList.remove('wide'); $('composer').hidden = false;
-  S.selected = id; store.set('sel:' + S.client, id);
+  S.selected = id; if (!POPOUT) store.set('sel:' + S.client, id);
   S.events = []; S.tasks = {}; swapBox(); setSuggestion('');
   tl.id = null; // the timeline is read again with the chat
   closeProfile();
@@ -6253,6 +6281,7 @@ function renderHead() {
   renderCfgBanner();
   if (S.schedOpen) return renderScheduleHead();
   const s = current(); if (!s) return;
+  if (POPOUT) renderClients(); // the window's title is the session's
   const st = !s.live && s.archived ? ['', 'archived'] : !s.live ? (s.midReply ? ['needs', 'interrupted'] : s.elsewhere ? ['running', 'may be running in another app'] : ['', 'saved']) : s.compactingSince ? ['running', 'compacting the conversation'] : needsYou(s) ? ['needs', s.status === 'requires_action' ? 'needs your answer' : 'needs you'] : inBackground(s) ? ['running', s.runningTasks ? `working in background (${s.runningTasks})` : 'working in background'] : [s.status, s.status];
   $('head').innerHTML = `<span class="dot ${dotClass(s)}"${dotTip(s)}></span><h1 id="title" title="Click to rename">${esc(s.title || 'Untitled')}</h1>
     ${multiBrand() ? `<span class="brand-pill"${tip('brand-pill')}>${brandLogo(s.engine || 'claude')}${esc(brand(s))}</span>` : ''}
@@ -7674,6 +7703,7 @@ function planCatchUp(at) {
 }
 
 function notify(s) {
+  if (POPOUT) return; // the main window chimes and notifies, once
   if (looking() && s.id === S.selected) return chimeLog(s, 'skipped: you are looking at it');
   if (isMuted(s.id)) chimeLog(s, 'skipped: muted for this conversation');
   else beepFor(s);

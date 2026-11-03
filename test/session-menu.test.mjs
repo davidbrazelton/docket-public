@@ -39,8 +39,8 @@ test('every action from the old header and the old right-click menu is in it', (
 });
 
 test('items come and go with the session', () => {
-  assert.deepEqual(keys({}), ['newunder', 'hr', 'archive', 'unread', 'hr', 'terminal', 'timeline', 'chime', 'hr', 'group', 'parent', 'auto-group', 'rename', 'hr', 'end', 'delete']);
-  assert.deepEqual(keys({ archived: true, live: false, cwd: '' }), ['restore', 'hr', 'timeline', 'chime', 'hr', 'group', 'rename', 'hr', 'delete']);
+  assert.deepEqual(keys({}), ['newunder', 'hr', 'archive', 'unread', 'hr', 'popout', 'terminal', 'timeline', 'chime', 'hr', 'group', 'parent', 'auto-group', 'rename', 'hr', 'end', 'delete']);
+  assert.deepEqual(keys({ archived: true, live: false, cwd: '' }), ['restore', 'hr', 'popout', 'timeline', 'chime', 'hr', 'group', 'rename', 'hr', 'delete']);
   assert.ok(!keys({ midReply: true }).includes('continue'), 'Continue moved to the banner over the session');
   assert.ok(!keys({ working: true }).includes('unread'));
   assert.ok(keys({ parentId: 'p' }).includes('top'));
@@ -50,6 +50,19 @@ test('items come and go with the session', () => {
   assert.equal(items.find(([k]) => k === 'read')[1], 'Mark 3 runs read');
   const k = items.map(([key]) => key);
   assert.equal(k.indexOf('archive-all') + 1, k.indexOf('archive'), 'Archive with the ones started from it comes right before Archive');
+});
+
+test('Pop out opens the session in its own window, which stays on it (#611)', () => {
+  assert.ok(keys({}).includes('popout') && keys({ archived: true, live: false }).includes('popout'));
+  assert.ok(page.includes("if (act === 'popout') popOut(id, S.client);"));
+  assert.ok(page.includes("window.open('/?' + new URLSearchParams({ popout: id, client }), 'docket-popout-' + id,"), 'one window per session, so a second Pop out brings it forward');
+  // The pop-out never moves to another session, and never writes which desk or session the main window opens.
+  assert.ok(page.includes('async function openSession(id) {\n  if (POPOUT && id !== POPOUT.id) return;'));
+  assert.ok(page.includes("S.selected = id; if (!POPOUT) store.set('sel:' + S.client, id);"));
+  assert.ok(page.includes('function recordView(c, id) {\n  if (POPOUT) return;'));
+  assert.ok(page.includes('if (POPOUT) return initPopout();'));
+  assert.ok(!/async function initPopout\(\) \{[^]*?store\.set\('client'[^]*?\n\}/.test(page.slice(page.indexOf('async function initPopout'), page.indexOf('function waitingCount'))));
+  assert.ok(page.includes('html.popout aside.side, html.popout aside.tasks'));
 });
 
 test('the editors installed here follow Terminal, and need a folder', () => {
