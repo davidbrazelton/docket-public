@@ -56,6 +56,7 @@ import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPr
   parseIssueUrl, branchIssue, githubTicket, CLOSES, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, sessionBranches,
   prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe, ticketFinished } from './links.mjs';
 import { currentBranch } from './git-head.mjs';
+import { ARTIFACT_URL, artifactPublished } from './artifacts.mjs';
 import { copyPlan, runCopy, copyGroups, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
 import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
 import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox } from './crossings.mjs';
@@ -942,6 +943,10 @@ function convertMessage(s, msg, { live: isLive, textCounter }) {
 function applyToolResult(s, ev) {
   const tev = [...s.events].reverse().find((e) => e.k === 'tool' && e.id === ev.id);
   if (tev) { tev.status = ev.error ? 'error' : 'done'; tev.result = ev.text; }
+  // A page the session published a file to becomes that file's link, as Publish as artifact keeps it (#608).
+  const pub = tev?.name === 'Artifact' && artifactPublished(tev.input, ev.text, ev.error);
+  const client = pub && isFullPath(pub.path) && clientById(s.client);
+  if (client) keepArtifactLink(client, pub.path, pub.url);
   broadcast({ t: 'tool_result', id: s.id, ev });
   const task = s.tasks.get(ev.id);
   // A subagent sent to the background answers its call at once; it keeps running until its notification.
@@ -5761,10 +5766,10 @@ async function sessionFiles(client, id) {
       if (e.name === 'Write') add(inp.file_path, OUTPUT_EXT.has(extOf(inp.file_path || '')) ? 'written' : 'edited');
       else if (['Edit', 'MultiEdit', 'NotebookEdit'].includes(e.name)) add(inp.file_path || inp.notebook_path, 'edited');
       else if (e.name === 'SendUserFile') for (const p of inp.files || []) add(p, 'presented');
-      else if (e.name === 'Artifact') for (const p of [inp.file_path, ...(inp.file_paths || [])]) if (p) {
-        add(p, 'presented');
-        const url = inp.url || String(e.result || '').match(ARTIFACT_URL)?.[0];
-        if (url && isFullPath(p)) published.set(path.resolve(p).toLowerCase(), url);
+      else if (e.name === 'Artifact') {
+        for (const p of [inp.file_path, ...(inp.file_paths || [])]) if (p) add(p, 'presented');
+        const pub = artifactPublished(inp, e.result, e.status === 'error');
+        if (pub && isFullPath(pub.path)) published.set(path.resolve(pub.path).toLowerCase(), pub.url);
       }
       else if (e.name === 'mcp__portal__present_file') for (const p of inp.paths || []) add(p, 'presented');
       const texts = [inp.command, e.result].filter((x) => typeof x === 'string');
@@ -5799,7 +5804,7 @@ async function sessionFiles(client, id) {
 // A file on a session's Files list becomes a claude.ai artifact page only when the person picks Publish as
 // artifact (artifact-new-guard turns down a session's own new pages). Docket publishes it in a short run of its
 // own, so the session's chat is not touched, and keeps the page's link per file in state.artifacts.
-const ARTIFACT_URL = /https:\/\/claude\.ai\/artifact\/[A-Za-z0-9_-]+/;
+// A session's own Artifact publish to a page (a monthly report updating its page) is kept there too (#608).
 const ARTIFACT_EXT = new Set(['html', 'htm', 'md', 'markdown']);
 const canArtifact = (client) => !!client && !isBedrock(client) && !gatewayFor(client, 'claude');
 // The page a file was published to: Docket's own record first, else what a session's Artifact call said.
@@ -5808,6 +5813,11 @@ function artifactOf(client, p, published) {
   if (rec?.gone) return {}; // its page was deleted: the next publish makes a new one
   const url = rec?.url || published?.get(key);
   return url ? { artifact: url } : {};
+}
+// Keeps the page a file was just published to as that file's link, for every session of the desk.
+function keepArtifactLink(client, filePath, url) {
+  ((state.artifacts ||= {})[client.id] ||= {})[path.resolve(filePath).toLowerCase()] = { url, at: Date.now() };
+  saveState();
 }
 async function publishArtifact(client, sessionId, filePath) {
   if (!canArtifact(client)) throw new Error('Artifacts need a claude.ai sign-in, so this desk (on Amazon Bedrock or a gateway) cannot publish them');
@@ -5858,8 +5868,7 @@ async function publishArtifact(client, sessionId, filePath) {
     throw new Error('Its artifact page no longer exists. Publish as artifact again to make a new page.');
   }
   if (!got) throw new Error(failed || 'The artifact was not published');
-  record[f.path.toLowerCase()] = { url: got, at: Date.now() };
-  saveState();
+  keepArtifactLink(client, f.path, got);
   return { url: got };
 }
 
