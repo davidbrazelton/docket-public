@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { copyPlan, runCopy, rewritePaths, namesHome, outsidePaths, tomlWithout, copyGroups, copyEntry, needsSignIn, targetProblem, defaultChoices, COPY_ITEMS } from '../copy-company.mjs';
+import { copyPlan, runCopy, rewritePaths, namesHome, outsidePaths, tomlWithout, copyGroups, groupAction, copyEntry, needsSignIn, targetProblem, defaultChoices, COPY_ITEMS } from '../copy-company.mjs';
 
 const win = process.platform === 'win32';
 const put = (file, text) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, text); };
@@ -218,6 +218,19 @@ test('copyGroups: names, colors, folders and order with new ids; archived groups
   let n = 0;
   const g = copyGroups([{ id: 'a', name: 'One', color: '#f00', folder: 'C:/Work/one', createdAt: 1 }, { id: 'b', name: 'Old', archived: true }, { id: 'c', name: 'Two' }], () => 'n' + (++n), 5);
   assert.deepEqual(g, [{ id: 'n1', name: 'One', color: '#f00', folder: 'C:/Work/one', createdAt: 5 }, { id: 'n2', name: 'Two', createdAt: 5 }]);
+});
+
+test('groupAction (#606): the group route takes a copied group\'s id and an app-made one', () => {
+  const copied = copyGroups([{ id: 'a', name: 'One' }])[0].id;
+  assert.match(copied, /^g[0-9a-f]{8}$/);
+  for (const act of ['rename', 'folder', 'archive', 'restore', 'delete']) {
+    assert.deepEqual([...groupAction(`/api/groups/${copied}/${act}`)].slice(1), [copied, act]);
+    assert.deepEqual([...groupAction(`/api/groups/g_1a2b3c4d/${act}`)].slice(1), ['g_1a2b3c4d', act]);
+  }
+  assert.equal(groupAction('/api/groups/order'), null);
+  assert.equal(groupAction('/api/groups/g_1a2b3c4d/explode'), null);
+  assert.equal(groupAction('/api/groups/x123/delete'), null);
+  assert.equal(groupAction('/api/groups/g../delete'), null);
 });
 
 test('copyEntry and needsSignIn: connections same / new / off, desk settings, env and where it came from', () => {

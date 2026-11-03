@@ -3147,24 +3147,27 @@ async function archiveGroup(g) {
   const v = await dialog({ title: `Archive the group "${g.name}"?`, body: `It has ${n} session${n === 1 ? '' : 's'} ${n === 1 ? 'that is' : 'that are'} not archived. Archiving only the group moves ${n === 1 ? 'it' : 'them'} to No group.`
       + (risk ? `<div style="margin-top:8px">Before you archive ${n === 1 ? 'it' : 'them'}:</div>${n === 1 ? `<div>"${esc(members[0].title || 'Untitled')}": ${risk.body}</div>` : risk.body}` : ''),
     buttons: [{ label: 'Cancel', value: null }, { label: 'Archive only the group', value: 'group' }, { label: all, value: 'all', primary: !risk }], stack: !!risk });
-  if (v) await api(`/api/groups/${g.id}/archive`, { client: S.client, withSessions: v === 'all' });
+  if (v) await groupAct(g, 'archive', { withSessions: v === 'all' });
+}
+// One group action on the server; a refusal is shown, not dropped. True when it went through.
+async function groupAct(g, act, body = {}) {
+  try { await api(`/api/groups/${g.id}/${act}`, { client: S.client, ...body }); return true; }
+  catch (err) { alert(err.message); return false; }
 }
 async function deleteGroup(g) {
   const v = await dialog({ title: `Delete the group "${g.name}"?`, body: 'Its sessions stay as they are and become ungrouped. Their costs stay too.', buttons: [{ label: 'Cancel', value: null }, { label: 'Delete group', value: 'ok', primary: true }] });
-  if (v) await api(`/api/groups/${g.id}/delete`, { client: S.client });
+  if (v) await groupAct(g, 'delete');
 }
 async function setGroupFolder(g) {
   const v = await dialog({ title: `Start folder for "${g.name}"`, body: `<input type="text" id="dlgFolder" data-pick="desk" value="${esc(g.folder || '')}" placeholder="${esc(companyFolder())}" aria-label="Start folder"${tip('dlg-folder')}>` + folderHint(),
     buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: 'ok', primary: true }] });
   if (!v) return;
-  try { await api(`/api/groups/${g.id}/folder`, { client: S.client, folder: document.getElementById('dlgFolder').value.trim() }); }
-  catch (err) { alert(err.message); return; }
-  await loadGroups(S.client);
+  if (await groupAct(g, 'folder', { folder: document.getElementById('dlgFolder').value.trim() })) await loadGroups(S.client);
 }
 async function renameGroup(g) {
   const v = await dialog({ title: 'Rename group', body: `<input type="text" id="dlgName" value="${esc(g.name)}" aria-label="Group name"${tip('dlg-name')}>`, buttons: [{ label: 'Cancel', value: null }, { label: 'Rename', value: 'ok', primary: true }] });
   const name = v && document.getElementById('dlgName').value.trim();
-  if (name) await api(`/api/groups/${g.id}/rename`, { client: S.client, name });
+  if (name) await groupAct(g, 'rename', { name });
 }
 function allSessionRows() {
   const liveRows = Object.values(S.live).filter((s) => s.client === S.client && !s.editFor);
@@ -3274,7 +3277,7 @@ $('list').addEventListener('contextmenu', (e) => {
     if (act === 'archive') await archiveGroup(g);
     if (act === 'delete') await deleteGroup(g);
     if (act === 'new') { await newGroup(); renderList(); }
-    if (act === 'restore') await api(`/api/groups/${g.id}/restore`, { client: S.client });
+    if (act === 'restore') await groupAct(g, 'restore');
   };
 }, true);
 let dragGid = null;

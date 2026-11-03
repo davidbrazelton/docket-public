@@ -316,6 +316,11 @@ export function copyGroups(groups = [], newId = () => 'g' + randomUUID().slice(0
   return groups.filter((g) => !g.archived).map((g) => ({ id: newId(), name: g.name, ...(g.color ? { color: g.color } : {}), ...(g.folder ? { folder: g.folder } : {}), createdAt: now }));
 }
 
+// A group action's path, /api/groups/<id>/<action>, matched with the id at [1] and the action at [2], or null. Groups
+// made in the app have 'g_' ids and groups a copy made have 'g' ids (desks copied before #606 hold those too), so the
+// route takes both shapes.
+export const groupAction = (p) => String(p).match(/^\/api\/groups\/(g_?[A-Za-z0-9]+)\/(rename|folder|archive|restore|delete)$/);
+
 // The Docket desk settings a copy takes from its source (the "Docket desk settings" item).
 export const DOCKET_KEYS = ['links', 'docketHooks', 'defaultEngine', 'startGear', 'saveBeforeCompact', 'promptCacheTtl', 'handoffPattern', 'budget', 'color', 'splitWork', 'planSystem', 'planFolder'];
 

@@ -58,7 +58,7 @@ import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPr
 import { currentBranch } from './git-head.mjs';
 import { restDue, restMinutes } from './rest.mjs';
 import { ARTIFACT_URL, artifactPublished } from './artifacts.mjs';
-import { copyPlan, runCopy, copyGroups, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
+import { copyPlan, runCopy, copyGroups, groupAction, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
 import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
 import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox } from './crossings.mjs';
 import { signInFailure, retryText, recheckSignIns } from './signin-errors.mjs';
@@ -7297,7 +7297,7 @@ const server = http.createServer(async (req, res) => {
         groupChanged(client.id);
         return json(res, 200, list);
       }
-      const gm = p.match(/^\/api\/groups\/(g_[\w]+)\/(rename|folder|archive|restore|delete)$/);
+      const gm = groupAction(p);
       const g = gm && groupById(client.id, gm[1]);
       if (!g || req.method !== 'POST') return json(res, 404, { error: 'Unknown group' });
       if (gm[2] === 'rename') { const name = String(b.name || '').trim().slice(0, 60); if (name) g.name = name; }
