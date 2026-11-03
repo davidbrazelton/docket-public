@@ -1062,7 +1062,6 @@ function handleSdkMessage(s, m) {
         if (state.sessions[s.id]?.autoContinued) { delete state.sessions[s.id].autoContinued; saveState(); } // a turn got through: the next cut-off may be continued again
         const h = handoffFromTurn(s.events, clientById(s.client)?.handoffPattern);
         if (h) proposeHandoff(s, h);
-        offerFolder(s).catch((e) => logEvent('folder-check failed', `: ${e.message}`));
       }
       addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err });
       s.stats = statsFor(clientById(s.client), sessionFile(clientById(s.client), s.id)) || s.stats;
@@ -2316,185 +2315,9 @@ async function suggestGroup(client, id) {
   logEvent('auto-group', `${id} best=${best?.name || '-'} new=${newName || '-'} $${cost.toFixed(4)}`);
   return { id, best: best ? { id: best.id, name: best.name } : null, others: others.map((g) => ({ id: g.id, name: g.name })), newName, cost };
 }
-// ---------- which folder a session belongs in ----------
-// A company's top folder (C:\Work\Acme) holds every app, so a session started there does not know which
-// one it is on. Docket knows the likely folders, offers one before the first message (the page matches
-// what is typed) and after the first reply (a fast-model reading), and moves nothing without a click.
 // The folder a path really is: a junction or shortcut folder counts as its target.
 const realKey = (p) => { let r; try { r = fs.realpathSync.native(p); } catch { r = path.resolve(p); } return r.toLowerCase(); };
 const samePath = (a, b) => !!a && !!b && realKey(a) === realKey(b);
-const isCompanyTop = (dir) => CLIENTS.some((c) => samePath(c.folder, dir));
-// The names an app goes by: its CLAUDE.md title and its manifest name (repo names say little: Billing is acme-fin-web).
-const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-// A company's own name, and with several words also its first word and its initials (Acme Widget Co: acme, awc):
-// what its titles and repo names start with.
-const companyWords = () => CLIENTS.flatMap((c) => {
-  const words = String(c.name || '').trim().split(/\s+/).filter(Boolean);
-  if (words.length < 2) return words;
-  return [words.join(' '), ...(words[0].length >= 3 ? [words[0]] : []), words.map((w) => w[0]).join('')];
-});
-function cleanAppName(t) {
-  t = String(t || '').replace(/^#+\s*/, '').replace(/^CLAUDE\.md\s*[—–-]\s*/i, '');
-  for (const n of companyWords()) t = t.replace(new RegExp(`^${escRe(n)}\\s*[—–-]\\s*`, 'i'), '');
-  const code = t.match(/codename\s+([\w ]+?)\)/i)?.[1];
-  t = t.split(/\s+[—–-]\s+|,|\(/)[0].trim().replace(/^Working on\s+/i, '').replace(/\s+(App\s+|Claude\s+)?(Operating\s+)?Manual$/i, '');
-  return [t, code].filter((x) => x && x.length >= 3 && x.length <= 40 && !/\[|claude\.md|deprecated/i.test(x));
-}
-function appNames(dir) {
-  const out = [];
-  try { const h = fs.readFileSync(path.join(dir, 'CLAUDE.md'), 'utf8').split('\n').slice(0, 8).find((l) => /^#\s/.test(l)); out.push(...cleanAppName(h)); } catch {}
-  try { out.push(...cleanAppName(JSON.parse(fs.readFileSync(path.join(dir, 'manifest.webmanifest'), 'utf8')).name)); } catch {}
-  return out;
-}
-const VAGUE_NAMES = new Set(['claude', 'apps', 'app', 'projects', 'project', 'src', 'test', 'tests', 'work', 'home', 'docs', 'internal', 'secrets', 'handoffs', 'auth']);
-const isVague = (n) => VAGUE_NAMES.has(n.toLowerCase()) || companyWords().some((w) => w.toLowerCase() === n.toLowerCase());
-// Working copies, archives and scratch folders are not where a session belongs.
-const notWorktree = (dir) => !/[\\/]([\w.-]*worktrees?|[\w.-]+-wt|docket-work|[\w.-]*archive[\w.-]*|[\w.-]*scratch[\w.-]*)[\\/]|[\\/]\.claude[\\/]/i.test(dir + path.sep);
-const isRepo = (dir) => { try { return fs.existsSync(path.join(dir, '.git')); } catch { return false; } };
-// A top folder with its own Claude setup (a CLAUDE.md or AGENTS.md, settings, or skills, commands or agents)
-// is where its sessions mean to work: moving one away would leave that setup behind.
-const hasClaudeSetup = (dir) => {
-  const has = (f) => { try { return fs.existsSync(path.join(dir, f)); } catch { return false; } };
-  const filled = (d) => { try { return fs.readdirSync(path.join(dir, d)).length > 0; } catch { return false; } };
-  return ['CLAUDE.md', 'AGENTS.md', '.claude/CLAUDE.md', '.claude/settings.json', '.claude/settings.local.json'].some(has)
-    || ['.claude/skills', '.claude/commands', '.claude/agents'].some(filled);
-};
-// Two "No thanks" on the card in a company and it stops asking there.
-const FOLDER_NO_LIMIT = 2;
-// A company whose top folder is one project (Docket's is its own repo) has nothing to choose between.
-const offersFolders = (c) => !!c?.folder && !isRepo(c.folder) && !hasClaudeSetup(c.folder) && (state.folderNo?.[c.id] || 0) < FOLDER_NO_LIMIT;
-const subdirs = (dir) => { try { return fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory() && !d.name.startsWith('.') && d.name !== 'node_modules').map((d) => path.join(dir, d.name)); } catch { return []; } };
-const knownCache = new Map(); // client id -> { at, list }
-// [{ folder, label, names }]: the git repos up to two levels under the company folder, the company's past
-// session folders, the other companies' folders, and Docket's own. Never the company's own top folder.
-async function knownFolders(client) {
-  const c = knownCache.get(client.id);
-  if (c && Date.now() - c.at < 60000) return c.list;
-  const byPath = new Map();
-  const add = (dir, names, label) => {
-    if (!dir || samePath(dir, client.folder) || !notWorktree(dir)) return;
-    try { if (!fs.statSync(dir).isDirectory()) return; } catch { return; }
-    const key = realKey(dir);
-    const e = byPath.get(key) || byPath.set(key, { folder: path.resolve(dir), label: '', names: [] }).get(key);
-    e.label ||= label || names[0] || path.basename(dir);
-    for (const n of names) if (n && n.length >= 3 && !isVague(n) &&!e.names.some((x) => x.toLowerCase() === n.toLowerCase())) e.names.push(n);
-  };
-  const repoNames = (dir) => {
-    const base = path.basename(dir);
-    const rest = companyWords().reduce((b, n) => b.replace(new RegExp(`^${escRe(n.replace(/\s+/g, '-'))}-`, 'i'), ''), base);
-    const app = appNames(dir);
-    return { label: app[0] || base, names: [...app, base, ...(rest !== base && (rest.includes('-') || rest.length >= 6) ? [rest] : [])] };
-  };
-  if (client.folder) for (const d1 of subdirs(client.folder)) {
-    if (!notWorktree(d1 + path.sep)) continue;
-    if (isRepo(d1)) { const r = repoNames(d1); add(d1, r.names, r.label); continue; }
-    for (const d2 of subdirs(d1)) if (isRepo(d2)) { const r = repoNames(d2); add(d2, r.names, r.label); }
-  }
-  for (const o of CLIENTS) if (o.id !== client.id) add(o.folder, [o.name, path.basename(o.folder || '')], o.name);
-  add(ROOT, ['Docket'], 'Docket');
-  // Past folders last: an old copy of a repo must not take a name from the real one (the page picks the first of equal matches).
-  for (const r of await history(client)) if (r.cwd && !isCompanyTop(r.cwd)) add(r.cwd, [...appNames(r.cwd), path.basename(r.cwd)]);
-  const list = [...byPath.values()].filter((e) => e.names.length).slice(0, 120);
-  knownCache.set(client.id, { at: Date.now(), list });
-  return list;
-}
-// After the first reply of a session started in a company's top folder: a fast-model reading of what it
-// is about, and a card offering the folder when the answer is confident. Once per session.
-async function suggestFolder(client, s) {
-  const folders = await knownFolders(client);
-  if (!folders.length) return null;
-  const says = s.events.filter((e) => (e.k === 'user' || e.k === 'text') && e.text);
-  const first = says.find((e) => e.k === 'user'), reply = says.find((e) => e.k === 'text');
-  const prompt = [
-    'Known folders:', ...folders.map((f, i) => `${i + 1}. ${f.folder} (${f.names.join(', ')})`),
-    '', `Session title: ${s.title || 'Untitled'}`, `First message: ${clip(first?.text, 1500) || '(none)'}`,
-    reply ? `Start of the reply: ${clip(reply.text, 600)}` : '',
-  ].filter(Boolean).join('\n');
-  const system = 'You decide which project folder a work session belongs in. Answer with JSON only, no other text: '
-    + '{"folder": <the number of one listed folder, or null>, "app": "<the short name of that app or project>", "confident": true or false}. '
-    + 'Pick a folder only when the session is clearly about that one project. Use null when it is about several projects, none of them, or general work. '
-    + 'Work on shared rules, standards, the platform as a whole or the desk folder itself is general work: use null for it, even when it names one project.';
-  const q = query({ prompt, options: {
-    env: envFor(client), ...claudeSettings(client), cwd: client.folder, model: modelFor(client, 'claude', AUTO_GROUP_MODEL), systemPrompt: system,
-    tools: [], mcpServers: {}, strictMcpConfig: true, settingSources: [], maxTurns: 1, persistSession: false,
-  } });
-  let text = '', cost = 0;
-  try {
-    for await (const m of q) if (m.type === 'result') { cost = m.total_cost_usd || 0; if (m.subtype !== 'success') throw new Error(m.errors?.[0] || 'The reading did not finish'); text = m.result || ''; }
-  } finally { q.close(); }
-  const j = JSON.parse((text.match(/\{[\s\S]*\}/) || [])[0] || 'null');
-  const pick = j && j.confident === true && Number.isInteger(Number(j.folder)) ? folders[Number(j.folder) - 1] : null;
-  logEvent('folder-check', `${s.id} ${pick ? pick.folder : '-'} $${cost.toFixed(4)}`);
-  return pick ? { folder: pick.folder, app: clip(j.app, 40) || pick.label } : null;
-}
-async function offerFolder(s) {
-  const rec = state.sessions[s.id], client = clientById(s.client);
-  if (!rec || !client || rec.folderChecked || keepsChat(s.engine) || rec.scheduleId || rec.editFor || rec.oneShot || !isCompanyTop(s.cwd) || !offersFolders(client)) return;
-  rec.folderChecked = true; saveState();
-  const pick = await suggestFolder(client, s);
-  if (!pick || samePath(pick.folder, s.cwd) || live.get(s.id) !== s) return;
-  const g = groupById(client.id, effectiveGroup(client, s.id));
-  const ev = { k: 'folder-offer', id: 'folder_' + randomUUID().slice(0, 8), folder: pick.folder, app: pick.app, from: path.resolve(s.cwd), state: 'open',
-    ...(g && !g.folder ? { groupId: g.id, groupName: g.name } : {}) };
-  const anchor = [...s.events].reverse().find((e) => e.k === 'text')?.text?.slice(0, 200) || '';
-  rec.folderCard = { anchor, ev };
-  saveState();
-  addEvent(s, ev);
-  pushSession(s);
-}
-// Claude Code files a conversation under its folder's name, so a move takes the file along.
-const projectDirName = (dir) => { const t = dir.replace(/[^a-zA-Z0-9]/g, '-'); return t.length <= 200 ? t : null; };
-async function renameRetrying(from, to) {
-  for (let tries = 0; ; tries++) { // a file just let go of can stay locked for a moment on Windows
-    try { await fs.promises.rename(from, to); return; }
-    catch (e) { if (tries >= 20) throw new Error(`Could not move the conversation file: ${e.message}`); await new Promise((r) => setTimeout(r, 250)); }
-  }
-}
-// Moves a session that is not mid-reply: stops it, moves its conversation file to the new folder's place,
-// and picks it up again there. setGroupFolder also makes that folder its group's start folder.
-async function moveSession(client, id, folder, { setGroupFolder = false, card = '' } = {}) {
-  const dir = checkFolder(folder);
-  const rec = state.sessions[id] ||= { client: client.id };
-  if (rec.client && rec.client !== client.id) throw new Error("That session is not one of this desk's sessions");
-  { const e = rec.engine || live.get(id)?.engine; if (keepsChat(e)) throw new Error(`${BRANDS[e]?.name || e} sessions cannot be moved yet`); }
-  const s = live.get(id);
-  if (s && (['starting', 'running', 'requires_action'].includes(s.status) || runningTasks(s) > 0)) throw new Error('It is still working. Move it once it has finished its reply.');
-  filesCache.delete(client.id);
-  const file = sessionFile(client, id);
-  if (!file) throw new Error('Its conversation file was not found');
-  const name = projectDirName(dir);
-  if (!name) throw new Error('That folder path is too long to move a session into');
-  const from = path.resolve(s?.cwd || rec.cwd || sessionFolder(client, id) || client.folder);
-  const events = s ? s.events.slice() : null;
-  if (s) {
-    s.input.close(); s.query.close(); live.delete(id); markRunning(id, false);
-    await Promise.race([s.finished, new Promise((r) => setTimeout(r, 15000))]);
-  }
-  const destDir = path.join(client.home, 'projects', name);
-  if (path.resolve(path.dirname(file)).toLowerCase() !== destDir.toLowerCase()) {
-    await fs.promises.mkdir(destDir, { recursive: true });
-    await renameRetrying(file, path.join(destDir, id + '.jsonl'));
-    const side = file.slice(0, -6); // its folder of agent logs and tool results, when it has one
-    if (fs.existsSync(side)) await renameRetrying(side, path.join(destDir, id)).catch((e) => logEvent('move: side folder stayed', e.message));
-  }
-  filesCache.delete(client.id); historyCache.delete(client.id); knownCache.delete(client.id);
-  rec.cwd = dir; rec.movedTo = dir;
-  rec.moveNote = `(From Docket: the user moved this session from ${from} to ${dir}. Work in ${dir} from now on; earlier commands ran in ${from}.)`;
-  if (setGroupFolder) {
-    const g = groupById(client.id, effectiveGroup(client, id));
-    if (g && !g.folder) { g.folder = dir; groupChanged(client.id); }
-  }
-  const ev = rec.folderCard?.ev;
-  if (ev && (!card || ev.id === card)) Object.assign(ev, { state: setGroupFolder ? 'moved-group' : 'moved', folder: dir });
-  saveState();
-  const next = startSession({ clientId: client.id, cwd: dir, title: rec.title, resumeId: id, settings: rec.settings || {} });
-  next.events = events || await loadTranscript(client, id);
-  addEvent(next, { k: 'note', text: `Moved to ${dir}` });
-  if (ev) updateCard(next, ev);
-  pushSession(next);
-  logEvent('moved session', `${id}: ${from} -> ${dir}`);
-  return next;
-}
 // A group's cost: each member session's own cost (children are members too, so nothing counts twice).
 async function groupCost(client, gid) {
   const g = groupById(client.id, gid);
@@ -4816,7 +4639,7 @@ async function bringInView(client) {
 }
 // After a copy or an undo: the session list, search and costs read the company's home again, without a restart.
 function bringInChanged(client) {
-  filesCache.delete(client.id); historyCache.delete(client.id); knownCache.delete(client.id);
+  filesCache.delete(client.id); historyCache.delete(client.id);
   buildHistory(client).then(() => broadcast({ t: 'history-ready', client: client.id })).catch(() => {});
   refreshText(client).catch(() => {});
   sweepUsage().catch(() => {});
@@ -6248,7 +6071,7 @@ async function loadTranscript(client, id) {
     historyCache.delete(client.id); broadcast({ t: 'history-ready', client: client.id });
   }
   if (rec?.unsent) events.push(unsentNote(rec.unsent));
-  return weaveCards(events, [...(rec?.handoffs || []), ...(rec?.folderCard ? [rec.folderCard] : []), ...(rec?.cards || [])]).slice(-MAX_EVENTS);
+  return weaveCards(events, [...(rec?.handoffs || []), ...(rec?.cards || [])]).slice(-MAX_EVENTS);
 }
 
 // ---------- a session's Timeline and a company's profile page (show only; see profile.mjs) ----------
@@ -7438,11 +7261,6 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { client: client.id, day, cost, budget: client.budget || null, agent, wait, user, added, removed });
     }
     if (req.method === 'GET' && p === '/api/usage/report') return json(res, 200, usageReport()); // the Usage page
-    if (req.method === 'GET' && p === '/api/folders/known') { // ?client=: folders a new session may belong in
-      const client = clientById(url.searchParams.get('client'));
-      if (!client) return json(res, 400, { error: 'Unknown client' });
-      return json(res, 200, { tops: CLIENTS.filter(offersFolders).map((c) => c.folder), offers: offersFolders(client), folders: await knownFolders(client) });
-    }
     if (req.method === 'GET' && p === '/api/terminal/folder') { // ?client=&session=: where that session's terminal starts
       const client = clientById(url.searchParams.get('client'));
       if (!client) return json(res, 400, { error: 'Unknown client' });
@@ -7711,7 +7529,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, summary(s));
     }
     if (await profileRoutes(req, res, url, p) !== false) return;
-    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|moveto|auto-group|title-suggestion|unread|delete|task-done|reload|move|folder-offer|use-plan|plan-offer)$/);
+    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|moveto|auto-group|title-suggestion|unread|delete|task-done|reload|use-plan|plan-offer)$/);
     if (m) {
       const [, id, action] = m;
       if (!reattachDone && !live.has(id) && state.sessions[id]?.running) await settledOr(reattached, 20000); // it may be on its way back
@@ -7754,11 +7572,6 @@ const server = http.createServer(async (req, res) => {
         try { return json(res, 200, await suggestGroup(client, top)); }
         catch (e) { return json(res, 502, { error: `Could not read the session: ${e.message}` }); }
       }
-      if (action === 'move' && req.method === 'POST') { // { folder, setGroupFolder, card }: work in another folder from now on
-        if (!client) return json(res, 404, { error: 'Unknown session' });
-        try { return json(res, 200, summary(await moveSession(client, id, b.folder, { setGroupFolder: !!b.setGroupFolder, card: b.card || '' }))); }
-        catch (e) { return json(res, 400, { error: e.message }); }
-      }
       if (action === 'use-plan' && req.method === 'POST') { // { card }: Use a plan for this work (the session menu, or the card's button)
         if (!client) return json(res, 404, { error: 'Unknown session' });
         try { await usePlan(client, id, b.card || ''); return json(res, 200, { ok: true }); }
@@ -7767,16 +7580,6 @@ const server = http.createServer(async (req, res) => {
       if (action === 'plan-offer' && req.method === 'POST') { // { card }: Not now on the card that offers a plan
         try { dismissPlanOffer(id, b.card); return json(res, 200, { ok: true }); }
         catch (e) { return json(res, 400, { error: e.message }); }
-      }
-      if (action === 'folder-offer' && req.method === 'POST') { // { card }: No thanks
-        const ev = state.sessions[id]?.folderCard?.ev;
-        if (!ev || ev.id !== b.card || ev.state !== 'open') return json(res, 400, { error: 'That card is no longer open' });
-        ev.state = 'dismissed';
-        const cid = state.sessions[id].client || client?.id;
-        if (cid) (state.folderNo ||= {})[cid] = (state.folderNo[cid] || 0) + 1;
-        saveState();
-        if (s) updateCard(s, ev);
-        return json(res, 200, { ok: true });
       }
       if (action === 'group') {
         if (!client) return json(res, 404, { error: 'Unknown session' });

@@ -254,8 +254,6 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .pick > .pick-btn { flex: none; white-space: nowrap; padding: 3px 8px; }
 .pick > .pick-btn[hidden] { display: none; }
 .ctx .pick > .pick-btn { display: inline-block; width: auto; border: 1px solid var(--line); border-radius: 8px; } /* not a menu item in the terminal box */
-.folder-chip { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; padding: 4px 8px; border: 1px solid var(--accent, #2563eb); border-radius: 6px; }
-.folder-chip button { font-size: 12px; padding: 2px 8px; width: auto; }
 .transcript { flex: 1; overflow: auto; padding: 18px 0 30px; }
 .last-msg { display: block; width: 100%; text-align: left; border: none; border-bottom: 1px solid var(--line); border-radius: 0; background: var(--panel-2); padding: 5px 18px; font-size: 13px; line-height: 1.4; color: var(--text); cursor: pointer; }
 .last-msg[hidden] { display: none; }
@@ -1349,9 +1347,6 @@ const HELP = [
   ['The open session (middle)', [
     ['title', 'The title', 'Click to rename'],
     ['draft-title', 'Title (optional)', 'A title for the new session. You can leave it blank.'],
-    ['fchip-use', 'Use it', 'Start the new session in the folder named here'],
-    ['fchip-group', 'Use it for every new session in a group', 'Sessions started in this group will work in this folder'],
-    ['fchip-no', '✕ on a folder suggestion', 'Keep this folder'],
     ['last-msg', 'Your last message', 'Jump to this message in the conversation'],
     ['copy-reply', 'Copy reply', 'Copy this whole reply'],
     ['tl-filters', '🕘 Filters', 'Choose which kinds of steps from the session\'s record show in the chat'],
@@ -1374,9 +1369,6 @@ const HELP = [
     ['hoff-here', 'Keep going here', 'Keep working in this session'],
     ['hoff-archive', 'Archive it', 'Archive this session now that a new one has taken over'],
     ['hoff-keep', 'Keep it', 'Leave this session where it is'],
-    ['fmove-move', 'Move it', 'Move this session to the folder for the app it is working on'],
-    ['fmove-group', 'Move it and make it the start folder', 'Move this session to that folder, and start every new session in its group there too'],
-    ['fmove-no', 'No thanks', 'Keep this session in the folder it is in'],
     ['tsug-apply', 'Apply', 'Use the suggested title for this session'],
     ['poffer-use', 'Use a plan', 'Tell this session to make a plan for its work, so you can follow its pieces in the Plan section'],
     ['poffer-no', 'Not now', 'No plan for this session. Docket does not offer one here again; the session menu still has Use a plan for this work'],
@@ -6302,7 +6294,7 @@ function newDraft(groupId = null, parentId = null) {
   S.selected = 'draft'; S.events = []; S.tasks = {}; swapBox(); setSuggestion(''); renderComposerBar();
   closeProfile();
   const parent = parentId && (S.live[parentId] || (S.history[S.client] || []).find((r) => r.id === parentId));
-  S.draftParent = parent ? parent.id : null; S.chipNo = null;
+  S.draftParent = parent ? parent.id : null;
   S.draftGroup = parent ? '__parent' : groupId && groupOf(groupId) ? groupId : ''; // a group id, '' (no group) or '__parent' (follow it)
   renderComposerBar(); // its brand defaults to the parent's
   const c = S.clients.find((x) => x.id === S.client);
@@ -6315,8 +6307,6 @@ function newDraft(groupId = null, parentId = null) {
     ? `<div class="empty">New session under "${esc(parent.title || 'Untitled')}".<br>Type the first message below. Its finished turns will go to that session.</div>`
     : `<div class="empty">New ${esc(c.name)} session.<br>Type the first message below.</div>`;
   renderTasks(); renderList(); $('input').focus();
-  $('draftFolder').addEventListener('input', () => folderChip());
-  loadKnownFolders().then(() => folderChip());
 }
 // The draft's group picker: the group it starts in, picked before it starts. Under a session it follows that
 // session's group unless another is picked.
@@ -6339,53 +6329,8 @@ document.addEventListener('change', async (e) => {
   e.target.outerHTML = draftGroupPicker(parent);
   const box = $('draftFolder');
   if (box && normPath(box.value) === normPath(was)) box.value = startFolder(v);
-  folderChip();
 });
-// a new session about to start in a company's top folder (or in a group with no start folder) whose
-// first message names an app or folder Docket knows gets a one-click "Work in <folder>?" chip.
-S.known = {};
-async function loadKnownFolders() {
-  const k = S.known[S.client];
-  if (k && Date.now() - k.at < 60000) return;
-  try { S.known[S.client] = { at: Date.now(), ...(await api(`/api/folders/known?client=${S.client}`)) }; } catch {}
-}
 const normPath = (p) => String(p || '').trim().replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
-const nameRe = (n) => new RegExp(`(^|[^a-z0-9])${n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/[\s_-]+/g, '[\\s_-]?')}($|[^a-z0-9])`);
-// The known folder whose longest name appears in the text, or null.
-function matchFolder(text) {
-  const k = S.known[S.client];
-  let best = null, len = 0;
-  for (const f of k?.folders || []) for (const n of f.names) if (n.length > len && nameRe(n).test(text.toLowerCase())) { best = f; len = n.length; }
-  return best;
-}
-function folderChip() {
-  const box = $('draftFolder'), old = $('folderChip');
-  if (S.selected !== 'draft' || !box || S.draftParent) { old?.remove(); return; }
-  const k = S.known[S.client], g = S.draftGroup && groupOf(S.draftGroup);
-  const cur = normPath(box.value);
-  const atTop = (k?.tops || []).some((t) => normPath(t) === cur);
-  const f = k?.offers !== false && (atTop || (g && !g.folder)) && matchFolder($('input').value);
-  if (!f || normPath(f.folder) === cur || S.chipNo === f.folder) { old?.remove(); return; }
-  const html = `<span id="folderChip" class="folder-chip">Work in <b>${esc(f.label)}</b> (${esc(f.folder)})?`
-    + `<button type="button" data-chip="use"${tip('fchip-use')}>Use it</button>`
-    + (g && !g.folder ? `<button type="button" data-chip="group"${tip('fchip-group')}>Use it for every new session in "${esc(g.name)}"</button>` : '')
-    + `<button type="button" data-chip="no"${tip('fchip-no')} aria-label="Keep this folder">✕</button></span>`;
-  if (old) old.outerHTML = html; else box.closest('.draft-fields').insertAdjacentHTML('beforeend', html);
-  $('folderChip').dataset.folder = f.folder;
-}
-let chipTimer = null;
-$('input').addEventListener('input', () => { if (S.selected === 'draft') { clearTimeout(chipTimer); chipTimer = setTimeout(folderChip, 250); } });
-document.addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-chip]'); if (!b) return;
-  const folder = $('folderChip').dataset.folder;
-  if (b.dataset.chip === 'no') { S.chipNo = folder; return folderChip(); }
-  if (b.dataset.chip === 'group') {
-    try { await api(`/api/groups/${S.draftGroup}/folder`, { client: S.client, folder }); await loadGroups(S.client); }
-    catch (err) { return alert(err.message); }
-  }
-  $('draftFolder').value = folder;
-  folderChip();
-});
 $('newBtn').onclick = () => (S.mode === 'schedules' ? openSchedule(null) : newDraft());
 
 async function openSession(id) {
@@ -6558,13 +6503,6 @@ function eventHtml(ev) {
           + (ev.archive === 'offered' ? `<div class="sbtn"><span class="hint">Archive this session now?</span><button class="primary" data-hoff="${esc(ev.id)}" data-act="archive"${tip('hoff-archive')}>Archive it</button><button data-hoff="${esc(ev.id)}" data-act="keep"${tip('hoff-keep')}>Keep it</button></div>`
             : `<div class="sbtn hint">${ev.archive === 'archived' ? 'This session was archived' : 'This session was kept'}</div>`);
       return `<div class="scard ${st === 'open' || ev.archive === 'offered' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Hand off to a fresh session?${earlier(ev)}</div><div class="st">${esc(ev.title)}</div><div class="sb">${esc(ev.brief)}</div>${tail}</div>`;
-    }
-    case 'folder-offer': { // a session started in a desk's top folder looks like work on one app
-      const st = ev.state;
-      const grp = ev.groupId ? ` and make it the start folder for "${esc(ev.groupName)}"` : '';
-      const tail = st === 'open' ? `<div class="sbtn"><button class="primary" data-fmove="${esc(ev.id)}" data-act="move"${tip('fmove-move')}>Move it</button>${ev.groupId ? `<button data-fmove="${esc(ev.id)}" data-act="group"${tip('fmove-group')}>Move it${grp}</button>` : ''}<button data-fmove="${esc(ev.id)}" data-act="no"${tip('fmove-no')}>No thanks</button></div>`
-        : `<div class="sbtn hint">${st === 'dismissed' ? `Kept in ${esc(ev.from)}` : `Moved to ${esc(ev.folder)}${st === 'moved-group' ? `, now the start folder for "${esc(ev.groupName)}"` : ''}`}</div>`;
-      return `<div class="scard ${st === 'open' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Work in another folder?${earlier(ev)}</div><div class="st">This looks like work on ${esc(ev.app)}. Move it to ${esc(ev.folder)}?</div><div class="sb">It started in ${esc(ev.from)}, which holds every app, so it does not know which one it is on. Moving it picks the same conversation up again in that folder.</div>${tail}</div>`;
     }
     case 'plan-offer': { // a session started its second child session with no plan (#605)
       const st = ev.state;
@@ -6851,20 +6789,6 @@ document.addEventListener('click', (e) => { const a = e.target.closest('[data-go
 document.addEventListener('click', (e) => {
   const a = e.target.closest('a[href^="#session:"]'); if (!a) return;
   e.preventDefault(); openSession(a.getAttribute('href').slice('#session:'.length));
-});
-document.addEventListener('click', async (e) => {
-  const t = e.target.closest('[data-fmove]'); if (!t) return;
-  const card = t.closest('[data-card]'); for (const b of card.querySelectorAll('button')) b.disabled = true;
-  const ev = S.events.find((x) => x.k === 'folder-offer' && x.id === t.dataset.fmove);
-  const id = S.selected;
-  try {
-    if (t.dataset.act === 'no') { await api(`/api/sessions/${id}/folder-offer?client=${S.client}`, { card: ev.id }); return; }
-    card.querySelector('.sbtn').innerHTML = '<span class="hint">Moving…</span>';
-    const s = await api(`/api/sessions/${id}/move?client=${S.client}`, { folder: ev.folder, setGroupFolder: t.dataset.act === 'group', card: ev.id });
-    S.live[s.id] = s;
-    if (t.dataset.act === 'group') await loadGroups(S.client);
-    if (S.selected === id) await openSession(id);
-  } catch (err) { alert(err.message); if (S.selected === id) await openSession(id); }
 });
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('[data-poffer]'); if (!t) return;
