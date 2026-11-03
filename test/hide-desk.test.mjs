@@ -100,6 +100,6 @@ test('the page leaves hidden desks out of the desk buttons, ☰ > Desks and the 
 
 test('the Desks screen folds each desk under its name, and folding changes nothing saved', () => {
   assert.match(page, /const coOpen = new WeakSet\(\);/, 'open or closed is kept by the screen, not on the desk');
-  assert.match(page, /\.co\.shut > :not\(\.co-head\) \{ display: none; \}/);
+  assert.match(page, /\.co\.shut > :not\(\.co-head\):not\(\.co-check\) \{ display: none; \}/, 'a closed desk shows its header, and its Desk check when that is open');
   assert.match(page, /data-hide="\$\{i\}"/, 'the Show or Hide button is in each desk\'s header');
 });

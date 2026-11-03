@@ -68,6 +68,7 @@ import QRCode from 'qrcode';
 import { REMOTE_HOURS, ASK_WAIT_MS, newSecret, checkCode, stepOf, otpUri, makeCertificate, fingerprintOf, checkCodeOf, sameCheck, isOfficeAddress, officeAddresses,
   remoteRoute, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedTls, pinnedRequest, connectError } from './remote.mjs';
 import { z } from 'zod';
+import { deskCheck, deskCheckText } from './desk-check.mjs';
 import {
   query, listSessions, getSessionMessages, renameSession, tool, createSdkMcpServer,
 } from '@anthropic-ai/claude-agent-sdk';
@@ -1710,6 +1711,14 @@ function portalToolDefs(parent) {
             if (enabled !== undefined) scheduler.setEnabled(id, enabled);
             return { content: [{ type: 'text', text: `Saved. Next run: ${v.nextRunAt ? new Date(v.nextRunAt).toLocaleString() : 'none'}.` }] };
           } catch (e) { return { content: [{ type: 'text', text: 'Not saved: ' + e.message }], isError: true }; }
+        }),
+      tool('desk_check',
+        "Check how this desk is set up and list the setup problems Docket handles badly, each with what it means and its fix: the working folder's Claude setup (CLAUDE.md, .claude), whether it is a git repo, where past sessions ran, a Claude home inside the working folder, a working folder or Claude home that is missing, and groups with no start folder whose sessions keep running in one folder. The same report as the Desk check on the Desks screen. It only reads.",
+        {},
+        async () => {
+          const client = clientById(parent.client);
+          if (!client) return { content: [{ type: 'text', text: 'This session has no desk.' }], isError: true };
+          return { content: [{ type: 'text', text: deskCheckText(await runDeskCheck(client)) }] };
         }),
       tool('list_schedules',
         "List this client's scheduled tasks in the portal with their next and last runs.",
@@ -4635,6 +4644,22 @@ function linkOneShots(client, rows, files) {
 // Building a company's session list from scratch reads every saved conversation (seconds for a
 // few hundred). The last list built is kept on disk, so right after Docket starts the page gets
 // that one at once while a fresh one is built; pages are told when it is ready (history-ready).
+// ---------- Desk check (#619): how a desk is set up, and the problems to fix ----------
+// Run when Docket starts (so after every update), when a desk is added, and on demand. It only reads; the last
+// report of each desk is kept in memory. Its one fix with a button (a group's start folder) goes through the
+// groups' own folder route, like right-click > Set start folder…
+const deskChecks = new Map(); // client id -> the last report
+async function runDeskCheck(client) {
+  let sessions = [];
+  try { sessions = (await history(client)).map((r) => ({ id: r.id, cwd: r.cwd, lastModified: r.lastModified, groupId: r.groupId })); } catch {}
+  const r = deskCheck({ desk: { id: client.id, name: client.name, folder: client.folder, home: client.home || DEFAULT_HOME }, sessions,
+    groups: groupsOf(client.id).filter((g) => !g.archived).map((g) => ({ id: g.id, name: g.name, folder: g.folder || '' })),
+    otherDesks: CLIENTS.filter((c) => c.id !== client.id).map((c) => ({ name: c.name, folder: c.folder })) });
+  deskChecks.set(client.id, r);
+  logEvent('desk-check', `${client.id}: ${r.findings.map((f) => f.key).join(', ') || 'nothing to fix'}`);
+  return r;
+}
+async function checkAllDesks() { for (const c of CLIENTS) { try { await runDeskCheck(c); } catch (e) { logEvent('desk-check failed', `${c.id}: ${e.message}`); } } }
 const historyDisk = (id) => path.join(DATA_DIR, `history-${id}.json`);
 const historyBuilt = new Set(); // companies whose list has been built since this start
 async function history(client, force) {
@@ -6997,7 +7022,9 @@ const server = http.createServer(async (req, res) => {
       if (busy.length) return json(res, 400, { error: `${busy.map((c) => c.name).join(', ')} still has sessions running here. End them first.` });
       // trash: the removed companies whose folders go to the Recycle Bin as well (only the ones Docket made).
       const binned = CLIENTS.filter((c) => !ids.has(c.id) && (b.trash || []).includes(c.id));
+      const added = out.filter((c) => !clientById(c.id)).map((c) => c.id);
       saveCompanies(out);
+      for (const id of added) { const c = clientById(id); if (c) runDeskCheck(c).catch(() => {}); }
       if (!b.trash) return json(res, 200, out);
       const trashed = [];
       for (const c of binned) trashed.push(...await recycleDesk(c));
@@ -7178,6 +7205,14 @@ const server = http.createServer(async (req, res) => {
       saveCompanies(old ? CLIENTS.map((c) => (c.id === old.id ? r : c)) : [...CLIENTS, r]);
       authCache.delete(r.id); authCache.delete(authKey(r.id)); // a gateway's is keyed by its URL
       return json(res, 200, r);
+    }
+    // Desk check: the desk's last report, or a fresh one with ?refresh=1 (or when it has none yet).
+    const dc = p.match(/^\/api\/clients\/(\w+)\/desk-check$/);
+    if (dc && req.method === 'GET') {
+      const client = clientById(dc[1]);
+      if (!client) return json(res, 404, { error: 'Unknown client' });
+      try { return json(res, 200, (!url.searchParams.get('refresh') && deskChecks.get(client.id)) || await runDeskCheck(client)); }
+      catch (e) { return json(res, 500, { error: `The check did not finish: ${e.message}` }); }
     }
     // Use from a terminal: the company's homes and variables as blocks to paste (GET), and saved as
     // docket-env.ps1 / docket-env.sh (POST).
@@ -7899,5 +7934,6 @@ server.listen(PORT, '127.0.0.1', () => {
   // The restart check: paused automatically before a shutdown, so carry on now that Docket is back.
   reattached.then(findCutOffs);
   setTimeout(() => fillAllTouches(), 15000); // once per desk, after the start is over
+  setTimeout(() => checkAllDesks(), 20000); // the Desk check, so it is fresh after every update
   reattached.then(() => { if (autoPauseOn() && autoPaused(state.paused)) setTimeout(() => resumeAll('restart').catch((e) => logEvent('resume after restart failed', e.message)), 10000); });
 });

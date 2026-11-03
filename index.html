@@ -619,7 +619,14 @@ header.top #feedbackBtn { padding: 4px 8px; }
 .co .co-head button { padding: 2px 8px; }
 .co .co-head { cursor: pointer; }
 .co .co-head .co-fold { border: none; background: none; padding: 2px 4px; color: var(--muted); }
-.co.shut > :not(.co-head) { display: none; } /* a closed desk shows only its header */
+.co.shut > :not(.co-head):not(.co-check) { display: none; } /* a closed desk shows only its header (and its Desk check, when open) */
+.co .co-checked { white-space: nowrap; }
+.co .co-checked.bad { color: var(--warn); border-color: currentColor; }
+.co .co-check { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 6px; font-size: 12px; }
+.co .co-check ol { margin: 4px 0 6px 18px; padding: 0; }
+.co .co-check li { margin-bottom: 6px; }
+.co .co-check .co-check-facts { color: var(--muted); margin: 4px 0; }
+.co .co-check .co-check-facts div { margin: 2px 0; }
 .co.hidden-desk .co-head input { color: var(--muted); }
 .co .co-hidden-mark { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding: 0 8px; }
 .co .co-hooks { display: flex; flex-direction: column; gap: 4px; }
@@ -1544,6 +1551,9 @@ const HELP = [
     ['co-name', 'Desk name', 'The name on the desk\'s button at the top'],
     ['co-fold', 'Open or close', 'Open this desk\'s settings. Opening or closing them here changes nothing about the desk', 'Close this desk\'s settings. Opening or closing them here changes nothing about the desk'],
     ['co-hide', 'Hide or show', 'Hide this desk after Save: its button at the top and its sessions leave the list, and its Inspector leaves ☰ > Desks. Its sign-in, sessions, settings and folders all stay, and Show brings it back. One desk always stays shown', 'Hidden. Show it again after Save: its button at the top and its sessions come back'],
+    ['co-check', 'Desk check', 'Show or hide the Desk check: setup problems Docket handles badly on this desk, each with what it means and its fix, and what it found. It runs when Docket starts or updates and when a desk is added. It only reads, and changes nothing'],
+    ['co-check-act', 'Set as start folder', 'Make this folder the group\'s start folder now, the same as right-click > Set start folder… on the group. It changes only Docket\'s setting for the group, never any file'],
+    ['co-check-run', 'Check again', 'Run the Desk check again now. It only reads the desk\'s folders and past sessions, and changes nothing'],
     ['co-hook', 'Docket hooks', 'Ticked: this Docket helper runs in this desk\'s sessions'],
     ['co-default-engine', 'Default brand for new sessions', 'The brand a new session starts on unless you pick another beside the model. Only ticked brands can be the default. Sessions already started keep theirs'],
     ['co-start-gear', 'Start gear', 'The model a Shift session on this brand starts on, before it shifts up or down by itself. The cheapest is the default. A session can be started on another with start_session\'s start_gear. Sessions already started keep theirs'],
@@ -5462,6 +5472,22 @@ function defaultHome(roots, name, engine) {
 // The desks whose settings are open on the Desks screen; the rest show only their header. Only the screen's view:
 // opening or closing one changes nothing about the desk.
 const coOpen = new WeakSet();
+// The Desk check (#619) of each saved desk by id: its last report, and the desks whose report is open.
+const coChecks = {}, coCheckOpen = new Set();
+const coCheckBtn = (c, i) => {
+  const r = coChecks[c.id], n = r?.findings?.length;
+  return `<button class="co-checked${n ? ' bad' : ''}" data-check="${i}" aria-expanded="${coCheckOpen.has(c.id)}"${tip('co-check')}>${!r ? 'Desk check…' : r.error ? 'Desk check: not run' : n ? `Desk check: ${n} to fix` : 'Desk check: nothing to fix'}</button>`;
+};
+const coCheckPanel = (c, i) => {
+  if (!coCheckOpen.has(c.id)) return '';
+  const r = coChecks[c.id];
+  const again = `<button data-check-run="${i}"${tip('co-check-run')}>Check again</button>`;
+  if (!r) return `<div class="co-check">Checking…</div>`;
+  if (r.error) return `<div class="co-check"><div class="co-err">${esc(r.error)}</div>${again}</div>`;
+  return `<div class="co-check">${r.findings.length ? `<ol>${r.findings.map((f, n) => `<li><b>${esc(f.title)}</b><br>${esc(f.means)}<br><i>Fix:</i> ${esc(f.fix)}${f.action ? ` <button data-check-act="${i}" data-n="${n}"${tip('co-check-act')}>${esc(f.action.label)}</button>` : ''}</li>`).join('')}</ol>` : '<p>Nothing to fix.</p>'}
+    <div class="co-check-facts">${r.facts.map((f) => `<div>${esc(f.label)}: ${esc(f.text)}</div>`).join('')}</div>
+    <small class="muted">Checked ${esc(new Date(r.at).toLocaleString())}. It only reads; nothing was changed.</small> ${again}</div>`;
+};
 // start: the list as it was when the screen first opened, kept across a trip to a company's color window.
 async function editCompanies(rows, error = '', start, scrollTo) {
   rows ||= (await api('/api/clients/edit')).map(({ env, ...c }) => ({ ...c, envRows: Object.entries(env || {}), jiraUrl: c.links?.jira?.url || '', jiraKeys: (c.links?.jira?.keys || []).join(', '), adoOrg: c.links?.azureDevOps?.org || '', adoProject: c.links?.azureDevOps?.project || '',
@@ -5493,10 +5519,12 @@ async function editCompanies(rows, error = '', start, scrollTo) {
       <div class="co-head" data-fold="${i}"><button class="co-fold" data-fold="${i}" aria-expanded="${coOpen.has(c)}" aria-label="${coOpen.has(c) ? 'Close' : 'Open'} this desk's settings"${tip('co-fold', coOpen.has(c))}>${coOpen.has(c) ? '▾' : '▸'}</button>
         <input data-i="${i}" data-k="name" value="${esc(c.name || '')}" placeholder="Desk name" aria-label="Desk name"${tip('co-name')}>
         ${c.hidden ? '<span class="co-hidden-mark">Hidden</span>' : ''}
+        ${c.id ? coCheckBtn(c, i) : ''}
         <button data-hide="${i}" aria-pressed="${!!c.hidden}"${tip('co-hide', !!c.hidden)}>${c.hidden ? 'Show' : 'Hide'}</button>
         <button data-move="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''} title="Move up" aria-label="Move up">↑</button>
         <button data-move="${i}" data-d="1" ${i === rows.length - 1 ? 'disabled' : ''} title="Move down" aria-label="Move down">↓</button>
         <button data-remove="${i}" ${c.running ? `disabled title="${c.running} session${c.running === 1 ? '' : 's'} running; end them first"` : 'title="Remove from this list. Its folders and sessions are not deleted."'}>Remove</button></div>
+      ${c.id ? coCheckPanel(c, i) : ''}
       ${c.forced && !c.awsProfile ? `<div class="co-err">${esc(c.forced)}</div>` : ''}
       ${coBrandRows(c, i)}
       ${coBilled(c)}
@@ -5555,6 +5583,16 @@ async function editCompanies(rows, error = '', start, scrollTo) {
   $('dlgBtns').firstElementChild.style.marginRight = 'auto';
   if (scrollTo !== undefined) $('dlgBody').querySelectorAll('.co')[scrollTo]?.scrollIntoView({ block: 'nearest' });
   showSignin(); // a sign-in under way moves here from the left column
+  // Each saved desk's Desk check: its last report (or a first one), redrawn in place when it comes.
+  const drawCheck = (id) => {
+    const i = rows.findIndex((c) => c.id === id), box = $('dlgBody').querySelectorAll('.co')[i];
+    if (!box) return;
+    box.querySelector('[data-check]')?.replaceWith(Object.assign(document.createElement('template'), { innerHTML: coCheckBtn(rows[i], i) }).content);
+    box.querySelector('.co-check')?.remove();
+    box.querySelector('.co-head').insertAdjacentHTML('afterend', coCheckPanel(rows[i], i));
+  };
+  const runCheck = (id, refresh) => api(`/api/clients/${id}/desk-check${refresh ? '?refresh=1' : ''}`).then((r) => { coChecks[id] = r; }, (err) => { coChecks[id] = { error: err.message }; }).then(() => drawCheck(id));
+  for (const c of rows) if (c.id && !coChecks[c.id]) runCheck(c.id);
   api('/api/clients?refresh=1').then((full) => {
     for (const f of full) { const x = S.clients.find((y) => y.id === f.id); if (x) Object.assign(x, f); }
     renderClients(); drawSignin();
@@ -5585,6 +5623,14 @@ async function editCompanies(rows, error = '', start, scrollTo) {
       return;
     }
     const b = e.target.closest('button'); if (!b || b.closest('.co-sign')) return;
+    if (b.dataset.check) { const id = rows[+b.dataset.check].id; if (coCheckOpen.has(id)) coCheckOpen.delete(id); else coCheckOpen.add(id); return drawCheck(id); }
+    if (b.dataset.checkAct) { // a fix with a button: only Docket's own group setting changes
+      const id = rows[+b.dataset.checkAct].id, a = coChecks[id]?.findings?.[+b.dataset.n]?.action;
+      if (a?.kind !== 'group-folder') return;
+      b.disabled = true;
+      return api(`/api/groups/${a.group}/folder`, { client: id, folder: a.folder }).then(() => { if (S.groups?.[id]) loadGroups(id); delete coChecks[id]; drawCheck(id); return runCheck(id, true); }, (err) => { b.disabled = false; alert(err.message); });
+    }
+    if (b.dataset.checkRun) { const id = rows[+b.dataset.checkRun].id; delete coChecks[id]; drawCheck(id); return runCheck(id, true); }
     read();
     if (b.dataset.hide) rows[+b.dataset.hide].hidden = !rows[+b.dataset.hide].hidden; // sent as false when shown: one left out is kept. Saved with the rest
     if (b.dataset.color) { colorFor = +b.dataset.color; return dlgClose('color'); } // the color window, then back here
