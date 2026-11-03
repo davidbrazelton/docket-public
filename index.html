@@ -4502,7 +4502,7 @@ function keyHtml() {
     ${head('Session dots', true)}
     ${row(dot('running'), 'The session is working on a reply right now. Also shown while a session is starting up, and while it is compacting (summarizing the older part of a long conversation so it can keep going).')}
     ${row(dot('background'), 'The reply is finished, but jobs it started in the background are still running. It is not done until they finish and the session reads their results.')}
-    ${row(dot('needs'), 'Needs you. The session asked a question or for permission, or finished a reply (or stopped with an error, shown by the red ring) you have not opened yet. Also a saved session that was waiting on you when Docket last stopped.', '', play('ready') + play('question'))}
+    ${row(dot('needs'), 'Needs you. The session asked a question or for permission, or finished a reply (or stopped with an error, shown by the red ring) you have not opened yet. Also a saved session that was waiting on you when Docket last stopped, and a session Claude Desktop ran whose latest reply came after you last opened it here.', '', play('ready') + play('question'))}
     ${row(dot('idle'), 'Running and finished, and you have seen the reply. Nothing is waiting.')}
     ${row(dot('failed'), 'The last reply ended in an error, for example an expired sign-in. Until you open it, it is listed under Needs you and counts in ✦, also after Docket restarts. Open it to read the error; sending a message clears the red ring.')}
     ${row(dot('stopped'), 'Cut off partway through a reply, usually because Docket or the computer restarted. Open it and press Continue.')}

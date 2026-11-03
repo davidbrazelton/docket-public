@@ -13,7 +13,7 @@ import { createScheduler } from './scheduler.mjs';
 import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
-import { savedWaiting, unreadAfterRestart } from './needs-you.mjs';
+import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from './needs-you.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring } from './tasks.mjs';
 import { waitingOnUser, closeRefusal, endsWaiting, awaitingAnswer, reportRoute } from './reports.mjs';
@@ -4517,13 +4517,14 @@ async function buildHistoryNow(client) {
     ownGroupId: state.sessions[r.sessionId]?.groupId ?? null,
     editFor: state.sessions[r.sessionId]?.editFor || null,
     midReply: !!state.sessions[r.sessionId]?.cutOff || (cutAtStart(r.sessionId) && !!state.sessions[r.sessionId]?.busy),
-    waiting: !!state.sessions[r.sessionId]?.waiting,
+    waiting: !!state.sessions[r.sessionId]?.waiting || desktopWaits(r.sessionId, files.get(r.sessionId)),
     awaitingAnswer: transcriptTail(files.get(r.sessionId)).awaiting,
     lastError: state.sessions[r.sessionId]?.lastError || null,
     engine: state.sessions[r.sessionId]?.engine || 'claude',
   })).concat(ownHomeRows(client, gone)).sort((a, b) => b.lastModified - a.lastModified);
   historyCache.set(client.id, { at: Date.now(), rows: out });
   historyBuilt.add(client.id);
+  try { desktopSeenSets.set(client.id, desktopSet(client)); } catch {}
   fs.promises.mkdir(DATA_DIR, { recursive: true }).then(() => fs.promises.writeFile(historyDisk(client.id), JSON.stringify(out))).catch(() => {});
   return out;
 }
@@ -4749,14 +4750,15 @@ function statsFor(client, file) {
 }
 
 // The end of a saved conversation: when its last entry was written, and whether its latest reply is
-// waiting on the user's answer (reports.mjs). Read from the last 64 KB, kept until the file grows.
-const tailCache = new Map(); // file -> { size, time, awaiting }
+// waiting on the user's answer (reports.mjs), and how its last turn ended when Claude Desktop wrote it (needs-you.mjs).
+// Read from the last 64 KB, kept until the file's size or modified time changes.
+const tailCache = new Map(); // file -> { size, mtime, time, awaiting, desktop }
 function transcriptTail(file) {
-  if (!file) return { time: 0, awaiting: false };
+  if (!file) return { time: 0, awaiting: false, desktop: null };
   try {
-    const { size } = fs.statSync(file);
+    const { size, mtimeMs: mtime } = fs.statSync(file);
     const hit = tailCache.get(file);
-    if (hit && hit.size === size) return hit;
+    if (hit && hit.size === size && hit.mtime === mtime) return hit;
     const len = Math.min(size, 65536);
     const buf = Buffer.alloc(len);
     const fd = fs.openSync(file, 'r');
@@ -4767,12 +4769,32 @@ function transcriptTail(file) {
     const time = stamps.length ? Date.parse(stamps[stamps.length - 1].slice(13, -1)) || 0 : 0;
     const lines = text.split('\n').slice(len < size ? 1 : 0); // the first line may be cut in half
     const msgs = lines.flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : []; } catch { return []; } });
-    const out = { size, time, awaiting: awaitingAnswer(msgs) };
+    const out = { size, mtime, time, awaiting: awaitingAnswer(msgs), desktop: desktopTurn(msgs) };
     tailCache.set(file, out);
     return out;
-  } catch { return { time: 0, awaiting: false }; }
+  } catch { return { time: 0, awaiting: false, desktop: null }; }
 }
 const lastMessageTime = (file) => transcriptTail(file).time;
+
+// A session Claude Desktop ran waits on the person when its last turn there finished after they last opened it in
+// Docket (seenAt). Docket's own sessions keep their saved `waiting`; this only adds the Desktop ones.
+const desktopWaits = (id, file) => !live.has(id) && desktopWaiting({ turn: transcriptTail(file).desktop, seenAt: state.sessions[id]?.seenAt });
+// Nothing tells Docket when Claude Desktop writes a reply, so every 30 seconds each listed desk's conversation files
+// are looked at (only a file whose size or modified time changed is read again). When the set of Desktop sessions
+// waiting on the person changes, the list is built again and pages are told.
+const desktopSeenSets = new Map(); // client id -> the waiting Desktop session ids, joined
+const desktopSet = (client) => [...transcriptFiles(client)].filter(([id, f]) => !wasDeleted(id) && desktopWaits(id, f)).map(([id]) => id).sort().join(' ');
+setInterval(() => {
+  for (const c of CLIENTS) {
+    if (!historyBuilt.has(c.id) || historyBuilding.has(c.id)) continue;
+    let now; try { now = desktopSet(c); } catch { continue; }
+    if (!desktopSeenSets.has(c.id)) { desktopSeenSets.set(c.id, now); continue; }
+    if (desktopSeenSets.get(c.id) === now) continue;
+    desktopSeenSets.set(c.id, now);
+    historyCache.delete(c.id);
+    buildHistory(c).then(() => broadcast({ t: 'history-ready', client: c.id })).catch(() => {});
+  }
+}, 30000).unref?.();
 
 // ---------- parent links recorded by the Claude desktop app ----------
 // The desktop app keeps a record per session in <profile>claude-code-sessions…local_*.json.
@@ -7507,6 +7529,14 @@ const server = http.createServer(async (req, res) => {
       if (action === 'seen' && !s) {
         if (state.sessions[id]?.waiting) logSeen(id, null, b);
         if (state.sessions[id]?.waiting) { state.sessions[id].waiting = false; saveState(); historyCache.delete(client?.id); }
+        // A session Claude Desktop ran: remember when it was opened, so only a newer Desktop reply turns it orange again.
+        const file = client && transcriptFiles(client).get(id);
+        if (file && transcriptTail(file).desktop) {
+          if (desktopWaits(id, file)) logSeen(id, null, b);
+          state.sessions[id] = { ...(state.sessions[id] || { client: client.id }), seenAt: Date.now() };
+          saveState(); historyCache.delete(client.id);
+          try { desktopSeenSets.set(client.id, desktopSet(client)); } catch {}
+        }
         return json(res, 200, { ok: true });
       }
       if (action === 'cross') { // the approval card for a crossing into another company
