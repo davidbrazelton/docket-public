@@ -194,6 +194,7 @@ select.draft-group { max-width: 220px; font: inherit; color: var(--text); backgr
 .dot.needs { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent); }
 .dot.idle { background: var(--ok); }
 .dot.background { background: transparent; box-shadow: inset 0 0 0 2px var(--run); animation: pulse 2.4s infinite; }
+.dot.resting { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ok); }
 .dot.ended { background: var(--line); }
 .dot.stopped { background: var(--bad); }
 .dot.failed { background: var(--bad); box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--bad); }
@@ -455,6 +456,7 @@ aside.tasks.hidden { display: none; }
 .gsec .gname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gsec .gdots { display: inline-flex; justify-content: flex-end; gap: 4px; margin-left: auto; }
 .gsec .gdots .dot { width: 7px; height: 7px; animation: none; box-shadow: none; }
+.gsec .gdots .dot.background { box-shadow: inset 0 0 0 1.5px var(--run); } .gsec .gdots .dot.resting { box-shadow: inset 0 0 0 1.5px var(--ok); } /* hollow ones keep their ring */
 .gsec .gdots .dot.background { box-shadow: inset 0 0 0 2px var(--run); }
 /* --line is the same colour as --head in dark theme, which hid the grey dot and made the others look shifted left. */
 .gsec .gdots .dot.ended { background: var(--muted); }
@@ -1444,7 +1446,7 @@ const HELP = [
     ['menu-key', 'Help > Key', 'What the dots, colors and sounds mean'],
     ['menu-help', 'Help > Instructions', 'What every button and symbol does (shortcut: ?)'],
     ['menu-tour', 'Help > Show me around', 'A five-step tour of the main parts of the page'],
-    ['menu-settings', 'Settings', 'Color, sound, theme, stopping stuck steps and pausing on sleep'],
+    ['menu-settings', 'Settings', 'Color, sound, theme, stopping stuck steps, pausing on sleep and resting idle sessions'],
     ['menu-sound', 'Settings > Sound', () => soundTip()],
     ['menu-theme', 'Settings > Theme', 'Pick default (follows the computer), light or dark'],
     ['menu-theme-default', 'Settings > Theme > Default', 'Follow the computer\'s light or dark setting, changing when it changes'],
@@ -1453,12 +1455,14 @@ const HELP = [
     ['menu-stall', 'Settings > Stop stuck steps', STALL_TIP],
     ['menu-autocontinue', 'Settings > Continue after a crash', 'On: when Docket stops without warning partway through a turn (a crash, a power cut, a forced restart), it continues each session it cut off by itself once it is back, with a note to check what state things are in first. Each cut-off gets one try; the rest show a banner with Continue.'],
     ['menu-startup', 'Settings > Starting Docket', 'Whether Docket starts by itself when you sign in to this computer, or only from its shortcut, and a switch between them. A page pinned in the browser cannot start Docket.'],
+    ['menu-rest', 'Settings > Rest idle sessions', 'How long a session sits idle, with nothing running or waiting on you, before Docket releases it from memory (its claude process, connected services and browser). It stays in the list with a hollow dot and wakes on its next message. 0 means never; the default, 60, matches the prompt cache.'],
     ['menu-autopause', 'Settings > Pause on sleep', 'On: when the computer is about to sleep, hibernate or shut down, Docket pauses every working session by itself, and resumes them when it wakes or starts again. A pause you made with the ⏸ button always waits for you.'],
     ['menu-about', 'About', 'Which version of Docket this is, and its updates from GitHub'],
     ['menu-update', 'About > Check for updates', 'Look on GitHub for a newer Docket now'],
     ['upd-every', 'Check every', 'How often Docket looks on GitHub for a newer version'],
     ['menu-updmode', 'Settings > Updates', 'Automatic: Docket takes each new version from GitHub by itself and restarts once no session is busy (sessions keep working). Manual: it only says when one is waiting, and you press Update now. Kept on this computer only'],
     ['menu-fbdest', 'Settings > Feedback destination', 'Where the 🔨 button sends suggestions from this computer: the address of the relay that files them, and its key if it needs one. Not set means nothing is sent. Kept on this computer only'],
+    ['rest-min', 'Minutes', 'How many idle minutes before a session is released from memory. 0 means never'],
     ['fb-dest-url', 'Address', 'The full https:// address that takes the reports (http:// only for one on this computer). Leave it empty to stop sending'],
     ['fb-dest-key', 'Key', 'The key that address asks for, if any. Kept on this computer only and sent only to that address'],
     ['menu-updnow', 'About > Update now', 'Take the new version from GitHub now. Docket restarts by itself; sessions keep working. If sessions are busy, it asks whether to wait for them first'],
@@ -1807,10 +1811,13 @@ const sortTops = (list, kids, topOf = (x) => x) => {
 const rowDrag = () => listOrder() === 'natural' && !S.showArchived && !$('search').value.trim();
 // Any session row can be dragged onto a group heading or another session to move it there, outside the archive.
 const moveDrag = () => !S.showArchived;
-const GROUP_DOT_ORDER = ['running', 'background', 'idle', 'needs', 'failed', 'stopped', 'ended'];
+const GROUP_DOT_ORDER = ['running', 'background', 'idle', 'resting', 'needs', 'failed', 'stopped', 'ended'];
 // A turn that ended in an error (failed) shows over orange, so it does not look like a normal finish.
 const dotClass = (s) => !s.live ? (s.midReply ? 'stopped' : s.lastError ? 'failed' : s.waiting ? 'needs' : 'ended')
-  : s.compactingSince ? 'running' : ['running', 'starting'].includes(s.status) ? s.status : s.lastError ? 'failed' : needsYou(s) ? 'needs' : inBackground(s) ? 'background' : s.status;
+  : s.compactingSince ? 'running' : ['running', 'starting'].includes(s.status) ? s.status : s.lastError ? 'failed' : needsYou(s) ? 'needs' : inBackground(s) ? 'background' : s.resting && s.status === 'idle' ? 'resting' : s.status;
+const RESTING_TIP = 'Resting: released from memory, wakes on your next message';
+// The title a dot carries: the error for a red ring, what resting means for a hollow green one.
+const dotTip = (s, c = dotClass(s)) => c === 'failed' ? ` title="${esc(failedTip(s))}"` : c === 'resting' ? ` title="${RESTING_TIP}"` : '';
 const failedTip = (s) => `Last reply ended in an error: ${s.lastError.text.replace(/[.\s]+$/, '')}. Open it to read the error; send a message to try again.`;
 
 async function api(path, body) {
@@ -3630,7 +3637,7 @@ function sessionRow(s, depth) {
   const more = run && run.unread > (run.topUnread ? 1 : 0) ? `<span class="tag unread-n" title="Runs of this schedule with a reply you have not read. The Details panel lists every run.">${run.unread} unread</span>` : '';
   const snip = snippetFor(s);
   return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
-      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotClass(s) === 'failed' ? ` title="${esc(failedTip(s))}"` : ''}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${planBadge(s.id)}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
+      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotTip(s)}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${planBadge(s.id)}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
       <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // The list is only replaced when what it shows actually changed. A redraw is held while the pointer is down on the
@@ -4254,6 +4261,16 @@ async function setFeedbackDestination() {
 const stallLabel = () => `Stop stuck steps: ${S.stallStop === false ? 'off' : 'on'}`;
 const autoContinueLabel = () => `Continue after a crash: ${S.autoContinue === false ? 'off' : 'on'}`;
 const updModeLabel = () => `Updates: ${S.update?.mode === 'auto' ? 'automatic' : 'manual'}`;
+const restLabel = () => `Rest idle sessions: ${S.restMinutes === 0 ? 'never' : `after ${S.restMinutes ?? 60} min`}`;
+// How long an idle session waits before Docket releases its process from memory (rest.mjs); 0 is never.
+async function setRestMinutes() {
+  const cur = S.restMinutes ?? 60;
+  const v = await dialog({ title: 'Rest idle sessions', body: `<div>A session idle this many minutes, with nothing running or waiting on you, is released from memory. It stays in the list with its chat, and your next message starts it again where it left off (a few seconds). 60 matches the prompt cache, so resting costs nothing extra. 0 means never.</div>
+    <input type="number" id="restMin" min="0" step="1" aria-label="Minutes" value="${cur}" style="margin-top:6px;width:8em"${tip('rest-min')}> minutes`,
+    buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: 'ok', primary: true }] });
+  if (!v) return;
+  try { S.restMinutes = (await api('/api/rest-minutes', { minutes: document.getElementById('restMin').value })).minutes; } catch (err) { alert(err.message); }
+}
 const autoPauseLabel = () => `Pause on sleep: ${S.autoPause === false ? 'off' : 'on'}`;
 // The ☰ menu: Desks (Manage, and every desk's settings), a few things you open often, then groups that open to the side
 // (Tools, Gauges, Help, Settings, About), and Settings > Theme opens one more level. A group opens on hover, on click,
@@ -4267,7 +4284,7 @@ $('menuBtn').onclick = (e) => {
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
-    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()], ['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
+    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()], ['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['rest', restLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
     ['about', S.update?.waiting || S.update?.restartWaiting ? 'About · update waiting' : 'About', [...(S.update?.restartWaiting && !S.update.restartWaiting.restarting ? [['restartnow', 'Update now anyway']] : S.update?.waiting ? [['updnow', 'Update now']] : []), ['update', 'Check for updates']]]];
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
     ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${x[0]}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0])}>${esc(x[1])}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
@@ -4282,6 +4299,7 @@ $('menuBtn').onclick = (e) => {
   api('/api/stall-stop').then((r) => { S.stallStop = r.on; const b = m.querySelector('[data-mact=stall]'); if (b) b.textContent = stallLabel(); }).catch(() => {});
   api('/api/auto-continue').then((r) => { S.autoContinue = r.on; const b = m.querySelector('[data-mact=autocontinue]'); if (b) b.textContent = autoContinueLabel(); }).catch(() => {});
   api('/api/startup').then((r) => { S.startup = r; const b = m.querySelector('[data-mact=startup]'); if (b) b.textContent = startupLabel(); }).catch(() => {});
+  api('/api/rest-minutes').then((r) => { S.restMinutes = r.minutes; const b = m.querySelector('[data-mact=rest]'); if (b) b.textContent = restLabel(); }).catch(() => {});
   api('/api/auto-pause').then((r) => { S.autoPause = r.on; const b = m.querySelector('[data-mact=autopause]'); if (b) b.textContent = autoPauseLabel(); }).catch(() => {});
   const hoverOk = () => matchMedia('(hover: hover)').matches && innerWidth > 600;
   const shut = (w) => { // a group and any group open inside it
@@ -4386,6 +4404,7 @@ $('menuBtn').onclick = (e) => {
     if (act.startsWith('profile:')) openProfile(act.slice(8));
     if (act === 'color') pickMainColor();
     if (act === 'fbdest') setFeedbackDestination();
+    if (act === 'rest') setRestMinutes();
     if (act === 'key') showKey();
     if (act === 'help') showHelp();
     if (act === 'tour') startTour();
@@ -4540,10 +4559,11 @@ function keyHtml() {
     ${row(dot('background'), 'The reply is finished, but jobs it started in the background are still running. It is not done until they finish and the session reads their results.')}
     ${row(dot('needs'), 'Needs you. The session asked a question or for permission, or finished a reply (or stopped with an error, shown by the red ring) you have not opened yet. Also a saved session that was waiting on you when Docket last stopped, and a session Claude Desktop ran whose latest reply came after you last opened it here.', '', play('ready') + play('question'))}
     ${row(dot('idle'), 'Running and finished, and you have seen the reply. Nothing is waiting.')}
+    ${row(dot('resting'), 'Resting: idle for a while, so released from memory; wakes on your next message (a few seconds). How long it waits is in ☰ > Settings > Rest idle sessions.')}
     ${row(dot('failed'), 'The last reply ended in an error, for example an expired sign-in. Until you open it, it is listed under Needs you and counts in ✦, also after Docket restarts. Open it to read the error; sending a message clears the red ring.')}
     ${row(dot('stopped'), 'Cut off partway through a reply, usually because Docket or the computer restarted. Open it and press Continue.')}
     ${row(dot('ended'), 'Saved, not running. Open it any time to pick it up again.')}
-    ${row(`<span class="gdots">${dot('running')}${dot('idle')}${dot('needs')}</span>`, 'In group view, each group header shows one small dot for each kind of status inside it (not one per session), without blinking. They sit at the right edge in a fixed order, showing only the kinds present: blue (working), hollow blue (background jobs), green, yellow (needs you), ringed red (error), red, grey.')}
+    ${row(`<span class="gdots">${dot('running')}${dot('idle')}${dot('needs')}</span>`, 'In group view, each group header shows one small dot for each kind of status inside it (not one per session), without blinking. They sit at the right edge in a fixed order, showing only the kinds present: blue (working), hollow blue (background jobs), green, hollow green (resting), yellow (needs you), ringed red (error), red, grey.')}
     ${head('Time text on the right of each row', true)}
     ${row('12m left', 'The conversation is still held in Claude’s short-term memory (the prompt cache), so the next message is cheaper and faster.')}
     ${row('8m left', 'A one hour session cache has 10 minutes or less left. Reply soon to keep the saving.', 'warn', play('cache'))}
@@ -6231,7 +6251,7 @@ function renderHead() {
   if (S.schedOpen) return renderScheduleHead();
   const s = current(); if (!s) return;
   const st = !s.live && s.archived ? ['', 'archived'] : !s.live ? (s.midReply ? ['needs', 'interrupted'] : s.elsewhere ? ['running', 'may be running in another app'] : ['', 'saved']) : s.compactingSince ? ['running', 'compacting the conversation'] : needsYou(s) ? ['needs', s.status === 'requires_action' ? 'needs your answer' : 'needs you'] : inBackground(s) ? ['running', s.runningTasks ? `working in background (${s.runningTasks})` : 'working in background'] : [s.status, s.status];
-  $('head').innerHTML = `<span class="dot ${dotClass(s)}"></span><h1 id="title" title="Click to rename">${esc(s.title || 'Untitled')}</h1>
+  $('head').innerHTML = `<span class="dot ${dotClass(s)}"${dotTip(s)}></span><h1 id="title" title="Click to rename">${esc(s.title || 'Untitled')}</h1>
     ${multiBrand() ? `<span class="brand-pill"${tip('brand-pill')}>${brandLogo(s.engine || 'claude')}${esc(brand(s))}</span>` : ''}
     <span class="status-pill ${st[0]}" id="pill">${esc(st[1])}</span>
     <button class="ghost hd-more" id="sessMenuBtn" aria-haspopup="menu" aria-expanded="${document.getElementById('ctx')?.dataset.session === s.id}" aria-label="Session menu"${tip('sess-menu')}>⋯</button>`;

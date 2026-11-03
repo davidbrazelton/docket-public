@@ -56,6 +56,7 @@ import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPr
   parseIssueUrl, branchIssue, githubTicket, CLOSES, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, sessionBranches,
   prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe, ticketFinished } from './links.mjs';
 import { currentBranch } from './git-head.mjs';
+import { restDue, restMinutes } from './rest.mjs';
 import { ARTIFACT_URL, artifactPublished } from './artifacts.mjs';
 import { copyPlan, runCopy, copyGroups, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
 import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
@@ -537,6 +538,7 @@ function summary(s) {
     stalled: s.stalled || null,
     configChanged: s.configChanged?.length ? s.configChanged : null, // what a reload would take in (config-watch.mjs)
     reloading: !!s.reloading,
+    resting: !!s.resting, // its process was let go while idle (rest.mjs); the next message starts it again
     reloadAsk: reloadMode(clientById(s.client)) === 'ask', // its desk waits for Reload
     lastError: state.sessions[s.id]?.lastError || null,
     cutOff: !!state.sessions[s.id]?.cutOff,
@@ -703,7 +705,7 @@ function repairTasks(s) {
     }
   } catch (e) { console.log('[tasks]', e.message); }
 }
-setInterval(() => { for (const s of live.values()) if (s.status !== 'ended') repairTasks(s); }, 60000);
+setInterval(() => { for (const s of live.values()) if (s.status !== 'ended' && !s.resting) repairTasks(s); }, 60000);
 
 // A foreground step stuck mid-turn (see stalledSteps in tasks.mjs): the row shows it, and once past its
 // full limit Docket stops the turn the way the Stop button does and tells the session what happened, so
@@ -758,7 +760,7 @@ function configNow(s) {
 // Looks at one session's config again: updates its mark, and reloads it when it is time. Returns reloadDecision's answer.
 function checkConfig(s) {
   const rec = state.sessions[s.id];
-  if ((s.engine || 'claude') !== 'claude' || !s.configReady || s.reloading || !rec || s.status === 'ended') return 'none';
+  if ((s.engine || 'claude') !== 'claude' || !s.configReady || s.reloading || s.resting || !rec || s.status === 'ended') return 'none';
   if (!rec.configPrint) { rec.configPrint = configNow(s); saveState(); return 'none'; } // started before Docket kept it: from now on
   const { reload } = configChanges(rec.configPrint, configNow(s));
   if (JSON.stringify(reload) !== JSON.stringify(s.configChanged || [])) { s.configChanged = reload; pushSession(s); broadcastReloads(); }
@@ -789,17 +791,56 @@ function reloadSession(s, changes) {
     s.query.close();
     await settledOr(s.finished, 20000);
     if (live.get(s.id) !== s) return;
-    live.delete(s.id);
-    const n = startSession({ clientId: s.client, resumeId: s.id });
-    n.events = s.events; n.tasks = s.tasks; n.stats = s.stats; n.unread = s.unread;
-    n.readyAt = s.readyAt; n.wasWaiting = s.wasWaiting;
-    if (state.sessions[n.id]) { state.sessions[n.id].reloadNote = reloadNote(changes); saveState(); }
-    setStatus(n, 'idle');
-    pushSession(n);
+    const n = startAgain(s, reloadNote(changes));
     broadcastReloads();
     for (const m of s.reloadQueue) sendToSession(n, m);
   })().catch((e) => logEvent(`reload failed: ${sessionTag(s)}`, e.message));
 }
+// A new process for a session whose old one has stopped, with resume (same conversation), carrying over what the
+// page shows. note: told to the session with its next message.
+function startAgain(s, note) {
+  live.delete(s.id);
+  const n = startSession({ clientId: s.client, resumeId: s.id });
+  n.events = s.events; n.tasks = s.tasks; n.stats = s.stats; n.unread = s.unread;
+  n.readyAt = s.readyAt; n.wasWaiting = s.wasWaiting;
+  if (state.sessions[n.id] && note) { state.sessions[n.id].reloadNote = note; saveState(); }
+  setStatus(n, 'idle');
+  pushSession(n);
+  return n;
+}
+
+// ---------- resting idle sessions (the rules are in rest.mjs) ----------
+// An idle session keeps its claude process, its connected services and any browser in memory while it is open. Past
+// ☰ > Settings > Rest idle sessions (state.restMinutes, default 60) Docket ends that process but keeps the session in
+// the list, with its chat, marked resting; the next message to it (typed, send_to_session, a schedule, a report)
+// starts it again with resume (wakeSession). It counts as not running, so after an app restart it is a saved session.
+const restMinutesNow = () => restMinutes(state.restMinutes);
+const REST_NOTE = '(From Docket: this session was resting, released from memory after being idle, and has just been started again with the same conversation. Its browser and connected services started fresh, so a page it had open is no longer open.)';
+function restSession(s) {
+  s.resting = true; s.reloadQueue = [];
+  logEvent(`resting: ${sessionTag(s)}`, `idle ${Math.round((Date.now() - s.lastActivity) / 60000)} min`);
+  s.query.close();
+  markRunning(s.id, false);
+  pushSession(s);
+}
+async function wakeSession(s) {
+  if (s.waking) return;
+  s.waking = true;
+  logEvent(`waking: ${sessionTag(s)}`);
+  await settledOr(s.finished, 20000);
+  if (live.get(s.id) !== s) return;
+  const n = startAgain(s, REST_NOTE);
+  for (const m of s.reloadQueue) sendToSession(n, m);
+}
+function checkRest() {
+  const minutes = restMinutesNow();
+  if (!minutes) return;
+  for (const s of [...live.values()]) {
+    const due = restDue({ ...s, asks: s.pendingAsks?.size || 0 }, { minutes, runningJobs: runningTasks(s), signInOpen: signInWindows.has(s.client), paused: !!state.paused });
+    if (due && !clientById(s.client)?.remote) restSession(s);
+  }
+}
+setInterval(checkRest, 30000);
 // Reload all: every session whose config changed, whatever its desk's setting; one working now reloads when its turn ends.
 function reloadAll() {
   let now = 0, later = 0;
@@ -3698,6 +3739,8 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
     return;
   }
   if (state.paused && !system && noteMessaged(state.paused, s.id)) { saveState(); broadcastPause(); }
+  // Resting: started again first, and the message goes to the new process.
+  if (s.resting) { s.reloadQueue.push({ text, attachments, context, system, from }); wakeSession(s).catch((e) => logEvent(`wake failed: ${sessionTag(s)}`, e.message)); return; }
   // Its Claude config changed and it may restart now: restarted first, and the message goes to the new process.
   if (s.reloading || checkConfig(s) === 'reload') { s.reloadQueue.push({ text, attachments, context, system, from }); return; }
   const files = saveUploads(s.id, attachments);
@@ -3943,7 +3986,8 @@ async function runnerCall(pathname, body) {
 // has the session; s.runnerSeq is the number of the last message read.
 function remoteSession(s) {
   const id = s.id;
-  const ctl = async (op, arg) => { await s.ready; return (await runnerCall(`/sessions/${id}/control`, { op, arg })).out; };
+  const ctl = async (op, arg) => { if (s.resting) return; await s.ready; // resting: what was set is in its saved record, read when it wakes
+ return (await runnerCall(`/sessions/${id}/control`, { op, arg })).out; };
   // A message is marked unsent until the runner has it, so one cut off by an app restart is shown as
   // such afterwards (unsentNote) instead of looking sent and unanswered.
   const input = {
@@ -4010,14 +4054,14 @@ function runLoop(s) {
     try {
       for await (const m of s.query) handleSdkMessage(s, m);
       if (s.runnerRestarted) return; // the runner is taking in a change; the check below puts it back
-      if (s.reloading) return; // reloadSession puts it back
+      if (s.reloading || s.resting) return; // reloadSession or wakeSession puts it back
       if (live.get(s.id) !== s) return; // archived or ended from here: already taken off the list
       // It stopped by itself with a message unanswered: say so, rather than look read and finished.
       if (!s.closing && ['starting', 'running', 'requires_action'].includes(s.status)) stoppedNote(s, 'Session stopped before it answered. Send the message again to start it afresh.');
       setStatus(s, 'ended');
       markRunning(s.id, false);
     } catch (err) {
-      if (live.get(s.id) !== s || s.reloading) return;
+      if (live.get(s.id) !== s || s.reloading || s.resting) return;
       // The runner went away partway through a turn (a crash, or it was killed): a cut-off, as after a start.
       const midTurn = !s.closing && ['starting', 'running'].includes(s.status);
       stoppedNote(s, `Session stopped: ${err.message}`);
@@ -6312,6 +6356,7 @@ async function profileRoutes(req, res, url, p) {
     const s = live.get(mm[1]);
     if (!s || !s.query) return json(res, 200, { from: 'none', servers: [] });
     try {
+      if (s.resting) throw new Error('resting'); // nothing running to ask
       const list = await Promise.race([s.query.mcpServerStatus(), new Promise((_, no) => setTimeout(() => no(new Error('no answer')), 8000))]);
       return json(res, 200, { from: 'live', at: Date.now(), servers: (list || []).map(mcpRow) });
     } catch {
@@ -7040,6 +7085,10 @@ const server = http.createServer(async (req, res) => {
       if (!d) return json(res, 400, { error: 'Give a full https:// address (http:// only for this computer)' });
       state.feedback = d; saveState();
       return json(res, 200, destinationInfo(d));
+    }
+    if (p === '/api/rest-minutes') {
+      if (req.method === 'POST') { state.restMinutes = restMinutes((await readBody(req)).minutes); saveState(); }
+      return json(res, 200, { minutes: restMinutesNow() });
     }
     if (p === '/api/stall-stop') {
       if (req.method === 'POST') { state.stallStop = !!(await readBody(req)).on; saveState(); }
