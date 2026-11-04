@@ -1,7 +1,7 @@
 // Tests for pause.mjs, the rules of Pause all / Resume all. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { workingNow, newPause, holdsMessage, noteMessaged, resumePlan, resumeNote, pauseWhy, autoPaused, clockJumped } from '../pause.mjs';
+import { workingNow, newPause, holdsMessage, noteMessaged, wokeByItself, noteWoke, resumePlan, resumeNote, pauseWhy, autoPaused, clockJumped } from '../pause.mjs';
 
 test('a reply in progress is stopped; background commands alone are listed but not stopped; the rest are left out', () => {
   assert.deepEqual(workingNow({ status: 'running' }), { stop: true });
@@ -66,4 +66,29 @@ test('the wake check counts five minutes or more between ticks as a sleep', () =
   assert.equal(clockJumped(0, 4 * 60000), false);
   assert.equal(clockJumped(0, 5 * 60000), true);
   assert.equal(clockJumped(0, 60000, 60000), true);
+});
+
+test('while paused, a turn the session starts by itself is caught; the person\'s message and answers are not (#644)', () => {
+  const p = newPause('user', []);
+  assert.equal(wokeByItself(p, 'idle', 'running'), true, 'a background command ended and Claude Code started a turn');
+  assert.equal(wokeByItself(p, 'idle', 'starting'), true);
+  assert.equal(wokeByItself(p, 'running', 'running'), false, 'sendToSession already set running for the person\'s message');
+  assert.equal(wokeByItself(p, 'requires_action', 'running'), false, 'the person answered a question');
+  assert.equal(wokeByItself(p, 'running', 'idle'), false);
+  assert.equal(wokeByItself(null, 'idle', 'running'), false, 'not paused: nothing to stop');
+});
+
+test('a session that woke during the pause is marked, added if Pause all left it out, and told about it on Resume', () => {
+  const p = newPause('user', [{ id: 'a', client: 'c1', title: 'A', stopped: false }]);
+  assert.equal(noteMessaged(p, 'a'), true);
+  assert.equal(noteWoke(p, { id: 'a', client: 'c1', title: 'A' }), true);
+  assert.equal(noteWoke(p, { id: 'b', client: 'c2' }), true);
+  assert.equal(noteWoke(null, { id: 'x' }), false);
+  const plan = resumePlan(p);
+  assert.deepEqual(plan.map((x) => `${x.id}:${x.woke}`), ['a:true', 'b:true'], 'the person wrote to a earlier, but it woke after that, so it still gets the note');
+  assert.equal(p.sessions[1].title, 'Untitled');
+  const note = resumeNote(p, { stopped: false, woke: true });
+  assert.match(note, /background command .* finished and started a new turn by itself/);
+  assert.match(note, /Docket stopped that turn/);
+  assert.doesNotMatch(resumeNote(p, { stopped: false }), /by itself/);
 });

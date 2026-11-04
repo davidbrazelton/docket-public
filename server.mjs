@@ -11,7 +11,7 @@ import { spawn, execFile } from 'node:child_process';
 import { chromium } from 'playwright';
 import { createScheduler } from './scheduler.mjs';
 import { familyBelow } from './drag-move.mjs';
-import { workingNow, newPause, holdsMessage, noteMessaged, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
+import { workingNow, newPause, holdsMessage, noteMessaged, wokeByItself, noteWoke, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from './needs-you.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
@@ -715,6 +715,19 @@ function setStatus(s, status) {
   updateBusy(s);
   pushSession(s);
 }
+// A status the session itself reports. While paused, a turn it started by itself (a background command
+// ended) is stopped at once and marked for Resume all, since it never went through holdsMessage (#644).
+function sdkStatus(s, status) {
+  const woke = wokeByItself(state.paused, s.status, status);
+  setStatus(s, status);
+  if (!woke) return;
+  noteWoke(state.paused, s);
+  saveState(); broadcastPause();
+  s.quietTurn = true; // no report to the parent and no unread mark for a turn Docket stopped
+  addEvent(s, { k: 'note', text: 'A background command finished during the pause and started a turn. Docket stopped it; Resume all tells the session to take in the result' });
+  logEvent('paused session woke by itself', `${sessionTag(s)}: stopped its turn`);
+  s.query?.interrupt?.().catch(() => {});
+}
 
 function upsertTask(s, key, patch) {
   const t = mergeTask(s.tasks, key, patch);
@@ -950,7 +963,7 @@ async function resumeAll(reason = 'user') {
       const target = await sessionToMessage(x.client, x.id);
       if (x.kind === 'note') {
         addEvent(target, { k: 'note', text: 'Resumed by Resume all' });
-        sendToSession(target, { text: '', system: true, context: resumeNote(paused, { stopped: x.stopped }) });
+        sendToSession(target, { text: '', system: true, context: resumeNote(paused, { stopped: x.stopped, woke: x.woke }) });
         resumed++;
       } else sendToSession(target, { text: x.text, attachments: x.attachments || [], context: x.context, system: x.system, from: x.from });
     } catch (e) { logEvent(`resume all: could not reach ${x.id}`, e.message); }
@@ -1058,7 +1071,7 @@ function handleSdkMessage(s, m) {
         s.curText.text += e.delta.text;
         broadcast({ t: 'delta', id: s.id, evId: s.curText.id, text: e.delta.text });
       }
-      setStatus(s, 'running');
+      sdkStatus(s, 'running');
       return;
     }
     case 'assistant': {
@@ -1136,7 +1149,7 @@ function handleSdkMessage(s, m) {
         case 'commands_changed': noteCommands(s, (m.commands || []).map((c) => c.name)); return;
         case 'session_state_changed':
           if (m.state === 'requires_action') setUnread(s, 'requires_action');
-          setStatus(s, m.state); return;
+          sdkStatus(s, m.state); return;
         case 'task_started': case 'task_progress': case 'task_updated': case 'task_notification':
           for (const [key, patch] of taskChanges(s.tasks, m)) upsertTask(s, key, patch);
           return;
