@@ -186,14 +186,20 @@ select.draft-group { max-width: 220px; font: inherit; color: var(--text); backgr
 .pick-bar .msg { flex-basis: 100%; color: var(--bad); }
 .pick-bar .msg:empty { display: none; }
 .attn-bar .gap { margin-left: 8px; }
-/* Order, with the 👁 view menu at the right end of the same line */
+/* Order, ✦ and (while ✦ is on) Keep at the left, the 👁 view menu at the right end of the same line */
 .list-bar { padding: 0 2px; }
 .list-bar[hidden] { display: none; }
-.list-bar #listOpts { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.list-bar #listOpts select { min-width: 0; flex: 0 1 auto; text-overflow: ellipsis; padding: 1px 2px; }
-.list-bar #listOpts #attnWindow { flex-shrink: 0; } /* short labels; the Order one gives way first in a narrow panel */
-.list-bar #attnBtn { margin-left: auto; }
-.list-bar button { width: 30px; height: 26px; padding: 0; font-size: 14px; }
+.list-bar #listOpts, .list-bar #attnOpts { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.list-bar #listOpts { overflow: hidden; }
+.list-bar #listOpts > span { flex: none; }
+.list-bar #attnOpts { flex: none; } /* short labels; the Order one gives way first in a narrow panel */
+.list-bar #attnOpts:empty { display: none; }
+.list-bar select { min-width: 0; flex: 0 1 auto; text-overflow: ellipsis; padding: 1px 2px; }
+.list-bar .view-menu { margin-left: auto; }
+.list-bar { container-type: inline-size; }
+@container (max-width: 299px) { .list-bar:has(#attnOpts:not(:empty)) #listOpts > span { display: none; } } /* the dropdown still shows its choice */
+@container (max-width: 229px) { .list-bar:has(#attnOpts:not(:empty)) #listOpts { display: none; } }
+.list-bar button { flex: none; width: 30px; height: 26px; padding: 0; font-size: 14px; }
 .list-bar button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
 .attn-bar select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1px 4px; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--line); }
@@ -1105,7 +1111,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
       <div class="side-top"><div class="side-tabs" role="tablist"><button role="tab" data-mode="sessions" class="on" data-tip="tab-sessions">Sessions</button><button role="tab" data-mode="schedules" data-tip="tab-schedules">Schedules</button></div><button class="ghost pane-close" id="sideClose" aria-label="Close the session list" title="Back to the session (Esc)">✕</button></div>
       <div class="search-row"><button class="primary" id="newBtn" data-tip="new">+ New session</button><input id="search" placeholder="Search sessions" aria-label="Search sessions" data-tip="search"><button id="textSearchBtn" class="ghost" aria-pressed="false" data-tip="textsearch">❝</button></div>
       <div id="searchNote" class="search-note" hidden></div>
-      <div class="attn-bar list-bar" id="listBar"><span id="listOpts"></span><button id="attnBtn" class="ghost" aria-pressed="false" data-tip="attn">✦</button><div class="view-menu"><button id="viewBtn" class="ghost" aria-haspopup="true" aria-expanded="false" data-tip="view">👁</button><div id="viewMenu" class="tl-menu view-pop" data-menu hidden></div></div></div>
+      <div class="attn-bar list-bar" id="listBar"><span id="listOpts"></span><button id="attnBtn" class="ghost" aria-pressed="false" data-tip="attn">✦</button><span id="attnOpts"></span><div class="view-menu"><button id="viewBtn" class="ghost" aria-haspopup="true" aria-expanded="false" data-tip="view">👁</button><div id="viewMenu" class="tl-menu view-pop" data-menu hidden></div></div></div>
     </div>
     <div id="signin"></div>
     <div id="inbox"></div>
@@ -1274,7 +1280,7 @@ const HELP = [
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
     ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), and which chips each row shows. Each desk keeps its own.'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
-    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that need you (a reply or an error you have not opened yet), wait on your answer, are working, or have a warm cache. Below them, dimmed: the ones you touched lately (sent a message or started; the ✦ dropdown on the Order line sets how far back, Workday (the last workday) at first) and the ones you pinned (right-click a session). A family shows whole: a session started from another one sits under it, its parent dimmed if only there for it. The orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then dimmed what you touched lately or pinned. Click to show everything.'],
+    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that need you (a reply or an error you have not opened yet), wait on your answer, are working, or have a warm cache. Below them, dimmed: the ones you touched lately (sent a message or started; the Keep dropdown beside ✦ sets how far back, Workday (the last workday) at first) and the ones you pinned (right-click a session). A family shows whole: a session started from another one sits under it, its parent dimmed if only there for it. The orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then dimmed what you touched lately or pinned. Click to show everything.'],
     ['attn-window', '✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, dimmed, by when you last touched them (sent a message or started them; opening one does not count). Off: none. 12 hours. Yesterday: from the start of yesterday. Workday (the last workday): from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included. 7 days. Pins: only pinned ones. Pinned sessions show under every choice. Each desk keeps its own.'],
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
@@ -3619,7 +3625,7 @@ function attnPick(match, kind) {
 }
 // ---------- needs attention: what is happening now, and what you touched lately ----------
 // Needs you, a 1 hour cache with 10 minutes or less left, cut off mid-reply, working, waiting on your answer, or any cache still warm.
-// Below those, dimmed: sessions touched within the ✦ window (on the Order line) or pinned, and parents that keep a family whole (attnShown).
+// Below those, dimmed: sessions touched within the Keep window (beside ✦) or pinned, and parents that keep a family whole (attnShown).
 // Waiting on your answer: read, but its latest reply asks something or ends with next steps and nothing was
 // sent to it since (s.awaitingAnswer, worked out by the server). No time limit: it stays until you answer or archive it.
 const cacheEnding = (s) => { const left = s.stats && s.stats.cacheExpiresAt - Date.now(); return !!s.stats && s.stats.cacheTtl > 600 && left > 0 && left <= 10 * 60000; };
@@ -3645,11 +3651,13 @@ try { localStorage.removeItem('recentWindow'); } catch {} // the Recent look-bac
 let listBarHtml = null;
 function setListBar() {
   $('listBar').hidden = false;
-  const html = `<span>Order:</span><select id="listOrder" aria-label="Which sessions go at the top of each section"${tip('order')}>${ORDER_CHOICES.map(([v, l]) => `<option value="${v}" ${listOrder() === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`
-    + `<select id="attnWindow" aria-label="Which read sessions ✦ Needs attention also keeps"${tip('attn-window')}>${ATTN_WINDOWS.map(([v, l]) => `<option value="${v}" ${S.attnWindow === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  const order = `<span>Order:</span><select id="listOrder" aria-label="Which sessions go at the top of each section"${tip('order')}>${ORDER_CHOICES.map(([v, l]) => `<option value="${v}" ${listOrder() === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  // The look-back sits right after ✦ and only while ✦ Needs attention is on: it changes nothing otherwise.
+  const keep = S.attn ? `<span>Keep:</span><select id="attnWindow" aria-label="Which read sessions ✦ Needs attention also keeps"${tip('attn-window')}>${ATTN_WINDOWS.map(([v, l]) => `<option value="${v}" ${S.attnWindow === v ? 'selected' : ''}>${l}</option>`).join('')}</select>` : '';
+  const html = order + '\n' + keep;
   if (html === listBarHtml) return;
   if (listSelectOpen()) { S.listWanted = true; return; }
-  listBarHtml = html; $('listOpts').innerHTML = html;
+  listBarHtml = html; $('listOpts').innerHTML = order; $('attnOpts').innerHTML = keep;
 }
 // end of list bar
 document.addEventListener('change', (e) => {

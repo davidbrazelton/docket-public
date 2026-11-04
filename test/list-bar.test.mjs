@@ -1,4 +1,4 @@
-// Tests for the Order line above the session list: a redraw must not replace the dropdown,
+// Tests for the Order and Keep line above the session list: a redraw must not replace the dropdown,
 // so an open one stays open. Runs the list bar part of index.html with a pretend element.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -12,14 +12,15 @@ assert.ok(start > 0 && end > start, 'the list bar part of index.html has moved o
 // The browser reads innerHTML back in its own spelling (selected="", no space before >), so the pretend
 // element does the same: comparing with innerHTML would never match.
 function load() {
-  const opts = { writes: 0, _html: '', set innerHTML(v) { this.writes++; this._html = v.replace(/ selected/g, ' selected=""').replace(/ >/g, '>'); }, get innerHTML() { return this._html; } };
+  const el = () => ({ writes: 0, _html: '', set innerHTML(v) { this.writes++; this._html = v.replace(/ selected/g, ' selected=""').replace(/ >/g, '>'); }, get innerHTML() { return this._html; } });
+  const opts = el(), keep = el();
   const bar = { hidden: true };
-  const env = { open: false, order: 'oldest', S: { listWanted: false, attnWindow: 'workday' } };
-  const $ = (id) => (id === 'listOpts' ? opts : bar);
+  const env = { open: false, order: 'oldest', S: { listWanted: false, attn: false, attnWindow: 'workday' } };
+  const $ = (id) => (id === 'listOpts' ? opts : id === 'attnOpts' ? keep : bar);
   const setListBar = new Function('$', 'tip', 'ORDER_CHOICES', 'ATTN_WINDOWS', 'listOrder', 'listSelectOpen', 'S',
     page.slice(start, end) + '\nreturn setListBar;')($, () => '', [['oldest', 'Oldest'], ['newest', 'Newest']],
     [['workday', 'Last workday'], ['7d', '7 days']], () => env.order, () => env.open, env.S);
-  return { setListBar, opts, env };
+  return { setListBar, opts, keep, env };
 }
 
 test('the same bar drawn again is not rewritten', () => {
@@ -48,14 +49,21 @@ test('while a dropdown is open the bar is left alone, and the list is asked to r
   assert.match(opts.innerHTML, /value="newest" selected/);
 });
 
-test('the ✦ also keeps dropdown is on the Order line, and the 👁 menu no longer has it (#617)', () => {
-  const { setListBar, opts, env } = load();
+test('the Keep dropdown sits after ✦ only while ✦ is on, and the 👁 menu no longer has it (#617, #626)', () => {
+  const { setListBar, opts, keep, env } = load();
   setListBar();
-  assert.match(opts.innerHTML, /<select id="listOrder"[^]*<select id="attnWindow"/);
-  assert.match(opts.innerHTML, /value="workday" selected/);
+  assert.match(opts.innerHTML, /<select id="listOrder"/);
+  assert.equal(keep.innerHTML, '', 'hidden while ✦ is off');
+  env.S.attn = true; setListBar();
+  assert.equal(keep.writes, 2, 'turning ✦ on redraws the bar');
+  assert.match(keep.innerHTML, /^<span>Keep:<\/span><select id="attnWindow" aria-label="[^"]+"/);
+  assert.match(keep.innerHTML, /value="workday" selected/);
   env.S.attnWindow = '7d'; setListBar();
-  assert.equal(opts.writes, 2, 'a changed window rewrites the bar');
-  assert.match(opts.innerHTML, /value="7d" selected/);
+  assert.equal(keep.writes, 3, 'a changed window rewrites the bar');
+  assert.match(keep.innerHTML, /value="7d" selected/);
+  env.S.attn = false; setListBar();
+  assert.equal(keep.innerHTML, '', 'turning ✦ off hides it again');
+  assert.match(page, /<button id="attnBtn"[^>]*>✦<\/button><span id="attnOpts"><\/span>/, 'right after ✦');
   const menu = page.slice(page.indexOf('function renderViewMenu'), page.indexOf('// ✦ carries the attention count'));
   assert.ok(menu.length > 0 && !menu.includes('attnWindow'));
   assert.match(page, /if \(\['listOrder', 'attnWindow'\]\.includes\(e\.target\.id\)\) e\.target\.blur\(\);/, 'blurred after a change, like Order');
