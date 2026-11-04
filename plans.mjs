@@ -304,8 +304,10 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       const before = new Set(readyTasks(p).map((x) => x.id));
       if (state) {
         if (state === 'open') { t.holder = ''; t.holderTitle = ''; t.claimedAt = ''; }
-        else if (state === 'claimed' && !t.holder) Object.assign(t, { holder: actor, holderTitle: actorTitle });
-        if (state !== 'open' && t.state === 'open' && !t.claimedAt) t.claimedAt = stamp(now());
+        // A task set going or done with no holder records the session that set it, so the plan says who did it.
+        else if ((state === 'claimed' || state === 'done') && !t.holder) Object.assign(t, { holder: actor, holderTitle: actorTitle });
+        // Each change of state stamps its own time, so "done since" is when it was set done, not when it was claimed.
+        if (state !== 'open' && state !== t.state) t.claimedAt = stamp(now());
         t.state = state;
       }
       if (k) t.kind = k;

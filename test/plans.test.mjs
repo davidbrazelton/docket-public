@@ -212,3 +212,18 @@ test('a plan file from before names, kinds and dropping reads and works unchange
   assert.deepEqual(s.read('p-aaaa11').parent, { plan: 'p-0a1b2c', task: 'T10' });
   assert.equal(s.addTasks('p-aaaa11', [{ kind: 'test', title: 'y' }], 'c2').added[0].id, 'T2');
 });
+
+test('"done since" is when the task was set done, and a coordinator doing a task itself is recorded as who did it (#655)', () => {
+  let clock = Date.UTC(2026, 10, 4, 2, 10);
+  const s = createPlanStore({ dir: tmp(), now: () => clock });
+  const p = s.create({ title: 'P', tasks: [{ kind: 'build', title: 'A' }, { kind: 'build', title: 'B' }], coordinator: 'c1', coordinatorTitle: 'Coordinator' });
+  s.claim(p.id, 'T1', 'w1', 'Worker');
+  clock += 3 * 3600000; s.update(p.id, 'T1', { state: 'waiting_on_user' }, 'w1');
+  clock += 3600000; s.update(p.id, 'T1', { state: 'done' }, 'w1');
+  s.update(p.id, 'T1', { note: 'In.' }, 'w1'); // a note alone does not move the time
+  clock += 3600000; s.update(p.id, 'T2', { state: 'done' }, 'c1', 'Coordinator');
+  const text = fs.readFileSync(p.file, 'utf8');
+  assert.match(text, /^- \[x\] T1 A\n {2}- Kind: build\n {2}- State: done since 2026-11-04 06:10\n {2}- Held by: w1 \(Worker\)/m);
+  assert.match(text, /^- \[x\] T2 B\n {2}- Kind: build\n {2}- State: done since 2026-11-04 07:10\n {2}- Held by: c1 \(Coordinator\)/m);
+  assert.deepEqual(s.read(p.id).tasks.map((t) => [t.holder, t.claimedAt]), [['w1', '2026-11-04 06:10'], ['c1', '2026-11-04 07:10']]);
+});
