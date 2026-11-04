@@ -227,3 +227,15 @@ test('"done since" is when the task was set done, and a coordinator doing a task
   assert.match(text, /^- \[x\] T2 B\n {2}- Kind: build\n {2}- State: done since 2026-11-04 07:10\n {2}- Held by: c1 \(Coordinator\)/m);
   assert.deepEqual(s.read(p.id).tasks.map((t) => [t.holder, t.claimedAt]), [['w1', '2026-11-04 06:10'], ['c1', '2026-11-04 07:10']]);
 });
+
+test('only the coordinator changes the goal, and the new goal is saved in the plan file and read back (#653)', () => {
+  const s = createPlanStore({ dir: tmp() });
+  const p = s.create({ title: 'P', goal: 'Done when both pull requests are open.', tasks: [{ kind: 'build', title: 'A' }], coordinator: 'c1' });
+  assert.throws(() => s.setGoal(p.id, 'Something else.', 'w1'), /coordinator/);
+  assert.throws(() => s.setGoal(p.id, '  ', 'c1'), /empty/);
+  s.setGoal(p.id, 'Done when notices are connected.\nAnd Sarah has answered.', 'c1');
+  assert.match(fs.readFileSync(p.file, 'utf8'), /^Done when notices are connected\.\nAnd Sarah has answered\.\n\n## Tasks$/m);
+  const back = s.read(p.id);
+  assert.equal(back.goal, 'Done when notices are connected.\nAnd Sarah has answered.');
+  assert.deepEqual(back.tasks.map((t) => t.title), ['A']);
+});

@@ -321,6 +321,16 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   function setCoordinator(id, actor, actorTitle = '') {
     return locked(() => { const p = must(id); p.coordinator = actor; p.coordinatorTitle = actorTitle; return write(p); });
   }
+  // The coordinator changes the goal, so it keeps matching the finish line as tasks are added or replaced.
+  function setGoal(id, goal, actor) {
+    if (!String(goal ?? '').trim()) throw new Error('A goal cannot be empty.');
+    return locked(() => {
+      const p = must(id);
+      if (!actor || actor !== p.coordinator) throw new Error(`Only the plan's coordinator changes the goal of ${id}.`);
+      p.goal = String(goal).trim();
+      return write(p);
+    });
+  }
   // Progress counted on the smallest pieces: a task with its own plan counts as that plan's tasks, all the way down.
   // A dropped task counts as neither open nor done.
   function rollup(id, all = list(), seen = new Set()) {
@@ -334,5 +344,5 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
     }
     return { done, total };
   }
-  return { dir, read, list, create, addTasks, claim, update, setCoordinator, rollup, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
+  return { dir, read, list, create, addTasks, claim, update, setCoordinator, setGoal, rollup, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
 }

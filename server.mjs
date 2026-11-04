@@ -1455,6 +1455,17 @@ function planToolDefs(parent) {
         plansChanged(client, r.plan);
         return reply(`Added ${r.added.map((t) => `${t.id} ${t.title}`).join('; ')} to plan ${id}.`);
       })),
+    tool('plan_set_goal',
+      say("Change the goal of the plan this session coordinates (coordinator only). Keep the goal saying what done looks like for the whole plan: change it when tasks added or replaced move the finish line.",
+        'Change the goal of the plan this session coordinates.'),
+      { goal: d(z.string(), 'The new goal, a few sentences: what the whole plan achieves and what done looks like'), plan_id: pa('Plan id; defaults to the plan this session coordinates') },
+      async ({ goal, plan_id: plan }) => run(() => {
+        const id = plan || sessionPlans(client, parent.id).own?.id;
+        if (!id) return reply('This session coordinates no plan. Make one with plan_create.', true);
+        const p = store.setGoal(id, goal, parent.id);
+        plansChanged(client, p);
+        return reply(`Changed the goal of plan ${id}:\n${p.goal}`);
+      })),
     tool('plan_next_task',
       say("Claim the next task that is free to start (open, and everything it waits on done) in a plan, for this session. Two sessions never get the same task. Use it when the coordinator asked you to take the next task; the plan defaults to the plan of the session that started you.",
         'Claim the next free task in a plan, when told to take the next task.'),
