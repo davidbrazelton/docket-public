@@ -1975,7 +1975,7 @@ async function restoreAfterReload() {
   let r = null;
   try { r = JSON.parse(sessionStorage.getItem('docket-reload') || 'null'); sessionStorage.removeItem('docket-reload'); } catch {}
   if (!r || r.client !== S.client) return;
-  if (r.selected && r.selected !== 'draft') await openSession(r.selected).catch(() => {});
+  if (r.selected && r.selected !== 'draft') await openSession(r.selected, 'reload').catch(() => {});
 }
 async function init() {
   applyTheme(store.get('theme', null));
@@ -2084,7 +2084,7 @@ function selectClient(id, openId) {
   if (S.mode === 'schedules') { setMode(openId ? 'sessions' : 'schedules', openId); return; }
   if (openId) { if (openId === 'draft') newDraft(); else openSession(openId).catch(() => {}); return; }
   const last = store.get('sel:' + id, null);
-  if (last && (S.live[last] || (S.history[id] || []).some((r) => r.id === last))) openSession(last); else newDraft();
+  if (last && (S.live[last] || (S.history[id] || []).some((r) => r.id === last))) openSession(last, 'desk switch'); else newDraft();
 }
 // A list that was asked for before a change arrived (an archive, say) is out of date by the time it
 // lands, so it is thrown away and asked for again; an older answer never replaces a newer one.
@@ -2684,7 +2684,7 @@ function setMode(mode, openId) {
     renderList();
     if (openId) { if (openId === 'draft') newDraft(); else openSession(openId).catch(() => {}); return; }
     const last = store.get('sel:' + S.client, null);
-    if (last && (S.live[last] || (S.history[S.client] || []).some((r) => r.id === last))) openSession(last); else newDraft();
+    if (last && (S.live[last] || (S.history[S.client] || []).some((r) => r.id === last))) openSession(last, 'back to sessions'); else newDraft();
   }
 }
 for (const el of document.querySelectorAll('.side-tabs')) el.onclick = (e) => { const b = e.target.closest('[data-mode]'); if (b && b.dataset.mode !== S.mode) setMode(b.dataset.mode); };
@@ -6343,8 +6343,10 @@ document.addEventListener('change', async (e) => {
 const normPath = (p) => String(p || '').trim().replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
 $('newBtn').onclick = () => (S.mode === 'schedules' ? openSchedule(null) : newDraft());
 
-async function openSession(id) {
+// auto: why the page opened it by itself (see seenCounts), empty when the person chose it.
+async function openSession(id, auto = '') {
   if (POPOUT && id !== POPOUT.id) return; // a pop-out stays on its session
+  S.autoOpen = auto ? id : null;
   if (pv && pv.sessionId !== id) closePreview();
   if (!leaveOk()) return;
   if (S.hold?.id !== id) S.hold = takeHold(S.live[id] || (S.history[S.client] || []).find((r) => r.id === id), HOLD_MEASURES) || { id };
@@ -6373,6 +6375,14 @@ async function openSession(id) {
 }
 // A session you marked unread stays unread until you open it again, even while it is on screen.
 S.keepUnread = null;
+// ---------- seen after an automatic open (#625) ----------
+// The page opens a session by itself: the one last open on a desk when you switch to it, and the open one again
+// after Docket restarts or the page reloads for an update. It is on screen, but you did not pick it, and often you
+// are about to click another one, so its unread reply stays orange until you click, type, touch or use the wheel
+// inside the session itself (anywhere right of the list), or open it yourself.
+S.autoOpen = null; // the id of a session the page opened by itself, until something above counts
+const seenCounts = ({ autoOpen, selected, inSession }) => !autoOpen || autoOpen !== selected || !!inSession;
+// end of seen after an automatic open
 // A window left in front with nobody at the computer still passes looking(), so a reply is only
 // marked read when the person did something in the page in the last minute: a click, a key, the
 // mouse wheel or a touch. A bare mouse move does not count, and neither does scrolling, since the
@@ -6387,11 +6397,14 @@ for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart']) {
     // A press in the list holds its redraw before this marks a reply seen, or the first click back after a minute away
     // lands on a row the redraw replaced and is lost; the list's own hold only starts after this.
     if (type === 'pointerdown' && $('list').contains(e.target)) listPressed = true;
-    markSeen(`activity: ${type}`); // nothing happens unless the open session has an unread reply
+    const inSession = !!e.target?.closest?.('main');
+    if (inSession && S.autoOpen === S.selected) S.autoOpen = null;
+    markSeen(`activity: ${type}${inSession ? ' in the session' : ''}`); // nothing happens unless the open session has an unread reply
   }, { capture: true, passive: true });
 }
 function markSeen(why) {
   if (S.keepUnread && S.keepUnread === S.selected) return;
+  if (!seenCounts({ autoOpen: S.autoOpen, selected: S.selected })) return;
   if (!looking() || !present()) return;
   const saved = !S.live[S.selected] && (S.history[S.client] || []).find((r) => r.id === S.selected);
   if (saved?.waiting) { saved.waiting = false; api(`/api/sessions/${saved.id}/seen?client=${S.client}`, seenBody(why)).catch(() => {}); renderList(); renderClients(); renderHead(); }
@@ -7896,7 +7909,7 @@ function connect() {
       S.live = {};
       await Promise.all(shownDesks().map((c) => loadSessions(c.id, true)));
       renderClients(); renderList();
-      if (S.selected && S.selected !== 'draft') openSession(S.selected);
+      if (S.selected && S.selected !== 'draft') openSession(S.selected, S.autoOpen === S.selected ? 'reconnect' : '');
     }
     S.wasConnected = true;
   };

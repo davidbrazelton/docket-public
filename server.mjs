@@ -566,6 +566,16 @@ function setUnread(s, why) {
   s.unread = true;
 }
 const sessionTag = (s) => `"${s.title || 'Untitled'}" (${s.id})`;
+// The saved orange dot (state.sessions[id].waiting): what a session shows once it is no longer running here. Every
+// change goes through this and is logged with why, so a dot that went gray can be traced (#625).
+function setSavedWaiting(id, waiting, why) {
+  const rec = state.sessions[id];
+  if (!rec || !!rec.waiting === waiting) return false;
+  rec.waiting = waiting;
+  logEvent(`saved waiting ${!waiting} -> ${waiting}: ${sessionTag({ id, title: rec.title })}`, why);
+  saveState();
+  return true;
+}
 const pushSession = (s) => {
   // A session already let go (archived, ended, or replaced after a runner restart) can still hear
   // from the runner as it closes; announcing it then would put it back in the page's list.
@@ -581,7 +591,7 @@ const pushSession = (s) => {
   }
   if (waiting !== !!s.wasWaiting) logEvent(`waiting ${!!s.wasWaiting} -> ${waiting}: ${sessionTag(s)}`);
   s.wasWaiting = waiting; s.keepPlace = false;
-  if (state.sessions[s.id] && !!state.sessions[s.id].waiting !== waiting) { state.sessions[s.id].waiting = waiting; saveState(); }
+  setSavedWaiting(s.id, waiting, `live session: unread ${!!s.unread}, status ${s.status}, background jobs ${!!s.heldTurn}${s.resting ? ', resting' : ''}`);
   broadcast({ t: 'session', session: summary(s) });
 };
 
@@ -7635,15 +7645,15 @@ const server = http.createServer(async (req, res) => {
         if (!client) return json(res, 404, { error: 'Unknown session' });
         if (s) { if (['running', 'starting'].includes(s.status)) return json(res, 400, { error: 'It is working right now' }); setUnread(s, 'mark-unread'); s.keepPlace = true; pushSession(s); }
         else {
-          state.sessions[id] = { ...(state.sessions[id] || { client: client.id }), waiting: true };
-          saveState(); historyCache.delete(client.id);
+          state.sessions[id] ||= { client: client.id };
+          setSavedWaiting(id, true, 'mark unread'); historyCache.delete(client.id);
           broadcast({ t: 'waiting', id, client: client.id, waiting: true });
         }
         return json(res, 200, { ok: true });
       }
       if (action === 'seen' && !s) {
         if (state.sessions[id]?.waiting) logSeen(id, null, b);
-        if (state.sessions[id]?.waiting) { state.sessions[id].waiting = false; saveState(); historyCache.delete(client?.id); }
+        if (setSavedWaiting(id, false, `seen: why ${b.why || 'not given'}`)) historyCache.delete(client?.id);
         // A session Claude Desktop ran: remember when it was opened, so only a newer Desktop reply turns it orange again.
         const file = client && transcriptFiles(client).get(id);
         if (file && transcriptTail(file).desktop) {

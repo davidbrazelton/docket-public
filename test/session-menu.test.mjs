@@ -58,7 +58,7 @@ test('Pop out opens the session in its own window, which stays on it (#611)', ()
   assert.ok(page.includes("if (act === 'popout') popOut(id, S.client);"));
   assert.ok(page.includes("window.open('/?' + new URLSearchParams({ popout: id, client }), 'docket-popout-' + id,"), 'one window per session, so a second Pop out brings it forward');
   // The pop-out never moves to another session, and never writes which desk or session the main window opens.
-  assert.ok(page.includes('async function openSession(id) {\n  if (POPOUT && id !== POPOUT.id) return;'));
+  assert.ok(page.includes('async function openSession(id, auto = \'\') {\n  if (POPOUT && id !== POPOUT.id) return;'));
   assert.ok(page.includes("S.selected = id; if (!POPOUT) store.set('sel:' + S.client, id);"));
   assert.ok(page.includes('function recordView(c, id) {\n  if (POPOUT) return;'));
   assert.ok(page.includes('if (POPOUT) return initPopout();'));
