@@ -4448,6 +4448,7 @@ setInterval(sweepFolders, 60000);
 
 // ---------- saved sessions on disk ----------
 const historyCache = new Map(); // clientId -> { at, rows }
+const lastList = new Map(); // clientId -> the rows of the last list built, kept when historyCache is cleared
 // ---------- one-shot runs: sessions another session started with `claude -p` in its terminal ----------
 // Nothing records who ran them, so they are matched by content: the command in the parent's log
 // contains the prompt that became the run's first message, and the run started within minutes of
@@ -4576,6 +4577,7 @@ async function buildHistoryNow(client) {
     engine: state.sessions[r.sessionId]?.engine || 'claude',
   })).concat(ownHomeRows(client, gone)).sort((a, b) => b.lastModified - a.lastModified);
   historyCache.set(client.id, { at: Date.now(), rows: out });
+  lastList.set(client.id, out);
   historyBuilt.add(client.id);
   try { desktopSeenSets.set(client.id, desktopSet(client)); } catch {}
   fs.promises.mkdir(DATA_DIR, { recursive: true }).then(() => fs.promises.writeFile(historyDisk(client.id), JSON.stringify(out))).catch(() => {});
@@ -4604,7 +4606,9 @@ function ownHomeRows(client, gone) {
   return rows;
 }
 // One of those rows, by id: Docket lists it but does not read or resume a Grok or Codex session it did not run.
-const outsideRow = async (client, id) => (await history(client)).find((r) => r.id === id && r.outside) || null;
+// Read from the last list built, of any age: the row the person clicked came from it, and building the list again
+// (seconds on a desk with hundreds of sessions) would hold up every session opened 20 s after the last build (#642).
+const outsideRow = async (client, id) => (lastList.get(client.id) || await history(client)).find((r) => r.id === id && r.outside) || null;
 const outsideNote = (r) => `This ${BRANDS[r.engine]?.name || r.engine} session was started outside Docket${r.cwd ? `, in ${r.cwd}` : ''}. Docket lists it with the desk's sessions, but shows and continues only the ${BRANDS[r.engine]?.name || r.engine} sessions it runs itself. To continue it, open a Terminal for this desk (it uses this desk's ${BRANDS[r.engine]?.name || r.engine} home) and resume it there${r.engine === 'codex' ? ` with: codex resume ${r.id}` : ''}.`;
 
 // File dates are not reliable (other programs touch transcript files), so a
