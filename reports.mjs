@@ -145,3 +145,22 @@ export function freedReply({ nowReady = [], isCoordinator = false, coordinatorTi
   if (isCoordinator || !coordinatorTitle) return `Now free to start: ${list}.`;
   return `This freed ${list}. The plan's coordinator, "${coordinatorTitle}", was told and starts them: nothing for you or the user to do about them, so do not mention them to the user.`;
 }
+
+// Where a session a parent waits on stands: 'working' (busy on a turn, compacting, or its background jobs
+// still running), 'waiting' (it asked the user something, or a form or permission ask is open), or 'done'
+// (finished, nothing asked). A parent shows the still blue ring while any is working or waiting (#645).
+export function childState({ status, compacting = false, jobs = 0, asks = 0, reply = '' }) {
+  if (status === 'ended') return 'done';
+  if (['starting', 'running', 'requires_action'].includes(status) || compacting || jobs > 0) return status === 'requires_action' ? 'waiting' : 'working';
+  return asks > 0 || endsAsking(reply) ? 'waiting' : 'done';
+}
+
+// Why a turn may not end quietly (no orange dot), or '' when it may. Only a turn Docket started (a session
+// report waking the parent) may, never one answering the user, never an error, and only while child
+// sessions are still working or waiting: the turn after the last one finishes goes orange as before.
+export function quietRefusal({ turnBy, error = false, kids = 0 }) {
+  if (turnBy !== 'docket') return 'this turn answers a message, not a session report';
+  if (error) return 'the turn ended in an error';
+  if (!kids) return 'no child session is still working, so the user hears now';
+  return '';
+}

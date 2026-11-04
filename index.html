@@ -210,6 +210,8 @@ select.draft-group { max-width: 220px; font: inherit; color: var(--text); backgr
 .dot.asking::after { content: '?'; }
 .dot.idle { background: var(--ok); }
 .dot.background { background: transparent; box-shadow: inset 0 0 0 2px var(--run); animation: pulse 2.4s infinite; }
+.dot.childwait { background: transparent; box-shadow: inset 0 0 0 2px var(--run); } /* waiting on child sessions (#645) */
+.dot.childnews { background: transparent; box-shadow: inset 0 0 0 2px var(--run), 0 0 0 3px color-mix(in srgb, var(--run) 30%, transparent); } /* ...and a report came in, nothing needed */
 .dot.resting { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ok); }
 .dot.ended { background: var(--line); }
 .dot.stopped { background: var(--bad); }
@@ -474,6 +476,7 @@ aside.tasks.hidden { display: none; }
 .gsec .gdots .dot { width: 7px; height: 7px; animation: none; box-shadow: none; }
 .gsec .gdots .dot.background { box-shadow: inset 0 0 0 1.5px var(--run); } .gsec .gdots .dot.resting { box-shadow: inset 0 0 0 1.5px var(--ok); } /* hollow ones keep their ring */
 .gsec .gdots .dot.background { box-shadow: inset 0 0 0 2px var(--run); }
+.gsec .gdots .dot.childwait { box-shadow: inset 0 0 0 2px var(--run); } .gsec .gdots .dot.childnews { box-shadow: inset 0 0 0 2px var(--run), 0 0 0 2px color-mix(in srgb, var(--run) 30%, transparent); }
 /* --line is the same colour as --head in dark theme, which hid the grey dot and made the others look shifted left. */
 .gsec .gdots .dot.ended { background: var(--muted); }
 .gsec .gdots .dot.asking, .key-sym .gdots .dot.asking { width: 12px; height: 12px; margin: -2.5px 0; font-size: 9px; }
@@ -1862,14 +1865,19 @@ const sortTops = (list, kids, topOf = (x) => x) => {
 const rowDrag = () => listOrder() === 'natural' && !S.showArchived && !$('search').value.trim();
 // Any session row can be dragged onto a group heading or another session to move it there, outside the archive.
 const moveDrag = () => !S.showArchived;
-const GROUP_DOT_ORDER = ['running', 'background', 'idle', 'resting', 'asking', 'needs', 'failed', 'stopped', 'ended'];
+const GROUP_DOT_ORDER = ['running', 'background', 'childwait', 'childnews', 'idle', 'resting', 'asking', 'needs', 'failed', 'stopped', 'ended'];
 // A turn that ended in an error (failed) shows over orange, so it does not look like a normal finish. A session paused on a prompt
 // (requires_action) shows the "?" badge (asking), apart from the plain yellow dot of an unread reply.
 const dotClass = (s) => !s.live ? (s.midReply ? 'stopped' : s.lastError ? 'failed' : s.waiting ? 'needs' : 'ended')
-  : s.compactingSince ? 'running' : ['running', 'starting'].includes(s.status) ? s.status : s.lastError ? 'failed' : s.status === 'requires_action' ? 'asking' : needsYou(s) ? 'needs' : inBackground(s) ? 'background' : s.resting && s.status === 'idle' ? 'resting' : s.status;
+  : s.compactingSince ? 'running' : ['running', 'starting'].includes(s.status) ? s.status : s.lastError ? 'failed' : s.status === 'requires_action' ? 'asking' : needsYou(s) ? 'needs' : inBackground(s) ? 'background' : waitsOnKids(s) ? (s.kidNews ? 'childnews' : 'childwait') : s.resting && s.status === 'idle' ? 'resting' : s.status;
 const RESTING_TIP = 'Resting: released from memory, wakes on your next message';
+// A parent waiting on child sessions it started that still work, or wait on the person (#645): the still blue ring.
+const waitsOnKids = (s) => s.live && s.status === 'idle' && !!(s.kids?.working || s.kids?.waiting);
+const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+const kidsText = (s) => [s.kids.working && `${plural(s.kids.working, 'child session')} working`, s.kids.waiting && `${s.kids.working ? s.kids.waiting : plural(s.kids.waiting, 'child session')} waiting on you`].filter(Boolean).join(', ')
+  + (s.kidNews ? '. A report came in; nothing is needed from you' : '');
 // The title a dot carries: the error for a red ring, what resting means for a hollow green one.
-const dotTip = (s, c = dotClass(s)) => c === 'failed' ? ` title="${esc(failedTip(s))}"` : c === 'asking' ? ' title="Waiting on your answer: the session is paused on a question or a permission prompt"' : c === 'resting' ? ` title="${RESTING_TIP}"` : '';
+const dotTip = (s, c = dotClass(s)) => c === 'failed' ? ` title="${esc(failedTip(s))}"` : c === 'asking' ? ' title="Waiting on your answer: the session is paused on a question or a permission prompt"' : c === 'resting' ? ` title="${RESTING_TIP}"` : c === 'childwait' || c === 'childnews' ? ` title="${esc(kidsText(s))}"` : '';
 const failedTip = (s) => `Last reply ended in an error: ${s.lastError.text.replace(/[.\s]+$/, '')}. Open it to read the error; send a message to try again.`;
 
 async function api(path, body) {
@@ -2935,6 +2943,7 @@ function timeBit(s) {
   if (s.live && s.compactingSince) return ['', 'compacting…', 'Compacting the conversation: summarising the earlier part so it can keep going'];
   if (s.live && ['running', 'starting'].includes(s.status)) return ['', 'working', ''];
   if (inBackground(s)) return ['', 'background', s.runningTasks ? `${s.runningTasks} background job${s.runningTasks === 1 ? '' : 's'} still running` : `Background jobs finished; ${brand(s)} is about to take in their results`];
+  if (waitsOnKids(s)) return ['', `waiting on ${s.kids.working + s.kids.waiting}`, kidsText(s)];
   const left = cacheLeft(s.stats);
   if (left !== null && left > 0) return [cacheEnding(s) ? 'warn' : '', `${left}m left`, `Prompt cache warm for ${left} more minute${left === 1 ? '' : 's'} (${s.stats.cacheTtl >= 3600 ? '1 hour' : '5 minute'} cache)`];
   if (s.stats) return ['cold', ago(s.stats.at), `Prompt cache expired; last reply ${new Date(s.stats.at).toLocaleString()}`];
@@ -4745,6 +4754,8 @@ function keyHtml() {
     ${head('Session dots', true)}
     ${row(dot('running'), 'The session is working on a reply right now. Also shown while a session is starting up, and while it is compacting (summarizing the older part of a long conversation so it can keep going).')}
     ${row(dot('background'), 'The reply is finished, but jobs it started in the background are still running. It is not done until they finish and the session reads their results.')}
+    ${row(dot('childwait'), 'Waiting on child sessions it started that are still working (or waiting on you in their own chat). Nothing is needed from you here; hover for how many.')}
+    ${row(dot('childnews'), 'Waiting on child sessions, and one of them reported progress the session took in without needing you. Open it to read the news; it turns yellow when a report needs you, and when the last child finishes.')}
     ${row(dot('asking'), 'Waiting on your answer. The session stopped in the middle of its work on a question form or an "Allow this?" prompt, and holds there until you answer.', '', play('question'))}
     ${row(dot('needs'), 'Needs you. The session finished a reply (or stopped with an error, shown by the red ring) you have not opened yet. Also a saved session that was waiting on you when Docket last stopped, and a session Claude Desktop ran whose latest reply came after you last opened it here.', '', play('ready'))}
     ${row(dot('idle'), 'Running and finished, and you have seen the reply. Nothing is waiting.')}
@@ -4752,7 +4763,7 @@ function keyHtml() {
     ${row(dot('failed'), 'The last reply ended in an error, for example an expired sign-in. Until you open it, it is listed under Needs you and counts in ✦, also after Docket restarts. Open it to read the error; sending a message clears the red ring.')}
     ${row(dot('stopped'), 'Cut off partway through a reply, usually because Docket or the computer restarted. Open it and press Continue.')}
     ${row(dot('ended'), 'Saved, not running. Open it any time to pick it up again.')}
-    ${row(`<span class="gdots">${dot('running')}${dot('idle')}${dot('needs')}</span>`, 'In group view, each group header shows one small dot for each kind of status inside it (not one per session), without blinking. They sit at the right edge in a fixed order, showing only the kinds present: blue (working), hollow blue (background jobs), green, hollow green (resting), yellow "?" (waiting on your answer), yellow (needs you), ringed red (error), red, grey.')}
+    ${row(`<span class="gdots">${dot('running')}${dot('idle')}${dot('needs')}</span>`, 'In group view, each group header shows one small dot for each kind of status inside it (not one per session), without blinking. They sit at the right edge in a fixed order, showing only the kinds present: blue (working), hollow blue (background jobs), still hollow blue (waiting on child sessions, with a halo when there is news), green, hollow green (resting), yellow "?" (waiting on your answer), yellow (needs you), ringed red (error), red, grey.')}
     ${head('Time text on the right of each row', true)}
     ${row('12m left', 'The conversation is still held in Claude’s short-term memory (the prompt cache), so the next message is cheaper and faster.')}
     ${row('8m left', 'A one hour session cache has 10 minutes or less left. Reply soon to keep the saving.', 'warn', play('cache'))}
@@ -6416,7 +6427,7 @@ function markSeen(why) {
   const saved = !S.live[S.selected] && (S.history[S.client] || []).find((r) => r.id === S.selected);
   if (saved?.waiting) { saved.waiting = false; api(`/api/sessions/${saved.id}/seen?client=${S.client}`, seenBody(why)).catch(() => {}); renderList(); renderClients(); renderHead(); }
   const s = S.live[S.selected];
-  if (s && s.unread) { s.unread = false; api(`/api/sessions/${s.id}/seen`, seenBody(why)).catch(() => {}); renderList(); renderClients(); renderHead(); }
+  if (s && (s.unread || s.kidNews)) { s.unread = false; s.kidNews = false; api(`/api/sessions/${s.id}/seen`, seenBody(why)).catch(() => {}); renderList(); renderClients(); renderHead(); }
 }
 document.addEventListener('visibilitychange', () => markSeen('visibilitychange'));
 // Coming back to the Docket window counts as seeing the session that is open.
@@ -6461,7 +6472,7 @@ function renderHead() {
   if (S.schedOpen) return renderScheduleHead();
   const s = current(); if (!s) return;
   if (POPOUT) renderClients(); // the window's title is the session's
-  const st = !s.live && s.archived ? ['', 'archived'] : !s.live ? (s.midReply ? ['needs', 'interrupted'] : s.elsewhere ? ['running', 'may be running in another app'] : ['', 'saved']) : s.compactingSince ? ['running', 'compacting the conversation'] : needsYou(s) ? ['needs', s.status === 'requires_action' ? 'needs your answer' : 'needs you'] : inBackground(s) ? ['running', s.runningTasks ? `working in background (${s.runningTasks})` : 'working in background'] : [s.status, s.status];
+  const st = !s.live && s.archived ? ['', 'archived'] : !s.live ? (s.midReply ? ['needs', 'interrupted'] : s.elsewhere ? ['running', 'may be running in another app'] : ['', 'saved']) : s.compactingSince ? ['running', 'compacting the conversation'] : needsYou(s) ? ['needs', s.status === 'requires_action' ? 'needs your answer' : 'needs you'] : inBackground(s) ? ['running', s.runningTasks ? `working in background (${s.runningTasks})` : 'working in background'] : waitsOnKids(s) ? ['', kidsText(s)] : [s.status, s.status];
   $('head').innerHTML = `<span class="dot ${dotClass(s)}"${dotTip(s)}></span><h1 id="title" title="Click to rename">${esc(s.title || 'Untitled')}</h1>
     ${multiBrand() ? `<span class="brand-pill"${tip('brand-pill')}>${brandLogo(s.engine || 'claude')}${esc(brand(s))}</span>` : ''}
     <span class="status-pill ${st[0]}" id="pill">${esc(st[1])}</span>

@@ -46,6 +46,12 @@ When a session you started says it is done (these steps also apply to a session 
 - Otherwise (a bigger task, anything risky, anything touching live data, secrets, sign-in or money, or when the user should read that session's own words) do not close it: tell it with send_to_session that you checked and agree the work is done. If something is still left for the user (an open pull request, a question, a decision), say so in that message, e.g. "checked and agree; the merge is still yours to ask for". It then tells the user in its own chat that it is complete and ready to close, or, if something is still left for the user, what that one thing is.
 - A session waiting on the user is never closed, and its question stays the user's to answer.
 
+While sessions you started are still working:
+- Your row shows a still blue ring: you are waiting on them, not on the user. Each turn you finish still marks you as needing the user, unless you end it quietly.
+- A turn woken by a session report that is only progress or an acknowledgment (a step done, work under way, nothing for the user to decide, answer or fix) ends quietly: call mcp__portal__report_quiet with a one-line reason, then give your usual short reply. The ring gains a soft halo, so the user can read it when they like.
+- Never end quietly when the report shows a failure, a decision or question for the user, a correction you sent back with send_to_session, or anything else the user should know now, and never on a turn that answers the user's own message. Questions, permission prompts, cards and errors mark the user whatever you do.
+- When the last session you wait on has finished, your report marks the user as usual: report_quiet is refused then.
+
 When the session that started you (or that sent you the work) tells you your work is done:
 - If nothing is waiting on the user, tell them plainly, in a line or two in your own chat, that this session is complete and ready to close, with where the result is. Ask nothing more and start nothing new.
 - If something is still waiting on the user (a pull request not yet merged, a question not yet answered, a decision), do not say it is ready to close. End the reply on that one thing in plain words, e.g. "Say merge and I will merge pull request #146." Once it is done (the merge is finished), say the session is complete and ready to close.

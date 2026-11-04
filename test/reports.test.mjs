@@ -1,7 +1,7 @@
 // Tests for reports.mjs: whether a child's finished turn wakes its parent. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { endsAsking, endsWithNextSteps, endsWaiting, awaitingAnswer, waitingOnUser, closeRefusal, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply } from '../reports.mjs';
+import { endsAsking, endsWithNextSteps, endsWaiting, awaitingAnswer, waitingOnUser, closeRefusal, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal } from '../reports.mjs';
 
 test('a reply ending in a question is waiting on the user', () => {
   assert.equal(endsAsking('I read the file.\n\nShould I delete the old copy?'), true);
@@ -143,4 +143,23 @@ test('freedReply: a holder is told the coordinator starts the freed tasks; the c
   assert.equal(freedReply({ nowReady, isCoordinator: true, coordinatorTitle: 'Shop plan' }), 'Now free to start: T10 Outbox; T11 Stop list.');
   assert.equal(freedReply({ nowReady, coordinatorTitle: '' }), 'Now free to start: T10 Outbox; T11 Stop list.');
   assert.equal(freedReply({ nowReady: [], coordinatorTitle: 'x' }), '');
+});
+
+test('childState: busy children work, asking ones wait, finished ones are done', () => {
+  assert.equal(childState({ status: 'running' }), 'working');
+  assert.equal(childState({ status: 'idle', jobs: 2 }), 'working');
+  assert.equal(childState({ status: 'idle', compacting: true }), 'working');
+  assert.equal(childState({ status: 'requires_action' }), 'waiting');
+  assert.equal(childState({ status: 'idle', asks: 1 }), 'waiting');
+  assert.equal(childState({ status: 'idle', reply: 'Built it. Which colour do you want?' }), 'waiting');
+  assert.equal(childState({ status: 'idle', reply: 'Done; pull request #12 is open.' }), 'done');
+  assert.equal(childState({ status: 'ended', jobs: 1 }), 'done');
+});
+
+test('quietRefusal: only a report turn with children still going may end quietly', () => {
+  assert.equal(quietRefusal({ turnBy: 'docket', kids: 1 }), '');
+  assert.match(quietRefusal({ turnBy: 'person', kids: 2 }), /answers a message/);
+  assert.match(quietRefusal({ turnBy: 'session', kids: 2 }), /answers a message/);
+  assert.match(quietRefusal({ turnBy: 'docket', kids: 1, error: true }), /error/);
+  assert.match(quietRefusal({ turnBy: 'docket', kids: 0 }), /no child session/);
 });
