@@ -63,9 +63,20 @@ test('the Keep dropdown sits after ✦ only while ✦ is on, and the 👁 menu n
   assert.match(keep.innerHTML, /value="7d" selected/);
   env.S.attn = false; setListBar();
   assert.equal(keep.innerHTML, '', 'turning ✦ off hides it again');
-  assert.match(page, /<button id="attnBtn"[^>]*>✦<\/button><span id="attnOpts"><\/span>/, 'right after ✦');
+  assert.match(page, /<span id="attnOpts"><\/span><button id="attnBtn"[^>]*>✦<\/button>/, 'right before ✦ (#633)');
+  assert.match(page, /\.list-bar #attnOpts, \.list-bar #attnOpts:empty \+ #attnBtn \{ margin-left: auto; \}/, 'Keep, or ✦ when Keep is hidden, pushes to the right');
+  assert.doesNotMatch(page, /\.list-bar \.view-menu \{ margin-left: auto; \}/);
   const menu = page.slice(page.indexOf('function renderViewMenu'), page.indexOf('// ✦ carries the attention count'));
   assert.ok(menu.length > 0 && !menu.includes('attnWindow'));
   assert.match(page, /if \(\['listOrder', 'attnWindow'\]\.includes\(e\.target\.id\)\) e\.target\.blur\(\);/, 'blurred after a change, like Order');
   assert.doesNotMatch(page, /👁 > ✦/);
+});
+
+test('the ✦ and Keep tips are a lead line and bullets, and Help keeps the line breaks (#633)', () => {
+  for (const key of ['attn', 'attn-window']) {
+    const row = page.match(new RegExp(`\\['${key}', '[^']*', '([^']*)'`));
+    assert.ok(row, `the ${key} tip is in the tip table`);
+    assert.ok(row[1].split('\\n• ').length > 4, `the ${key} tip has bullets`);
+  }
+  assert.match(page, /\.help-row span \{[^}]*white-space: pre-line;/);
 });
