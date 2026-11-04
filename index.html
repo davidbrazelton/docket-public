@@ -2104,6 +2104,14 @@ function selectClient(id, openId) {
 // lands, so it is thrown away and asked for again; an older answer never replaces a newer one.
 const listSeq = {}, listChangedAt = {};
 const markListChanged = (clientId) => { listChangedAt[clientId] = performance.now(); };
+// The same for one session: a list holds each live session as it was when the app copied it, which
+// can be seconds before the answer lands. An update for that session that came in after the list was
+// asked for is newer (a turn that ended meanwhile), so it stays.
+const livePushedAt = {};
+function takeLive(live, rows, pushedAt, asked) {
+  for (const s of rows) if (!((pushedAt[s.id] || 0) > asked && live[s.id])) live[s.id] = s;
+}
+// end of takeLive
 async function loadSessions(clientId, refresh) {
   if (remoteOff(clientId)) { forgetRemote(clientId); return; } // not connected: nothing to show
   for (let tries = 0; ; tries++) {
@@ -2112,7 +2120,7 @@ async function loadSessions(clientId, refresh) {
     const r = await api(`/api/sessions?client=${clientId}${refresh || tries ? '&refresh=1' : ''}`);
     if (seq !== listSeq[clientId]) return; // a newer request is on its way
     if ((listChangedAt[clientId] || 0) > asked && tries < 3) continue;
-    for (const s of r.live) S.live[s.id] = s;
+    takeLive(S.live, r.live, livePushedAt, asked);
     S.history[clientId] = r.history;
     S.inbox[clientId] = r.inbox || [];
     for (const x of r.schedules || []) S.schedTitles[x.id] = x.title;
@@ -7941,7 +7949,7 @@ function connect() {
     if (m.t === 'remote-here') { S.remoteHere = { desk: m.desk, connections: m.connections || [] }; renderClients(); return; }
     if (m.t === 'session') {
       const before = S.live[m.session.id];
-      S.live[m.session.id] = m.session;
+      S.live[m.session.id] = m.session; livePushedAt[m.session.id] = performance.now();
       watchNeedsYou(m.session, before);
       if (before && before.status !== 'idle' && m.session.status === 'idle' && m.session.client === S.client) refreshSpend(5000);
       if (before && before.status !== 'idle' && m.session.status === 'idle') { refreshPRs(); if (m.session.id === S.selected) { refreshFiles(); refreshCost(); } } // a finished turn may have opened one

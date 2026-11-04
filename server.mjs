@@ -7593,9 +7593,12 @@ const server = http.createServer(async (req, res) => {
       const client = clientById(url.searchParams.get('client'));
       if (!client) return json(res, 400, { error: 'Unknown client' });
       if (!reattachDone) await settledOr(reattached, 20000); // the sessions still working in the runner show as live, not cut off
+      // The history can take seconds to build; the live rows are copied after it, so a turn that ended
+      // meanwhile is not sent as still running (#647).
+      const allHist = await history(client, url.searchParams.get('refresh') === '1');
       const liveRows = [...live.values()].filter((s) => s.client === client.id).map(summary);
       const ids = new Set(liveRows.map((r) => r.id));
-      const hist = (await history(client, url.searchParams.get('refresh') === '1')).filter((r) => !ids.has(r.id));
+      const hist = allHist.filter((r) => !ids.has(r.id));
       // The session list shows all runs of a schedule as one row under the schedule's name.
       const schedules = scheduler.list(client.id).map(({ id, title }) => ({ id, title }));
       return json(res, 200, { live: liveRows, history: hist, schedules, inbox: openInbox(state.inbox?.[client.id]) });
