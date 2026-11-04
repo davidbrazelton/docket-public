@@ -401,6 +401,7 @@ aside.tasks.hidden { display: none; }
 .plan-head a, .plan-task a { color: inherit; }
 .plan-task .ic.st-done { color: var(--ok, #2e9d5b); } .plan-task .ic.st-claimed { color: var(--accent); } .plan-task .ic.st-waiting_on_user, .plan-task .ic.st-sent_back { color: var(--warn); }
 .plan-task .lb.mine { font-weight: 600; }
+.plan-task.dropped .lb { text-decoration: line-through; color: var(--muted); } .plan-task .ic.st-dropped { color: var(--muted); }
 .plan-task .sub { white-space: normal; }
 .file-row .plan-badge { font-size: 10px; border-radius: 999px; padding: 0 6px; margin-left: 6px; background: var(--accent-soft); color: var(--accent); }
 .file-row .art-badge { text-decoration: none; margin: 0 6px 0 0; }
@@ -7042,8 +7043,8 @@ function folderPlanHtml(p) {
     return `<div class="task plan-task" title="${esc(t.brief || t.title)}"${t.depth ? ` style="margin-left:${Math.min(t.depth, 12) * 5}px"` : ''}><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '○'}</span><span class="lb">${esc((t.id ? t.id + ' ' : '') + t.title)}</span><span class="end"></span>${sub.length ? `<span class="sub">${sub.join(' · ')}</span>` : ''}</div>`;
   }).join('') + (p.broken.length ? `<div class="hint">Broken link${p.broken.length === 1 ? '' : 's'}: ${p.broken.map((b) => esc(b.ref)).join(', ')}</div>` : '') + `<div class="hint" title="${esc(p.file)}">${esc(p.file)}</div>`;
 }
-const PLAN_ICON = { open: '○', claimed: '●', done: '✓', waiting_on_user: '⏸', sent_back: '↩' };
-const PLAN_WORD = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on you', sent_back: 'sent back' };
+const PLAN_ICON = { open: '○', claimed: '●', done: '✓', waiting_on_user: '⏸', sent_back: '↩', dropped: '✕' };
+const PLAN_WORD = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on you', sent_back: 'sent back', dropped: 'dropped' };
 const sessionLink = (id, title) => id ? `<a href="#" data-plan-open="${esc(id)}" title="Open this session">${esc(title || 'a session')}</a>` : '';
 const linkHtml = (l) => /^\[[^\]]+\]\(https?:\/\/[^)]+\)$/.test(l) ? (([, t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener" title="${esc(u)}">${esc(t)}</a>`)(l.match(/^\[([^\]]+)\]\((.*)\)$/)) // a markdown link: its words
   : /^https?:\/\//.test(l) ? `<a href="${esc(l)}" target="_blank" rel="noopener" title="${esc(l)}">${esc(l.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60))}</a>` : esc(l.split(/[\\/]/).pop());
@@ -7051,8 +7052,9 @@ function planHtml(p, me) {
   const head = `<div class="plan-head">${esc(p.title)} · ${p.done} of ${p.total} done<span class="plan-sub">${p.coordinator === me ? 'Coordinated by this session' : `Coordinated by ${sessionLink(p.coordinator, p.coordinatorTitle)}`}${p.parent ? ` · part of ${esc(p.parentTitle || p.parent.plan)}, task ${esc(p.parent.task)}` : ' · master plan'}</span></div>`;
   return head + p.tasks.map((t) => {
     const sub = [PLAN_WORD[t.state] + (t.ready ? ', free to start' : ''), t.holder ? (t.holder === me ? 'held by this session' : `held by ${sessionLink(t.holder, t.holderTitle)}`) : '',
-      t.after.length && t.state !== 'done' ? 'after ' + t.after.join(', ') : '', t.sub ? `its plan: ${t.sub.done} of ${t.sub.total} done` : '', ...t.links.map(linkHtml), t.note ? esc(t.note) : ''].filter(Boolean);
-    return `<div class="task plan-task" title="${esc(t.brief || t.title)}"><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '○'}</span><span class="lb${t.holder === me && t.state !== 'done' ? ' mine' : ''}">${esc(t.id)} ${esc(t.title)}</span><span class="end"></span><span class="sub">${sub.join(' · ')}</span></div>`;
+      t.after.length && t.state !== 'done' && t.state !== 'dropped' ? 'after ' + t.after.join(', ') : '', t.sub ? `its plan: ${t.sub.done} of ${t.sub.total} done` : '', ...t.links.map(linkHtml), t.note ? esc(t.note) : ''].filter(Boolean);
+    // The kind beside the name (#639); a dropped task stays, crossed out, with its note.
+    return `<div class="task plan-task${t.state === 'dropped' ? ' dropped' : ''}" title="${esc(t.brief || t.title)}"><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '○'}</span><span class="lb${t.holder === me && t.state !== 'done' && t.state !== 'dropped' ? ' mine' : ''}">${esc(t.id)} ${esc(t.title)}</span><span class="end">${t.kind ? `<span class="tag">${esc(t.kind)}</span>` : ''}</span><span class="sub">${sub.join(' · ')}</span></div>`;
   }).join('');
 }
 // The Plan section for one session, or null when it coordinates no plan and holds no task.

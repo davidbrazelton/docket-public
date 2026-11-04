@@ -8,8 +8,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-export const STATES = ['open', 'claimed', 'done', 'waiting_on_user', 'sent_back'];
-const STATE_WORDS = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on the user', sent_back: 'sent back' };
+export const STATES = ['open', 'claimed', 'done', 'waiting_on_user', 'sent_back', 'dropped'];
+const STATE_WORDS = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on the user', sent_back: 'sent back', dropped: 'dropped' };
+// What a task is (#639): set when it is made and never changed. Tasks made before kinds existed have none.
+export const KINDS = ['build', 'test', 'decision', 'research'];
+// Task names follow the plan tree (#639): T1, T2 in the master plan; T3.1, T3.2 in a plan made for task T3; T3.2.1
+// one level deeper. Numbers are never reused: a dropped task keeps its number and stays in the file.
+const TASK_ID = /T\d+(?:\.\d+)*/;
+const TASK_IDS = new RegExp(TASK_ID.source, 'g');
+const TASK_LINE = new RegExp(`^- \\[([ xX])\\] (${TASK_ID.source})\\s*(.*)$`);
+const PART_OF_TASK = new RegExp(`\\btask (${TASK_ID.source})\\b`);
+// A task that no longer stops anything: done, or dropped (out of the plan's work, counted neither open nor done).
+const finished = (t) => t.state === 'done' || t.state === 'dropped';
 const wordToState = (w) => Object.keys(STATE_WORDS).find((k) => STATE_WORDS[k] === String(w).trim().toLowerCase()) || 'open';
 const PLAN_ID = /\bp-[a-z0-9]{4,}\b/;
 const stamp = (t) => new Date(t).toISOString().slice(0, 16).replace('T', ' ');
@@ -35,27 +45,28 @@ export function parsePlan(text, file = '') {
       if (m && !goal.length) {
         if (m[1] === 'Plan') plan.id = m[2].match(PLAN_ID)?.[0] || '';
         else if (m[1] === 'Coordinator') { const w = parseWho(m[2]); plan.coordinator = w.id; plan.coordinatorTitle = w.title; }
-        else if (m[1] === 'Part of') { const p = m[2].match(PLAN_ID)?.[0], t = m[2].match(/\btask (T\d+)\b/)?.[1]; if (p) plan.parent = { plan: p, task: t || '' }; }
+        else if (m[1] === 'Part of') { const p = m[2].match(PLAN_ID)?.[0], t = m[2].match(PART_OF_TASK)?.[1]; if (p) plan.parent = { plan: p, task: t || '' }; }
         else plan.made = m[2].trim();
         continue;
       }
       if (line.trim() || goal.length) goal.push(line);
       continue;
     }
-    const t = line.match(/^- \[([ xX])\] (T\d+)\s*(.*)$/);
+    const t = line.match(TASK_LINE);
     if (t) {
-      task = { id: t[2], title: t[3].trim(), state: t[1] === ' ' ? 'open' : 'done', holder: '', holderTitle: '', claimedAt: '', after: [], brief: '', note: '', links: [], plan: '' };
+      task = { id: t[2], title: t[3].trim(), kind: '', state: t[1] === ' ' ? 'open' : 'done', holder: '', holderTitle: '', claimedAt: '', after: [], brief: '', note: '', links: [], plan: '' };
       plan.tasks.push(task); key = null; continue;
     }
     if (!task) continue;
-    const d = line.match(/^ {2}- (State|Held by|After|Brief|Note|Link|Plan): ?(.*)$/);
+    const d = line.match(/^ {2}- (State|Kind|Held by|After|Brief|Note|Link|Plan): ?(.*)$/);
     if (d) {
       key = d[1];
       const v = d[2];
       // The box wins: a ticked task is done whatever its State line says, and an unticked one is never done.
       if (key === 'State') { const s = wordToState(v.replace(/ since .*$/, '')); if (task.state !== 'done') task.state = s === 'done' ? 'open' : s; task.claimedAt = v.match(/ since (.*)$/)?.[1] || ''; }
       else if (key === 'Held by') { const w = parseWho(v); task.holder = w.id; task.holderTitle = w.title; }
-      else if (key === 'After') task.after = v.match(/T\d+/g) || [];
+      else if (key === 'Kind') task.kind = v.trim().toLowerCase();
+      else if (key === 'After') task.after = v.match(TASK_IDS) || [];
       else if (key === 'Brief') task.brief = v;
       else if (key === 'Note') task.note = v;
       else if (key === 'Link') { if (v.trim()) task.links.push(v.trim()); }
@@ -80,6 +91,7 @@ export function formatPlan(p, fileOf = (id) => id) {
   out.push('## Tasks', '');
   for (const t of p.tasks) {
     out.push(`- [${t.state === 'done' ? 'x' : ' '}] ${t.id} ${oneLine(t.title)}`);
+    if (t.kind) out.push(`  - Kind: ${t.kind}`);
     out.push(`  - State: ${STATE_WORDS[t.state] || 'open'}${t.claimedAt && t.state !== 'open' ? ` since ${t.claimedAt}` : ''}`);
     if (t.holder) out.push(`  - Held by: ${who(t.holder, t.holderTitle)}`);
     if (t.after.length) out.push(`  - After: ${t.after.join(', ')}`);
@@ -92,9 +104,9 @@ export function formatPlan(p, fileOf = (id) => id) {
 }
 
 // ---------- order ----------
-// Tasks free to claim now: open, with every task they wait on done.
+// Tasks free to claim now: open, with every task they wait on done (or dropped: a dropped task stops nothing).
 export function readyTasks(plan) {
-  const done = new Set(plan.tasks.filter((t) => t.state === 'done').map((t) => t.id));
+  const done = new Set(plan.tasks.filter(finished).map((t) => t.id));
   return plan.tasks.filter((t) => t.state === 'open' && t.after.every((a) => done.has(a)));
 }
 // A loop in the "after" lists (A after B, B after A), as the ids around it, or null.
@@ -113,10 +125,10 @@ export function findLoop(tasks) {
 }
 // Why no task can be claimed, in plain words.
 export function whyNoneReady(plan) {
-  const left = plan.tasks.filter((t) => t.state !== 'done');
+  const left = plan.tasks.filter((t) => !finished(t));
   if (!plan.tasks.length) return 'The plan has no tasks.';
-  if (!left.length) return 'Every task in this plan is done.';
-  const done = new Set(plan.tasks.filter((t) => t.state === 'done').map((t) => t.id));
+  if (!left.length) return plan.tasks.some((t) => t.state === 'dropped') ? 'Every task in this plan is done or dropped.' : 'Every task in this plan is done.';
+  const done = new Set(plan.tasks.filter(finished).map((t) => t.id));
   const parts = left.map((t) => t.state === 'open' ? `${t.id} waits on ${t.after.filter((a) => !done.has(a)).join(', ')}`
     : `${t.id} is ${STATE_WORDS[t.state]}${t.holder ? ` (${t.holderTitle || t.holder})` : ''}`);
   return `No task is free: ${parts.join('; ')}.`;
@@ -162,11 +174,26 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   }
   function list() { return files().map((n) => { try { return parsePlan(fs.readFileSync(path.join(dir, n), 'utf8'), path.join(dir, n)); } catch { return null; } }).filter((p) => p?.id); }
 
-  // New tasks for a plan, numbered after its last one. "after" names tasks by id (T1) or by their place in this
-  // same list (1 for the first new task), so a whole plan with its order can be made in one call.
+  // The start of this plan's task names: "T" for a master plan, "T3." for a plan made for task T3. A plan under a
+  // task that was made before names followed the tree, and already numbered T1, T2, keeps numbering that way.
+  function prefixOf(plan) {
+    if (!plan.parent?.task) return 'T';
+    const dotted = plan.parent.task + '.';
+    return plan.tasks.length && !plan.tasks.some((t) => t.id.startsWith(dotted)) ? 'T' : dotted;
+  }
+  // New tasks for a plan, numbered after the highest number it has ever used. "after" names tasks by id (T1) or by
+  // their place in this same list (1 for the first new task), so a whole plan with its order can be made in one call.
+  // "replaces" names a task this one takes the place of: that task is dropped, and tasks waiting on it wait on this.
   function newTasks(plan, specs) {
-    let n = Math.max(0, ...plan.tasks.map((t) => Number(t.id.slice(1))));
-    const made = specs.map((s) => ({ id: `T${++n}`, title: oneLine(s.title), state: 'open', holder: '', holderTitle: '', claimedAt: '',
+    const pre = prefixOf(plan), mine = new RegExp(`^${pre.replace(/\./g, '\\.')}(\\d+)$`);
+    let n = Math.max(0, ...plan.tasks.map((t) => Number(t.id.match(mine)?.[1] || 0)));
+    for (const s of specs) {
+      const what = oneLine(s.title) ? `Task "${oneLine(s.title)}"` : 'Every task';
+      const k = String(s.kind ?? '').trim().toLowerCase();
+      if (!k) throw new Error(`${what} needs a kind: build, test, decision or research.`);
+      if (!KINDS.includes(k)) throw new Error(`${what} has the kind "${oneLine(s.kind)}", which is not one of build, test, decision or research.`);
+    }
+    const made = specs.map((s) => ({ id: `${pre}${++n}`, title: oneLine(s.title), kind: String(s.kind).trim().toLowerCase(), state: 'open', holder: '', holderTitle: '', claimedAt: '',
       after: [], brief: String(s.brief || '').trim(), note: '', links: (s.links || []).map(oneLine).filter(Boolean), plan: '' }));
     const ids = new Set([...plan.tasks, ...made].map((t) => t.id));
     specs.forEach((s, i) => {
@@ -176,8 +203,24 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       if (made[i].after.includes(made[i].id)) throw new Error(`Task "${made[i].title}" cannot wait on itself.`);
     });
     for (const t of made) if (!t.title) throw new Error('Every task needs a title.');
-    const loop = findLoop([...plan.tasks, ...made]);
+    const swaps = new Map();
+    specs.forEach((s, i) => {
+      if (!s.replaces) return;
+      const old = plan.tasks.find((t) => t.id === String(s.replaces).trim().toUpperCase());
+      if (!old) throw new Error(`Task "${made[i].title}" replaces ${oneLine(s.replaces)}, which is not in this plan.`);
+      if (old.state === 'done') throw new Error(`${old.id} is done, so nothing can replace it.`);
+      if (swaps.has(old.id)) throw new Error(`Only one new task can replace ${old.id}.`);
+      swaps.set(old.id, made[i]);
+    });
+    const swap = (t) => finished(t) ? t.after : [...new Set(t.after.map((a) => swaps.has(a) ? swaps.get(a).id : a))];
+    // Checked on copies, so a refused call (a loop) leaves the plan as it was.
+    const loop = findLoop([...plan.tasks.map((t) => ({ ...t, after: swap(t) })), ...made]);
     if (loop) throw new Error(`Those tasks wait on each other in a loop: ${loop.join(' → ')}.`);
+    for (const t of plan.tasks) {
+      t.after = swap(t);
+      const by = swaps.get(t.id);
+      if (by) { t.note = t.state === 'dropped' ? `${t.note ? t.note + ' ' : ''}Replaced by ${by.id}.` : `Replaced by ${by.id}.`; t.state = 'dropped'; }
+    }
     return made;
   }
 
@@ -187,16 +230,16 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
     return locked(() => {
       let id; do id = 'p-' + randomBytes(4).toString('hex').slice(0, 6); while (fileOf(id));
       const plan = { id, title: oneLine(title), coordinator: coordinator || '', coordinatorTitle, parent: null, made: stamp(now()), goal: String(goal).trim(), tasks: [], file: '' };
-      plan.tasks = newTasks(plan, tasks);
-      let up = null;
+      let up = null, t = null;
       if (parent) {
         up = must(parent.plan);
-        const t = up.tasks.find((x) => x.id === parent.task);
+        t = up.tasks.find((x) => x.id === String(parent.task).toUpperCase());
         if (!t) throw new Error(`Plan ${parent.plan} has no task ${parent.task}.`);
-        if (t.plan) throw new Error(`Task ${parent.task} of plan ${parent.plan} already has its own plan, ${t.plan}.`);
+        if (t.plan) throw new Error(`Task ${t.id} of plan ${parent.plan} already has its own plan, ${t.plan}.`);
         plan.parent = { plan: up.id, task: t.id };
-        t.plan = plan.id;
       }
+      plan.tasks = newTasks(plan, tasks);
+      if (t) t.plan = plan.id;
       write(plan);
       if (up) write(up);
       return plan;
@@ -224,8 +267,9 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
         if (!t) throw new Error(`Plan ${id} has no task ${taskId}.`);
         if (t.holder === actor && t.state !== 'done' && t.state !== 'open') return { plan: p, task: t, already: true };
         if (t.state === 'done') throw new Error(`${t.id} is already done.`);
+        if (t.state === 'dropped') throw new Error(`${t.id} was dropped${t.note ? `: ${t.note}` : '.'}`);
         if (t.state !== 'open') throw new Error(`${t.id} is already held by ${t.holderTitle || t.holder} (${STATE_WORDS[t.state]}).`);
-        if (!readyTasks(p).includes(t)) throw new Error(`${t.id} waits on ${t.after.filter((a) => p.tasks.find((x) => x.id === a)?.state !== 'done').join(', ')}, which ${t.after.length > 1 ? 'are' : 'is'} not done yet.`);
+        if (!readyTasks(p).includes(t)) throw new Error(`${t.id} waits on ${t.after.filter((a) => { const x = p.tasks.find((y) => y.id === a); return !x || !finished(x); }).join(', ')}, which ${t.after.length > 1 ? 'are' : 'is'} not done yet.`);
       } else {
         t = readyTasks(p)[0];
         if (!t) return { plan: p, task: null, why: whyNoneReady(p) };
@@ -235,16 +279,28 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       return { plan: p, task: t };
     });
   }
-  // Change a task: its state, a note, links. Only the session holding it or the plan's coordinator. Returns the
-  // tasks that became free to claim because of this change.
-  function update(id, taskId, { state, note, links } = {}, actor, actorTitle = '') {
+  // Change a task: its state, a note, links. Only the session holding it or the plan's coordinator. Dropping a task
+  // is the coordinator's, with a note saying why, and a dropped task stays dropped. Returns the tasks that became
+  // free to claim because of this change.
+  // A kind can be filled in once, on a task made before kinds existed; a kind already set never changes.
+  function update(id, taskId, { state, note, links, kind } = {}, actor, actorTitle = '') {
     if (state && !STATES.includes(state)) throw new Error(`State must be one of ${STATES.join(', ')}.`);
+    const k = kind === undefined ? '' : String(kind).trim().toLowerCase();
+    if (kind !== undefined && !KINDS.includes(k)) throw new Error(`The kind "${oneLine(kind)}" is not one of build, test, decision or research.`);
     return locked(() => {
       const p = must(id);
       const t = p.tasks.find((x) => x.id === String(taskId).toUpperCase());
       if (!t) throw new Error(`Plan ${id} has no task ${taskId}.`);
       const isCoord = !!actor && actor === p.coordinator, isHolder = !!actor && actor === t.holder;
       if (!isCoord && !isHolder) throw new Error(`Only the session holding ${t.id}${t.holder ? ` (${t.holderTitle || t.holder})` : ''} or the plan's coordinator can change it.`);
+      if (t.state === 'dropped' && state && state !== 'dropped') throw new Error(`${t.id} was dropped and stays dropped; add a new task instead.`);
+      if (state === 'dropped' && t.state !== 'dropped') {
+        if (!isCoord) throw new Error(`Only the plan's coordinator can drop ${t.id}.`);
+        if (t.state === 'done') throw new Error(`${t.id} is already done.`);
+        if (!oneLine(note)) throw new Error(`Say why ${t.id} is dropped, in a one-line note.`);
+        note = oneLine(note);
+      }
+      if (k && t.kind && t.kind !== k) throw new Error(`${t.id} already has the kind ${t.kind}, and a kind never changes. Add a new task with the right kind that replaces it.`);
       const before = new Set(readyTasks(p).map((x) => x.id));
       if (state) {
         if (state === 'open') { t.holder = ''; t.holderTitle = ''; t.claimedAt = ''; }
@@ -252,6 +308,7 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
         if (state !== 'open' && t.state === 'open' && !t.claimedAt) t.claimedAt = stamp(now());
         t.state = state;
       }
+      if (k) t.kind = k;
       if (note !== undefined) t.note = String(note).trim();
       for (const l of links || []) if (oneLine(l) && !t.links.includes(oneLine(l))) t.links.push(oneLine(l));
       write(p);
@@ -263,11 +320,13 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
     return locked(() => { const p = must(id); p.coordinator = actor; p.coordinatorTitle = actorTitle; return write(p); });
   }
   // Progress counted on the smallest pieces: a task with its own plan counts as that plan's tasks, all the way down.
+  // A dropped task counts as neither open nor done.
   function rollup(id, all = list(), seen = new Set()) {
     const p = all.find((x) => x.id === id); if (!p || seen.has(id)) return { done: 0, total: 0 };
     seen.add(id);
     let done = 0, total = 0;
     for (const t of p.tasks) {
+      if (t.state === 'dropped') continue;
       const sub = t.plan && rollup(t.plan, all, seen);
       if (sub && sub.total) { done += sub.done; total += sub.total; } else { total++; if (t.state === 'done') done++; }
     }

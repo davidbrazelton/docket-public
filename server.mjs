@@ -1198,11 +1198,11 @@ const knownTitle = (client, id) => { const t = id ? sessionTitle(client, id) : '
 // The plan a session coordinates, and the tasks it holds (not yet done) in any plan of its desk.
 function sessionPlans(client, id, all = plansOf(client).list()) {
   return { own: all.find((p) => p.coordinator === id) || null,
-    holds: all.flatMap((p) => p.tasks.filter((t) => t.holder === id && t.state !== 'done').map((t) => ({ plan: p, task: t }))) };
+    holds: all.flatMap((p) => p.tasks.filter((t) => t.holder === id && t.state !== 'done' && t.state !== 'dropped').map((t) => ({ plan: p, task: t }))) };
 }
-// "p-ab12/T3" or a plan id and a task id.
+// "p-ab12/T3" (or "p-ab12/T3.2" in a plan under a task) or a plan id and a task id.
 function taskRef(ref, planId) {
-  const m = String(ref || '').match(/^(p-[a-z0-9]+)\/(T\d+)$/i);
+  const m = String(ref || '').match(/^(p-[a-z0-9]+)\/(T\d+(?:\.\d+)*)$/i);
   return m ? { plan: m[1].toLowerCase(), task: m[2].toUpperCase() } : { plan: planId || '', task: String(ref || '').toUpperCase() };
 }
 // 'none', 'short' or 'full': how much of the plan rules and tools a session carries (plan-use.mjs says who gets which).
@@ -1266,7 +1266,7 @@ function planText(client, p) {
   lines.push('');
   for (const t of p.tasks) {
     const sub = t.plan && all.find((x) => x.id === t.plan), sr = sub && store.rollup(sub.id, all);
-    lines.push(`[${t.state === 'done' ? 'x' : ' '}] ${t.id} ${t.title} · ${t.state.replace(/_/g, ' ')}${t.holder ? ` · held by ${holderText(client, t)}` : ''}${t.after.length ? ` · after ${t.after.join(', ')}` : ''}`);
+    lines.push(`[${t.state === 'done' ? 'x' : t.state === 'dropped' ? '-' : ' '}] ${t.id}${t.kind ? ` (${t.kind})` : ''} ${t.title} · ${t.state.replace(/_/g, ' ')}${t.holder ? ` · held by ${holderText(client, t)}` : ''}${t.after.length ? ` · after ${t.after.join(', ')}` : ''}`);
     if (t.brief) lines.push(`    Brief: ${t.brief.replace(/\n/g, '\n    ')}`);
     if (t.note) lines.push(`    Note: ${t.note.replace(/\n/g, '\n    ')}`);
     for (const l of t.links) lines.push(`    Link: ${l}`);
@@ -1293,7 +1293,7 @@ function plansSummary(client) {
   if (!plansOn(client)) return { on: false, plans: [] };
   const store = plansOf(client), all = store.list();
   return { on: true, plans: all.map((p) => ({ id: p.id, title: p.title, file: p.file, coordinator: p.coordinator, parent: p.parent, ...store.rollup(p.id, all),
-    holders: [...new Set(p.tasks.filter((t) => t.holder && t.state !== 'done').map((t) => t.holder))] })) };
+    holders: [...new Set(p.tasks.filter((t) => t.holder && t.state !== 'done' && t.state !== 'dropped').map((t) => t.holder))] })) };
 }
 function planDetail(client, id) {
   const store = plansOf(client), all = store.list(), p = all.find((x) => x.id === id);
@@ -1366,9 +1366,11 @@ function planToolDefs(parent) {
   const run = (fn) => { try { return fn(); } catch (e) { return reply(e.message, true); } };
   const taskSpec = z.object({
     title: d(z.string(), 'Short title of the task'),
+    kind: d(z.string().optional(), 'Required: what the task is, one of build, test, decision, research. Set once and never changed; a task made with the wrong kind is replaced (see replaces)'),
     brief: d(z.string().optional(), 'What to do and what done looks like, complete enough for a fresh session'),
     after: d(z.array(z.union([z.string(), z.number()])).optional(), 'The tasks this one waits on: ids like "T1", or the place in this same list (1 for the first task given here)'),
     links: d(z.array(z.string()).optional(), 'Tickets, issues, pull requests or files this task is about, as web addresses or full paths'),
+    replaces: d(z.string().optional(), 'Only in plan_add_tasks: the id of a task this one takes the place of (wrong kind, or rethought). That task is dropped, and tasks waiting on it wait on this one instead'),
   });
   const planArg = z.string().optional();
   const pa = (text) => d(planArg, text);
@@ -1418,7 +1420,7 @@ function planToolDefs(parent) {
       })),
     tool('plan_claim_task',
       say("Claim one named task for this session. Refused when another session holds it, it is done, or a task it waits on is not done yet.", 'Claim the plan task your brief names.'),
-      { task_id: d(z.string(), 'Task id like "T2", or "<plan id>/T2"'), plan_id: pa('Plan id; defaults to the plan of the session that started this one') },
+      { task_id: d(z.string(), 'Task id like "T2" or "T3.1", or "<plan id>/T2"'), plan_id: pa('Plan id; defaults to the plan of the session that started this one') },
       async ({ task_id: task, plan_id: plan }) => run(() => {
         const ref = taskRef(task, plan), id = planFor(client, parent, ref.plan, { want: 'claim' });
         if (!id) return reply('Give the plan id: the session that started this one has no plan.', true);
@@ -1427,24 +1429,25 @@ function planToolDefs(parent) {
         return reply(`${r.already ? 'You already hold' : 'You now hold'} ${r.task.id} "${r.task.title}" in plan ${id}.${r.task.brief ? `\nBrief: ${r.task.brief}` : ''}`);
       })),
     tool('plan_update_task',
-      say("Change a task you hold, or (as the plan's coordinator) any task in your plan: set its state, add a short note, attach links (tickets, issues, pull requests, files). States: done; waiting_on_user (needs the user's answer); sent_back (the coordinator checked it and the holder must fix it); claimed (back to work); open (let it go so another session can take it).",
+      say("Change a task you hold, or (as the plan's coordinator) any task in your plan: set its state, add a short note, attach links (tickets, issues, pull requests, files). States: done; waiting_on_user (needs the user's answer); sent_back (the coordinator checked it and the holder must fix it); claimed (back to work); open (let it go so another session can take it); dropped (coordinator only, with a one-line note saying why: the task stays in the plan crossed out, keeps its number, and counts as neither open nor done; it cannot be undone). A task made before kinds existed can have its kind filled in once with kind; a kind already set never changes.",
         'Set a plan task\'s state, note or links.'),
       {
-        task_id: d(z.string(), 'Task id like "T2", or "<plan id>/T2"'),
+        task_id: d(z.string(), 'Task id like "T2" or "T3.1", or "<plan id>/T2"'),
         state: z.enum(STATES).optional(),
         note: d(z.string().optional(), 'One or two lines: what was done, or what is missing'),
         links: d(z.array(z.string()).optional(), 'Web addresses or full paths to attach'),
+        kind: d(z.string().optional(), 'Only for a task with no kind yet (made before kinds existed): build, test, decision or research. Refused once a kind is set'),
         plan_id: pa('Plan id; defaults to the plan where this session holds that task, then its own plan'),
       },
-      async ({ task_id: task, state: st, note, links, plan_id: plan }) => run(() => {
+      async ({ task_id: task, state: st, note, links, kind, plan_id: plan }) => run(() => {
         const ref = taskRef(task, plan), id = planFor(client, parent, ref.plan, { want: 'update', task: ref.task });
         if (!id) return reply('Give the plan id: this session holds no such task and coordinates no plan.', true);
-        const r = store.update(id, ref.task, { state: st, note, links }, parent.id, parent.title);
+        const r = store.update(id, ref.task, { state: st, note, links, kind }, parent.id, parent.title);
         plansChanged(client, r.plan, r.nowReady, parent.id);
-        const all = store.list(), done = r.plan.tasks.every((t) => t.state === 'done');
+        const all = store.list(), done = r.plan.tasks.some((t) => t.state === 'done') && r.plan.tasks.every((t) => t.state === 'done' || t.state === 'dropped');
         const up = done && r.plan.parent && `Every task in this plan is done, so task ${r.plan.parent.task} of plan ${r.plan.parent.plan} may be done too.`;
         const coord = r.plan.coordinator;
-        return reply([`${r.task.id} "${r.task.title}" is now ${r.task.state.replace(/_/g, ' ')}.`,
+        return reply([`${r.task.id}${r.task.kind ? ` (${r.task.kind})` : ''} "${r.task.title}" is now ${r.task.state.replace(/_/g, ' ')}.`,
           freedReply({ nowReady: r.nowReady, isCoordinator: coord === parent.id, coordinatorTitle: coord ? r.plan.coordinatorTitle || knownTitle(client, coord) || 'the coordinator' : '' }),
           up || '', `Plan progress: ${store.rollup(id, all).done} of ${store.rollup(id, all).total} done.`].filter(Boolean).join('\n'));
       })),
