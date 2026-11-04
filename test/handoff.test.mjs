@@ -1,7 +1,7 @@
 // Tests for handoff.mjs: handing a session off to a fresh one. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { titleFromBrief, matchHandoff, handoffFromTurn, handoffPlace, cleanHandoffPattern, weaveCards } from '../handoff.mjs';
+import { titleFromBrief, matchHandoff, handoffFromTurn, handoffPlace, handoffChildren, cleanHandoffPattern, weaveCards } from '../handoff.mjs';
 
 const PATTERN = { marker: '^ACME: handoff - ', block: 'first fenced block after the marker' };
 const BRIEF = [
@@ -20,6 +20,26 @@ test('root session: the replacement goes to the top level, in the group the old 
 
 test('child session: the replacement goes under the same parent and reports where the old one did', () => {
   assert.deepEqual(handoffPlace({ reportsTo: 'p1', groupId: 'g_1' }, 'p1'), { parentId: 'p1', reportsTo: 'p1', groupId: undefined });
+});
+
+test("the old session's children move under the new one and report to it", () => {
+  const { moved, context } = handoffChildren([
+    { id: 'c1', title: 'Fix the parser', rec: { client: 'acme', parentId: 'old', reportsTo: 'old', groupId: 'g_1' }, running: true },
+    { id: 'c2', title: 'Look up the docs', rec: { client: 'acme', reportsTo: 'old', replyTo: 'old' }, running: false },
+    { id: 'c3', title: '', rec: undefined, running: false }, // known only to the desktop app
+    { id: 'c4', title: 'Sent by another', rec: { parentId: 'old', reportsTo: 'old', replyTo: 'other' }, running: true },
+  ], 'old', 'new');
+  assert.deepEqual(moved, [
+    { id: 'c1', rec: { client: 'acme', parentId: 'new', reportsTo: 'new', groupId: 'g_1' }, running: true },
+    { id: 'c2', rec: { client: 'acme', parentId: 'new', reportsTo: 'new' }, running: false },
+    { id: 'c3', rec: { parentId: 'new', reportsTo: 'new' }, running: false },
+    { id: 'c4', rec: { parentId: 'new', reportsTo: 'new', replyTo: 'other' }, running: true }, // work another session sent still reports there
+  ]);
+  assert.ok(context.includes('"Fix the parser" (id c1, still running); "Look up the docs" (id c2, not running); "Untitled" (id c3, not running)'));
+});
+
+test('no children: nothing moves and the first message says nothing about them', () => {
+  assert.deepEqual(handoffChildren([], 'old', 'new'), { moved: [], context: '' });
 });
 
 test('the title comes from a Title: line in the brief', () => {

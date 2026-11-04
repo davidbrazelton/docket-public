@@ -54,6 +54,23 @@ export function handoffPlace(rec = {}, parentId = null) {
   };
 }
 
+// The old session's own child sessions go with the work: each moves under the new session and reports to it.
+// kids: [{ id, title, rec, running }] (rec: the child's saved record, or undefined for one known only to the
+// desktop app; running: still open in Docket). Returns each child's record as it is to be saved, and the line
+// for the new session's first message that names them ('' when there are none).
+export function handoffChildren(kids = [], oldId, newId) {
+  const moved = kids.map((k) => {
+    const rec = { ...(k.rec || {}), parentId: newId, reportsTo: newId };
+    if (rec.replyTo === oldId || rec.replyTo === newId) delete rec.replyTo; // work the old one sent now reports here too
+    return { id: k.id, rec, running: !!k.running };
+  });
+  const list = kids.map((k) => `"${k.title || 'Untitled'}" (id ${k.id}, ${k.running ? 'still running' : 'not running'})`);
+  const context = list.length
+    ? ` Its child sessions are now yours: they are listed under you and report to you: ${list.join('; ')}.`
+    : '';
+  return { moved, context };
+}
+
 // A handoffPattern as saved in a company's profile, tidied, or undefined when it is not usable.
 export function cleanHandoffPattern(p) {
   if (!p || typeof p !== 'object') return undefined;

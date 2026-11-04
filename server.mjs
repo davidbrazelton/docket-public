@@ -17,7 +17,7 @@ import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from '.
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring } from './tasks.mjs';
 import { waitingOnUser, closeRefusal, endsWaiting, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal } from './reports.mjs';
-import { titleFromBrief, handoffFromTurn, handoffPlace, cleanHandoffPattern, weaveCards } from './handoff.mjs';
+import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
 import { transcriptTimes } from './chat-times.mjs';
@@ -2877,7 +2877,8 @@ async function continueHandoff(id) {
   if (place.reportsTo) record.reportsTo = place.reportsTo;
   if (place.groupId !== undefined) record.groupId = place.groupId;
   const next = startSession({ clientId: client.id, cwd: h.cwd, title: h.title, parentId: place.parentId, settings: rec.settings || {}, engine: keptEngine(client, rec.engine || old?.engine), record });
-  sendToSession(next, { text: h.brief, attachments: [], from: 'session', context:`(From Docket: this session continues the work of the session "${old?.title || rec.title || h.sessionId}" (id ${h.sessionId}), handed off to a fresh session. The message above is its handoff brief.)` });
+  const kids = moveHandoffChildren(client, h.sessionId, next);
+  sendToSession(next, { text: h.brief, attachments: [], from: 'session', context:`(From Docket: this session continues the work of the session "${old?.title || rec.title || h.sessionId}" (id ${h.sessionId}), handed off to a fresh session. The message above is its handoff brief.${kids.context})` });
   settleHandoff(h, { state: 'started', startedId: next.id, archive: 'offered' });
   logEvent('handoff', `${h.sessionId} -> ${next.id}`);
   // The parent gets the new id as a fact, so its follow-ups reach the session doing the work now.
@@ -2886,6 +2887,33 @@ async function continueHandoff(id) {
       .catch((e) => console.log('[handoff]', e.message));
   }
   return next;
+}
+// The old session's children (saved records, and ones known only to the desktop app, as deleteSession finds them)
+// move under the new session (handoffChildren in handoff.mjs); the running ones are told where their reports go now.
+function moveHandoffChildren(client, oldId, next) {
+  const ids = new Set();
+  for (const [cid, r] of Object.entries(state.sessions)) if (cid !== next.id && r.client === client.id && parentOf(client, cid) === oldId) ids.add(cid);
+  for (const [cid, pid] of desktopParents(client)) if (pid === oldId && cid !== next.id && !wasDeleted(cid)) ids.add(cid);
+  const kids = [...ids].map((cid) => { const k = live.get(cid); return { id: cid, title: sessionTitle(client, cid), rec: state.sessions[cid], running: !!k && k.status !== 'ended' }; });
+  const { moved, context } = handoffChildren(kids, oldId, next.id);
+  if (!moved.length) return { context };
+  const was = live.get(oldId);
+  for (const m of moved) {
+    state.sessions[m.id] = { client: client.id, ...m.rec };
+    const k = live.get(m.id);
+    if (k) { k.parentId = next.id; pushSession(k); }
+    // a report the old session had not taken in yet goes to the new one, which takes it in after its first turn
+    if (was?.waitingChildren?.has(m.id)) { (next.waitingChildren ||= new Map()).set(m.id, was.waitingChildren.get(m.id)); was.waitingChildren.delete(m.id); }
+    const queued = was?.pendingReports?.filter((r) => r.childId === m.id) || [];
+    if (queued.length) { was.pendingReports = was.pendingReports.filter((r) => r.childId !== m.id); (next.pendingReports ||= []).push(...queued); }
+  }
+  groupChanged(client.id); // saves too
+  logEvent('handoff children', `${oldId} -> ${next.id}: ${moved.map((m) => m.id).join(', ')}`);
+  for (const m of moved) if (m.running) {
+    noticeToSession(client.id, m.id, `The session that started you ("${sessionTitle(client, oldId)}", id ${oldId}) handed its work off to a new session "${next.title || 'Session'}" (id ${next.id}). You are now listed under it, and your reports go to id ${next.id}. Nothing to do now; reply in one line at most.`)
+      .catch((e) => console.log('[handoff]', e.message));
+  }
+  return { context };
 }
 function keepHandoffHere(id) {
   const h = handoffCard(id);
