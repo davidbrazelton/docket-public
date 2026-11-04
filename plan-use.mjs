@@ -19,12 +19,19 @@ export function planUse({ on, own = false, holds = false, parentOwns = false }) 
 // The two lines a session without a plan gets instead of plans.md.
 export const PLAN_HINT = `## Plans
 
-This desk can keep bigger work in Docket's plans: checklists of tasks handed to sessions of their own. Make one with mcp__portal__plan_create only when the user asks for a plan or Docket tells you to use one; its reply carries the rules for working a plan. A brief that names a plan task: claim it with mcp__portal__plan_claim_task first.`;
+This desk can keep bigger work in Docket's plans: checklists of tasks handed to sessions of their own. Make one with mcp__portal__plan_create when the user asks for a plan, when Docket tells you to use one, or before you start two or more sessions for pieces of one piece of work; its reply carries the rules for working a plan. A brief that names a plan task: claim it with mcp__portal__plan_claim_task first.`;
 
 // The card that offers a plan (#605): shown once, in a session that has just started its second child session (or
 // more) and coordinates no plan. offered: the card was already shown there (answered or not), so it never comes back.
 export function planOfferDue({ on, own = false, childStarts = 0, offered = false }) {
   return !!on && !own && !offered && childStarts >= 2;
+}
+
+// What start_session's reply adds (#651) when a session with no plan of its own has just started its first child
+// session: the plan rule reaches it before the next child starts, not only after its first plan tool call.
+export function planStartNote({ on, own = false, childStarts = 0 }) {
+  if (!on || own || childStarts !== 1) return '';
+  return 'This session coordinates no plan. If this is one of several pieces of one piece of work, make a plan with mcp__portal__plan_create before starting the next session, with this piece as a task, and tell this session its task id so it can claim it. A single piece needs no plan.';
 }
 
 // What the session is told when the user picks "Use a plan for this work" (the session menu or the card).

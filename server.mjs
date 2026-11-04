@@ -47,6 +47,7 @@ import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexDeviceLi
 import { start as startCodex } from './engines/codex.mjs';
 import { createPlanStore, readyTasks, whyNoneReady, STATES } from './plans.mjs';
 import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT } from './plan-use.mjs';
+import { planStartNote } from './plan-use.mjs';
 import { createFolderReader, readMarkers, markerPlan, cleanPlanFolder, planFolderProblem } from './plan-folder.mjs';
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
@@ -1568,7 +1569,8 @@ function portalToolDefs(parent) {
           }
           const child = startChild(parent, { title, prompt, cwd, engine: brand, startGear });
           const gear = findGear(child.engine, child.gear);
-          return { content: [{ type: 'text', text: `Started session "${title}" (id ${child.id})${brand ? ` on ${BRANDS[brand].name}` : ''}${gear ? `, in Shift on ${gear.name}` : ''}. It appears in the portal list under this session.` }] };
+          const planNote = planStartNote({ on: plansOn(client), own: !!sessionPlans(client, parent.id).own, childStarts: state.sessions[parent.id]?.childStarts || 0 });
+          return { content: [{ type: 'text', text: `Started session "${title}" (id ${child.id})${brand ? ` on ${BRANDS[brand].name}` : ''}${gear ? `, in Shift on ${gear.name}` : ''}. It appears in the portal list under this session.${planNote ? `\n\n${planNote}` : ''}` }] };
         }),
       tool('propose_handoff',
         "Hand this work off to a fresh session that takes this one's place: same folder, same desk, under the same parent session (or top level). Shows the user a card: Continue in new session / Keep going here. Use it when your profile's rules call for handing off to a new session; pass the handoff block as the brief. Does not wait for the choice.",
