@@ -1,7 +1,7 @@
 // Tests for reports.mjs: whether a child's finished turn wakes its parent. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { endsAsking, endsWithNextSteps, endsWaiting, awaitingAnswer, waitingOnUser, closeRefusal, reportRoute } from '../reports.mjs';
+import { endsAsking, endsWithNextSteps, endsWaiting, awaitingAnswer, waitingOnUser, closeRefusal, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply } from '../reports.mjs';
 
 test('a reply ending in a question is waiting on the user', () => {
   assert.equal(endsAsking('I read the file.\n\nShould I delete the old copy?'), true);
@@ -92,4 +92,55 @@ test('work sent by another session reports to the sender, and the parent gets a 
 test('a turn waiting on the user gives the sender a note and keeps the reply-to', () => {
   assert.deepEqual(reportRoute({ reportsTo: 'p', replyTo: 's', waiting: true }), { to: 's', waiting: true, sent: true, noteTo: null, clearReplyTo: false });
   assert.deepEqual(reportRoute({ reportsTo: 'p', waiting: true }), { to: 'p', waiting: true, sent: false, noteTo: null, clearReplyTo: false });
+});
+
+test('turnStarter: typed or button-pressed turns are the person\'s, sent work and Docket wake-ups are not', () => {
+  assert.equal(turnStarter({}), 'person');
+  assert.equal(turnStarter({ from: 'session' }), 'session');
+  assert.equal(turnStarter({ system: true }), 'docket');
+  assert.equal(turnStarter({ system: true, byPerson: true }), 'person'); // the plan notice: the person pressed it
+});
+
+test('wakeDecision: the limit holds reports from sessions keeping each other busy', () => {
+  assert.deepEqual(wakeDecision({ autoWakes: 3, reports: [{ childId: 'c' }], limit: 8 }), { wake: true, autoWakes: 4 });
+  assert.deepEqual(wakeDecision({ autoWakes: 8, reports: [{ childId: 'c' }], limit: 8 }), { wake: false, autoWakes: 8 });
+});
+
+test('wakeDecision: a child turn the person started wakes the parent at the limit and starts the count again', () => {
+  assert.deepEqual(wakeDecision({ autoWakes: 8, reports: [{ childId: 'c', byPerson: true }], limit: 8 }), { wake: true, autoWakes: 0 });
+  assert.deepEqual(wakeDecision({ autoWakes: 8, reports: [{ childId: 'a' }, { childId: 'c', byPerson: true }], limit: 8 }), { wake: true, autoWakes: 0 });
+});
+
+test('freed plan tasks wake an idle coordinator through the same limit', () => {
+  const freed = { kind: 'plan', planId: 'p-1', title: 'Shop', tasks: [{ id: 'T10', title: 'Outbox' }] };
+  assert.deepEqual(readyReports([freed], () => false), [freed]);
+  assert.deepEqual(wakeDecision({ autoWakes: 2, reports: [freed], limit: 8 }), { wake: true, autoWakes: 3 });
+  assert.equal(wakeDecision({ autoWakes: 8, reports: [freed], limit: 8 }).wake, false);
+});
+
+test('readyReports: tasks freed mid-turn wait for that turn\'s report and go with it', () => {
+  const freed = { kind: 'plan', planId: 'p-1', title: 'Shop', tasks: [{ id: 'T10', title: 'Outbox' }], waitFor: 'c' };
+  assert.deepEqual(readyReports([freed], (id) => id === 'c'), []); // c is still working
+  const report = { childId: 'c', title: 'Child' };
+  assert.deepEqual(readyReports([freed, report], (id) => id === 'c'), [freed, report]); // one wake-up for both
+  assert.deepEqual(readyReports([freed], () => false), [freed]); // c's turn ended without a report
+});
+
+test('heldNote: a held report says what waits and why', () => {
+  const t = heldNote([{ childId: 'c', title: 'Outbox work' }, { kind: 'plan', title: 'Shop', tasks: [{ id: 'T10' }, { id: 'T11' }] }], 8);
+  assert.match(t, /"Outbox work"/);
+  assert.match(t, /T10, T11 free to start/);
+  assert.match(t, /after 8 wake-ups/);
+  assert.match(t, /Write anything here/);
+});
+
+test('freedReply: a holder is told the coordinator starts the freed tasks; the coordinator is told to start them', () => {
+  const nowReady = [{ id: 'T10', title: 'Outbox' }, { id: 'T11', title: 'Stop list' }];
+  const holder = freedReply({ nowReady, isCoordinator: false, coordinatorTitle: 'Shop plan' });
+  assert.match(holder, /"Shop plan", was told and starts them/);
+  assert.match(holder, /nothing for you or the user to do/);
+  assert.doesNotMatch(holder, /Now free to start/);
+  assert.equal(freedReply({ nowReady, isCoordinator: true, coordinatorTitle: 'Shop plan' }), 'Now free to start: T10 Outbox; T11 Stop list.');
+  assert.equal(freedReply({ nowReady, coordinatorTitle: '' }), 'Now free to start: T10 Outbox; T11 Stop list.');
+  assert.equal(freedReply({ nowReady: [], coordinatorTitle: 'x' }), '');
 });

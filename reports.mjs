@@ -101,3 +101,47 @@ export function reportRoute({ reportsTo, replyTo, waiting }) {
   const to = sent ? replyTo : reportsTo || null;
   return { to, waiting: !!waiting, sent, noteTo: sent && !waiting ? reportsTo || null : null, clearReplyTo: !!replyTo && !waiting };
 }
+
+// Who started a session's current turn, from the message that started it: 'person' for what the
+// person typed or a Docket button they pressed, 'session' for work another session sent, 'docket' for
+// Docket's own wake-ups and notices (a session report, a resume, a save-before-compact).
+export function turnStarter({ system = false, from = '', byPerson = false } = {}) {
+  if (byPerson) return 'person';
+  if (system) return 'docket';
+  return from ? 'session' : 'person';
+}
+
+// Whether a session with reports waiting is woken now, and its wake count after. After `limit`
+// wake-ups in a row with nobody acting, reports are held, so sessions cannot keep each other busy.
+// A report from a turn the person started (they typed into the child, or pressed a button) shows
+// the person is at work in this family: it wakes the session even at the limit, and starts the
+// count again.
+export function wakeDecision({ autoWakes = 0, reports = [], limit }) {
+  const byPerson = reports.some((r) => r.byPerson);
+  if (!byPerson && autoWakes >= limit) return { wake: false, autoWakes };
+  return { wake: true, autoWakes: byPerson ? 0 : autoWakes + 1 };
+}
+
+// The waiting reports that may go out now. Freed plan tasks found during a session's turn
+// (waitFor: that session) wait for that turn's own report, so both go in one wake-up; once that
+// session is not running, or its report is in the batch, they go.
+export function readyReports(reports = [], running = () => false) {
+  const reporting = new Set(reports.filter((r) => r.childId).map((r) => r.childId));
+  return reports.filter((r) => !r.waitFor || reporting.has(r.waitFor) || !running(r.waitFor));
+}
+
+// The note left in a session's chat when the wake limit holds a report, so the person sees why
+// nothing happened instead of only an unread mark.
+export function heldNote(reports = [], limit) {
+  const what = reports.map((r) => r.kind === 'plan' ? `plan "${r.title}" (${r.tasks.map((t) => t.id).join(', ')} free to start)` : `"${r.title}"`);
+  return `Waiting here, not yet read by this session: ${what.join('; ')}. Docket stops waking a session after ${limit} wake-ups in a row with nobody writing to it, so sessions cannot keep each other busy. Write anything here and it will be read.`;
+}
+
+// What plan_update_task says about tasks it just freed. The coordinator is woken to start them, so
+// any other session is told that, and does not pass the list on to the user as if it waited on them.
+export function freedReply({ nowReady = [], isCoordinator = false, coordinatorTitle = '' }) {
+  if (!nowReady.length) return '';
+  const list = nowReady.map((t) => `${t.id} ${t.title}`).join('; ');
+  if (isCoordinator || !coordinatorTitle) return `Now free to start: ${list}.`;
+  return `This freed ${list}. The plan's coordinator, "${coordinatorTitle}", was told and starts them: nothing for you or the user to do about them, so do not mention them to the user.`;
+}

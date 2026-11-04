@@ -16,7 +16,7 @@ import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs'
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from './needs-you.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, awaitingAnswer, reportRoute } from './reports.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply } from './reports.mjs';
 import { titleFromBrief, handoffFromTurn, handoffPlace, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
@@ -1081,6 +1081,7 @@ function handleSdkMessage(s, m) {
       const quiet = s.quietTurn; s.quietTurn = false;
       if (!s.heldTurn && !quiet) reportToParent(s).catch((e) => console.log('[report]', e.message));
       setTimeout(() => flushReports(s), 500);
+      setTimeout(() => flushWaitingOn(s), 600); // after setStatus below: freed plan tasks that waited for this turn
       setTimeout(() => saveBeforeCompact(s), 1500); // after any reports, which go first
       if (!quiet) setUnread(s, 'result');
       setStatus(s, 'idle');
@@ -1234,7 +1235,7 @@ async function usePlan(client, id, card) {
   if (sessionPlans(client, id).own) throw new Error('This session already has a plan.');
   const ev = card && savedCard(id, 'plan-offer', card);
   if (card && (!ev || ev.state !== 'open')) throw new Error('That card is no longer open');
-  await noticeToSession(client.id, id, USE_PLAN_TEXT);
+  await noticeToSession(client.id, id, USE_PLAN_TEXT, { byPerson: true });
   if (ev) { ev.state = 'used'; saveState(); const s = live.get(id); if (s) updateCard(s, ev); }
 }
 function dismissPlanOffer(id, card) {
@@ -1275,11 +1276,17 @@ function planText(client, p) {
   lines.push('', ready.length ? `Free to start now: ${ready.map((t) => t.id).join(', ')}` : whyNoneReady(p));
   return lines.join('\n');
 }
-// Every page showing this desk redraws its plans; the coordinator's chat hears which tasks just became free.
+// Every page showing this desk redraws its plans. Tasks that just became free wake the coordinator to start
+// them, through the same path and wake limit as session reports; freed during another session's turn, they wait
+// for that turn's report and go in the same wake-up (readyReports).
 function plansChanged(client, plan, nowReady = [], actor = '') {
   broadcast({ t: 'plans', client: client.id });
-  const c = plan && plan.coordinator !== actor && live.get(plan.coordinator);
-  if (c && nowReady.length) addEvent(c, { k: 'note', text: `Plan "${plan.title}": ${nowReady.map((t) => `${t.id} ${t.title}`).join('; ')} ${nowReady.length === 1 ? 'is' : 'are'} now free to start.` });
+  if (!plan?.coordinator || plan.coordinator === actor || !nowReady.length) return;
+  const by = actor && live.get(actor);
+  const item = { kind: 'plan', planId: plan.id, title: plan.title, tasks: nowReady.map((t) => ({ id: t.id, title: t.title })),
+    ...(by?.status === 'running' ? { waitFor: actor } : {}), ...(by?.turnBy === 'person' ? { byPerson: true } : {}) };
+  wakeWith(client, plan.coordinator, item, `Plan "${plan.title}": ${nowReady.map((t) => `${t.id} ${t.title}`).join('; ')} ${nowReady.length === 1 ? 'is' : 'are'} now free to start.`)
+    .catch((e) => console.log('[plan wake]', e.message));
 }
 // The page's view of a desk's plans: each with its progress and the sessions in it.
 function plansSummary(client) {
@@ -1436,8 +1443,9 @@ function planToolDefs(parent) {
         plansChanged(client, r.plan, r.nowReady, parent.id);
         const all = store.list(), done = r.plan.tasks.every((t) => t.state === 'done');
         const up = done && r.plan.parent && `Every task in this plan is done, so task ${r.plan.parent.task} of plan ${r.plan.parent.plan} may be done too.`;
+        const coord = r.plan.coordinator;
         return reply([`${r.task.id} "${r.task.title}" is now ${r.task.state.replace(/_/g, ' ')}.`,
-          r.nowReady.length ? `Now free to start: ${r.nowReady.map((t) => `${t.id} ${t.title}`).join('; ')}.` : '',
+          freedReply({ nowReady: r.nowReady, isCoordinator: coord === parent.id, coordinatorTitle: coord ? r.plan.coordinatorTitle || knownTitle(client, coord) || 'the coordinator' : '' }),
           up || '', `Plan progress: ${store.rollup(id, all).done} of ${store.rollup(id, all).total} done.`].filter(Boolean).join('\n'));
       })),
     tool('plan_read',
@@ -2598,7 +2606,7 @@ function startChild(parent, { title, prompt, cwd, attachments = [], settings = {
   const who = byUser ? `The user started this session from the portal, under the session "${parentTitle}" (id ${parent.id})`
     : `This session was started by the session "${parentTitle}" (id ${parent.id}) and is listed under it`;
   sendToSession(child, { text: prompt, attachments, from: byUser ? '' : 'session', context: [`(From Docket: ${who}. When you finish a turn, that session gets a short report of your reply.)`, note].filter(Boolean).join('\n\n') });
-  if (byUser) noticeToSession(client.id, parent.id, `The user started the session "${child.title || title || 'Untitled'}" (id ${child.id}) under this one from the portal. Its finished turns will come to you as session reports, and you can message it with mcp__portal__send_to_session. Nothing to do now; reply in one line at most.`).catch(() => {});
+  if (byUser) noticeToSession(client.id, parent.id, `The user started the session "${child.title || title || 'Untitled'}" (id ${child.id}) under this one from the portal. Its finished turns will come to you as session reports, and you can message it with mcp__portal__send_to_session. Nothing to do now; reply in one line at most.`, { byPerson: true }).catch(() => {});
   else { // the session started it: its second with no plan brings the card that offers one (#605)
     const rec = state.sessions[parent.id];
     if (rec) { rec.childStarts = (rec.childStarts || 0) + 1; saveState(); }
@@ -2667,7 +2675,7 @@ function startProposal(id) {
   settleProposal(id, 'started', '', child.id);
   touchSession(p.client, child.id); // the person pressed Start
   // Tell the proposer, so it does not start the same work again with start_session.
-  noticeToSession(p.client, p.parentId, `The user started your proposal "${p.title || 'Untitled'}" as session ${child.id}; do not start this work again. Its finished turns will come to you as session reports. Nothing to do now; reply in one line at most.`).catch(() => {});
+  noticeToSession(p.client, p.parentId, `The user started your proposal "${p.title || 'Untitled'}" as session ${child.id}; do not start this work again. Its finished turns will come to you as session reports. Nothing to do now; reply in one line at most.`, { byPerson: true }).catch(() => {});
   return child;
 }
 // ---------- handing a session off to a fresh one (matching rules in handoff.mjs) ----------
@@ -2776,7 +2784,7 @@ async function answerOfferLate(client, sessionId, id, choice) {
   const said = `The user answered your earlier offer "${ev.title}" (New session / Do it here), which reached them after Docket restarted:`;
   await noticeToSession(client.id, sessionId, started
     ? `${said} they chose a new session, now started as "${ev.title}" (id ${started}). Do not also do this work here.`
-    : `${said} they chose to do it here. Do that work in this session now.`);
+    : `${said} they chose to do it here. Do that work in this session now.`, { byPerson: true });
   return true;
 }
 function answerOffer(s, id, choice) {
@@ -2828,10 +2836,11 @@ async function deliverToSession(clientId, id, message, from, before) {
   return { reportsTo };
 }
 // A notice from Docket itself: a line in the chat, and the same words to Claude (not shown as the person's message).
-async function noticeToSession(clientId, id, text) {
+// byPerson: the notice comes from a button the person pressed, so it counts as the person acting (wake limit).
+async function noticeToSession(clientId, id, text, { byPerson = false } = {}) {
   const target = await sessionToMessage(clientId, id);
   addEvent(target, { k: 'note', text });
-  sendToSession(target, { text: '', system: true, context: `(From Docket: ${text})` });
+  sendToSession(target, { text: '', system: true, byPerson, context: `(From Docket: ${text})` });
 }
 const sessionTitle = (client, id) => live.get(id)?.title || state.sessions[id]?.title || (historyCache.get(client.id)?.rows || []).find((r) => r.id === id)?.title || 'Untitled';
 // Change a session's parent: under another session of the same company, or to the top level
@@ -2905,7 +2914,8 @@ async function sessionReport(clientId, id) {
 // When a session a parent started finishes a turn, the parent is woken with the report and
 // acts on it, as in the desktop app. A busy parent gets it when it finishes; a parent that is
 // not running is resumed. After WAKE_LIMIT wake-ups in a row with no message from the person,
-// reports become notes until the person writes again, so sessions cannot keep each other busy.
+// reports are held (with a note saying so) until the person writes again, so sessions cannot keep
+// each other busy. A report from a child turn the person started counts as the person acting (wakeDecision).
 // A child whose turn ended waiting on the person (a question in its reply, a form or permission
 // ask still open) only leaves the note: the question is the person's to answer in the child,
 // which stays marked unread, and a woken parent would ask it a second time.
@@ -2918,41 +2928,63 @@ async function reportToParent(child) {
   const route = reportRoute({ reportsTo: rec?.reportsTo, replyTo: rec?.replyTo, waiting: waitingOnUser(child, reply) });
   if (!route.to) return;
   if (route.clearReplyTo) { delete rec.replyTo; saveState(); }
-  const report = { childId: child.id, title: child.title || 'Session', text: reply.slice(0, 400), ...(route.sent ? { sent: true } : {}) };
+  const report = { childId: child.id, title: child.title || 'Session', text: reply.slice(0, 400), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}) };
   if (route.waiting) {
     const parent = live.get(route.to);
     if (parent && parent.status !== 'ended') {
       addEvent(parent, { k: 'child-report', ...report, waiting: true });
       (parent.waitingChildren ||= new Map()).set(child.id, report.title); // named, without its question, in the next wake-up
+      flushReports(parent); // freed plan tasks that waited for this turn go now
     }
     return;
   }
   const client = clientById(child.client);
-  let parent = live.get(route.to);
-  if (!parent || parent.status === 'ended') {
-    const row = await savedRow(client, route.to).catch(() => null);
-    if (!row && !parent) return;
-    const old = parent;
-    if (old) live.delete(route.to);
-    parent = startSession({ clientId: client.id, cwd: row?.cwd || old.cwd, title: row?.title || old.title, resumeId: route.to });
-    parent.events = old ? old.events.slice() : await loadTranscript(client, route.to).catch(() => []);
-  }
-  addEvent(parent, { k: 'child-report', ...report });
-  (parent.pendingReports ||= []).push(report);
-  flushReports(parent);
+  if (!await wakeWith(client, route.to, report)) return;
   const own = route.noteTo && live.get(route.noteTo);
   if (own && own.status !== 'ended') addEvent(own, { k: 'note', text: `"${report.title}" finished work sent by the session "${sessionTitle(client, route.to)}"; its report went there.` });
+}
+// Queue a report (a child's finished turn, or freed plan tasks) for a session and wake it, resuming it when it
+// is not running. `note` is shown in its chat instead of the child-report card. False when there is no such session.
+async function wakeWith(client, id, report, note = '') {
+  let parent = live.get(id);
+  if (!parent || parent.status === 'ended') {
+    const row = await savedRow(client, id).catch(() => null);
+    if (!row && !parent) return false;
+    const old = parent;
+    if (old) live.delete(id);
+    parent = startSession({ clientId: client.id, cwd: row?.cwd || old.cwd, title: row?.title || old.title, resumeId: id });
+    parent.events = old ? old.events.slice() : await loadTranscript(client, id).catch(() => []);
+  }
+  addEvent(parent, note ? { k: 'note', text: note } : { k: 'child-report', ...report });
+  (parent.pendingReports ||= []).push(report);
+  flushReports(parent);
+  return true;
+}
+// A session's turn ended: reports that waited for it (freed plan tasks) go to the sessions holding them.
+function flushWaitingOn(s) {
+  for (const p of live.values()) if (p !== s && p.pendingReports?.some((r) => r.waitFor === s.id)) flushReports(p);
 }
 function flushReports(parent) {
   if (!parent.pendingReports?.length) return;
   if (parent.pendingAsks?.size || !['idle', 'starting'].includes(parent.status)) return; // busy: delivered when it finishes
-  if ((parent.autoWakes || 0) >= WAKE_LIMIT) { setUnread(parent, 'wake-limit'); pushSession(parent); return; }
-  const reports = parent.pendingReports.splice(0);
-  parent.autoWakes = (parent.autoWakes || 0) + 1;
-  for (const r of reports) parent.waitingChildren?.delete(r.childId);
+  const ready = readyReports(parent.pendingReports, (id) => live.get(id)?.status === 'running');
+  if (!ready.length) return;
+  const d = wakeDecision({ autoWakes: parent.autoWakes || 0, reports: ready, limit: WAKE_LIMIT });
+  if (!d.wake) {
+    const fresh = ready.filter((r) => !r.heldNoted);
+    if (fresh.length) { for (const r of fresh) r.heldNoted = true; addEvent(parent, { k: 'note', text: heldNote(fresh, WAKE_LIMIT) }); }
+    setUnread(parent, 'wake-limit'); pushSession(parent); return;
+  }
+  const reports = ready;
+  parent.pendingReports = parent.pendingReports.filter((r) => !ready.includes(r));
+  parent.autoWakes = d.autoWakes;
+  for (const r of reports) if (r.childId) parent.waitingChildren?.delete(r.childId);
   const waiting = [...(parent.waitingChildren || [])].map(([id, title]) => `- "${title}" (id ${id}) is waiting on the user in its own chat.`);
   parent.waitingChildren?.clear();
-  const body = [...reports.map((r) => `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}. Its latest reply begins: ${r.text}`), ...waiting].join('\n');
+  const line = (r) => r.kind === 'plan'
+    ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'them'} as the plan's rules say, unless the user said to wait.`
+    : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}. Its latest reply begins: ${r.text}`;
+  const body = [...reports.map(line), ...waiting].join('\n');
   sendToSession(parent, { text: '', system: true, context: `<session-report>
 ${body}
 These are reports from sessions you started or sent work to with send_to_session, not messages from the user, and not proof: check a result (mcp__portal__get_session_report, its files, git branch or pull request) before telling the user it is done. If it is not done, send that session what is missing (mcp__portal__send_to_session). If it is done, follow "When a session you started says it is done" in your instructions, which also covers a session you sent work to; close_session only works on your own children, so a session you only sent work to is told the work is done instead: a small, safe task with nothing left for the user is closed with mcp__portal__close_session and reported here in a line or two; otherwise tell that session the work is done, and say in the same message if anything is still left for the user (an open pull request, a question, a decision), so it tells the user it is ready to close only when nothing is left for them. Carry on with any step of what the user asked you that these unblock, saying so in a line. Start nothing the user did not ask for. With no such step left, report in a line or two. A report that shows a session asking the user something is that session's question, asked in its own chat: do not repeat, rephrase or answer it; at most one line saying "[its title](#session:<id>) is waiting on you".
@@ -3615,7 +3647,7 @@ function saveUploads(id, attachments) {
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 // from: 'session' when another session wrote the text, so the page can tell it from what the person typed
-function sendToSession(s, { text, attachments = [], context = '', system = false, from = '' }) {
+function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false }) {
   if (holdsMessage(state.paused, { system, from })) { // waits for Resume all
     state.paused.held.push({ id: s.id, client: s.client, text, attachments, context, system, from });
     saveState();
@@ -3647,6 +3679,8 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   if (state.sessions[s.id]?.recallNote) { blocks.push({ type: 'text', text: RECALL_NOTE }); delete state.sessions[s.id].recallNote; saveState(); }
   if (s.shiftRulesPending && isShift(s)) { blocks.push({ type: 'text', text: '(From the session portal: this session was switched to Shift mode.)\n\n' + shiftRules(s) }); s.shiftRulesPending = false; }
   if (!blocks.length) return;
+  s.turnBy = turnStarter({ system, from, byPerson }); // whether its report counts toward the parent's wake limit
+  if (byPerson) s.autoWakes = 0; // a button the person pressed: wake-ups may continue
   if (state.sessions[s.id]?.reloadNote) { blocks.push({ type: 'text', text: state.sessions[s.id].reloadNote }); delete state.sessions[s.id].reloadNote; saveState(); }
   const rules = rulesToReread(s);
   if (rules.length) blocks.push({ type: 'text', text: rulesNote(rules) });

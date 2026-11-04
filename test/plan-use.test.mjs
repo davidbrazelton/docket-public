@@ -84,7 +84,7 @@ test('the page draws the card, and Use a plan and the session menu item both ask
   assert.match(page, /if \(act === 'use-plan'\) await usePlan\(id\);/);
   assert.match(page, /\/api\/sessions\/\$\{id\}\/use-plan\?client=/);
   assert.match(server, /if \(action === 'use-plan' && req\.method === 'POST'\)/);
-  assert.match(server, /await noticeToSession\(client\.id, id, USE_PLAN_TEXT\);/);
+  assert.match(server, /await noticeToSession\(client\.id, id, USE_PLAN_TEXT, \{ byPerson: true \}\);/); // the person pressed it: counts as them acting (#637)
   assert.match(USE_PLAN_TEXT, /mcp__portal__plan_create/);
 });
 
