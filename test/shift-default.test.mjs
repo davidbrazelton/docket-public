@@ -25,7 +25,7 @@ test('a session picked up again keeps its saved model', () => {
 
 test('a Shift session gets its gear when it is made', () => {
   const shift = { model: 'shift' };
-  assert.equal(firstGear({ settings: shift, brand: 'claude' }), 'claude-haiku-5-5');
+  assert.equal(firstGear({ settings: shift, brand: 'claude' }), 'claude-opus-5-5');
   assert.equal(firstGear({ settings: shift, brand: 'claude', asked: 'sonnet' }), 'claude-sonnet-5-5');
   assert.equal(firstGear({ settings: shift, brand: 'claude', companyStart: 'opus' }), 'claude-opus-5-5');
   assert.equal(firstGear({ settings: shift, brand: 'codex', companyStart: 'sol' }), 'gpt-6.1-sol');

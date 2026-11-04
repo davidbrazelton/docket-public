@@ -1557,7 +1557,7 @@ const HELP = [
     ['co-check-run', 'Check again', 'Run the Desk check again now. It only reads the desk\'s folders and past sessions, and changes nothing'],
     ['co-hook', 'Docket hooks', 'Ticked: this Docket helper runs in this desk\'s sessions'],
     ['co-default-engine', 'Default brand for new sessions', 'The brand a new session starts on unless you pick another beside the model. Only ticked brands can be the default. Sessions already started keep theirs'],
-    ['co-start-gear', 'Start gear', 'The model a Shift session on this brand starts on, before it shifts up or down by itself. The cheapest is the default. A session can be started on another with start_session\'s start_gear. Sessions already started keep theirs'],
+    ['co-start-gear', 'Start gear', 'The model a Shift session on this brand starts on, before it shifts up or down by itself. The top (most capable) gear is the default, since a lower gear cannot be trusted to know when to shift up. A session can be started on another with start_session\'s start_gear. Sessions already started keep theirs'],
     ['co-use', 'Use this brand', 'Ticked: this desk can run sessions on this brand, signed in from its home folder. Ticking fills the folder in for you. Unticking never deletes the folder or its sign-in'],
     ['co-use-last', 'Use this brand', 'At least one brand stays ticked. Tick another brand first to stop using this one'],
     ['term-folder', 'Open in', 'The folder the terminal opens in'],
@@ -2981,8 +2981,8 @@ function renderComposerBar() {
   const active = row?.activeModel || row?.stats?.model;
   $('cModel').options[0].textContent = active && !st.model ? `Default (${modelName(active)})` : 'Default model';
   $('cModel').value = st.model || '';
-  // Shift starts on the company's start gear for the brand: Haiku on Claude unless the company picked another.
-  const start = c?.startGears?.[draft ? draftEngine() : row?.engine || 'claude'] || 'Haiku';
+  // Shift starts on the company's start gear for the brand: Opus on Claude (its top gear) unless the company picked another.
+  const start = c?.startGears?.[draft ? draftEngine() : row?.engine || 'claude'] || 'Opus';
   $('cModel').querySelector('option[value=shift]').textContent = st.model === 'shift' && active ? `Shift (now ${modelName(active)})` : `Shift (starts ${start.replace(/ 5\.5$/, '')})`;
   const stats = row?.stats;
   const left = cacheLeft(stats);
@@ -5522,7 +5522,7 @@ async function editCompanies(rows, error = '', start, scrollTo) {
   const roots = await api('/api/clients/home-roots').catch(() => null);
   const gears = await api('/api/gears').catch(() => null); // Shift's gears per brand
   // One Start gear choice per ticked brand: the model its Shift sessions start on.
-  const gearRows = (c, i) => !gears ? '' : CO_BRANDS.filter(([e]) => coUses(c, e) && gears[e]).map(([e, n]) => `<label for="co${i}startGear_${e}">Start gear (${n})</label><select id="co${i}startGear_${e}" data-i="${i}" data-k="startGear_${e}"${tip('co-start-gear')}>${gears[e].map((g) => `<option value="${g.key}" ${(c['startGear_' + e] || gears[e][0].key) === g.key ? 'selected' : ''}>${esc(g.name)}${g === gears[e][0] ? ' (cheapest)' : ''}</option>`).join('')}</select>`).join('');
+  const gearRows = (c, i) => !gears ? '' : CO_BRANDS.filter(([e]) => coUses(c, e) && gears[e]).map(([e, n]) => `<label for="co${i}startGear_${e}">Start gear (${n})</label><select id="co${i}startGear_${e}" data-i="${i}" data-k="startGear_${e}"${tip('co-start-gear')}>${gears[e].map((g) => `<option value="${g.key}" ${(c['startGear_' + e] || gears[e].at(-1).key) === g.key ? 'selected' : ''}>${esc(g.name)}${g === gears[e].at(-1) ? ' (default)' : g === gears[e][0] ? ' (cheapest)' : ''}</option>`).join('')}</select>`).join('');
   // A LiteLLM gateway for Claude: its address, route, sign-in, where lite is, and its model name for each gear
   // (picked from the names it listed when last checked; a gear left empty is not offered to Shift).
   const gatewayRows = (c, i) => {

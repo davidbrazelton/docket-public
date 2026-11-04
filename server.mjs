@@ -22,7 +22,7 @@ import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
 import { transcriptTimes } from './chat-times.mjs';
 import { DOCKET_BLOCK, SESSION_BLOCK, messageFrom, lastTyped, mergeTouches } from './touches.mjs';
-import { GEARS, gearsOf, findGear, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear } from './gears.mjs';
+import { GEARS, gearsOf, findGear, topGearOf, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear } from './gears.mjs';
 import { shiftUpFor } from './shift-up.mjs';
 import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines } from './costs.mjs';
 import { topGearCost, sessionShiftFacts, shiftEntry, withShift } from './shift-savings.mjs';
@@ -1530,7 +1530,7 @@ function portalToolDefs(parent) {
           if (!isShift(parent)) return { content: [{ type: 'text', text: 'This session is not in Shift mode; its model is chosen by the user.' }], isError: true };
           const gears = gearsOf(parent.engine), gear = findGear(parent.engine, to);
           if (!visibleGears(clientById(parent.client), parent.engine).includes(gear)) return { content: [{ type: 'text', text: `${gear.name} is not offered by this company's gateway.` }], isError: true };
-          const from = findGear(parent.engine, parent.gear || parent.model) || gears[0];
+          const from = findGear(parent.engine, parent.gear || parent.model) || findGear(parent.engine, shiftModel(parent, clientById(parent.client)));
           if (from.id === gear.id) return { content: [{ type: 'text', text: `Already in ${gear.name}.` }] };
           try { await parent.query.setModel(modelFor(clientById(parent.client), parent.engine, gear.id)); } catch (e) { return { content: [{ type: 'text', text: 'Could not shift: ' + e.message }], isError: true }; }
           parent.gear = gear.id; parent.model = gear.id;
@@ -3437,7 +3437,7 @@ const planRules = (s) => {
 };
 function shiftRules(s) {
   if (!isShift(s)) return '';
-  const gears = visibleGears(clientById(s.client), s.engine), start = findGear(s.engine, s.gear) || gears[0];
+  const gears = visibleGears(clientById(s.client), s.engine), start = findGear(s.engine, shiftModel(s, clientById(s.client))) || gears[0];
   return optionalPrompt('model-shifting.md').replaceAll('{gears}', gears.map((g) => `${g.key} (${g.name})`).join(', '))
     .replaceAll('{start}', start.name).replaceAll('{mid}', gears[Math.min(1, gears.length - 1)].key).replaceAll('{top}', gears[gears.length - 1].key);
 }
@@ -3494,7 +3494,7 @@ function answerPermission(s, reqId, allow, always, answers) {
 // so the page never sees it without them (a new session in a group briefly had none, and opened No group).
 // A new session given no model is in Shift; one picked up again keeps its saved model, the account default
 // included. gear: the gear a Shift session starts on (start_session's start_gear); left out, its company's start
-// gear for that brand, else the lowest.
+// gear for that brand, else its top gear.
 function makeSession({ clientId, cwd, title, parentId, resumeId, settings = {}, engine, record = {}, gear }) {
   const client = clientById(clientId);
   if (!client) throw new Error(`Unknown client ${clientId}`);
@@ -5536,10 +5536,11 @@ function cleanCompany(c, taken) {
   const cacheTtl = String((c.promptCacheTtl !== undefined ? c.promptCacheTtl : before.promptCacheTtl) || '').trim();
   if (cacheTtl && cacheTtl !== '1h' && cacheTtl !== '5m') return { error: `${name}: the prompt cache is 1h, 5m, or empty for automatic` };
   // startGear: the gear each brand's Shift sessions start on in this company, as { brand: key }; a brand left out
-  // starts on its lowest gear. The Companies screen sends startGear_<brand>; the wizard sends none, so it is kept.
+  // starts on its top gear, so the top gear is the one choice not stored and any lower one chosen is kept (#635).
+  // The Companies screen sends startGear_<brand>; the wizard sends none, so it is kept.
   const flatGear = Object.keys(BRANDS).some((e) => c['startGear_' + e] !== undefined);
   const startGear = Object.fromEntries(Object.entries(cleanStartGear(flatGear ? Object.fromEntries(Object.keys(BRANDS).map((e) => [e, c['startGear_' + e]]))
-    : c.startGear !== undefined ? c.startGear : before.startGear)).filter(([e, key]) => key !== gearsOf(e)[0].key));
+    : c.startGear !== undefined ? c.startGear : before.startGear)).filter(([e, key]) => key !== topGearOf(e).key));
   // gateway: a LiteLLM gateway its Claude goes through instead of its own sign-in or an AWS profile. The
   // Companies screen sends it as gatewayUrl, gatewayClaudeRoute, gatewayLogin, gatewayLite and gatewayModel_claude_<gear>;
   // the wizard sends none, so it is kept.

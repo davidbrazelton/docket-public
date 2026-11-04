@@ -32,7 +32,7 @@ test('a Shift session on a lower gear goes to its top gear', () => {
   assert.deepEqual([c.from.key, c.to.key, c.why], ['sonnet', 'opus', 'git commit']);
   assert.equal(shiftUpFor({ settings: shift, brand: 'codex', gear: 'gpt-6-luna', tool: 'Edit', input: {} }).to.key, 'astra');
   assert.equal(shiftUpFor({ settings: shift, brand: 'grok', gear: 'grok-4.7-build-fast', tool: 'search_replace', input: {} }).to.key, 'full');
-  // A gear Docket does not know (none saved yet) counts as the lowest, as shift_gear counts it.
+  // A gear Docket does not know (none saved yet) counts as the lowest, so it is shifted up to be safe.
   assert.equal(shiftUpFor({ settings: shift, brand: 'claude', gear: undefined, tool: 'Write', input: {} }).from.key, 'haiku');
 });
 

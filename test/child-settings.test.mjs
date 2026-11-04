@@ -35,15 +35,15 @@ test('every brand has gears, cheapest first, with keys no other brand uses', () 
   assert.equal(new Set(keys).size, keys.length);
 });
 
-test('the start gear: asked for, else the company\'s, else the lowest', () => {
-  assert.equal(startGearOf('claude').id, 'claude-haiku-5-5');
+test('the start gear: asked for, else the company\'s, else the top one', () => {
+  assert.equal(startGearOf('claude').id, 'claude-opus-5-5');
   assert.equal(startGearOf('claude', 'sonnet').id, 'claude-sonnet-5-5');
   assert.equal(startGearOf('claude', undefined, 'opus').id, 'claude-opus-5-5');
   assert.equal(startGearOf('claude', 'sonnet', 'opus').id, 'claude-sonnet-5-5');
   assert.equal(startGearOf('codex', undefined, 'sol').id, 'gpt-6.1-sol');
-  assert.equal(startGearOf('grok').id, 'grok-4.7-build-fast');
+  assert.equal(startGearOf('grok').id, 'grok-4.7');
   // a gear of another brand is not one of this brand's, so the next choice wins
-  assert.equal(startGearOf('codex', 'sonnet').id, 'gpt-6-luna');
+  assert.equal(startGearOf('codex', 'sonnet').id, 'gpt-6-astra');
   assert.equal(startGearOf('grok', 'opus', 'full').id, 'grok-4.7');
 });
 

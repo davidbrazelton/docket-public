@@ -23,8 +23,11 @@ export const gearsOf = (brand) => GEARS[brand] || GEARS.claude;
 // A gear of that brand, by its model id or its key (haiku, luna, fast...); undefined if it has none by that name.
 export const findGear = (brand, name) => gearsOf(brand).find((g) => g.id === name || g.key === name);
 // The gear a new Shift session starts on: the one asked for (start_session's start_gear), else the company's start
-// gear for that brand (startGear in clients.local.json), else the lowest.
-export const startGearOf = (brand, asked, companyStart) => findGear(brand, asked) || findGear(brand, companyStart) || gearsOf(brand)[0];
+// gear for that brand (startGear in clients.local.json), else the top one (#635). Lower gears cannot be trusted to
+// decide when to shift up (learned several times), so it is better to spend up front on the top gear, which then
+// hands cheaper gears only work it has already worked out.
+export const topGearOf = (brand) => gearsOf(brand).at(-1);
+export const startGearOf = (brand, asked, companyStart) => findGear(brand, asked) || findGear(brand, companyStart) || topGearOf(brand);
 // The gear a child session started by another session starts on: its parent's current model, as a gear of the
 // child's brand. Same brand, the same gear; another brand, the gear at the same height counted from the top, so a
 // parent on its top gear starts the child on the child's top gear. undefined when the parent's model is no gear
