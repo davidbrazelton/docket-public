@@ -1411,6 +1411,8 @@ const HELP = [
     ['sec-mcp', 'Connected services', 'Connected services: outside tools this session can use, and whether each one is connected'],
     ['dsec-head', 'A section\'s heading', 'Click to fold the section to its heading or open it again. Drag it up or down to change the order; the buttons at the top of the panel follow the same order.'],
     ['group-select', 'Group', 'Which group this session is in'],
+    ['start-folder-change', 'Start folder: Change', 'Pick another folder for new sessions in this group to start in'],
+    ['start-folder-use', 'Start folder: Use this session\'s folder', 'Make this session\'s folder the one new sessions in this group start in'],
     ['mcp-refresh', 'Refresh', 'Ask the session again which services are connected'],
     ['resize-right', 'The panel\'s edge', 'Drag to make the details panel wider or narrower. Double-click to reset.'],
   ]],
@@ -3539,7 +3541,7 @@ function startFolderRow(s) {
   const g = s.groupId && groupOf(s.groupId);
   if (!g) return '';
   const desk = companyFolder(), work = s.cwd || '';
-  const act = (a, label) => `<button class="dir-act" data-start-folder="${a}" data-gid="${esc(g.id)}">${label}</button>`;
+  const act = (a, label) => `<button class="dir-act" data-start-folder="${a}" data-gid="${esc(g.id)}"${tip('start-folder-' + a)}>${label}</button>`;
   return `<div class="dir-row start-folder"><span class="dir-l">Start folder</span>`
     + (g.folder ? `<span class="dir-p">${esc(g.folder)}</span>${act('change', 'Change')}`
       : `<span class="dir-p">Desk folder (${esc(desk)})</span>${work && normPath(work) !== normPath(desk) ? act('use', 'Use this session&#39;s folder') : ''}`) + '</div>';
