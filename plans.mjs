@@ -16,8 +16,9 @@ const STATE_WORDS = { open: 'open', claimed: 'claimed', done: 'done', waiting_on
 export const KINDS = ['build', 'test', 'decision', 'research'];
 // The plan rules' version (#661): raised when the rules change in a way older plans should be checked against. A plan
 // records, on its "- Rules checked:" line, the version its coordinator last reviewed it at; a plan file without that
-// line was never reviewed (0). New plans start at the current version. 1: the rules of #651 to #655.
-export const PLAN_RULES_VERSION = 1;
+// line was never reviewed (0). New plans start at the current version. 1: the rules of #651 to #655. 2: done means
+// done, and a task set done by mistake is corrected (#663).
+export const PLAN_RULES_VERSION = 2;
 // Task names follow the plan tree (#639): T1, T2 in the master plan; T3.1, T3.2 in a plan made for task T3; T3.2.1
 // one level deeper. Numbers are never reused: a dropped task keeps its number and stays in the file.
 const TASK_ID = /T\d+(?:\.\d+)*/;
@@ -236,7 +237,7 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       if (!s.replaces) return;
       const old = plan.tasks.find((t) => t.id === String(s.replaces).trim().toUpperCase());
       if (!old) throw new Error(`Task "${made[i].title}" replaces ${oneLine(s.replaces)}, which is not in this plan.`);
-      if (old.state === 'done') throw new Error(`${old.id} is done, so nothing can replace it.`);
+      if (old.state === 'done') throw new Error(`${old.id} is done, so nothing can replace it. If it was set done by mistake, correct it first (set it dropped with a note saying why), then add the replacement.`);
       if (swaps.has(old.id)) throw new Error(`Only one new task can replace ${old.id}.`);
       swaps.set(old.id, made[i]);
     });
@@ -315,6 +316,8 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   // A kind can be filled in once, on a task made before kinds existed; a kind already set never changes.
   // waiting_outside needs what it waits on (waitsOn, or the one the task already has); leaving that state clears it.
   // forUser (true or false) makes a task the user's step or gives it back to sessions: the coordinator's to say.
+  // Done is undone only by the coordinator (#663): sent back after checking it, or corrected when it was set done by
+  // mistake, to dropped or back to open, with a note saying why; the note then starts "Corrected from done:".
   function update(id, taskId, { state, note, links, kind, waitsOn, forUser } = {}, actor, actorTitle = '') {
     if (state && !STATES.includes(state)) throw new Error(`State must be one of ${STATES.join(', ')}.`);
     const k = kind === undefined ? '' : String(kind).trim().toLowerCase();
@@ -326,12 +329,18 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       const isCoord = !!actor && actor === p.coordinator, isHolder = !!actor && actor === t.holder;
       if (!isCoord && !isHolder) throw new Error(`Only the session holding ${t.id}${t.holder ? ` (${t.holderTitle || t.holder})` : ''} or the plan's coordinator can change it.`);
       if (t.state === 'dropped' && state && state !== 'dropped') throw new Error(`${t.id} was dropped and stays dropped; add a new task instead.`);
+      const correcting = t.state === 'done' && (state === 'dropped' || state === 'open');
+      if (t.state === 'done' && state && state !== 'done') {
+        if (!isCoord) throw new Error(`${t.id} is already done. Only the plan's coordinator can correct a task set done by mistake.`);
+        if (!correcting && state !== 'sent_back') throw new Error(`${t.id} is done. To correct it, set it dropped or open with a note saying why; to have its holder fix it, set it sent_back.`);
+        if (correcting && !oneLine(note)) throw new Error(`Say why ${t.id} was not really done, in a one-line note.`);
+      }
       if (state === 'dropped' && t.state !== 'dropped') {
         if (!isCoord) throw new Error(`Only the plan's coordinator can drop ${t.id}.`);
-        if (t.state === 'done') throw new Error(`${t.id} is already done.`);
         if (!oneLine(note)) throw new Error(`Say why ${t.id} is dropped, in a one-line note.`);
         note = oneLine(note);
       }
+      if (correcting) note = `Corrected from done: ${oneLine(note)}${t.note ? ` (earlier note: ${oneLine(t.note)})` : ''}`;
       if (k && t.kind && t.kind !== k) throw new Error(`${t.id} already has the kind ${t.kind}, and a kind never changes. Add a new task with the right kind that replaces it.`);
       const waits = waitsOn === undefined ? '' : oneLine(waitsOn);
       if (waits && (state || t.state) !== 'waiting_outside') throw new Error(`Say what ${t.id} waits on only with the state waiting_outside.`);
