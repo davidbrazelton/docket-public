@@ -14,6 +14,10 @@ export const STATES = ['open', 'claimed', 'done', 'waiting_on_user', 'waiting_ou
 const STATE_WORDS = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on the user', waiting_outside: 'waiting outside Docket', sent_back: 'sent back', dropped: 'dropped' };
 // What a task is (#639): set when it is made and never changed. Tasks made before kinds existed have none.
 export const KINDS = ['build', 'test', 'decision', 'research'];
+// The plan rules' version (#661): raised when the rules change in a way older plans should be checked against. A plan
+// records, on its "- Rules checked:" line, the version its coordinator last reviewed it at; a plan file without that
+// line was never reviewed (0). New plans start at the current version. 1: the rules of #651 to #655.
+export const PLAN_RULES_VERSION = 1;
 // Task names follow the plan tree (#639): T1, T2 in the master plan; T3.1, T3.2 in a plan made for task T3; T3.2.1
 // one level deeper. Numbers are never reused: a dropped task keeps its number and stays in the file.
 const TASK_ID = /T\d+(?:\.\d+)*/;
@@ -42,17 +46,18 @@ function parseWho(v) {
 // ---------- the file ----------
 export function parsePlan(text, file = '') {
   const lines = String(text).replace(/\r\n/g, '\n').split('\n');
-  const plan = { id: '', title: '', coordinator: '', coordinatorTitle: '', parent: null, made: '', goal: '', tasks: [], file };
+  const plan = { id: '', title: '', coordinator: '', coordinatorTitle: '', parent: null, made: '', rulesChecked: 0, goal: '', tasks: [], file };
   let where = 'head', goal = [], task = null, key = null;
   for (const line of lines) {
     if (where === 'head' && /^# /.test(line) && !plan.title) { plan.title = line.slice(2).trim(); continue; }
     if (/^## Tasks\s*$/.test(line)) { where = 'tasks'; continue; }
     if (where === 'head') {
-      const m = line.match(/^- (Plan|Coordinator|Part of|Made): (.*)$/);
+      const m = line.match(/^- (Plan|Coordinator|Part of|Made|Rules checked): (.*)$/);
       if (m && !goal.length) {
         if (m[1] === 'Plan') plan.id = m[2].match(PLAN_ID)?.[0] || '';
         else if (m[1] === 'Coordinator') { const w = parseWho(m[2]); plan.coordinator = w.id; plan.coordinatorTitle = w.title; }
         else if (m[1] === 'Part of') { const p = m[2].match(PLAN_ID)?.[0], t = m[2].match(PART_OF_TASK)?.[1]; if (p) plan.parent = { plan: p, task: t || '' }; }
+        else if (m[1] === 'Rules checked') plan.rulesChecked = Number(m[2].match(/\d+/)?.[0] || 0);
         else plan.made = m[2].trim();
         continue;
       }
@@ -95,6 +100,7 @@ export function formatPlan(p, fileOf = (id) => id) {
   if (p.coordinator) out.push(`- Coordinator: ${who(p.coordinator, p.coordinatorTitle)}`);
   if (p.parent) out.push(`- Part of: [${p.parent.plan}](${fileOf(p.parent.plan)}), task ${p.parent.task}`);
   if (p.made) out.push(`- Made: ${p.made}`);
+  if (p.rulesChecked) out.push(`- Rules checked: ${p.rulesChecked}`);
   out.push('');
   if (p.goal) out.push(p.goal.trim(), '');
   out.push('## Tasks', '');
@@ -150,6 +156,11 @@ export function whyNoneReady(plan) {
     : `${t.id} is ${STATE_WORDS[t.state]}${t.holder ? ` (${t.holderTitle || t.holder})` : ''}`);
   return `No task is free for a session: ${parts.join('; ')}.`;
 }
+
+// ---------- reviews against new rules (#661) ----------
+// Open: some task not done or dropped. A finished plan is never asked to be reviewed.
+export const planOpen = (plan) => plan.tasks.some((t) => !finished(t));
+export const reviewDue = (plan, version = PLAN_RULES_VERSION) => planOpen(plan) && (plan.rulesChecked || 0) < version;
 
 // ---------- the folder ----------
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -246,7 +257,7 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
     if (!oneLine(title)) throw new Error('A plan needs a title.');
     return locked(() => {
       let id; do id = 'p-' + randomBytes(4).toString('hex').slice(0, 6); while (fileOf(id));
-      const plan = { id, title: oneLine(title), coordinator: coordinator || '', coordinatorTitle, parent: null, made: stamp(now()), goal: String(goal).trim(), tasks: [], file: '' };
+      const plan = { id, title: oneLine(title), coordinator: coordinator || '', coordinatorTitle, parent: null, made: stamp(now()), rulesChecked: PLAN_RULES_VERSION, goal: String(goal).trim(), tasks: [], file: '' };
       let up = null, t = null;
       if (parent) {
         up = must(parent.plan);
@@ -363,6 +374,15 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       return write(p);
     });
   }
+  // The coordinator has reviewed the plan against the current rules (#661), changes or none: the version is recorded.
+  function markReviewed(id, actor) {
+    return locked(() => {
+      const p = must(id);
+      if (!actor || actor !== p.coordinator) throw new Error(`Only the plan's coordinator marks the review of ${id} done.`);
+      p.rulesChecked = PLAN_RULES_VERSION;
+      return write(p);
+    });
+  }
   // Progress counted on the smallest pieces: a task with its own plan counts as that plan's tasks, all the way down.
   // A dropped task counts as neither open nor done.
   function rollup(id, all = list(), seen = new Set()) {
@@ -376,5 +396,5 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
     }
     return { done, total };
   }
-  return { dir, read, list, create, addTasks, claim, update, setCoordinator, setGoal, rollup, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
+  return { dir, read, list, create, addTasks, claim, update, setCoordinator, setGoal, markReviewed, rollup, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
 }

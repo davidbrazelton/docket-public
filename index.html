@@ -7081,7 +7081,9 @@ function planHtml(p, me) {
   const yours = p.tasks.filter((t) => t.forUser && t.state !== 'done' && t.state !== 'dropped');
   const now = yours.filter((t) => t.ready);
   const steps = yours.length ? `<div class="plan-yours">Your steps · ${now.length ? `<b>now: ${now.map((t) => esc(t.id)).join(', ')}</b>` : 'none to do yet'}${yours.length > now.length ? ` · later: ${yours.filter((t) => !t.ready).map((t) => esc(t.id)).join(', ')}` : ''}</div>` : '';
-  const head = `<div class="plan-head">${esc(p.title)} · ${p.done} of ${p.total} done<span class="plan-sub">${p.coordinator === me ? 'Coordinated by this session' : `Coordinated by ${sessionLink(p.coordinator, p.coordinatorTitle)}`}${p.parent ? ` · part of ${esc(p.parentTitle || p.parent.plan)}, task ${esc(p.parent.task)}` : ' · master plan'}</span></div>${steps}`;
+  // "needs review" (#661): made before the current plan rules, and its coordinator has not marked the review done yet.
+  const review = p.needsReview ? ' <span class="tag plan-tag" title="Made before the current plan rules. Docket asks its coordinator, once, to check it against them with the plan tools; this stays until the coordinator marks the review done.">needs review</span>' : '';
+  const head = `<div class="plan-head">${esc(p.title)} · ${p.done} of ${p.total} done${review}<span class="plan-sub">${p.coordinator === me ? 'Coordinated by this session' : `Coordinated by ${sessionLink(p.coordinator, p.coordinatorTitle)}`}${p.parent ? ` · part of ${esc(p.parentTitle || p.parent.plan)}, task ${esc(p.parent.task)}` : ' · master plan'}</span></div>${steps}`;
   return head + p.tasks.map((t) => {
     const sub = [esc(planWord(t)) + (t.ready ? (t.forUser ? ', your turn now' : ', free to start') : ''), t.holder ? (t.holder === me ? 'held by this session' : `held by ${sessionLink(t.holder, t.holderTitle)}`) : '',
       t.after.length && t.state !== 'done' && t.state !== 'dropped' ? 'after ' + t.after.join(', ') : '', t.sub ? `its plan: ${t.sub.done} of ${t.sub.total} done` : '', ...t.links.map(linkHtml), t.note ? esc(t.note) : ''].filter(Boolean);

@@ -45,7 +45,8 @@ import { groupProcesses, folderSize, cpuPercent, diskKeeper } from './machine-us
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
 import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
-import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES } from './plans.mjs';
+import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES, PLAN_RULES_VERSION, reviewDue, planOpen } from './plans.mjs';
+import { REVIEW_EVERY_MS, reviewSent, nextReview, reviewText } from './plan-review.mjs';
 import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT } from './plan-use.mjs';
 import { planStartNote } from './plan-use.mjs';
 import { createFolderReader, readMarkers, markerPlan, cleanPlanFolder, planFolderProblem } from './plan-folder.mjs';
@@ -1311,6 +1312,7 @@ function planText(client, p) {
   const lines = [`Plan ${p.id}: ${p.title}`, `File: ${p.file}`, `Coordinator: ${p.coordinator ? `${p.coordinatorTitle || knownTitle(client, p.coordinator) || 'a session'} (${p.coordinator})` : 'none'}`];
   if (p.parent) lines.push(`Part of: plan ${p.parent.plan}, task ${p.parent.task}`);
   lines.push(`Progress: ${r.done} of ${r.total} done`);
+  if (reviewDue(p)) lines.push(`Needs review against the new plan rules (version ${PLAN_RULES_VERSION}): its coordinator checks it with the plan tools, then marks it done with plan_review_done.`);
   if (p.goal) lines.push('', p.goal);
   // The user's steps at a glance (#652), before the full list.
   const mine = userSteps(p), ready0 = readyTasks(p);
@@ -1343,17 +1345,43 @@ function plansChanged(client, plan, nowReady = [], actor = '') {
   wakeWith(client, plan.coordinator, item, `Plan "${plan.title}": ${nowReady.map((t) => `${t.id} ${t.title}${userTag(t)}`).join('; ')} ${nowReady.length === 1 ? 'is' : 'are'} now free to start.`)
     .catch((e) => console.log('[plan wake]', e.message));
 }
+// The one-time review against new plan rules (#661, plan-review.mjs). Only a coordinator that is open, between turns,
+// not archived, and whose tool list has plan_review_done (reviewTool, set when its tools are listed) is sent it; a
+// closed one is never started for it, and gets it once it is open again. Docket sends at most one every REVIEW_EVERY_MS
+// across all desks, and none while everything is paused. state.planReviews records
+// what was sent (plan id -> { version, to, at }), so a plan is asked once per rules version and coordinator.
+function reviewReachable(client, id) {
+  const s = live.get(id);
+  return !!s && s.status === 'idle' && !s.pendingAsks?.size && !!state.sessions[id]?.reviewTool && !isArchived(client, id);
+}
+function sendReview(client, p) {
+  const s = live.get(p.coordinator);
+  (state.planReviews ||= {})[p.id] = { version: PLAN_RULES_VERSION, to: p.coordinator, at: Date.now() };
+  saveState();
+  logEvent('plan review asked', `${p.id} "${p.title}" to ${sessionTag(s)}`);
+  addEvent(s, { k: 'note', text: `Docket asked this session to review plan "${p.title}" against the new plan rules.` });
+  sendToSession(s, { text: '', system: true, context: `(From Docket: ${reviewText(p)})` });
+}
+function reviewTick() {
+  if (state.paused) return;
+  for (const client of CLIENTS) {
+    if (!plansOn(client)) continue;
+    const p = nextReview({ plans: plansOf(client).list(), sent: state.planReviews, canReach: (id) => reviewReachable(client, id) });
+    if (p) { sendReview(client, p); return; }
+  }
+}
+setInterval(() => { try { reviewTick(); } catch (e) { console.log('[plan review]', e.message); } }, REVIEW_EVERY_MS).unref?.();
 // The page's view of a desk's plans: each with its progress and the sessions in it.
 function plansSummary(client) {
   if (!plansOn(client)) return { on: false, plans: [] };
   const store = plansOf(client), all = store.list();
-  return { on: true, plans: all.map((p) => ({ id: p.id, title: p.title, file: p.file, coordinator: p.coordinator, parent: p.parent, ...store.rollup(p.id, all),
+  return { on: true, plans: all.map((p) => ({ id: p.id, title: p.title, file: p.file, coordinator: p.coordinator, parent: p.parent, ...store.rollup(p.id, all), needsReview: reviewDue(p),
     holders: [...new Set(p.tasks.filter((t) => t.holder && t.state !== 'done' && t.state !== 'dropped').map((t) => t.holder))] })) };
 }
 function planDetail(client, id) {
   const store = plansOf(client), all = store.list(), p = all.find((x) => x.id === id);
   if (!p) return null;
-  return { ...p, ...store.rollup(p.id, all), coordinatorTitle: p.coordinatorTitle || knownTitle(client, p.coordinator),
+  return { ...p, ...store.rollup(p.id, all), needsReview: reviewDue(p), coordinatorTitle: p.coordinatorTitle || knownTitle(client, p.coordinator),
     parentTitle: p.parent ? all.find((x) => x.id === p.parent.plan)?.title || '' : '',
     tasks: p.tasks.map((t) => {
       const sub = t.plan && all.find((x) => x.id === t.plan);
@@ -1536,7 +1564,38 @@ function planToolDefs(parent) {
       {},
       async () => run(() => {
         const s = plansSummary(client);
-        return reply(s.plans.map((p) => `${p.id}  ${p.title}  ·  ${p.done} of ${p.total} done  ·  coordinator ${knownTitle(client, p.coordinator) || p.coordinator || 'none'}${p.parent ? `  ·  under ${p.parent.plan}/${p.parent.task}` : '  ·  master plan'}`).join('\n') || 'This desk has no plans yet.');
+        return reply(s.plans.map((p) => `${p.id}  ${p.title}  ·  ${p.done} of ${p.total} done  ·  coordinator ${knownTitle(client, p.coordinator) || p.coordinator || 'none'}${p.parent ? `  ·  under ${p.parent.plan}/${p.parent.task}` : '  ·  master plan'}${p.needsReview ? '  ·  needs review against new rules' : ''}`).join('\n') || 'This desk has no plans yet.');
+      })),
+    tool('plan_review_done',
+      say("Mark the review of the plan this session coordinates done, once you have checked it against the current plan rules and made any repairs with the plan tools (coordinator only). Mark it done also when nothing needed changing. It records the rules version on the plan, so it is not asked again.",
+        'Mark the review of your plan against the current plan rules done.'),
+      { plan_id: pa('Plan id; defaults to the plan this session coordinates') },
+      async ({ plan_id: plan }) => run(() => {
+        const id = plan || sessionPlans(client, parent.id).own?.id;
+        if (!id) return reply('This session coordinates no plan.', true);
+        const p = store.markReviewed(id, parent.id);
+        if (state.planReviews?.[id]) { delete state.planReviews[id]; saveState(); }
+        logEvent('plan reviewed', `${id} by ${sessionTag(parent)}, rules version ${PLAN_RULES_VERSION}`);
+        plansChanged(client, p);
+        return reply(`Marked the review of plan ${id} done against plan rules version ${PLAN_RULES_VERSION}.`);
+      })),
+    tool('plan_review_nudge',
+      say("Ask a plan's coordinator now to review its plan against the current plan rules: the one-time request Docket otherwise sends by itself, one plan at a time. Only for an open plan not yet reviewed at this rules version. It only sends that coordinator a message: it changes nothing in the plan and starts no session, so a coordinator that is closed gets it once it is open again. Called by the coordinator itself, the reply carries the request.",
+        "Ask a plan's coordinator to review its plan against the current plan rules."),
+      { plan_id: d(z.string(), 'Plan id'), again: d(z.boolean().optional(), 'Send it again although it was already sent to this coordinator and not yet marked done') },
+      async ({ plan_id: id, again }) => run(() => {
+        const p = store.read(id);
+        if (!p) return reply(`No plan ${id} on this desk.`, true);
+        if (!planOpen(p)) return reply(`Plan ${id} is finished (every task done or dropped), so it is left alone.`);
+        if (!reviewDue(p)) return reply(`Plan ${id} was already reviewed against plan rules version ${PLAN_RULES_VERSION}.`);
+        if (p.coordinator === parent.id) return reply(reviewText(p));
+        if (!p.coordinator) return reply(`Plan ${id} has no coordinator. A session takes it over with plan_take_over, then reviews it.`, true);
+        const was = state.planReviews?.[id];
+        if (reviewSent(p, state.planReviews) && !again) return reply(`The review was already asked of ${knownTitle(client, p.coordinator) || p.coordinator} on ${new Date(was.at).toLocaleString()} and is not marked done yet. Say again: true to send it once more.`);
+        if (was) { delete state.planReviews[id]; saveState(); }
+        if (!reviewReachable(client, p.coordinator)) return reply(`${knownTitle(client, p.coordinator) || p.coordinator}, the coordinator, is not open and between turns now (or started before this version of Docket, so its tool list lacks plan_review_done until it starts again), so Docket sends it the request once it is (it never starts a session for this). Until the review is marked done the plan shows "needs review".`);
+        sendReview(client, p);
+        return reply(`Asked ${knownTitle(client, p.coordinator) || p.coordinator} to review plan ${id} against plan rules version ${PLAN_RULES_VERSION}.`);
       })),
     tool('plan_take_over',
       say("Make this session the coordinator of an existing plan, so a fresh session can carry on an old one's plan. Only when the user or the plan's old coordinator asks.", 'Take over an existing plan, only when asked.'),
@@ -4192,7 +4251,7 @@ function findCutOffs() {
 // - the library list changed: run npm install first;
 // - only the page changed: open pages reload themselves (version below).
 const RESTART_CODE = 75;
-const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs'];
+const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs'];
 const PAGE_FILES = ['index.html', 'view.html', 'usage.html', 'plans.html'];
 const LIB_FILES = ['package.json', 'package-lock.json'];
 // While a restart waits for a quiet moment this app keeps serving the pages it started with, which go with
@@ -6914,6 +6973,10 @@ const server = http.createServer(async (req, res) => {
       const parent = live.get(sid);
       if (!parent && !askToolSets.has(sid)) return json(res, 409, { error: 'That session is not running in Docket' });
       const defs = askToolSets.get(sid) || portalToolDefs(parent);
+      // Whether this session's tool list has plan_review_done (#661): its list is fixed when its process starts, so a
+      // coordinator started before that tool existed is asked to review its plan only after it starts again.
+      const reviewTool = defs.some((t) => t.name === 'plan_review_done');
+      if (req.method === 'GET' && state.sessions[sid] && !!state.sessions[sid].reviewTool !== reviewTool) { state.sessions[sid].reviewTool = reviewTool; saveState(); }
       if (req.method === 'GET') return json(res, 200, defs.filter((t) => !t.hidden).map((t) => ({ name: t.name, description: t.description, inputSchema: z.toJSONSchema(z.object(t.inputSchema)) })));
       const t = defs.find((x) => x.name === b.name);
       if (!t) return json(res, 404, { error: `No tool named ${b.name}` });
