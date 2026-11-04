@@ -11,3 +11,5 @@ Each shift costs something: the prompt cache belongs to one model, so the new mo
 Give a one-line reason with every shift. The user sees it in the chat.
 
 Docket shifts you up to {top} by itself the first time you edit a file or run a git commit on a lower gear: that call is turned down, and you check it and make it again on {top}. Shift up before you start such work, so this never has to happen.
+
+A plan's coordinator stays on {top}: making or taking over a plan on a lower gear shifts you up to {top}, and shift_gear will not go lower while the plan has tasks not done or dropped. Coordinating is deciding.

@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { workKind, shiftUpFor } from '../shift-up.mjs';
+import { workKind, shiftUpFor, coordinatorHold } from '../shift-up.mjs';
+import { gearsOf } from '../gears.mjs';
 import { hookOutput } from '../plugin/hooks/shift-first-edit.mjs';
 
 const HOOK = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugin', 'hooks', 'shift-first-edit.mjs');
@@ -60,4 +61,35 @@ test('the hook does nothing outside Docket, when turned off, or when the app can
     assert.equal(r.status, 0);
     assert.equal(r.stdout, '');
   }
+});
+
+test('becoming a plan coordinator raises a Shift session to its top gear (#654)', () => {
+  for (const t of ['mcp__portal__plan_create', 'mcp__portal__plan_take_over', 'portal.plan_create', 'plan_create']) assert.equal(workKind(t, {}), 'becoming a plan coordinator', t);
+  for (const t of ['mcp__portal__plan_add_tasks', 'mcp__portal__plan_read', 'mcp__portal__plan_claim_task', 'myplan_creator']) assert.equal(workKind(t, {}), null, t);
+  const d = shiftUpFor({ settings: shift, brand: 'claude', gear: 'claude-haiku-5-5', tool: 'mcp__portal__plan_create', input: {} });
+  assert.deepEqual([d.from.key, d.to.key, d.why], ['haiku', 'opus', 'becoming a plan coordinator']);
+  assert.equal(shiftUpFor({ settings: shift, brand: 'claude', gear: 'claude-opus-5-5', tool: 'mcp__portal__plan_create', input: {} }), null);
+  assert.equal(shiftUpFor({ settings: { model: 'claude-haiku-5-5' }, brand: 'claude', gear: 'claude-haiku-5-5', tool: 'mcp__portal__plan_create', input: {} }), null);
+});
+
+test('a coordinator with tasks left cannot shift below its top gear (#654)', () => {
+  const gears = gearsOf('claude'), [haiku, sonnet, opus] = gears;
+  const plan = (...states) => ({ id: 'p-ab12', title: 'Ship it', tasks: states.map((state, i) => ({ id: `T${i + 1}`, state })) });
+  for (const to of [haiku, sonnet]) {
+    const why = coordinatorHold({ gears, to, plan: plan('done', 'open', 'claimed') });
+    assert.match(why, /p-ab12 \("Ship it"\), which has 2 tasks not done or dropped/);
+    assert.match(why, /stays on Opus 5\.5/);
+    assert.ok(!why.includes('\n'), 'one line');
+  }
+  assert.match(coordinatorHold({ gears, to: haiku, plan: plan('waiting_on_user', 'dropped') }), /has 1 task not/);
+  assert.match(coordinatorHold({ gears, to: haiku, plan: plan('sent_back') }), /has 1 task not/);
+  assert.match(coordinatorHold({ gears, to: haiku, plan: plan('waiting_outside') }), /has 1 task not/);
+  // Shifting to the top gear, every task done or dropped, or no plan at all: allowed.
+  assert.equal(coordinatorHold({ gears, to: opus, plan: plan('open') }), null);
+  assert.equal(coordinatorHold({ gears, to: haiku, plan: plan('done', 'dropped') }), null);
+  assert.equal(coordinatorHold({ gears, to: haiku, plan: plan() }), null);
+  assert.equal(coordinatorHold({ gears, to: haiku, plan: null }), null);
+  // A gateway that offers only some gears: its highest offered gear is the top.
+  assert.equal(coordinatorHold({ gears: [haiku, sonnet], to: sonnet, plan: plan('open') }), null);
+  assert.match(coordinatorHold({ gears: [haiku, sonnet], to: haiku, plan: plan('open') }), /stays on Sonnet 5\.5/);
 });

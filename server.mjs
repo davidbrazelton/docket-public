@@ -23,7 +23,7 @@ import { childSettings } from './child-settings.mjs';
 import { transcriptTimes } from './chat-times.mjs';
 import { DOCKET_BLOCK, SESSION_BLOCK, messageFrom, lastTyped, mergeTouches } from './touches.mjs';
 import { GEARS, gearsOf, findGear, topGearOf, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear } from './gears.mjs';
-import { shiftUpFor } from './shift-up.mjs';
+import { shiftUpFor, coordinatorHold } from './shift-up.mjs';
 import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines } from './costs.mjs';
 import { topGearCost, sessionShiftFacts, shiftEntry, withShift } from './shift-savings.mjs';
 import { defaultCodexHome, codexSessions, codexRows } from './codex-usage.mjs';
@@ -1419,6 +1419,9 @@ function planToolDefs(parent) {
   const d = (t, text) => full ? t.describe(text) : t;
   const reply = (text, isError = false) => withPlanRules(parent, { content: [{ type: 'text', text }], ...(isError ? { isError: true } : {}) });
   const run = (fn) => { try { return fn(); } catch (e) { return reply(e.message, true); } };
+  // A tool that makes this session a plan's coordinator: a Shift session on a lower gear is raised to its top gear
+  // first (#654), as before a first file edit. The chat stream usually raised it already; this catches the rest.
+  const coordinate = async (fn, tool) => { await shiftUpForWork(parent, tool).catch(() => {}); return run(fn); };
   const taskSpec = z.object({
     title: d(z.string(), 'Short title of the task'),
     kind: d(z.string().optional(), 'Required: what the task is, one of build, test, decision, research. Set once and never changed; a task made with the wrong kind is replaced (see replaces)'),
@@ -1440,7 +1443,7 @@ function planToolDefs(parent) {
         tasks: d(z.array(taskSpec), 'The tasks, in the order they should be done'),
         for_task: d(z.string().optional(), 'Only when this session holds more than one task: the one this plan is for, as "<plan id>/<task id>"'),
       },
-      async ({ title, goal, tasks, for_task }) => run(() => {
+      async ({ title, goal, tasks, for_task }) => coordinate(() => {
         const mine = sessionPlans(client, parent.id);
         if (mine.own) return reply(`This session already coordinates plan ${mine.own.id} ("${mine.own.title}"). Add tasks to it with plan_add_tasks.`, true);
         let up = null;
@@ -1450,8 +1453,8 @@ function planToolDefs(parent) {
         const p = store.create({ title, goal, tasks, coordinator: parent.id, coordinatorTitle: parent.title, parent: up });
         logEvent('plan made', `${p.id} "${p.title}" by ${sessionTag(parent)}${up ? `, for ${up.plan}/${up.task}` : ''}`);
         plansChanged(client, p);
-        return reply(`Made plan ${p.id}${up ? `, hanging off task ${up.task} of plan ${up.plan}` : ' (a master plan)'}.\n\n${planText(client, store.read(p.id))}`);
-      })),
+        return reply(`Made plan ${p.id}${up ? `, hanging off task ${up.task} of plan ${up.plan}` : ' (a master plan)'}.${coordinatorNote(parent)}\n\n${planText(client, store.read(p.id))}`);
+      }, 'plan_create')),
     tool('plan_add_tasks',
       say("Add tasks to the plan this session coordinates.", 'Add tasks to the plan this session coordinates.'),
       { tasks: d(z.array(taskSpec), 'The new tasks; "after" may name existing tasks (T2) or places in this list'), plan_id: pa('Plan id; defaults to the plan this session coordinates') },
@@ -1538,13 +1541,13 @@ function planToolDefs(parent) {
     tool('plan_take_over',
       say("Make this session the coordinator of an existing plan, so a fresh session can carry on an old one's plan. Only when the user or the plan's old coordinator asks.", 'Take over an existing plan, only when asked.'),
       { plan_id: d(z.string(), 'Plan id') },
-      async ({ plan_id: plan }) => run(() => {
+      async ({ plan_id: plan }) => coordinate(() => {
         const mine = sessionPlans(client, parent.id).own;
         if (mine && mine.id !== plan) return reply(`This session already coordinates plan ${mine.id}; a session coordinates one plan.`, true);
         const p = store.setCoordinator(plan, parent.id, parent.title);
         plansChanged(client, p);
-        return reply(`This session now coordinates plan ${p.id}.\n\n${planText(client, p)}`);
-      })),
+        return reply(`This session now coordinates plan ${p.id}.${coordinatorNote(parent)}\n\n${planText(client, p)}`);
+      }, 'plan_take_over')),
   ];
 }
 
@@ -1612,6 +1615,10 @@ function portalToolDefs(parent) {
           const gears = gearsOf(parent.engine), gear = findGear(parent.engine, to);
           if (!visibleGears(clientById(parent.client), parent.engine).includes(gear)) return { content: [{ type: 'text', text: `${gear.name} is not offered by this company's gateway.` }], isError: true };
           const from = findGear(parent.engine, parent.gear || parent.model) || findGear(parent.engine, shiftModel(parent, clientById(parent.client)));
+          // A plan's coordinator stays on its top gear while the plan has tasks left (#654).
+          const client = clientById(parent.client);
+          const hold = plansOn(client) && coordinatorHold({ gears: visibleGears(client, parent.engine), to: gear, plan: sessionPlans(client, parent.id).own });
+          if (hold) return { content: [{ type: 'text', text: hold }], isError: true };
           if (from.id === gear.id) return { content: [{ type: 'text', text: `Already in ${gear.name}.` }] };
           try { await parent.query.setModel(modelFor(clientById(parent.client), parent.engine, gear.id)); } catch (e) { return { content: [{ type: 'text', text: 'Could not shift: ' + e.message }], isError: true }; }
           parent.gear = gear.id; parent.model = gear.id;
@@ -3527,6 +3534,12 @@ async function shiftUpForWork(s, tool, input, toolUseId) {
   addEvent(s, { k: 'note', text: `Shifted up to ${to.name}: ${why}` });
   pushSession(s);
   return true;
+}
+// The line a plan tool's reply adds for a Shift session that just became a coordinator (#654).
+function coordinatorNote(s) {
+  if (!isShift(s)) return '';
+  const top = usableGear(clientById(s.client), s.engine, topGearOf(s.engine));
+  return ` As its coordinator this session runs on ${top.name}, and shift_gear keeps it there until every task is done or dropped.`;
 }
 // What the hook is told: turn the call down when it was chosen on the lower gear, so the top gear makes it again.
 function shiftUpReply(s, raised, toolUseId, subagent) {
