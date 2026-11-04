@@ -45,7 +45,7 @@ import { groupProcesses, folderSize, cpuPercent, diskKeeper } from './machine-us
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
 import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
-import { createPlanStore, readyTasks, whyNoneReady, STATES } from './plans.mjs';
+import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES } from './plans.mjs';
 import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT } from './plan-use.mjs';
 import { planStartNote } from './plan-use.mjs';
 import { createFolderReader, readMarkers, markerPlan, cleanPlanFolder, planFolderProblem } from './plan-folder.mjs';
@@ -1312,19 +1312,25 @@ function planText(client, p) {
   if (p.parent) lines.push(`Part of: plan ${p.parent.plan}, task ${p.parent.task}`);
   lines.push(`Progress: ${r.done} of ${r.total} done`);
   if (p.goal) lines.push('', p.goal);
+  // The user's steps at a glance (#652), before the full list.
+  const mine = userSteps(p), ready0 = readyTasks(p);
+  if (mine.length) lines.push('', `The user's steps (${mine.length} left): ${mine.map((t) => `${t.id} ${t.title} (${ready0.includes(t) ? 'their turn now' : stateText(t)})`).join('; ')}`);
   lines.push('');
   for (const t of p.tasks) {
     const sub = t.plan && all.find((x) => x.id === t.plan), sr = sub && store.rollup(sub.id, all);
-    lines.push(`[${t.state === 'done' ? 'x' : t.state === 'dropped' ? '-' : ' '}] ${t.id}${t.kind ? ` (${t.kind})` : ''} ${t.title} · ${t.state.replace(/_/g, ' ')}${t.holder ? ` · held by ${holderText(client, t)}` : ''}${t.after.length ? ` · after ${t.after.join(', ')}` : ''}`);
+    lines.push(`[${t.state === 'done' ? 'x' : t.state === 'dropped' ? '-' : ' '}] ${t.id}${t.kind ? ` (${t.kind})` : ''} ${t.title}${t.forUser ? ' · the user\'s step' : ''} · ${stateText(t)}${t.holder ? ` · held by ${holderText(client, t)}` : ''}${t.after.length ? ` · after ${t.after.join(', ')}` : ''}`);
     if (t.brief) lines.push(`    Brief: ${t.brief.replace(/\n/g, '\n    ')}`);
     if (t.note) lines.push(`    Note: ${t.note.replace(/\n/g, '\n    ')}`);
     for (const l of t.links) lines.push(`    Link: ${l}`);
     if (sub) lines.push(`    Its own plan: ${sub.id} "${sub.title}", ${sr.done} of ${sr.total} done`);
   }
-  const ready = readyTasks(p);
+  const ready = ready0.filter((t) => !t.forUser), yours = ready0.filter((t) => t.forUser);
   lines.push('', ready.length ? `Free to start now: ${ready.map((t) => t.id).join(', ')}` : whyNoneReady(p));
+  if (ready.length && yours.length) lines.push(`The user's to do now: ${yours.map((t) => t.id).join(', ')}`);
   return lines.join('\n');
 }
+// A task's state in words; waiting outside Docket says on what.
+const stateText = (t) => t.state === 'waiting_outside' ? `waiting outside Docket${t.waitsOn ? ` on ${t.waitsOn}` : ''}` : t.state.replace(/_/g, ' ');
 // Every page showing this desk redraws its plans. Tasks that just became free wake the coordinator to start
 // them, through the same path and wake limit as session reports; freed during another session's turn, they wait
 // for that turn's report and go in the same wake-up (readyReports).
@@ -1332,9 +1338,9 @@ function plansChanged(client, plan, nowReady = [], actor = '') {
   broadcast({ t: 'plans', client: client.id });
   if (!plan?.coordinator || plan.coordinator === actor || !nowReady.length) return;
   const by = actor && live.get(actor);
-  const item = { kind: 'plan', planId: plan.id, title: plan.title, tasks: nowReady.map((t) => ({ id: t.id, title: t.title })),
+  const item = { kind: 'plan', planId: plan.id, title: plan.title, tasks: nowReady.map((t) => ({ id: t.id, title: t.title + userTag(t) })),
     ...(by?.status === 'running' ? { waitFor: actor } : {}), ...(by?.turnBy === 'person' ? { byPerson: true } : {}) };
-  wakeWith(client, plan.coordinator, item, `Plan "${plan.title}": ${nowReady.map((t) => `${t.id} ${t.title}`).join('; ')} ${nowReady.length === 1 ? 'is' : 'are'} now free to start.`)
+  wakeWith(client, plan.coordinator, item, `Plan "${plan.title}": ${nowReady.map((t) => `${t.id} ${t.title}${userTag(t)}`).join('; ')} ${nowReady.length === 1 ? 'is' : 'are'} now free to start.`)
     .catch((e) => console.log('[plan wake]', e.message));
 }
 // The page's view of a desk's plans: each with its progress and the sessions in it.
@@ -1419,6 +1425,7 @@ function planToolDefs(parent) {
     brief: d(z.string().optional(), 'What to do and what done looks like, complete enough for a fresh session'),
     after: d(z.array(z.union([z.string(), z.number()])).optional(), 'The tasks this one waits on: ids like "T1", or the place in this same list (1 for the first task given here)'),
     links: d(z.array(z.string()).optional(), 'Tickets, issues, pull requests or files this task is about, as web addresses or full paths'),
+    for_user: d(z.boolean().optional(), 'True for a step only the user can do (a sign-in, a decision, money, a merge they asked to give): one step per task. No session claims it; the coordinator tells the user when it is their turn and marks it done'),
     replaces: d(z.string().optional(), 'Only in plan_add_tasks: the id of a task this one takes the place of (wrong kind, or rethought). That task is dropped, and tasks waiting on it wait on this one instead'),
   });
   const planArg = z.string().optional();
@@ -1489,7 +1496,7 @@ function planToolDefs(parent) {
         return reply(`${r.already ? 'You already hold' : 'You now hold'} ${r.task.id} "${r.task.title}" in plan ${id}.${r.task.brief ? `\nBrief: ${r.task.brief}` : ''}`);
       })),
     tool('plan_update_task',
-      say("Change a task you hold, or (as the plan's coordinator) any task in your plan: set its state, add a short note, attach links (tickets, issues, pull requests, files). States: done; waiting_on_user (needs the user's answer); sent_back (the coordinator checked it and the holder must fix it); claimed (back to work); open (let it go so another session can take it); dropped (coordinator only, with a one-line note saying why: the task stays in the plan crossed out, keeps its number, and counts as neither open nor done; it cannot be undone). A task made before kinds existed can have its kind filled in once with kind; a kind already set never changes.",
+      say("Change a task you hold, or (as the plan's coordinator) any task in your plan: set its state, add a short note, attach links (tickets, issues, pull requests, files). States: done; waiting_on_user (needs the user's answer); waiting_outside (waits on something outside Docket that is not the user: a colleague, a vendor, a date; say what in waits_on); sent_back (the coordinator checked it and the holder must fix it); claimed (back to work); open (let it go so another session can take it); dropped (coordinator only, with a one-line note saying why: the task stays in the plan crossed out, keeps its number, and counts as neither open nor done; it cannot be undone). A task made before kinds existed can have its kind filled in once with kind; a kind already set never changes. The coordinator can make a task the user's step, or give it back to sessions, with for_user.",
         'Set a plan task\'s state, note or links.'),
       {
         task_id: d(z.string(), 'Task id like "T2" or "T3.1", or "<plan id>/T2"'),
@@ -1497,18 +1504,20 @@ function planToolDefs(parent) {
         note: d(z.string().optional(), 'One or two lines: what was done, or what is missing'),
         links: d(z.array(z.string()).optional(), 'Web addresses or full paths to attach'),
         kind: d(z.string().optional(), 'Only for a task with no kind yet (made before kinds existed): build, test, decision or research. Refused once a kind is set'),
+        waits_on: d(z.string().optional(), 'With state waiting_outside (required then): what the task waits on outside Docket, in a few words, e.g. "Quo to issue the Hub\'s phone number"'),
+        for_user: d(z.boolean().optional(), 'Coordinator only: true makes this task the user\'s step (no session claims it), false gives it back to sessions'),
         plan_id: pa('Plan id; defaults to the plan where this session holds that task, then its own plan'),
       },
-      async ({ task_id: task, state: st, note, links, kind, plan_id: plan }) => run(() => {
+      async ({ task_id: task, state: st, note, links, kind, waits_on: waitsOn, for_user: forUser, plan_id: plan }) => run(() => {
         const ref = taskRef(task, plan), id = planFor(client, parent, ref.plan, { want: 'update', task: ref.task });
         if (!id) return reply('Give the plan id: this session holds no such task and coordinates no plan.', true);
-        const r = store.update(id, ref.task, { state: st, note, links, kind }, parent.id, parent.title);
+        const r = store.update(id, ref.task, { state: st, note, links, kind, waitsOn, forUser }, parent.id, parent.title);
         plansChanged(client, r.plan, r.nowReady, parent.id);
         const all = store.list(), done = r.plan.tasks.some((t) => t.state === 'done') && r.plan.tasks.every((t) => t.state === 'done' || t.state === 'dropped');
         const up = done && r.plan.parent && `Every task in this plan is done, so task ${r.plan.parent.task} of plan ${r.plan.parent.plan} may be done too.`;
         const coord = r.plan.coordinator;
-        return reply([`${r.task.id}${r.task.kind ? ` (${r.task.kind})` : ''} "${r.task.title}" is now ${r.task.state.replace(/_/g, ' ')}.`,
-          freedReply({ nowReady: r.nowReady, isCoordinator: coord === parent.id, coordinatorTitle: coord ? r.plan.coordinatorTitle || knownTitle(client, coord) || 'the coordinator' : '' }),
+        return reply([`${r.task.id}${r.task.kind ? ` (${r.task.kind})` : ''} "${r.task.title}"${userTag(r.task)} is now ${stateText(r.task)}.`,
+          freedReply({ nowReady: r.nowReady.map((t) => ({ ...t, title: t.title + userTag(t) })), isCoordinator: coord === parent.id, coordinatorTitle: coord ? r.plan.coordinatorTitle || knownTitle(client, coord) || 'the coordinator' : '' }),
           up || '', `Plan progress: ${store.rollup(id, all).done} of ${store.rollup(id, all).total} done.`].filter(Boolean).join('\n'));
       })),
     tool('plan_read',
@@ -3056,7 +3065,7 @@ function flushReports(parent) {
   const waiting = [...(parent.waitingChildren || [])].map(([id, title]) => `- "${title}" (id ${id}) is waiting on the user in its own chat.`);
   parent.waitingChildren?.clear();
   const line = (r) => r.kind === 'plan'
-    ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'them'} as the plan's rules say, unless the user said to wait.`
+    ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'them'} as the plan's rules say, unless the user said to wait${r.tasks.some((t) => t.title.endsWith(userTag({ forUser: true }))) ? "; for the user's step, tell the user in a line or two what to do now" : ''}.`
     : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}. Its latest reply begins: ${r.text}`;
   const body = [...reports.map(line), ...waiting].join('\n');
   sendToSession(parent, { text: '', system: true, context: `<session-report>

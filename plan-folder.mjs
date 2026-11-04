@@ -19,13 +19,13 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 
 const CHECK = /^(\s*)[-*+] \[([ xX])\]\s*(.*)$/;
-const DETAIL = /^(\s+)[-*+] (State|Held by|After|Brief|Note|Link|Plan): ?(.*)$/;
+const DETAIL = /^(\s+)[-*+] (State|Owner|Held by|After|Waits on|Brief|Note|Link|Plan): ?(.*)$/;
 const HEAD = /^[-*+] (Plan|Coordinator|Part of|Made): ?(.*)$/;
 const PLAN_ID = /\bp-[a-z0-9]{4,}\b/;
 const MD_LINK = /\[[^\]]*\]\(\s*<?([^)>]*?\.md)(?:#[^)>]*)?>?\s*\)/gi;
 const BARE = /(?:^|[\s"'`(\[<,;])((?:[A-Za-z]:)?[\w.~\\/-]*?[\w-][\w.-]*\.md)(?![\w])/gi;
 const SKIP_DIRS = new Set(['node_modules', 'bin', 'obj']);
-const STATE_WORDS = { open: 'open', claimed: 'claimed', waiting_on_user: 'waiting on the user', sent_back: 'sent back' };
+const STATE_WORDS = { open: 'open', claimed: 'claimed', waiting_on_user: 'waiting on the user', waiting_outside: 'waiting outside docket', sent_back: 'sent back' };
 const wordToState = (w) => Object.keys(STATE_WORDS).find((k) => STATE_WORDS[k] === String(w).trim().toLowerCase()) || '';
 
 // Paths compared the way the disk does: Windows and macOS ignore case.
@@ -68,7 +68,7 @@ export function parseChecklist(text, file = '') {
       seenItem = true;
       const t = c[3].match(/^(T\d+)\s+(.*)$/);
       item = { indent: c[1].replace(/\t/g, '  ').length, done: c[2] !== ' ', id: t ? t[1] : '', title: (t ? t[2] : c[3]).replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim(), line: n + 1,
-        state: c[2] !== ' ' ? 'done' : 'open', holder: '', holderTitle: '', after: [], brief: '', note: '', links: [], plan: null, refs: mdRefs(c[3]) };
+        state: c[2] !== ' ' ? 'done' : 'open', holder: '', holderTitle: '', after: [], forUser: false, waitsOn: '', brief: '', note: '', links: [], plan: null, refs: mdRefs(c[3]) };
       plan.items.push(item);
       for (const r of item.refs) plan.links.push({ ref: r, line: n + 1, item: plan.items.length - 1 });
       return;
@@ -79,6 +79,8 @@ export function parseChecklist(text, file = '') {
       if (key === 'State') { const s = wordToState(v.replace(/ since .*$/, '')); if (!item.done && s) item.state = s; }
       else if (key === 'Held by') { const w = who(v); item.holder = w.id; item.holderTitle = w.title; }
       else if (key === 'After') item.after = v.match(/T\d+/g) || [];
+      else if (key === 'Owner') item.forUser = v.trim().toLowerCase() === 'the user'; // Docket's own plan files (#652)
+      else if (key === 'Waits on') item.waitsOn = v.trim();
       else if (key === 'Brief') item.brief = v.trim();
       else if (key === 'Note') item.note = v.trim();
       else if (key === 'Link') { if (v.trim()) item.links.push(v.trim()); }
@@ -211,7 +213,7 @@ export function buildTree(docs, { root = '', exists = (f) => fs.existsSync(f), p
       parent: parent.has(p) ? keyOf(parent.get(p)) : null, parentItem: parent.has(p) ? parentItem.get(p) : -1,
       children: kids.map(keyOf), unlinked: !named.get(p).size,
       items: p.items.map((it, i) => ({ id: it.id, title: it.title, state: it.state, depth: it.indent, line: it.line, holder: it.holder, holderTitle: it.holderTitle,
-        after: it.after, brief: it.brief, note: it.note, links: it.links, sub: kids.filter((c) => parentItem.get(c) === i).map(keyOf) })) };
+        after: it.after, forUser: it.forUser, waitsOn: it.waitsOn, brief: it.brief, note: it.note, links: it.links, sub: kids.filter((c) => parentItem.get(c) === i).map(keyOf) })) };
   });
   out.sort((a, b) => a.key.localeCompare(b.key));
   return { plans: out, roots: out.filter((p) => !p.parent).map((p) => p.key), broken, unlinked: out.filter((p) => p.unlinked).map((p) => p.key) };

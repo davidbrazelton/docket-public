@@ -8,8 +8,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-export const STATES = ['open', 'claimed', 'done', 'waiting_on_user', 'sent_back', 'dropped'];
-const STATE_WORDS = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on the user', sent_back: 'sent back', dropped: 'dropped' };
+// waiting_outside (#652): waiting on something outside Docket that is not the user (a colleague, a vendor, a date),
+// with what it waits on in the task's "Waits on" line.
+export const STATES = ['open', 'claimed', 'done', 'waiting_on_user', 'waiting_outside', 'sent_back', 'dropped'];
+const STATE_WORDS = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on the user', waiting_outside: 'waiting outside Docket', sent_back: 'sent back', dropped: 'dropped' };
 // What a task is (#639): set when it is made and never changed. Tasks made before kinds existed have none.
 export const KINDS = ['build', 'test', 'decision', 'research'];
 // Task names follow the plan tree (#639): T1, T2 in the master plan; T3.1, T3.2 in a plan made for task T3; T3.2.1
@@ -20,7 +22,12 @@ const TASK_LINE = new RegExp(`^- \\[([ xX])\\] (${TASK_ID.source})\\s*(.*)$`);
 const PART_OF_TASK = new RegExp(`\\btask (${TASK_ID.source})\\b`);
 // A task that no longer stops anything: done, or dropped (out of the plan's work, counted neither open nor done).
 const finished = (t) => t.state === 'done' || t.state === 'dropped';
-const wordToState = (w) => Object.keys(STATE_WORDS).find((k) => STATE_WORDS[k] === String(w).trim().toLowerCase()) || 'open';
+const wordToState = (w) => Object.keys(STATE_WORDS).find((k) => STATE_WORDS[k].toLowerCase() === String(w).trim().toLowerCase()) || 'open';
+// A task the user does themself (#652): "- Owner: the user" in the file. No session claims it; the coordinator tells
+// the user when it is their turn and marks it done once they have done it. Tasks without the line are sessions' work.
+const USER_OWNER = 'the user';
+// A task's place in a sentence: "T4 Merge the pull request (the user's step)".
+export const userTag = (t) => t.forUser ? " (the user's step)" : '';
 const PLAN_ID = /\bp-[a-z0-9]{4,}\b/;
 const stamp = (t) => new Date(t).toISOString().slice(0, 16).replace('T', ' ');
 const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
@@ -54,11 +61,11 @@ export function parsePlan(text, file = '') {
     }
     const t = line.match(TASK_LINE);
     if (t) {
-      task = { id: t[2], title: t[3].trim(), kind: '', state: t[1] === ' ' ? 'open' : 'done', holder: '', holderTitle: '', claimedAt: '', after: [], brief: '', note: '', links: [], plan: '' };
+      task = { id: t[2], title: t[3].trim(), kind: '', forUser: false, state: t[1] === ' ' ? 'open' : 'done', holder: '', holderTitle: '', claimedAt: '', after: [], waitsOn: '', brief: '', note: '', links: [], plan: '' };
       plan.tasks.push(task); key = null; continue;
     }
     if (!task) continue;
-    const d = line.match(/^ {2}- (State|Kind|Held by|After|Brief|Note|Link|Plan): ?(.*)$/);
+    const d = line.match(/^ {2}- (State|Kind|Owner|Held by|After|Waits on|Brief|Note|Link|Plan): ?(.*)$/);
     if (d) {
       key = d[1];
       const v = d[2];
@@ -66,6 +73,8 @@ export function parsePlan(text, file = '') {
       if (key === 'State') { const s = wordToState(v.replace(/ since .*$/, '')); if (task.state !== 'done') task.state = s === 'done' ? 'open' : s; task.claimedAt = v.match(/ since (.*)$/)?.[1] || ''; }
       else if (key === 'Held by') { const w = parseWho(v); task.holder = w.id; task.holderTitle = w.title; }
       else if (key === 'Kind') task.kind = v.trim().toLowerCase();
+      else if (key === 'Owner') task.forUser = v.trim().toLowerCase() === USER_OWNER;
+      else if (key === 'Waits on') task.waitsOn = oneLine(v);
       else if (key === 'After') task.after = v.match(TASK_IDS) || [];
       else if (key === 'Brief') task.brief = v;
       else if (key === 'Note') task.note = v;
@@ -92,9 +101,11 @@ export function formatPlan(p, fileOf = (id) => id) {
   for (const t of p.tasks) {
     out.push(`- [${t.state === 'done' ? 'x' : ' '}] ${t.id} ${oneLine(t.title)}`);
     if (t.kind) out.push(`  - Kind: ${t.kind}`);
+    if (t.forUser) out.push(`  - Owner: ${USER_OWNER}`);
     out.push(`  - State: ${STATE_WORDS[t.state] || 'open'}${t.claimedAt && t.state !== 'open' ? ` since ${t.claimedAt}` : ''}`);
     if (t.holder) out.push(`  - Held by: ${who(t.holder, t.holderTitle)}`);
     if (t.after.length) out.push(`  - After: ${t.after.join(', ')}`);
+    if (t.waitsOn) out.push(`  - Waits on: ${oneLine(t.waitsOn)}`);
     if (t.brief) out.push(`  - Brief: ${more(t.brief.trim())}`);
     if (t.note) out.push(`  - Note: ${more(t.note.trim())}`);
     for (const l of t.links) out.push(`  - Link: ${oneLine(l)}`);
@@ -104,11 +115,15 @@ export function formatPlan(p, fileOf = (id) => id) {
 }
 
 // ---------- order ----------
-// Tasks free to claim now: open, with every task they wait on done (or dropped: a dropped task stops nothing).
+// Tasks free to start now: open, with every task they wait on done (or dropped: a dropped task stops nothing). The
+// user's steps among them are the user's to do now; sessions claim only the rest (sessionReady).
 export function readyTasks(plan) {
   const done = new Set(plan.tasks.filter(finished).map((t) => t.id));
   return plan.tasks.filter((t) => t.state === 'open' && t.after.every((a) => done.has(a)));
 }
+export const sessionReady = (plan) => readyTasks(plan).filter((t) => !t.forUser);
+// The user's steps not yet done or dropped, in plan order (#652).
+export const userSteps = (plan) => plan.tasks.filter((t) => t.forUser && !finished(t));
 // A loop in the "after" lists (A after B, B after A), as the ids around it, or null.
 export function findLoop(tasks) {
   const by = new Map(tasks.map((t) => [t.id, t])), seen = new Map(); // id -> 1 visiting, 2 done
@@ -129,9 +144,11 @@ export function whyNoneReady(plan) {
   if (!plan.tasks.length) return 'The plan has no tasks.';
   if (!left.length) return plan.tasks.some((t) => t.state === 'dropped') ? 'Every task in this plan is done or dropped.' : 'Every task in this plan is done.';
   const done = new Set(plan.tasks.filter(finished).map((t) => t.id));
-  const parts = left.map((t) => t.state === 'open' ? `${t.id} waits on ${t.after.filter((a) => !done.has(a)).join(', ')}`
+  const parts = left.map((t) => t.state === 'open' && t.forUser && t.after.every((a) => done.has(a)) ? `${t.id} is the user's to do`
+    : t.state === 'open' ? `${t.id} waits on ${t.after.filter((a) => !done.has(a)).join(', ')}`
+    : t.state === 'waiting_outside' ? `${t.id} is waiting outside Docket${t.waitsOn ? ` on ${t.waitsOn}` : ''}`
     : `${t.id} is ${STATE_WORDS[t.state]}${t.holder ? ` (${t.holderTitle || t.holder})` : ''}`);
-  return `No task is free: ${parts.join('; ')}.`;
+  return `No task is free for a session: ${parts.join('; ')}.`;
 }
 
 // ---------- the folder ----------
@@ -193,8 +210,8 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       if (!k) throw new Error(`${what} needs a kind: build, test, decision or research.`);
       if (!KINDS.includes(k)) throw new Error(`${what} has the kind "${oneLine(s.kind)}", which is not one of build, test, decision or research.`);
     }
-    const made = specs.map((s) => ({ id: `${pre}${++n}`, title: oneLine(s.title), kind: String(s.kind).trim().toLowerCase(), state: 'open', holder: '', holderTitle: '', claimedAt: '',
-      after: [], brief: String(s.brief || '').trim(), note: '', links: (s.links || []).map(oneLine).filter(Boolean), plan: '' }));
+    const made = specs.map((s) => ({ id: `${pre}${++n}`, title: oneLine(s.title), kind: String(s.kind).trim().toLowerCase(), forUser: !!s.for_user, state: 'open', holder: '', holderTitle: '', claimedAt: '',
+      after: [], waitsOn: '', brief: String(s.brief || '').trim(), note: '', links: (s.links || []).map(oneLine).filter(Boolean), plan: '' }));
     const ids = new Set([...plan.tasks, ...made].map((t) => t.id));
     specs.forEach((s, i) => {
       made[i].after = [...new Set((s.after || []).map((a) => typeof a === 'number' || /^\d+$/.test(a) ? made[Number(a) - 1]?.id : String(a).toUpperCase()))];
@@ -268,10 +285,12 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
         if (t.holder === actor && t.state !== 'done' && t.state !== 'open') return { plan: p, task: t, already: true };
         if (t.state === 'done') throw new Error(`${t.id} is already done.`);
         if (t.state === 'dropped') throw new Error(`${t.id} was dropped${t.note ? `: ${t.note}` : '.'}`);
+        if (t.forUser) throw new Error(`${t.id} is the user's to do, so no session claims it. The plan's coordinator tells the user when it is their turn and marks it done once they have done it.`);
+        if (t.state === 'waiting_outside' && !t.holder) throw new Error(`${t.id} is waiting outside Docket${t.waitsOn ? ` on ${t.waitsOn}` : ''}; the coordinator sets it open when that arrives.`);
         if (t.state !== 'open') throw new Error(`${t.id} is already held by ${t.holderTitle || t.holder} (${STATE_WORDS[t.state]}).`);
         if (!readyTasks(p).includes(t)) throw new Error(`${t.id} waits on ${t.after.filter((a) => { const x = p.tasks.find((y) => y.id === a); return !x || !finished(x); }).join(', ')}, which ${t.after.length > 1 ? 'are' : 'is'} not done yet.`);
       } else {
-        t = readyTasks(p)[0];
+        t = sessionReady(p)[0];
         if (!t) return { plan: p, task: null, why: whyNoneReady(p) };
       }
       Object.assign(t, { state: 'claimed', holder: actor, holderTitle: actorTitle, claimedAt: stamp(now()) });
@@ -283,7 +302,9 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   // is the coordinator's, with a note saying why, and a dropped task stays dropped. Returns the tasks that became
   // free to claim because of this change.
   // A kind can be filled in once, on a task made before kinds existed; a kind already set never changes.
-  function update(id, taskId, { state, note, links, kind } = {}, actor, actorTitle = '') {
+  // waiting_outside needs what it waits on (waitsOn, or the one the task already has); leaving that state clears it.
+  // forUser (true or false) makes a task the user's step or gives it back to sessions: the coordinator's to say.
+  function update(id, taskId, { state, note, links, kind, waitsOn, forUser } = {}, actor, actorTitle = '') {
     if (state && !STATES.includes(state)) throw new Error(`State must be one of ${STATES.join(', ')}.`);
     const k = kind === undefined ? '' : String(kind).trim().toLowerCase();
     if (kind !== undefined && !KINDS.includes(k)) throw new Error(`The kind "${oneLine(kind)}" is not one of build, test, decision or research.`);
@@ -301,15 +322,26 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
         note = oneLine(note);
       }
       if (k && t.kind && t.kind !== k) throw new Error(`${t.id} already has the kind ${t.kind}, and a kind never changes. Add a new task with the right kind that replaces it.`);
+      const waits = waitsOn === undefined ? '' : oneLine(waitsOn);
+      if (waits && (state || t.state) !== 'waiting_outside') throw new Error(`Say what ${t.id} waits on only with the state waiting_outside.`);
+      if (state === 'waiting_outside' && !waits && !t.waitsOn) throw new Error(`Say what ${t.id} waits on outside Docket (a person, a vendor, a date) with waits_on.`);
+      if (forUser !== undefined && !!forUser !== t.forUser) {
+        if (!isCoord) throw new Error(`Only the plan's coordinator says whose step ${t.id} is.`);
+        if (forUser && t.holder && (state || t.state) !== 'open' && !finished(t)) throw new Error(`${t.id} is held by ${t.holderTitle || t.holder}; set it open first, then make it the user's step.`);
+      }
       const before = new Set(readyTasks(p).map((x) => x.id));
       if (state) {
         if (state === 'open') { t.holder = ''; t.holderTitle = ''; t.claimedAt = ''; }
-        // A task set going or done with no holder records the session that set it, so the plan says who did it.
-        else if ((state === 'claimed' || state === 'done') && !t.holder) Object.assign(t, { holder: actor, holderTitle: actorTitle });
+        // A task set going or done with no holder records the session that set it, so the plan says who did it. A
+        // user's step was done by the user, so it keeps no session as its holder.
+        else if ((state === 'claimed' || state === 'done') && !t.holder && !t.forUser) Object.assign(t, { holder: actor, holderTitle: actorTitle });
         // Each change of state stamps its own time, so "done since" is when it was set done, not when it was claimed.
         if (state !== 'open' && state !== t.state) t.claimedAt = stamp(now());
+        if (state !== 'waiting_outside') t.waitsOn = '';
         t.state = state;
       }
+      if (waits) t.waitsOn = waits;
+      if (forUser !== undefined) t.forUser = !!forUser;
       if (k) t.kind = k;
       if (note !== undefined) t.note = String(note).trim();
       for (const l of links || []) if (oneLine(l) && !t.links.includes(oneLine(l))) t.links.push(oneLine(l));
