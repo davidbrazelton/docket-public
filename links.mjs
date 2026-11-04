@@ -56,11 +56,15 @@ export function branchesInCommand(cmd) {
   return [...new Set(out.map(goodBranch).filter(Boolean))];
 }
 
-// The folders one shell command works in: cd, chdir, pushd, Set-Location, Push-Location, git -C <folder>, and
-// the folder git worktree add makes, each taken from the folder before it (cwd, the session's own folder, to start).
-// last: the folder the command worked in at its end, for which branch the session is on now: the last of those, else
-// cwd when it ran git there, else ''. A folder with a variable, ~ or a wildcard in it is left out.
+// The folders one shell command did branch work in, whose branch is then the session's: the folder git worktree add
+// makes, and each folder it ran git commit, push, checkout, switch, merge, rebase, cherry-pick, revert or am in, or
+// gh pr create. A folder it only cd'd into or read from (git grep, log, fetch, status, diff, show) is not one: a repo
+// it only read may be on someone else's branch. Each folder is taken from the one before it (cd, chdir, pushd,
+// Set-Location, Push-Location, git -C <folder>), from cwd, the session's own folder, to start.
+// last: the folder the command worked in at its end, for which branch the session is on now: the last folder it moved
+// to or ran git in, else ''. A folder with a variable, ~ or a wildcard in it is left out.
 const MOVES = new Set(['cd', 'chdir', 'pushd', 'set-location', 'sl', 'push-location']);
+const BRANCH_WORK = new Set(['commit', 'push', 'checkout', 'switch', 'merge', 'rebase', 'cherry-pick', 'revert', 'am']);
 const WORKTREE_VALUE = new Set(['-b', '-B', '--reason']);
 const winPath = (p) => /^[A-Za-z]:([\\/]|$)|^\\\\/.test(p);
 export function resolveFolder(base, p) {
@@ -74,28 +78,30 @@ export function resolveFolder(base, p) {
 export function foldersInCommand(cmd, cwd) {
   const folders = [];
   let here = String(cwd || ''), last = '';
-  const add = (d) => { if (d) { folders.push(d); last = d; } return d; };
+  const worked = (d) => { if (d) folders.push(d); };
   for (const part of String(cmd || '').split(/\r?\n|&&|\|\||;|\|/)) {
     const w = words(part.replace(/^[\s(&]+/, ''));
     if (!w.length) continue;
     if (MOVES.has(w[0].toLowerCase())) {
       const d = resolveFolder(here, w.slice(1).find((a) => !/^(\/d|-Path|-LiteralPath)$/i.test(a)));
-      if (d) here = add(d);
+      if (d) here = last = d;
       continue;
     }
+    if (/^gh(\.exe)?$/i.test(w[0]) && w[1] === 'pr' && w[2] === 'create') { if (here) worked(last = here); continue; }
     const g = w.findIndex((a) => /^git(\.exe)?$/i.test(a));
     if (g < 0) continue;
-    let dir = here, i = g + 1, moved = false;
+    let dir = here, i = g + 1;
     for (; dir && i < w.length && w[i].startsWith('-'); i++) {
-      if (w[i] === '-C' && i + 1 < w.length) { dir = resolveFolder(dir, w[++i]); moved = true; } else if (w[i] === '-c') i++;
+      if (w[i] === '-C' && i + 1 < w.length) dir = resolveFolder(dir, w[++i]); else if (w[i] === '-c') i++;
     }
     if (!dir) continue;
-    if (moved) add(dir); else last = dir;
+    last = dir;
+    if (BRANCH_WORK.has(w[i])) worked(dir);
     if (w[i] === 'worktree' && w[i + 1] === 'add') {
       const args = w.slice(i + 2);
       for (let j = 0; j < args.length; j++) {
         if (WORKTREE_VALUE.has(args[j])) j++;
-        else if (!args[j].startsWith('-')) { add(resolveFolder(dir, args[j])); break; }
+        else if (!args[j].startsWith('-')) { const d = resolveFolder(dir, args[j]); if (d) worked(last = d); break; }
       }
     }
   }
@@ -129,13 +135,24 @@ const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map(
 // A pull request keeps the branch last seen before its link (last), for when GitHub cannot say which branch it came
 // from. dirs: branch -> the folder the session was in when it saw it, to find the branch's GitHub repository.
 // filing: the gh issue create commands still waiting for their output.
-// folders: the folders its shell commands worked in, oldest first, and lastFolder the one it worked in last;
+// folders: its own folder, the folders its shell commands did branch work in and those it edited files in, oldest
+// first, and lastFolder the one it worked in last;
 // made: the last branch its own commands made or switched to.
 export function newLinkScan() { return { offset: 0, rest: '', prs: new Map(), branches: new Set(), last: '', dirs: new Map(), issues: new Map(), filing: new Set(), folders: new Set(), lastFolder: '', made: '' }; }
 const MAX_FOLDERS = 30;
 function sawFolder(scan, d) {
   scan.folders.delete(d); scan.folders.add(d); // the newest last
   if (scan.folders.size > MAX_FOLDERS) scan.folders.delete(scan.folders.values().next().value);
+}
+// A file the session edited (Edit, Write): its folder is one it worked in, for a worktree a script made. A folder
+// already listed that holds it is kept instead, so editing many files in one repo stays one folder.
+const EDIT_TOOLS = new Set(['Edit', 'MultiEdit', 'Write', 'NotebookEdit']);
+const samePath = (p) => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+function editedIn(scan, file) {
+  const f = String(file || '');
+  if (!winPath(f) && !f.startsWith('/')) return;
+  const dir = (winPath(f) ? path.win32 : path.posix).dirname(f), d = samePath(dir);
+  sawFolder(scan, [...scan.folders].find((x) => d === samePath(x) || d.startsWith(samePath(x) + '/')) || dir);
 }
 export function scanLinkText(scan, text) {
   const lines = (scan.rest + text).split('\n');
@@ -153,6 +170,7 @@ export function scanLinkText(scan, text) {
     const content = Array.isArray(e.message?.content) ? e.message.content : [];
     if (e.cwd && !scan.folders.size) { sawFolder(scan, String(e.cwd)); scan.lastFolder = String(e.cwd); }
     if (e.type === 'assistant') for (const c of content) {
+      if (c?.type === 'tool_use' && EDIT_TOOLS.has(c.name)) editedIn(scan, c.input?.file_path || c.input?.notebook_path);
       if (c?.type !== 'tool_use' || !SHELL_TOOLS.has(c.name) || typeof c.input?.command !== 'string') continue;
       if (filesIssue(c.input.command)) scan.filing.add(c.id);
       const f = foldersInCommand(c.input.command, e.cwd), made = branchesInCommand(c.input.command);
@@ -170,10 +188,12 @@ export function scanLinkText(scan, text) {
 }
 
 // A session's branches for the Details panel, the one it is on now first. here: folder -> the branch that folder
-// is on now ('' for none or a trunk branch), for the folders that were asked; a branch found that way is remembered in
+// is on now ('' for none or a trunk branch), for the folders that were asked; only folders in scan.folders count (an
+// answer saved before for a folder the session only read is left out), and a branch found that way is remembered in
 // the scan. The branch now is the one its latest folder is on, else the one that folder was on when last asked, else
 // the last one its own commands made or switched to, else the last one seen.
 export function sessionBranches(scan, here = new Map()) {
+  here = new Map([...here].filter(([dir]) => scan.folders.has(dir)));
   for (const [dir, b] of here) {
     const g = goodBranch(b);
     if (!g) continue;

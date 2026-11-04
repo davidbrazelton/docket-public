@@ -94,23 +94,49 @@ test('git checkout and git switch to a branch that already exists, but not to fi
   assert.deepEqual(branchesInCommand('git checkout -b new-1 && git switch -c new-2'), ['new-1', 'new-2']); // made, counted once
 });
 
-test('the folders a shell command works in, each from the one before', () => {
+test('the folders a shell command did branch work in, each from the one before', () => {
   const home = 'V:\\Repos\\docket';
-  assert.deepEqual(foldersInCommand('cd ../docket-work/x && npm test', home), { folders: ['V:\\Repos\\docket-work\\x'], last: 'V:\\Repos\\docket-work\\x' });
-  assert.deepEqual(foldersInCommand('Set-Location "V:/Repos/a b"; git status', home), { folders: ['V:\\Repos\\a b'], last: 'V:\\Repos\\a b' });
+  assert.deepEqual(foldersInCommand('cd ../docket-work/x && npm test', home), { folders: [], last: 'V:\\Repos\\docket-work\\x' });
+  assert.deepEqual(foldersInCommand('Set-Location "V:/Repos/a b"; git status', home), { folders: [], last: 'V:\\Repos\\a b' });
   assert.deepEqual(foldersInCommand('cd /v/Repos/y && git log', home).last, 'V:\\Repos\\y'); // Git Bash
-  assert.deepEqual(foldersInCommand('pushd sub; git -C ../other status', home), { folders: ['V:\\Repos\\docket\\sub', 'V:\\Repos\\docket\\other'], last: 'V:\\Repos\\docket\\other' });
+  assert.deepEqual(foldersInCommand('pushd sub; git -C ../other status', home), { folders: [], last: 'V:\\Repos\\docket\\other' });
   assert.deepEqual(foldersInCommand('git worktree add -b fix-1 ../docket-work/fix-1 master', home), { folders: ['V:\\Repos\\docket-work\\fix-1'], last: 'V:\\Repos\\docket-work\\fix-1' });
-  assert.deepEqual(foldersInCommand('git -C /r/app worktree add --reason why ../w', '/home/u'), { folders: ['/r/app', '/r/w'], last: '/r/w' });
+  assert.deepEqual(foldersInCommand('git -C /r/app worktree add --reason why ../w', '/home/u'), { folders: ['/r/w'], last: '/r/w' });
   assert.deepEqual(foldersInCommand('git status', '/home/u'), { folders: [], last: '/home/u' }); // git in its own folder
   assert.deepEqual(foldersInCommand('npm test', '/home/u'), { folders: [], last: '' });
   assert.deepEqual(foldersInCommand('cd $env:TEMP; cd ~/x; cd -', '/home/u'), { folders: [], last: '' });
   assert.deepEqual(foldersInCommand('cd rel', ''), { folders: [], last: '' }); // nothing to start from
+  // read-only git in another repo is not branch work there; commit, push, checkout and gh pr create are
+  assert.deepEqual(foldersInCommand('cd "V:/Repos/COS/cos-environment"; git fetch -q origin master; git grep -n Foo origin/master', home),
+    { folders: [], last: 'V:\\Repos\\COS\\cos-environment' });
+  assert.deepEqual(foldersInCommand('cd /r/b && git log --oneline && git diff && git show HEAD && git status', '/r/a').folders, []);
+  assert.deepEqual(foldersInCommand('cd /r/b && git add -A && git commit -m "x" && git push -u origin fix-2', '/r/a').folders, ['/r/b']);
+  assert.deepEqual(foldersInCommand('git -C /r/c checkout feature/y', '/r/a').folders, ['/r/c']);
+  assert.deepEqual(foldersInCommand('cd /r/d; gh pr create --fill', '/r/a').folders, ['/r/d']);
+});
+
+test('a folder the session only read never adds its branch, even one saved before', () => {
+  const entry = (content) => JSON.stringify({ type: 'assistant', cwd: '/r/own', gitBranch: 'PROJ-1170-mine', message: { content } });
+  const bash = (cmd) => entry([{ type: 'tool_use', id: 't', name: 'Bash', input: { command: cmd } }]);
+  const scan = scanLinkText(newLinkScan(), [bash('cd "/r/cos-environment"; git fetch -q origin master; git grep -n Foo origin/master')].join('\n') + '\n');
+  assert.deepEqual([...scan.folders], ['/r/own']);
+  // an answer saved by an older Docket for the folder it only read is left out
+  const saved = new Map([['/r/own', 'PROJ-1170-mine'], ['/r/cos-environment', 'feature/PROJ-966']]);
+  assert.deepEqual(sessionBranches(scan, saved), { current: 'PROJ-1170-mine', branches: ['PROJ-1170-mine'] });
+  assert.deepEqual(ticketKeys(sessionBranches(scan, saved).branches), ['PROJ-1170']);
+  // a commit and push in another folder: that folder's branch is the session's
+  scanLinkText(scan, bash('cd /r/other && git commit -am "x" && git push') + '\n');
+  assert.deepEqual([...scan.folders], ['/r/own', '/r/other']);
+  assert.deepEqual(sessionBranches(scan, new Map([...saved, ['/r/other', 'PROJ-1200-other']])).branches, ['PROJ-1200-other', 'PROJ-1170-mine']);
+  // files edited in a folder count it once, under the folder already listed that holds them
+  scanLinkText(scan, entry([{ type: 'tool_use', id: 'e', name: 'Edit', input: { file_path: '/r/w/x/src/a.js' } }, { type: 'tool_use', id: 'f', name: 'Write', input: { file_path: '/r/other/b/c.js' } }]) + '\n');
+  assert.deepEqual([...scan.folders], ['/r/own', '/r/w/x/src', '/r/other']);
 });
 
 test('the branch a session is on now: its latest folder\'s, listed first', () => {
   const tool = (cmd) => JSON.stringify({ type: 'assistant', cwd: '/r/app', gitBranch: 'start-1', message: { content: [{ type: 'tool_use', id: 't', name: 'Bash', input: { command: cmd } }] } });
-  const scan = scanLinkText(newLinkScan(), [tool('ls'), tool('powershell worktree.ps1 new app fix-9; cd /r/w/fix-9 && npm test')].join('\n') + '\n');
+  const edit = JSON.stringify({ type: 'assistant', cwd: '/r/app', gitBranch: 'start-1', message: { content: [{ type: 'tool_use', id: 'e', name: 'Edit', input: { file_path: '/r/w/fix-9/a.js' } }] } });
+  const scan = scanLinkText(newLinkScan(), [tool('ls'), tool('powershell worktree.ps1 new app fix-9'), edit, tool('cd /r/w/fix-9 && npm test')].join('\n') + '\n');
   assert.deepEqual([...scan.folders], ['/r/app', '/r/w/fix-9']);
   assert.equal(scan.lastFolder, '/r/w/fix-9');
   // not asked yet: the last one seen, which is the start folder's
