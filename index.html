@@ -205,6 +205,9 @@ select.draft-group { max-width: 220px; font: inherit; color: var(--text); backgr
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--line); }
 .dot.running, .dot.starting { background: var(--run); animation: pulse 1.2s infinite; }
 .dot.needs { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent); }
+/* paused on a question form or permission prompt: a "?" badge, a little larger than the dot so the mark reads */
+.dot.asking { width: 14px; height: 14px; margin: -2.5px; background: var(--warn); color: var(--on-warn); display: inline-grid; place-items: center; font: 800 10px/1 system-ui, sans-serif; box-shadow: 0 0 0 2px color-mix(in srgb, var(--warn) 25%, transparent); }
+.dot.asking::after { content: '?'; }
 .dot.idle { background: var(--ok); }
 .dot.background { background: transparent; box-shadow: inset 0 0 0 2px var(--run); animation: pulse 2.4s infinite; }
 .dot.resting { background: transparent; box-shadow: inset 0 0 0 1.5px var(--ok); }
@@ -473,6 +476,7 @@ aside.tasks.hidden { display: none; }
 .gsec .gdots .dot.background { box-shadow: inset 0 0 0 2px var(--run); }
 /* --line is the same colour as --head in dark theme, which hid the grey dot and made the others look shifted left. */
 .gsec .gdots .dot.ended { background: var(--muted); }
+.gsec .gdots .dot.asking, .key-sym .gdots .dot.asking { width: 12px; height: 12px; margin: -2.5px 0; font-size: 9px; }
 .gsec.drag-over { box-shadow: inset 0 2px 0 var(--accent); }
 .dsec.drop-before { box-shadow: inset 0 2px 0 var(--accent); }
 #tasksBody > .drop-end { box-shadow: 0 2px 0 var(--accent); }
@@ -1858,13 +1862,14 @@ const sortTops = (list, kids, topOf = (x) => x) => {
 const rowDrag = () => listOrder() === 'natural' && !S.showArchived && !$('search').value.trim();
 // Any session row can be dragged onto a group heading or another session to move it there, outside the archive.
 const moveDrag = () => !S.showArchived;
-const GROUP_DOT_ORDER = ['running', 'background', 'idle', 'resting', 'needs', 'failed', 'stopped', 'ended'];
-// A turn that ended in an error (failed) shows over orange, so it does not look like a normal finish.
+const GROUP_DOT_ORDER = ['running', 'background', 'idle', 'resting', 'asking', 'needs', 'failed', 'stopped', 'ended'];
+// A turn that ended in an error (failed) shows over orange, so it does not look like a normal finish. A session paused on a prompt
+// (requires_action) shows the "?" badge (asking), apart from the plain yellow dot of an unread reply.
 const dotClass = (s) => !s.live ? (s.midReply ? 'stopped' : s.lastError ? 'failed' : s.waiting ? 'needs' : 'ended')
-  : s.compactingSince ? 'running' : ['running', 'starting'].includes(s.status) ? s.status : s.lastError ? 'failed' : needsYou(s) ? 'needs' : inBackground(s) ? 'background' : s.resting && s.status === 'idle' ? 'resting' : s.status;
+  : s.compactingSince ? 'running' : ['running', 'starting'].includes(s.status) ? s.status : s.lastError ? 'failed' : s.status === 'requires_action' ? 'asking' : needsYou(s) ? 'needs' : inBackground(s) ? 'background' : s.resting && s.status === 'idle' ? 'resting' : s.status;
 const RESTING_TIP = 'Resting: released from memory, wakes on your next message';
 // The title a dot carries: the error for a red ring, what resting means for a hollow green one.
-const dotTip = (s, c = dotClass(s)) => c === 'failed' ? ` title="${esc(failedTip(s))}"` : c === 'resting' ? ` title="${RESTING_TIP}"` : '';
+const dotTip = (s, c = dotClass(s)) => c === 'failed' ? ` title="${esc(failedTip(s))}"` : c === 'asking' ? ' title="Waiting on your answer: the session is paused on a question or a permission prompt"' : c === 'resting' ? ` title="${RESTING_TIP}"` : '';
 const failedTip = (s) => `Last reply ended in an error: ${s.lastError.text.replace(/[.\s]+$/, '')}. Open it to read the error; send a message to try again.`;
 
 async function api(path, body) {
@@ -4740,13 +4745,14 @@ function keyHtml() {
     ${head('Session dots', true)}
     ${row(dot('running'), 'The session is working on a reply right now. Also shown while a session is starting up, and while it is compacting (summarizing the older part of a long conversation so it can keep going).')}
     ${row(dot('background'), 'The reply is finished, but jobs it started in the background are still running. It is not done until they finish and the session reads their results.')}
-    ${row(dot('needs'), 'Needs you. The session asked a question or for permission, or finished a reply (or stopped with an error, shown by the red ring) you have not opened yet. Also a saved session that was waiting on you when Docket last stopped, and a session Claude Desktop ran whose latest reply came after you last opened it here.', '', play('ready') + play('question'))}
+    ${row(dot('asking'), 'Waiting on your answer. The session stopped in the middle of its work on a question form or an "Allow this?" prompt, and holds there until you answer.', '', play('question'))}
+    ${row(dot('needs'), 'Needs you. The session finished a reply (or stopped with an error, shown by the red ring) you have not opened yet. Also a saved session that was waiting on you when Docket last stopped, and a session Claude Desktop ran whose latest reply came after you last opened it here.', '', play('ready'))}
     ${row(dot('idle'), 'Running and finished, and you have seen the reply. Nothing is waiting.')}
     ${row(dot('resting'), 'Resting: idle for a while, so released from memory; wakes on your next message (a few seconds). How long it waits is in ☰ > Settings > Rest idle sessions.')}
     ${row(dot('failed'), 'The last reply ended in an error, for example an expired sign-in. Until you open it, it is listed under Needs you and counts in ✦, also after Docket restarts. Open it to read the error; sending a message clears the red ring.')}
     ${row(dot('stopped'), 'Cut off partway through a reply, usually because Docket or the computer restarted. Open it and press Continue.')}
     ${row(dot('ended'), 'Saved, not running. Open it any time to pick it up again.')}
-    ${row(`<span class="gdots">${dot('running')}${dot('idle')}${dot('needs')}</span>`, 'In group view, each group header shows one small dot for each kind of status inside it (not one per session), without blinking. They sit at the right edge in a fixed order, showing only the kinds present: blue (working), hollow blue (background jobs), green, hollow green (resting), yellow (needs you), ringed red (error), red, grey.')}
+    ${row(`<span class="gdots">${dot('running')}${dot('idle')}${dot('needs')}</span>`, 'In group view, each group header shows one small dot for each kind of status inside it (not one per session), without blinking. They sit at the right edge in a fixed order, showing only the kinds present: blue (working), hollow blue (background jobs), green, hollow green (resting), yellow "?" (waiting on your answer), yellow (needs you), ringed red (error), red, grey.')}
     ${head('Time text on the right of each row', true)}
     ${row('12m left', 'The conversation is still held in Claude’s short-term memory (the prompt cache), so the next message is cheaper and faster.')}
     ${row('8m left', 'A one hour session cache has 10 minutes or less left. Reply soon to keep the saving.', 'warn', play('cache'))}
