@@ -3842,7 +3842,7 @@ document.addEventListener('change', (e) => {
 // [state name, store key, label, tip key]. Brand logos only show once a company runs more than one brand.
 // The last: what each is when nothing was set yet. Each desk keeps its own (deskStore).
 const VIEW_OPTS = [
-  ['hoverCard', 'hoverCard', 'Hover card', 'hovercard', true],
+  ['hoverCard', 'hoverCard', 'Hover card', 'hovercard', false],
   ['groupView', 'groupView', 'Grouped', 'groupview', true],
   ['showEmptyGroups', 'showEmptyGroups', 'Show empty groups', 'show-empty', false],
   ['prChips', 'prChips', 'Pull request chips', 'prchips', true],
@@ -4072,35 +4072,38 @@ function hoverCardHtml(s) {
   return `<div class="hc-title">${esc((run?.title || s.title) || 'Untitled')}</div><hr><dl>${L.join('')}</dl>`;
 }
 // Opens after resting HOVER_MS on a row; once open, the next row's card shows straight away, the way menus do.
-// Leaving the list, scrolling, a click or a redraw of the list closes it.
+// Leaving the list, scrolling or a click closes it. A redraw of the list does not (#701): the card moves to the new
+// row for the same session and its words change only when they did, so it stays steady while sessions are busy.
 const HOVER_MS = 300;
-const hover = { timer: null, id: null, warm: false };
+const hover = { timer: null, id: null, warm: false, html: '' };
+const hoverRow = (id) => $('list').querySelector(`.row[data-id="${CSS.escape(id)}"]`);
 function hideHoverCard(cool = true) {
-  clearTimeout(hover.timer); hover.id = null;
+  clearTimeout(hover.timer); hover.id = null; hover.html = '';
   if (cool) hover.warm = false;
   $('hoverCard').hidden = true;
 }
-function showHoverCard(row) {
-  const s = allSessionRows().find((x) => x.id === row.dataset.id);
-  if (!s || !S.hoverCard) return;
-  const card = $('hoverCard');
-  card.innerHTML = hoverCardHtml(s);
+function showHoverCard(id) {
+  const row = hoverRow(id), s = row && allSessionRows().find((x) => x.id === id);
+  if (!s || !S.hoverCard) { if (hover.id) hideHoverCard(false); return; }
+  const card = $('hoverCard'), html = hoverCardHtml(s);
+  if (html !== hover.html) { card.innerHTML = html; hover.html = html; }
   card.hidden = false;
-  hover.id = s.id; hover.warm = true;
+  hover.id = id; hover.warm = true;
   const r = row.getBoundingClientRect(), w = card.offsetWidth, h = card.offsetHeight, narrow = innerWidth < 700;
   let left = r.right + 8;
   if (left + w > innerWidth - 8) left = r.left - w - 8;
   if (left < 8 || narrow) left = Math.max(8, Math.min(r.left, innerWidth - w - 8));
   const top = Math.max(8, Math.min(narrow ? r.bottom + 4 : r.top - 6, innerHeight - h - 8));
-  card.style.left = left + 'px'; card.style.top = top + 'px';
+  if (card.style.left !== left + 'px') card.style.left = left + 'px';
+  if (card.style.top !== top + 'px') card.style.top = top + 'px';
 }
 $('list').addEventListener('pointerover', (e) => {
   if (e.pointerType !== 'mouse' || !S.hoverCard) return;
-  const row = e.target.closest('.row[data-id]');
-  if (row?.dataset.id === hover.id) return;
+  const row = e.target.closest('.row[data-id]'), id = row?.dataset.id;
+  if (id === hover.id) return;
   clearTimeout(hover.timer);
   if (!row) { hideHoverCard(false); return; } // between rows: the next one still opens straight away
-  if (hover.warm) showHoverCard(row); else hover.timer = setTimeout(() => showHoverCard(row), HOVER_MS);
+  if (hover.warm) showHoverCard(id); else hover.timer = setTimeout(() => showHoverCard(id), HOVER_MS);
 });
 $('list').addEventListener('pointerleave', () => hideHoverCard());
 $('list').addEventListener('pointerdown', () => hideHoverCard());
@@ -4113,7 +4116,7 @@ let glideView = null, listPressed = false;
 function setList(html) {
   if (listHeld()) { S.listWanted = true; return; }
   S.listWanted = false;
-  if (html === S.listHtml) return;
+  if (html === S.listHtml) { if (hover.id) showHoverCard(hover.id); return; } // the card can change when the row did not
   S.listHtml = html;
   const list = $('list');
   // Only a redraw of the same view glides: a new company, mode, view or search simply replaces the list.
@@ -4121,9 +4124,9 @@ function setList(html) {
   const glide = glideView === view && !glideOff();
   glideView = view;
   const before = glide ? glidePlaces(list) : null;
-  hideHoverCard();
   list.innerHTML = html;
   fitChips(list);
+  if (hover.id) showHoverCard(hover.id); // before the glide, so the card sits by the row's new place, not where it slides from
   if (before) glideList(list, before);
 }
 // One width for every row's tag column, so the time and brand logo line up on every row: the widest row's tags,
