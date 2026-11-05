@@ -159,11 +159,15 @@ export function childState({ status, compacting = false, jobs = 0, asks = 0, rep
 // may, never one answering a message, never an error. Whether a child still works does not matter (#671): a
 // parent passing on a child's news (finished, waiting on the person, its pull request ready) adds no second
 // orange dot, since the child's own row already has one. A turn the session marked as asking the user (mark_turn
-// "question") is never quiet either: its row says question, and the chat never folds it away (#672).
-export function quietRefusal({ turnBy, report = false, error = false, said = '' }) {
+// "question") is never quiet either: its row says question, and the chat never folds it away (#672). Nor is a
+// turn that finishes the parent's own job (#694): one marked "done", or one that closed its last open child
+// (closedLast), since a child finishing then is the end of the whole job, not news along the way.
+export function quietRefusal({ turnBy, report = false, error = false, said = '', closedLast = false }) {
   if (turnBy !== 'docket') return 'this turn answers a message, not a session report';
   if (!report) return 'this turn was not woken by a session report';
   if (error) return 'the turn ended in an error';
   if (said === 'question') return 'the turn asks the user a question (mark_turn)';
+  if (said === 'done') return 'the turn marks your own work done (mark_turn)';
+  if (closedLast) return 'you closed your last open session this turn, so your own job is done: call mark_turn with "done"';
   return '';
 }

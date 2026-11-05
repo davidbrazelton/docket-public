@@ -6984,12 +6984,16 @@ const foldKey = (events, r) => `${S.selected}:${events.slice(r.fold[0], r.fold[1
 function chatHtml(events, lineAt) {
   const at = newIndex(events, lineAt);
   let lined = at < 0;
-  return chatRuns(events).map((r) => {
+  const runs = chatRuns(events);
+  return runs.map((r, n) => {
     let h = '';
     if (!lined && (r.fold ? r.fold[1] : r.i) >= at) { lined = true; h = NEW_LINE; }
     if (!r.fold) return h + atHtml(events[r.i]);
     const evs = events.slice(r.fold[0], r.fold[1] + 1), key = foldKey(events, r), last = evs[evs.length - 1].at;
-    return h + `<details class="qfold" data-fold="${esc(key)}"${evs[0].at ? ` data-at="${evs[0].at}"` : ''}${S.openFolds.has(key) ? ' open' : ''}><summary>${r.turns} progress update${r.turns > 1 ? 's' : ''} from child sessions${last ? ` · ${stamp(last)}` : ''}<span class="qf-arrow">▸</span></summary><div class="qf-body">${evs.map(atHtml).join('')}</div></details>`;
+    // The session's own latest reply never hides in the fold (#694): when the fold ends the chat, its last reply shows below it.
+    const keep = n === runs.length - 1 ? evs.findLastIndex((e) => e.k === 'text') : -1;
+    const shown = keep < 0 ? '' : atHtml(evs[keep]);
+    return h + `<details class="qfold" data-fold="${esc(key)}"${evs[0].at ? ` data-at="${evs[0].at}"` : ''}${S.openFolds.has(key) ? ' open' : ''}><summary>${r.turns} progress update${r.turns > 1 ? 's' : ''} from child sessions${last ? ` · ${stamp(last)}` : ''}<span class="qf-arrow">▸</span></summary><div class="qf-body">${evs.filter((e, j) => j !== keep).map(atHtml).join('')}</div></details>${shown}`;
   }).join('');
 }
 document.addEventListener('toggle', (e) => {

@@ -536,6 +536,8 @@ function kidsOf(p) {
   }
   return kids;
 }
+// Whether this turn closed a child and none is left working or waiting on the person (#694).
+const closedLastKid = (s) => { if (!s.closedKid) return false; const k = kidsOf(s); return !k.working && !k.waiting; };
 // A child changed: its parent's row is sent again when the count it waits on changed.
 function pushParentOf(id) {
   const p = live.get(reportsHere(state.sessions[id]));
@@ -611,11 +613,14 @@ const sessionTag = (s) => `"${s.title || 'Untitled'}" (${s.id})`;
 // A finished turn turns the dot orange, unless the parent called report_quiet on a turn woken by session reports
 // (#645, #671): then its row gains the halo instead, and the log says why. The label the session declared for the
 // turn (mark_turn) goes with the orange dot, so its row can say why it needs the person.
+// A turn that closed its last open child finished the parent's own job (#694): never quiet, and its row says done.
 function endTurnMark(s, err) {
   const reason = s.quietReason; s.quietReason = '';
-  const said = s.turnSaid; s.turnSaid = '';
+  let said = s.turnSaid; s.turnSaid = '';
+  const closedLast = closedLastKid(s); s.closedKid = false;
+  if (closedLast && !said && !liveAsks(s)) said = 'done';
   if (reason) {
-    const k = kidsOf(s), why = quietRefusal({ turnBy: s.turnBy, report: s.reportTurn, error: err, said: liveAsks(s) ? 'question' : said }); // a reply that asks is a question
+    const k = kidsOf(s), why = quietRefusal({ turnBy: s.turnBy, report: s.reportTurn, error: err, said: liveAsks(s) ? 'question' : said, closedLast }); // a reply that asks is a question
     if (!why) {
       if (!s.unread) s.kidNews = true;
       logEvent(`quiet turn: ${sessionTag(s)}`, `${reason} (${k.working} working, ${k.waiting} waiting on the person)`);
@@ -1811,14 +1816,16 @@ function portalToolDefs(parent) {
           if (!report || why) return { content: [{ type: 'text', text: 'Not closed: ' + (why || 'no session with that id for this client') + '.' }], isError: true };
           archiveSession(client, id, true);
           addEvent(parent, { k: 'note', text: `Closed and archived "${report.title}": ${said}` });
-          return { content: [{ type: 'text', text: `Closed and archived "${report.title}". Say in your reply what it did and where the result is, linking it as [${report.title}](#session:${id}).` }] };
+          parent.closedKid = true;
+          const last = closedLastKid(parent) ? ' That was your last open session: if your own job is now complete, end this turn with mark_turn "done" (not report_quiet), and make your reply the closing message; if something is still left for the user, say what.' : '';
+          return { content: [{ type: 'text', text: `Closed and archived "${report.title}". Say in your reply what it did and where the result is, linking it as [${report.title}](#session:${id}).${last}` }] };
         }),
       tool('report_quiet',
-        'End this turn without marking this session as needing the user: its row gets a soft blue halo saying there is news to read, instead of the orange dot. Only for a turn woken by session reports that only passes on news the user need not act on here: progress, a session finished with nothing left for the user, or a session waiting on the user in its own chat (its own row already needs them). Allowed whether or not any session you started is still working. See "When sessions you started report" in your instructions. Refused on a turn answering a message, and the turn then marks the user as usual. Set cancel to true if, later in the same turn, you find something the user should know or answer.',
+        'End this turn without marking this session as needing the user: its row gets a soft blue halo saying there is news to read, instead of the orange dot. Only for a turn woken by session reports that only passes on news the user need not act on here: progress, a session finished with nothing left for the user, or a session waiting on the user in its own chat (its own row already needs them). Allowed whether or not any session you started is still working. Never when that news completes your own job (you closed your last open session, or mark_turn "done"): then the turn shows "done". See "When sessions you started report" in your instructions. Refused on a turn answering a message, and the turn then marks the user as usual. Set cancel to true if, later in the same turn, you find something the user should know or answer.',
         { reason: z.string().describe("One line: why the user need not look now (kept in Docket's log)"), cancel: z.boolean().optional().describe('True to take back an earlier report_quiet in this turn') },
         async ({ reason, cancel }) => {
           if (cancel) { parent.quietReason = ''; return { content: [{ type: 'text', text: 'Taken back: this turn will mark the user as usual.' }] }; }
-          const why = quietRefusal({ turnBy: parent.turnBy, report: parent.reportTurn, said: parent.turnSaid });
+          const why = quietRefusal({ turnBy: parent.turnBy, report: parent.reportTurn, said: parent.turnSaid, closedLast: closedLastKid(parent) });
           if (why) return { content: [{ type: 'text', text: `Not quiet: ${why}. This turn will mark the user as usual.` }], isError: true };
           parent.quietReason = String(reason || '').trim().split('\n')[0].slice(0, 200) || 'no reason given';
           return { content: [{ type: 'text', text: 'This turn will end quietly. Finish with your usual short reply.' }] };
@@ -3958,6 +3965,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   s.turnBy = turnStarter({ system, from, byPerson }); // whether its report counts toward the parent's wake limit
   s.reportTurn = !!report; // woken by session reports: the only turn that may end quietly (quietRefusal)
   s.turnSaid = '';
+  s.closedKid = false; // close_session this turn: with no other child open, the job is done (#694)
   if (byPerson) s.autoWakes = 0; // a button the person pressed: wake-ups may continue
   if (state.sessions[s.id]?.reloadNote) { blocks.push({ type: 'text', text: state.sessions[s.id].reloadNote }); delete state.sessions[s.id].reloadNote; saveState(); }
   const rules = rulesToReread(s);
