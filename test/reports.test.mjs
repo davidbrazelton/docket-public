@@ -161,6 +161,8 @@ test('quietRefusal: a turn woken by session reports may end quietly', () => {
   assert.match(quietRefusal({ turnBy: 'person', report: true }), /answers a message/, 'answering the person is never quiet');
   assert.match(quietRefusal({ turnBy: 'session', report: true }), /answers a message/);
   assert.match(quietRefusal({ turnBy: 'docket', report: true, error: true }), /error/);
+  assert.match(quietRefusal({ turnBy: 'docket', report: true, said: 'question' }), /question/, 'a turn marked as asking the user is never quiet, so never folded (#672)');
+  assert.equal(quietRefusal({ turnBy: 'docket', report: true, said: 'done' }), '');
   assert.match(quietRefusal({ turnBy: 'docket' }), /not woken by a session report/, 'Docket\'s other notes (resume, save before compact) are not relays');
 });
 

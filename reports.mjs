@@ -158,10 +158,12 @@ export function childState({ status, compacting = false, jobs = 0, asks = 0, rep
 // Why a turn may not end quietly (no orange dot), or '' when it may. Only a turn woken by session reports
 // may, never one answering a message, never an error. Whether a child still works does not matter (#671): a
 // parent passing on a child's news (finished, waiting on the person, its pull request ready) adds no second
-// orange dot, since the child's own row already has one.
-export function quietRefusal({ turnBy, report = false, error = false }) {
+// orange dot, since the child's own row already has one. A turn the session marked as asking the user (mark_turn
+// "question") is never quiet either: its row says question, and the chat never folds it away (#672).
+export function quietRefusal({ turnBy, report = false, error = false, said = '' }) {
   if (turnBy !== 'docket') return 'this turn answers a message, not a session report';
   if (!report) return 'this turn was not woken by a session report';
   if (error) return 'the turn ended in an error';
+  if (said === 'question') return 'the turn asks the user a question (mark_turn)';
   return '';
 }

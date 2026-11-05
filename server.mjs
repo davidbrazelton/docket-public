@@ -14,6 +14,7 @@ import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, wokeByItself, noteWoke, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from './needs-you.mjs';
+import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring } from './tasks.mjs';
 import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal } from './reports.mjs';
@@ -608,13 +609,20 @@ function endTurnMark(s, err) {
   const reason = s.quietReason; s.quietReason = '';
   const said = s.turnSaid; s.turnSaid = '';
   if (reason) {
-    const k = kidsOf(s), why = quietRefusal({ turnBy: s.turnBy, report: s.reportTurn, error: err });
-    if (!why) { if (!s.unread) s.kidNews = true; logEvent(`quiet turn: ${sessionTag(s)}`, `${reason} (${k.working} working, ${k.waiting} waiting on the person)`); return; }
+    const k = kidsOf(s), why = quietRefusal({ turnBy: s.turnBy, report: s.reportTurn, error: err, said: liveAsks(s) ? 'question' : said }); // a reply that asks is a question
+    if (!why) {
+      if (!s.unread) s.kidNews = true;
+      logEvent(`quiet turn: ${sessionTag(s)}`, `${reason} (${k.working} working, ${k.waiting} waiting on the person)`);
+      const rec = state.sessions[s.id]; // kept, so the chat folds this turn after a restart too (#672)
+      if (rec) { rec.quietTurns = keepQuiet(rec.quietTurns, turnKey(s.events)); saveState(); }
+      return true;
+    }
     logEvent(`quiet turn refused: ${sessionTag(s)}`, `${why}; asked for: ${reason}`);
   }
   const fresh = !s.unread;
   setUnread(s, 'result');
   if (fresh && said) s.unreadSaid = said;
+  return false;
 }
 // The saved orange dot (state.sessions[id].waiting): what a session shows once it is no longer running here. Every
 // change goes through this and is logged with why, so a dot that went gray can be traced (#625).
@@ -1141,17 +1149,17 @@ function handleSdkMessage(s, m) {
         const h = handoffFromTurn(s.events, clientById(s.client)?.handoffPattern);
         if (h) proposeHandoff(s, h);
       }
-      addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err });
+      // Docket's own save-before-compact turn is not news: no report to the parent and no unread mark.
+      const quiet = s.quietTurn; s.quietTurn = false;
+      const endedQuietly = !quiet && endTurnMark(s, err); // its Done line says so, and the chat folds the turn (#672)
+      addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err, ...(endedQuietly ? { quiet: true } : {}) });
       s.stats = statsFor(clientById(s.client), sessionFile(clientById(s.client), s.id)) || s.stats;
       setTimeout(() => refreshUsage(clientById(s.client), s.id), s.engine === 'grok' ? 3000 : 1000); // Grok writes usage.json just after the turn
       s.heldTurn = runningTasks(s) > 0;
-      // Docket's own save-before-compact turn is not news: no report to the parent and no unread mark.
-      const quiet = s.quietTurn; s.quietTurn = false;
       if (!s.heldTurn && !quiet) reportToParent(s).catch((e) => console.log('[report]', e.message));
       setTimeout(() => flushReports(s), 500);
       setTimeout(() => flushWaitingOn(s), 600); // after setStatus below: freed plan tasks that waited for this turn
       setTimeout(() => saveBeforeCompact(s), 1500); // after any reports, which go first
-      if (!quiet) endTurnMark(s, err);
       setStatus(s, 'idle');
       pushSession(s);
       return;
@@ -1804,7 +1812,7 @@ function portalToolDefs(parent) {
         { reason: z.string().describe("One line: why the user need not look now (kept in Docket's log)"), cancel: z.boolean().optional().describe('True to take back an earlier report_quiet in this turn') },
         async ({ reason, cancel }) => {
           if (cancel) { parent.quietReason = ''; return { content: [{ type: 'text', text: 'Taken back: this turn will mark the user as usual.' }] }; }
-          const why = quietRefusal({ turnBy: parent.turnBy, report: parent.reportTurn });
+          const why = quietRefusal({ turnBy: parent.turnBy, report: parent.reportTurn, said: parent.turnSaid });
           if (why) return { content: [{ type: 'text', text: `Not quiet: ${why}. This turn will mark the user as usual.` }], isError: true };
           parent.quietReason = String(reason || '').trim().split('\n')[0].slice(0, 200) || 'no reason given';
           return { content: [{ type: 'text', text: 'This turn will end quietly. Finish with your usual short reply.' }] };
@@ -6368,6 +6376,7 @@ async function loadTranscript(client, id) {
     historyCache.delete(client.id); broadcast({ t: 'history-ready', client: client.id });
   }
   if (rec?.unsent) events.push(unsentNote(rec.unsent));
+  markQuiet(events, rec?.quietTurns);
   return weaveCards(events, [...(rec?.handoffs || []), ...(rec?.cards || [])]).slice(-MAX_EVENTS);
 }
 
@@ -7833,21 +7842,23 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, summary(s));
     }
     if (await profileRoutes(req, res, url, p) !== false) return;
-    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|moveto|auto-group|title-suggestion|unread|delete|task-done|reload|use-plan|plan-offer)$/);
+    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|moveto|auto-group|title-suggestion|unread|delete|task-done|reload|use-plan|plan-offer|looked)$/);
     if (m) {
       const [, id, action] = m;
       if (!reattachDone && !live.has(id) && state.sessions[id]?.running) await settledOr(reattached, 20000); // it may be on its way back
       const s = live.get(id);
       const client = clientById(url.searchParams.get('client') || s?.client || state.sessions[id]?.client);
       if (action === 'events') {
-        if (s) { repairTasks(s); return json(res, 200, { session: summary(s), events: s.events, tasks: [...s.tasks.values()] }); }
+        // When the person last looked at it, and where the line went then, for the New since you last looked line (#672)
+        const look = { seenAt: state.sessions[id]?.seenAt || null, lineAt: state.sessions[id]?.lineAt || null };
+        if (s) { repairTasks(s); return json(res, 200, { session: summary(s), events: s.events, tasks: [...s.tasks.values()], look }); }
         if (!client) return json(res, 404, { error: 'Unknown session' });
         const away = await outsideRow(client, id);
         if (away) return json(res, 200, { session: null, events: [{ k: 'note', text: outsideNote(away) }], tasks: [], cutOff: false });
         const events = await loadTranscript(client, id);
         // A conversation that ends on a command or on the user's message, with no reply after, was cut off.
         const last = [...events].reverse().find((e) => ['user', 'text', 'tool'].includes(e.k));
-        return json(res, 200, { session: null, events, tasks: [], cutOff: !!last && last.k !== 'text' });
+        return json(res, 200, { session: null, events, tasks: [], cutOff: !!last && last.k !== 'text', look });
       }
       const b = req.method === 'POST' ? await readBody(req) : {};
       if (wasDeleted(id) && !s) return json(res, 410, { error: 'This session was deleted' });
@@ -7934,9 +7945,21 @@ const server = http.createServer(async (req, res) => {
         if (ev && ev.state === 'open') { ev.state = 'dismissed'; saveState(); updateCard({ id }, ev); }
         return json(res, 200, { ok: true });
       }
+      // The person is looking at it: what is on screen now is not new next time. lineAt is where this visit's line is,
+      // kept for a page reload in the middle of the visit (#672).
+      if (action === 'looked') {
+        if (!client) return json(res, 404, { error: 'Unknown session' });
+        const rec = state.sessions[id] ||= { client: client.id };
+        rec.seenAt = Date.now();
+        if (Number.isFinite(b.lineAt)) rec.lineAt = b.lineAt; else delete rec.lineAt;
+        saveState();
+        return json(res, 200, { ok: true });
+      }
       // Mark unread: puts back the orange "needs you" dot, the way it was before you looked
       if (action === 'unread') {
         if (!client) return json(res, 404, { error: 'Unknown session' });
+        // Marked from the open chat: the next open draws the New line at the message it was scrolled to (#672)
+        if (Number.isFinite(b.at)) { const rec = state.sessions[id] ||= { client: client.id }; rec.seenAt = b.at - 1; delete rec.lineAt; saveState(); }
         if (s) { if (['running', 'starting'].includes(s.status)) return json(res, 400, { error: 'It is working right now' }); setUnread(s, 'mark-unread'); s.keepPlace = true; pushSession(s); }
         else {
           state.sessions[id] ||= { client: client.id };

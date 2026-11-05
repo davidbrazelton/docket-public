@@ -276,6 +276,21 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .transcript { flex: 1; overflow: auto; padding: 18px 0 30px; }
 .last-msg { display: block; width: 100%; text-align: left; border: none; border-bottom: 1px solid var(--line); border-radius: 0; background: var(--panel-2); padding: 5px 18px; font-size: 13px; line-height: 1.4; color: var(--text); cursor: pointer; }
 .last-msg[hidden] { display: none; }
+/* New since you last looked (#672): a line in the primary color above the first message after the last visit, and a
+   button that stays at the top of the chat while the line is out of view. */
+.new-line { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: var(--accent); font-size: 12px; font-weight: 600; }
+.new-line::before, .new-line::after { content: ''; flex: 1; border-top: 2px solid var(--accent); }
+.jump-wrap { position: sticky; top: 0; height: 0; z-index: 5; display: flex; justify-content: center; align-items: flex-start; }
+.jump-wrap button { margin-top: 6px; padding: 4px 14px; border-radius: 999px; font-size: 13px; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
+.jump-wrap button[hidden] { display: none; }
+/* A parent's turns that ended quietly, folded into one line (#672) */
+.qfold { margin: 8px 0; }
+.qfold > summary { list-style: none; cursor: pointer; font-size: 13px; color: var(--muted); padding: 4px 10px; border-left: 3px solid var(--run); border-radius: 4px; background: var(--panel-2); }
+.qfold > summary::-webkit-details-marker { display: none; }
+.qfold > summary:hover { color: var(--text); }
+.qfold > summary .qf-arrow { display: inline-block; margin-left: 4px; transition: transform .15s; }
+.qfold[open] > summary .qf-arrow { transform: rotate(90deg); }
+.qfold[open] > .qf-body { border-left: 3px solid var(--line); padding-left: 10px; margin-top: 6px; }
 .last-msg:hover { background: var(--user-bg); }
 .last-msg .lm-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; max-width: 816px; margin: 0 auto; word-wrap: break-word; }
 .last-msg .lm-label { color: var(--muted); font-weight: 600; margin-right: 6px; }
@@ -1161,7 +1176,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     <div class="cut-banner" id="cutBanner" role="status" hidden><span>Docket stopped unexpectedly partway through this session's turn, so its reply was cut off.</span><button id="cutContinue" data-tip="cut-continue">Continue</button></div>
     <button class="last-msg" id="lastMsg" hidden data-tip="last-msg"><div class="lm-text"><span class="lm-label">Your last message</span><span id="lastMsgText"></span></div></button>
     <div class="tl-bar" id="tlBar" hidden aria-label="Timeline in the chat"></div>
-    <div class="transcript" id="transcript"><div class="inner" id="events"></div></div>
+    <div class="transcript" id="transcript"><div class="jump-wrap"><button class="primary" id="jumpNew" hidden data-tip="jump-new">Jump to new</button></div><div class="inner" id="events"></div></div>
     <div class="composer" id="composer">
       <div class="inner">
         <div class="chips" id="chips"></div>
@@ -1377,6 +1392,7 @@ const HELP = [
     ['title', 'The title', 'Click to rename'],
     ['draft-title', 'Title (optional)', 'A title for the new session. You can leave it blank.'],
     ['last-msg', 'Your last message', 'Jump to this message in the conversation'],
+    ['jump-new', 'Jump to new', 'Scroll to the line above what came in since you last looked'],
     ['copy-reply', 'Copy reply', 'Copy this whole reply'],
     ['tl-filters', '🕘 Filters', 'Choose which kinds of steps from the session\'s record show in the chat'],
     ['tl-cat', 'A kind of step', 'Show or hide this kind of step in the chat'],
@@ -4083,7 +4099,7 @@ $('list').addEventListener('click', async (e) => {
     if (isUnread(s)) await markRead(s);
     else if (!needsYou(s)) {
       S.keepUnread = id;
-      await api(`/api/sessions/${id}/unread?client=${S.client}`, {});
+      await api(`/api/sessions/${id}/unread?client=${S.client}`, unreadSpot(id));
     }
   } catch (err) { alert(err.message); }
 }, true);
@@ -4268,7 +4284,7 @@ function pickedMenu(e) {
       if (act === 'read') await eachPicked(read, markRead, 'mark read');
       if (act === 'unread') {
         if (unread.some((s) => s.id === S.selected)) S.keepUnread = S.selected;
-        await eachPicked(unread, (s) => api(`/api/sessions/${s.id}/unread?client=${S.client}`, {}), 'mark unread');
+        await eachPicked(unread, (s) => api(`/api/sessions/${s.id}/unread?client=${S.client}`, unreadSpot(s.id)), 'mark unread');
       }
     } catch (err) { alert(err.message); }
   };
@@ -4415,7 +4431,7 @@ function openSessionMenu(id, at) {
     if (act === 'pin' || act === 'unpin') await setPin(id, act === 'pin');
     if (act === 'unread') {
       S.keepUnread = id;
-      try { await api(`/api/sessions/${id}/unread?client=${S.client}`, {}); } catch (err) { alert(err.message); }
+      try { await api(`/api/sessions/${id}/unread?client=${S.client}`, unreadSpot(id)); } catch (err) { alert(err.message); }
     }
   };
   m.querySelector('button:not([disabled])')?.focus();
@@ -6433,6 +6449,8 @@ async function openSession(id, auto = '') {
   const r = await api(`/api/sessions/${id}/events?client=${S.client}`);
   if (S.selected !== id) return;
   S.events = r.events; for (const t of r.tasks) S.tasks[t.id] = t;
+  // The line goes after the last visit; a reload partway through a visit keeps the line where it was.
+  S.lineAt = { id, at: (['reload', 'reconnect'].includes(auto) && r.look?.lineAt) || r.look?.seenAt || null };
   setSuggestion(r.session?.suggestion);
   if (!r.session) {
     const row = current();
@@ -6447,6 +6465,25 @@ async function openSession(id, auto = '') {
 }
 // A session you marked unread stays unread until you open it again, even while it is on screen.
 S.keepUnread = null;
+// While the person is in a session, Docket saves when they last looked (at most every LOOK_MS, and once more as they
+// leave), so what came in while they read is not new next time (#672).
+const LOOK_MS = 15000;
+const looks = { id: null, client: null, lineAt: null, last: 0, timer: null };
+function noteLooked() {
+  const id = S.selected;
+  if (!id) return;
+  if (looks.timer && looks.id !== id) flushLooked();
+  Object.assign(looks, { id, client: S.client, lineAt: S.lineAt?.id === id ? S.lineAt.at : null });
+  if (!looks.timer) looks.timer = setTimeout(flushLooked, Math.max(0, looks.last + LOOK_MS - Date.now()));
+}
+function flushLooked() {
+  clearTimeout(looks.timer); looks.timer = null;
+  if (!looks.id || S.keepUnread === looks.id) return;
+  looks.last = Date.now();
+  fetch(`/api/sessions/${looks.id}/looked?client=${looks.client}`, { method: 'POST', keepalive: true, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ lineAt: looks.lineAt }) }).catch(() => {});
+}
+addEventListener('pagehide', () => { if (looks.timer) flushLooked(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && looks.timer) flushLooked(); });
 // ---------- seen after an automatic open (#625) ----------
 // The page opens a session by itself: the one last open on a desk when you switch to it, and the open one again
 // after Docket restarts or the page reloads for an update. It is on screen, but you did not pick it, and often you
@@ -6478,6 +6515,7 @@ function markSeen(why) {
   if (S.keepUnread && S.keepUnread === S.selected) return;
   if (!seenCounts({ autoOpen: S.autoOpen, selected: S.selected })) return;
   if (!looking() || !present()) return;
+  noteLooked();
   const saved = !S.live[S.selected] && (S.history[S.client] || []).find((r) => r.id === S.selected);
   if (saved?.waiting) { saved.waiting = false; api(`/api/sessions/${saved.id}/seen?client=${S.client}`, seenBody(why)).catch(() => {}); renderList(); renderClients(); renderHead(); }
   const s = S.live[S.selected];
@@ -6651,19 +6689,94 @@ $('lastMsg').onclick = () => {
 };
 function atBottom() { const t = $('transcript'); return t.scrollHeight - t.scrollTop - t.clientHeight < 80; }
 function scrollDown(force) { const t = $('transcript'); if (force) t.scrollTop = t.scrollHeight; }
-function renderEvents(force) {
-  $('events').innerHTML = S.events.map(eventHtml).join('') || '<div class="empty">No messages yet.</div>';
+// ---------- new since you last looked, and folded quiet turns (#672) ----------
+// A parent's turn that ended quietly (report_quiet: its Done line says quiet) folds, with the quiet turns beside it, into
+// one line. A turn holding anything that needs the person never folds: their own message, an error, a question or
+// permission ask, a card, a child waiting on them. Only these kinds of message fold.
+const FOLDS = new Set(['text', 'tool', 'result', 'note', 'files', 'compact']);
+const foldable = (e) => FOLDS.has(e.k) || (e.k === 'child-report' && !e.waiting) || (e.k === 'user' && !!e.from);
+// The chat as runs, in order: one message ({ i }), or quiet turns side by side ({ fold: [first, last], turns }).
+function chatRuns(events) {
+  const out = [];
+  let start = 0;
+  events.forEach((e, i) => {
+    if (e.k !== 'result') return;
+    if (e.quiet && events.slice(start, i + 1).every(foldable)) {
+      const prev = out[out.length - 1];
+      if (prev?.fold && prev.fold[1] === start - 1) { prev.fold[1] = i; prev.turns++; } else out.push({ fold: [start, i], turns: 1 });
+    } else for (let j = start; j <= i; j++) out.push({ i: j });
+    start = i + 1;
+  });
+  for (let j = start; j < events.length; j++) out.push({ i: j });
+  return out;
+}
+// Where the New line goes: the first message written after lineAt (when the person last looked), or -1 for none.
+const newIndex = (events, lineAt) => lineAt ? events.findIndex((e) => e.k !== 'result' && e.at > lineAt) : -1;
+// end of new since you last looked
+// The message's time on its first element, so Mark unread can tell which message the chat is scrolled to.
+const atHtml = (ev) => { const h = eventHtml(ev); return ev.at && h ? h.replace(/^(\s*<[\w-]+)/, `$1 data-at="${ev.at}"`) : h; };
+const NEW_LINE = '<div class="new-line" id="newLine" role="separator"><span>New since you last looked</span></div>';
+S.openFolds = new Set(); // folds the person opened, by session and the time of their first quiet turn
+const foldKey = (events, r) => `${S.selected}:${events.slice(r.fold[0], r.fold[1] + 1).find((e) => e.k === 'result')?.at || r.fold[0]}`;
+function chatHtml(events, lineAt) {
+  const at = newIndex(events, lineAt);
+  let lined = at < 0;
+  return chatRuns(events).map((r) => {
+    let h = '';
+    if (!lined && (r.fold ? r.fold[1] : r.i) >= at) { lined = true; h = NEW_LINE; }
+    if (!r.fold) return h + atHtml(events[r.i]);
+    const evs = events.slice(r.fold[0], r.fold[1] + 1), key = foldKey(events, r), last = evs[evs.length - 1].at;
+    return h + `<details class="qfold" data-fold="${esc(key)}"${evs[0].at ? ` data-at="${evs[0].at}"` : ''}${S.openFolds.has(key) ? ' open' : ''}><summary>${r.turns} progress update${r.turns > 1 ? 's' : ''} from child sessions${last ? ` · ${stamp(last)}` : ''}<span class="qf-arrow">▸</span></summary><div class="qf-body">${evs.map(atHtml).join('')}</div></details>`;
+  }).join('');
+}
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (!d.classList?.contains('qfold')) return;
+  if (d.open) S.openFolds.add(d.dataset.fold); else S.openFolds.delete(d.dataset.fold);
+  checkJump();
+}, true);
+// keep: draw it again where the person is reading (a turn just folded), not at the bottom.
+function renderEvents(force, keep) {
+  const t = $('transcript'), stick = atBottom(), top = t.scrollTop;
+  const openTools = keep ? new Set([...$('events').querySelectorAll('details.tool[open]')].map((x) => x.dataset.tool)) : null;
+  $('events').innerHTML = chatHtml(S.events, S.lineAt?.id === S.selected ? S.lineAt.at : null) || '<div class="empty">No messages yet.</div>';
+  for (const id of openTools || []) { const x = $('events').querySelector(`details.tool[data-tool="${CSS.escape(id)}"]`); if (x) x.open = true; }
   weave();
-  scrollDown(true);
+  if (!keep || stick) scrollDown(true); else t.scrollTop = top;
+  checkJump();
   if (S.events.some((e) => e.login)) showSignin();
 }
 function appendEvent(ev) {
+  if (ev.k === 'result' && ev.quiet) { renderEvents(false, true); tlSoon(); return; } // the turn just ended folds
   const stick = atBottom();
   if ($('events').querySelector('.empty')) $('events').innerHTML = '';
-  $('events').insertAdjacentHTML('beforeend', eventHtml(ev));
+  $('events').insertAdjacentHTML('beforeend', atHtml(ev));
   scrollDown(stick);
   if (ev.login) showSignin();
   tlSoon();
+}
+// Jump to new shows only while the line is out of view, with an arrow toward it.
+function checkJump() {
+  const line = $('newLine'), b = $('jumpNew');
+  if (!line) { b.hidden = true; return; }
+  const box = $('transcript').getBoundingClientRect(), r = line.getBoundingClientRect();
+  const above = r.bottom < box.top + 4, below = r.top > box.bottom - 4;
+  b.hidden = !above && !below;
+  b.textContent = `Jump to new ${above ? '↑' : '↓'}`;
+}
+$('transcript').addEventListener('scroll', checkJump, { passive: true });
+addEventListener('resize', checkJump);
+new MutationObserver(checkJump).observe($('events'), { childList: true }); // gone with the line when the chat is drawn again
+$('jumpNew').onclick = () => $('newLine')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+// The message the open chat is scrolled to, for Mark unread: the next open draws the New line there.
+function unreadSpot(id) {
+  if (id !== S.selected) return {};
+  const top = $('transcript').getBoundingClientRect().top;
+  for (const el of $('events').querySelectorAll('[data-at]')) {
+    const r = el.getBoundingClientRect();
+    if (r.height && r.bottom > top + 1) return { at: Number(el.dataset.at) };
+  }
+  return {};
 }
 // ---------- sign-in, done entirely from this page ----------
 // Each brand a company has set up signs in on its own. Sign-in lives on the Companies screen, beside each
@@ -8250,7 +8363,9 @@ function weave() {
   const kids = [...box.children];
   const place = new Map(kids.map((el, i) => [el, i]));
   const tools = new Map(), texts = new Map(), users = [];
-  for (const el of kids) {
+  // What a fold of quiet turns holds stands at the fold's place, so lines for it gather after the fold.
+  for (const k of kids) for (const el of k.classList.contains('qfold') ? k.querySelectorAll('.qf-body > *') : [k]) {
+    place.set(el, place.get(k));
     if (el.dataset.tool) tools.set(el.dataset.tool, el);
     else if (el.classList.contains('msg-user')) users.push(el);
     else { const t = el.querySelector('[data-text]'); if (t) texts.set(t.dataset.text, el); }
