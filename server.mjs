@@ -4027,7 +4027,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   if (!system) {
     dropRetries(s);
     s.queuedAt = Date.now(); // a step that started before this has someone waiting on it (stalledSteps)
-    addEvent(s, { k: 'user', text, images, files: files.filter((f) => !IMAGE_TYPES.has(f.type)).map((f) => f.name), ...(from ? { from } : {}) });
+    addEvent(s, { k: 'user', text, images, files: files.filter((f) => !IMAGE_TYPES.has(f.type)).map((f) => f.name), ...(from ? { from } : {}), ...(from && context ? { context } : {}) }); // context: who sent it, for the page (#708)
     s.autoWakes = 0; // the person wrote: wake-ups may continue
     s.kidNews = false; // the person is in this session: the report it took in quietly is seen
   }

@@ -323,6 +323,19 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .msg-user .files { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .msg-when { align-self: flex-end; margin: -4px 4px 0 0; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .msg-user img, .msg-text img:not(a img) { cursor: zoom-in; }
+/* A message another session sent (#708): on the left with a blue edge, who sent it on top, Docket's notes one click away */
+.msg-user.msg-from { align-self: flex-start; background: var(--panel-2); border-left: 3px solid var(--run); border-radius: 4px 14px 14px 4px; }
+.msg-from .mf-head { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; white-space: normal; }
+.msg-from .mf-head a, .msg-docket a { color: var(--accent); }
+.mf-notes { margin-top: 6px; font-size: 12px; color: var(--muted); white-space: normal; }
+.mf-notes > summary, .msg-docket summary { cursor: pointer; }
+.mf-notes > summary:hover, .msg-docket summary:hover { color: var(--text); }
+.mf-notes > div, .msg-docket details > div { white-space: pre-wrap; margin-top: 4px; }
+/* A message Docket sent by itself (#708): a muted note on the left */
+.msg-user.msg-docket { align-self: flex-start; max-width: 100%; background: none; border-radius: 0; border-left: 3px solid var(--line); padding: 4px 10px; font-size: 13px; color: var(--muted); white-space: normal; }
+.msg-docket summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msg-docket .md-label { font-weight: 600; margin-right: 4px; }
+.msg-when.left { align-self: flex-start; margin: -4px 0 0 4px; }
 .msg-text img { max-width: 100%; }
 /* Click an image in the chat to see it bigger */
 .lightbox { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.86); display: grid; place-items: center; padding: 48px 56px; }
@@ -6893,9 +6906,47 @@ function renameInline() {
 // ---------- transcript ----------
 // A saved card whose place in the chat went with a compaction: said so on the card.
 const earlier = (ev) => ev.earlier ? ' · from earlier in this chat' : '';
+// A message another session or Docket sent (#708): its body, who sent it, and Docket's notes, from the "(Sent by the
+// session …)" and "(From Docket: …)" blocks after it. A saved chat has them in the text, one per line; the live chat
+// as the event's context.
+const NOTE_START = /\n(?=\((?:Sent by the session |From Docket: |From the session portal: ))/;
+function sentParts(ev) {
+  const all = ('\n' + [ev.text, ev.context].filter(Boolean).join('\n')).split(NOTE_START);
+  const body = all.shift().trim(), notes = [];
+  let sender = null;
+  for (const n of all.map((x) => x.trim()).filter(Boolean)) {
+    const m = n.match(/^\(Sent by the session "([^\n]*)" in the portal, id ([\w-]+)\./)
+      || n.match(/^\(From Docket: This session was started by the session "([^\n]*)" \(id ([\w-]+)\)/)
+      || n.match(/^\(From Docket: this session continues the work of the session "([^\n]*)" \(id ([\w-]+)\)/);
+    if (m) { sender ||= { title: m[1], id: m[2], handoff: /continues the work/.test(n) }; continue; }
+    notes.push(n.replace(/^\((?:From Docket|From the session portal): /, '').replace(/\)$/, ''));
+  }
+  return { body, notes, sender };
+}
+const msgWhen = (ev, cls = '') => ev.at ? `<div class="msg-when${cls}">${stamp(ev.at)}</div>` : '';
+const noteList = (notes) => notes.map((n) => `<div>${esc(n)}</div>`).join('');
+function sentHtml(ev) {
+  const { body, notes, sender } = sentParts(ev);
+  const who = sender ? `<a href="#session:${esc(sender.id)}"${tip('open-session')}>${esc(sender.title)}</a>` : 'another session';
+  const head = `<div class="mf-head">${sender?.handoff ? 'Handed off from' : 'From'} ${who}</div>`;
+  const more = notes.length ? `<details class="mf-notes"><summary>${notes.length} note${notes.length > 1 ? 's' : ''} from Docket</summary>${noteList(notes)}</details>` : '';
+  return `<div class="msg-user msg-from" data-ev data-from="session">${head}<div class="mf-body">${esc(body)}</div>${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}${more}</div>${msgWhen(ev, ' left')}`;
+}
+// A message Docket sent by itself (a stopped step, a notice read back from a saved chat): a muted note, folded to its
+// first line when there is more.
+function docketHtml(ev) {
+  const { body, notes } = sentParts(ev), all = [body, ...notes].filter(Boolean);
+  const first = all[0] || '', line = first.split('\n')[0];
+  const head = `<span class="md-label">From Docket</span> ${esc(line)}`;
+  const inner = all.length > 1 || line !== first || line.length > 160
+    ? `<details><summary>${head}</summary>${noteList(all)}</details>` : `<div>${head}</div>`;
+  return `<div class="msg-user msg-docket" data-ev data-from="docket">${inner}</div>${msgWhen(ev, ' left')}`;
+}
 function eventHtml(ev) {
   switch (ev.k) {
     case 'user': if (ev.from === 'docket' && /<session-report>/.test(ev.text)) return reportHtml(ev);
+      if (ev.from === 'docket') return docketHtml(ev);
+      if (ev.from === 'session') return sentHtml(ev);
       return `<div class="msg-user" data-ev${ev.from ? ` data-from="${esc(ev.from)}"` : ''}>${esc(ev.text)}${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}</div>${ev.at ? `<div class="msg-when">${stamp(ev.at)}</div>` : ''}`;
     case 'text': return `<div class="reply"><div class="msg-text" data-text="${esc(ev.id)}">${mdc(ev.text)}</div><div class="reply-actions"><button class="copy-btn" data-copy="reply" data-id="${esc(ev.id)}"${tip('copy-reply')}>Copy reply</button></div></div>`;
     case 'tool': {
