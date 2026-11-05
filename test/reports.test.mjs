@@ -156,10 +156,15 @@ test('childState: busy children work, asking ones wait, finished ones are done',
   assert.equal(childState({ status: 'ended', jobs: 1 }), 'done');
 });
 
-test('quietRefusal: only a report turn with children still going may end quietly', () => {
-  assert.equal(quietRefusal({ turnBy: 'docket', kids: 1 }), '');
-  assert.match(quietRefusal({ turnBy: 'person', kids: 2 }), /answers a message/);
-  assert.match(quietRefusal({ turnBy: 'session', kids: 2 }), /answers a message/);
-  assert.match(quietRefusal({ turnBy: 'docket', kids: 1, error: true }), /error/);
-  assert.match(quietRefusal({ turnBy: 'docket', kids: 0 }), /no child session/);
+test('quietRefusal: a turn woken by session reports may end quietly', () => {
+  assert.equal(quietRefusal({ turnBy: 'docket', report: true }), '');
+  assert.match(quietRefusal({ turnBy: 'person', report: true }), /answers a message/, 'answering the person is never quiet');
+  assert.match(quietRefusal({ turnBy: 'session', report: true }), /answers a message/);
+  assert.match(quietRefusal({ turnBy: 'docket', report: true, error: true }), /error/);
+  assert.match(quietRefusal({ turnBy: 'docket' }), /not woken by a session report/, 'Docket\'s other notes (resume, save before compact) are not relays');
+});
+
+test('quietRefusal: relaying a child\'s news is quiet with no child still working (#671)', () => {
+  // The last child finished, or the only one waits on the person: the old rule (#645) refused these.
+  assert.equal(quietRefusal({ turnBy: 'docket', report: true, kids: 0 }), '');
 });

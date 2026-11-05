@@ -9,7 +9,28 @@ const start = page.indexOf('// ---------- needs you');
 const end = page.indexOf('// end of needs you');
 assert.ok(start > 0 && end > start, 'the needs you part of index.html has moved or lost its markers');
 const inBackground = (s) => s.live && s.status === 'idle' && (s.runningTasks > 0 || s.background);
-const { needsYou } = new Function('inBackground', page.slice(start, end) + '\nreturn { needsYou };')(inBackground);
+const { needsYou, needLabel } = new Function('inBackground', page.slice(start, end) + '\nreturn { needsYou, needLabel };')(inBackground);
+
+test('a row says why it needs you, from Docket\'s own signals first (#671)', () => {
+  const done = { live: true, unread: true, status: 'idle', unreadWhy: 'result' };
+  assert.equal(needLabel(done), 'reply', 'a plain finished turn');
+  assert.equal(needLabel({ ...done, unreadSaid: 'done' }), 'done');
+  assert.equal(needLabel({ ...done, unreadSaid: 'done' }, true), 'merge', 'an open pull request outranks done');
+  assert.equal(needLabel({ ...done, unreadWhy: 'error' }), 'problem');
+  assert.equal(needLabel({ ...done, lastError: { text: 'fetch failed' } }), 'problem');
+  for (const why of ['offer', 'permission', 'cross', 'handoff', 'requires_action']) assert.equal(needLabel({ ...done, unreadWhy: why }), 'question', why);
+  assert.equal(needLabel({ ...done, status: 'requires_action' }), 'question');
+  assert.equal(needLabel({ ...done, asksYou: true }), 'question', 'a reply that ends by asking');
+  assert.equal(needLabel({ ...done, unreadSaid: 'question' }), 'question', 'a session may say its plain reply asks');
+});
+
+test('a declared label never makes a row quieter than Docket\'s signal', () => {
+  const base = { live: true, unread: true, status: 'idle' };
+  assert.equal(needLabel({ ...base, unreadWhy: 'offer', unreadSaid: 'done' }), 'question', 'an open card stays question');
+  assert.equal(needLabel({ ...base, unreadWhy: 'error', unreadSaid: 'reply' }), 'problem');
+  assert.equal(needLabel({ ...base, asksYou: true, unreadSaid: 'done' }), 'question');
+  assert.equal(needLabel({ ...base, unreadSaid: 'reply' }, true), 'merge');
+});
 
 const stopped = { unread: true, status: 'ended', lastError: { text: 'Session stopped: fetch failed' } };
 

@@ -16,7 +16,7 @@ import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs'
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from './needs-you.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal } from './reports.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal } from './reports.mjs';
 import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
@@ -567,6 +567,9 @@ function summary(s) {
     awaitingAnswer: liveAwaiting(s),
     kids: kidsOf(s), // the child sessions it waits on: the still blue ring (#645)
     kidNews: !!s.kidNews, // a report it took in quietly that the person has not opened: the ring's halo
+    unreadWhy: s.unread ? s.unreadWhy || null : null, // which path turned it orange: the row's reason (#671)
+    asksYou: !!s.pendingAsks?.size || liveAsks(s), // a question form open, or its latest reply ends by asking: "question"
+    unreadSaid: s.unread ? s.unreadSaid || null : null, // the label the session declared for that turn
   };
 }
 // Whether a live session's latest reply waits on the user's answer and nothing was sent after it.
@@ -577,6 +580,14 @@ function liveAwaiting(s) {
   if (!awaitingMemo.has(last)) awaitingMemo.set(last, endsWaiting(last.text || ''));
   return awaitingMemo.get(last);
 }
+// Whether its latest reply ends by asking the person something (a next-steps list alone does not count).
+const asksMemo = new WeakMap();
+function liveAsks(s) {
+  const last = (s.events || []).findLast((e) => e.k === 'user' || e.k === 'text');
+  if (last?.k !== 'text') return false;
+  if (!asksMemo.has(last)) asksMemo.set(last, endsAsking(last.text || ''));
+  return asksMemo.get(last);
+}
 // The page says why it marked a session seen; the log keeps that, so a lost orange dot can be traced.
 function logSeen(id, s, b = {}) {
   const tag = s ? sessionTag(s) : `saved session (${id})`;
@@ -584,21 +595,25 @@ function logSeen(id, s, b = {}) {
 }
 // Turning a session unread records which path did it, so the log can say why a dot went orange.
 function setUnread(s, why) {
-  if (!s.unread) s.unreadWhy = why;
+  if (!s.unread) { s.unreadWhy = why; s.unreadSaid = ''; }
   s.unread = true;
   s.kidNews = false; // orange says more than the halo
 }
 const sessionTag = (s) => `"${s.title || 'Untitled'}" (${s.id})`;
-// A finished turn turns the dot orange, unless the parent called report_quiet on a report it took in while
-// child sessions still work (#645): then the ring gains its halo instead, and the log says why.
+// A finished turn turns the dot orange, unless the parent called report_quiet on a turn woken by session reports
+// (#645, #671): then its row gains the halo instead, and the log says why. The label the session declared for the
+// turn (mark_turn) goes with the orange dot, so its row can say why it needs the person.
 function endTurnMark(s, err) {
   const reason = s.quietReason; s.quietReason = '';
+  const said = s.turnSaid; s.turnSaid = '';
   if (reason) {
-    const k = kidsOf(s), why = quietRefusal({ turnBy: s.turnBy, error: err, kids: k.working + k.waiting });
+    const k = kidsOf(s), why = quietRefusal({ turnBy: s.turnBy, report: s.reportTurn, error: err });
     if (!why) { if (!s.unread) s.kidNews = true; logEvent(`quiet turn: ${sessionTag(s)}`, `${reason} (${k.working} working, ${k.waiting} waiting on the person)`); return; }
     logEvent(`quiet turn refused: ${sessionTag(s)}`, `${why}; asked for: ${reason}`);
   }
+  const fresh = !s.unread;
   setUnread(s, 'result');
+  if (fresh && said) s.unreadSaid = said;
 }
 // The saved orange dot (state.sessions[id].waiting): what a session shows once it is no longer running here. Every
 // change goes through this and is logged with why, so a dot that went gray can be traced (#625).
@@ -620,12 +635,14 @@ const pushSession = (s) => {
   // work inside a session never moves its row. Mark unread puts the dot back without moving it.
   if (waiting && !s.wasWaiting && !s.keepPlace) { s.readyAt = Date.now(); if (state.sessions[s.id]) state.sessions[s.id].readyAt = s.readyAt; }
   if (!!s.unread !== !!s.loggedUnread) {
-    if (s.unread) logEvent(`unread on: ${sessionTag(s)}`, `by ${s.unreadWhy || 'unknown'}, status ${s.status}, background jobs ${!!s.heldTurn}, waiting ${waiting}`);
+    if (s.unread) logEvent(`unread on: ${sessionTag(s)}`, `by ${s.unreadWhy || 'unknown'}${s.unreadSaid ? `, said ${s.unreadSaid}` : ''}, status ${s.status}, background jobs ${!!s.heldTurn}, waiting ${waiting}`);
     s.loggedUnread = !!s.unread;
   }
   if (waiting !== !!s.wasWaiting) logEvent(`waiting ${!!s.wasWaiting} -> ${waiting}: ${sessionTag(s)}`);
   s.wasWaiting = waiting; s.keepPlace = false;
   setSavedWaiting(s.id, waiting, `live session: unread ${!!s.unread}, status ${s.status}, background jobs ${!!s.heldTurn}${s.resting ? ', resting' : ''}`);
+  const rec = state.sessions[s.id], need = waiting ? { why: s.unreadWhy || '', said: s.unreadSaid || '' } : undefined;
+  if (rec && JSON.stringify(rec.waitingWhy) !== JSON.stringify(need)) { if (need) rec.waitingWhy = need; else delete rec.waitingWhy; saveState(); } // the saved row's reason (#671)
   const sum = summary(s);
   s.kidsSent = JSON.stringify(sum.kids);
   broadcast({ t: 'session', session: sum });
@@ -1782,14 +1799,21 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: `Closed and archived "${report.title}". Say in your reply what it did and where the result is, linking it as [${report.title}](#session:${id}).` }] };
         }),
       tool('report_quiet',
-        'End this turn without marking this session as needing the user: its row keeps the still blue ring (waiting on sessions you started), with a soft halo saying there is news to read. Only for a turn woken by session reports, while sessions you started are still working, when the report is progress the user need not act on. See "While sessions you started are still working" in your instructions. Refused otherwise, and the turn then marks the user as usual. Set cancel to true if, later in the same turn, you find something the user should know or answer.',
+        'End this turn without marking this session as needing the user: its row gets a soft blue halo saying there is news to read, instead of the orange dot. Only for a turn woken by session reports that only passes on news the user need not act on here: progress, a session finished with nothing left for the user, or a session waiting on the user in its own chat (its own row already needs them). Allowed whether or not any session you started is still working. See "When sessions you started report" in your instructions. Refused on a turn answering a message, and the turn then marks the user as usual. Set cancel to true if, later in the same turn, you find something the user should know or answer.',
         { reason: z.string().describe("One line: why the user need not look now (kept in Docket's log)"), cancel: z.boolean().optional().describe('True to take back an earlier report_quiet in this turn') },
         async ({ reason, cancel }) => {
           if (cancel) { parent.quietReason = ''; return { content: [{ type: 'text', text: 'Taken back: this turn will mark the user as usual.' }] }; }
-          const k = kidsOf(parent), why = quietRefusal({ turnBy: parent.turnBy, kids: k.working + k.waiting });
+          const why = quietRefusal({ turnBy: parent.turnBy, report: parent.reportTurn });
           if (why) return { content: [{ type: 'text', text: `Not quiet: ${why}. This turn will mark the user as usual.` }], isError: true };
           parent.quietReason = String(reason || '').trim().split('\n')[0].slice(0, 200) || 'no reason given';
-          return { content: [{ type: 'text', text: `This turn will end quietly (${k.working} working, ${k.waiting} waiting on the user). Finish with your usual short reply.` }] };
+          return { content: [{ type: 'text', text: 'This turn will end quietly. Finish with your usual short reply.' }] };
+        }),
+      tool('mark_turn',
+        'Say why this turn needs the user, for the short label on your row in the session list: "done" when your work is complete and ready to close, "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default). Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. Call it at most once per turn, near the end.',
+        { label: z.enum(['done', 'question', 'reply']).describe('What this turn needs from the user') },
+        async ({ label }) => {
+          parent.turnSaid = label;
+          return { content: [{ type: 'text', text: `Your row will say "${label}" unless Docket knows a stronger reason.` }] };
         }),
       tool('set_parent',
         'Change which session a session reports to, only when the user asks ("report to X", "make it top level"). Give parent_id to put the session under that session (its finished turns then go there, and its cost counts in that family), or leave parent_id out to make it top level. id defaults to this session. Both sessions are told.',
@@ -3162,9 +3186,9 @@ function flushReports(parent) {
     ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'them'} as the plan's rules say, unless the user said to wait${r.tasks.some((t) => t.title.endsWith(userTag({ forUser: true }))) ? "; for the user's step, tell the user in a line or two what to do now" : ''}.`
     : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}. Its latest reply begins: ${r.text}`;
   const body = [...reports.map(line), ...waiting].join('\n');
-  sendToSession(parent, { text: '', system: true, context: `<session-report>
+  sendToSession(parent, { text: '', system: true, report: true, context: `<session-report>
 ${body}
-These are reports from sessions you started or sent work to with send_to_session, not messages from the user, and not proof: check a result (mcp__portal__get_session_report, its files, git branch or pull request) before telling the user it is done. If it is not done, send that session what is missing (mcp__portal__send_to_session). If it is done, follow "When a session you started says it is done" in your instructions, which also covers a session you sent work to; close_session only works on your own children, so a session you only sent work to is told the work is done instead: a small, safe task with nothing left for the user is closed with mcp__portal__close_session and reported here in a line or two; otherwise tell that session the work is done, and say in the same message if anything is still left for the user (an open pull request, a question, a decision), so it tells the user it is ready to close only when nothing is left for them. Carry on with any step of what the user asked you that these unblock, saying so in a line. Start nothing the user did not ask for. With no such step left, report in a line or two. If that report is only progress and sessions you started are still working, end the turn quietly with mcp__portal__report_quiet (see "While sessions you started are still working" in your instructions); anything the user should know or answer is never quiet. A report that shows a session asking the user something is that session's question, asked in its own chat: do not repeat, rephrase or answer it; at most one line saying "[its title](#session:<id>) is waiting on you".
+These are reports from sessions you started or sent work to with send_to_session, not messages from the user, and not proof: check a result (mcp__portal__get_session_report, its files, git branch or pull request) before telling the user it is done. If it is not done, send that session what is missing (mcp__portal__send_to_session). If it is done, follow "When a session you started says it is done" in your instructions, which also covers a session you sent work to; close_session only works on your own children, so a session you only sent work to is told the work is done instead: a small, safe task with nothing left for the user is closed with mcp__portal__close_session and reported here in a line or two; otherwise tell that session the work is done, and say in the same message if anything is still left for the user (an open pull request, a question, a decision), so it tells the user it is ready to close only when nothing is left for them. Carry on with any step of what the user asked you that these unblock, saying so in a line. Start nothing the user did not ask for. With no such step left, report in a line or two. If that report only passes on news (progress, a session finished with nothing left for the user, a session waiting on the user in its own chat), end the turn quietly with mcp__portal__report_quiet, whether or not any session is still working (see "When sessions you started report" in your instructions); anything the user should act on here is never quiet. A report that shows a session asking the user something is that session's question, asked in its own chat: do not repeat, rephrase or answer it; at most one line saying "[its title](#session:<id>) is waiting on you".
 </session-report>` });
 }
 // Save before compact: once a session passes its company's share of the auto-compact point, it is asked once,
@@ -3180,11 +3204,11 @@ function saveBeforeCompact(s) {
   if (due !== 'send' || s.status !== 'idle' || s.pendingAsks?.size || s.compacting) return;
   rec.savePrompted = Date.now(); saveState();
   const pct = Math.round((s.stats.tokens / s.stats.compactAt) * 100);
-  const unread = s.unread, why = s.unreadWhy; // the person's unread reply stays unread
+  const unread = s.unread, why = s.unreadWhy, said = s.unreadSaid; // the person's unread reply stays unread
   addEvent(s, { k: 'note', text: `Docket asked this session to save its state: it is at ${pct}% of the point where it compacts.` });
   s.quietTurn = true;
   sendToSession(s, { text: '', system: true, context: SAVE_PROMPT(pct) });
-  if (unread) { s.unread = true; s.unreadWhy = why; }
+  if (unread) { s.unread = true; s.unreadWhy = why; s.unreadSaid = said; }
   logEvent('save-before-compact', `${sessionTag(s)} at ${pct}%`);
   pushSession(s);
 }
@@ -3830,7 +3854,7 @@ function saveUploads(id, attachments) {
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 // from: 'session' when another session wrote the text, so the page can tell it from what the person typed
-function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false }) {
+function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false, report = false }) {
   if (holdsMessage(state.paused, { system, from })) { // waits for Resume all
     state.paused.held.push({ id: s.id, client: s.client, text, attachments, context, system, from });
     saveState();
@@ -3863,6 +3887,8 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   if (s.shiftRulesPending && isShift(s)) { blocks.push({ type: 'text', text: '(From the session portal: this session was switched to Shift mode.)\n\n' + shiftRules(s) }); s.shiftRulesPending = false; }
   if (!blocks.length) return;
   s.turnBy = turnStarter({ system, from, byPerson }); // whether its report counts toward the parent's wake limit
+  s.reportTurn = !!report; // woken by session reports: the only turn that may end quietly (quietRefusal)
+  s.turnSaid = '';
   if (byPerson) s.autoWakes = 0; // a button the person pressed: wake-ups may continue
   if (state.sessions[s.id]?.reloadNote) { blocks.push({ type: 'text', text: state.sessions[s.id].reloadNote }); delete state.sessions[s.id].reloadNote; saveState(); }
   const rules = rulesToReread(s);
@@ -4192,7 +4218,7 @@ async function reattachSessions() {
     s.ready = Promise.resolve(); s.configReady = true;
     Object.assign(s, remoteSession(s));
     // A session that was orange before the restart stays orange, in the same place in the list.
-    if (unreadAfterRestart({ asks: now.asks.length, wasWaiting, busy: now.busy, unsent: state.sessions[r.id]?.unsent })) { setUnread(s, 'restart'); s.wasWaiting = wasWaiting; }
+    if (unreadAfterRestart({ asks: now.asks.length, wasWaiting, busy: now.busy, unsent: state.sessions[r.id]?.unsent })) { setUnread(s, 'restart'); s.wasWaiting = wasWaiting; const was = state.sessions[r.id]?.waitingWhy; if (was?.why) { s.unreadWhy = was.why; s.unreadSaid = was.said || ''; } } // keeps its reason (#671)
     setStatus(s, now.asks.length ? 'requires_action' : now.busy ? 'running' : 'idle');
     // The jobs it had running are not in the messages read from here on: find them again on disk, and
     // hold the turn for them as before the restart, so the session neither reads idle nor reports early.
@@ -4753,6 +4779,8 @@ async function buildHistoryNow(client) {
     editFor: state.sessions[r.sessionId]?.editFor || null,
     midReply: !!state.sessions[r.sessionId]?.cutOff || (cutAtStart(r.sessionId) && !!state.sessions[r.sessionId]?.busy),
     waiting: !!state.sessions[r.sessionId]?.waiting || desktopWaits(r.sessionId, files.get(r.sessionId)),
+    unreadWhy: state.sessions[r.sessionId]?.waitingWhy?.why || null, // why it was waiting when it stopped (#671)
+    unreadSaid: state.sessions[r.sessionId]?.waitingWhy?.said || null,
     awaitingAnswer: transcriptTail(files.get(r.sessionId)).awaiting,
     lastError: state.sessions[r.sessionId]?.lastError || null,
     engine: state.sessions[r.sessionId]?.engine || 'claude',

@@ -155,12 +155,13 @@ export function childState({ status, compacting = false, jobs = 0, asks = 0, rep
   return asks > 0 || endsAsking(reply) ? 'waiting' : 'done';
 }
 
-// Why a turn may not end quietly (no orange dot), or '' when it may. Only a turn Docket started (a session
-// report waking the parent) may, never one answering the user, never an error, and only while child
-// sessions are still working or waiting: the turn after the last one finishes goes orange as before.
-export function quietRefusal({ turnBy, error = false, kids = 0 }) {
+// Why a turn may not end quietly (no orange dot), or '' when it may. Only a turn woken by session reports
+// may, never one answering a message, never an error. Whether a child still works does not matter (#671): a
+// parent passing on a child's news (finished, waiting on the person, its pull request ready) adds no second
+// orange dot, since the child's own row already has one.
+export function quietRefusal({ turnBy, report = false, error = false }) {
   if (turnBy !== 'docket') return 'this turn answers a message, not a session report';
+  if (!report) return 'this turn was not woken by a session report';
   if (error) return 'the turn ended in an error';
-  if (!kids) return 'no child session is still working, so the user hears now';
   return '';
 }
