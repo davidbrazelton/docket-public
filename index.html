@@ -148,7 +148,15 @@ aside.side { position: relative; border-right: 1px solid var(--divider); backgro
 .row.dim:hover, .row.dim.sel { opacity: .85; }
 .row .pin { font-size: 10px; flex: none; }
 .near-full { color: var(--bad); }
-.row .meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.row .meta { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: var(--meta-w, 0); text-align: right; flex: none; } /* as wide as the widest time (fitColumns), so the plan and reason columns left of it line up */
+/* A session paused on a question or permission prompt (the "?" dot) has a yellow title (#686). */
+.row .t.asking { color: var(--warn); }
+/* Plan badge, then reason tag, each in a column that only takes room while some row in the list has one (#686). */
+.row .cplan, .row .cneed { display: none; flex: none; align-items: center; }
+#list:has(.row .cplan .plan-tag) .row .cplan { display: inline-flex; min-width: var(--plan-w, 0); }
+#list:has(.row .cneed .need) .row .cneed { display: inline-flex; min-width: var(--need-w, 0); }
+#list:has(.row .cneed .nic) .row .cneed { display: inline-flex; min-width: var(--need-w, 0); justify-content: center; }
+.row .tag.plan-tag { border-color: transparent; padding: 0; margin-left: 0; font-size: 11px; font-weight: 600; }
 /* Ticket and pull request tags sit last, after the brand logo, in a column that starts at the same spot on every row.
    The space is only held while some row in the list has a tag, so titles keep their room otherwise. Every row's column is
    as wide as the widest row's tags (--chips-w, set by fitChips), up to a cap; past the cap a row's tags are cut off. */
@@ -167,7 +175,9 @@ aside.side { position: relative; border-right: 1px solid var(--divider); backgro
 .row .sch { flex: none; font-size: 11px; }
 .row .sch .rundate { margin-left: 3px; color: var(--muted); white-space: nowrap; }
 .tag.unread-n, .run-row .tag.unread { border-color: var(--accent); color: var(--accent); font-weight: 600; }
-.row .meta.cold { color: var(--bad); }
+/* Time left is in the text color; once the cache has run out it goes grey, not red; an error stays red (#686). */
+.row .meta.left { color: var(--text); }
+.row .meta.err { color: var(--bad); }
 .row .meta.warn { color: var(--warn); font-weight: 600; }
 /* ✦ Needs attention and its Keep period are one filter control (#684, DESIGN.md): ✦ and its count on the left turn it
    on and off; the period on the right opens the Keep menu. On: soft tint on ✦, main-color border round the whole of it. */
@@ -465,11 +475,13 @@ aside.tasks.hidden { display: none; }
 .file-row.publishing { opacity: .6; cursor: progress; }
 .tag.near-full { color: var(--bad); flex: none; }
 .tag.stalled { border-color: var(--warn); color: var(--warn); font-weight: 600; flex: none; }
-/* Why a row needs you (#671): what blocks work is strong, what is only to read is soft. */
-.tag.need { flex: none; }
-.tag.need-question { border-color: var(--warn); color: var(--warn); font-weight: 600; }
-.tag.need-problem { border-color: var(--bad); color: var(--bad); font-weight: 600; }
-.tag.need-merge { border-color: color-mix(in srgb, var(--ok) 55%, var(--line)); color: var(--ok); }
+/* Why a row needs you (#671, #686): a word on a soft fill (a tag, no outline) or a bare icon (never filled, so it does not
+   look like a button). Only question has color; the fills mix with whatever is under them, so they show on a hovered row too. */
+.tag.need { flex: none; margin-left: 0; border-color: transparent; background: color-mix(in srgb, var(--text) 9%, transparent); }
+.tag.need-question { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); font-weight: 600; }
+.nic { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--muted); }
+.nic svg, .nic .pr-ic { width: 14px; height: 14px; display: block; color: inherit; }
+.nic.need-question { color: var(--warn); }
 
 .signin { margin: 10px; padding: 10px; border: 1px solid var(--warn); border-radius: 8px; font-size: 12px; }
 .prb { display: inline-flex; align-items: center; gap: 1px; font-size: 11px; font-weight: 600; margin-left: 2px; }
@@ -625,7 +637,7 @@ header.top #feedbackBtn { padding: 4px 8px; }
 @media (max-width: 640px) { .key-row { grid-template-columns: 96px 1fr; } .key-snd { grid-column: 2; } .key-snd:empty, .key-head .key-snd { display: none; } }
 .key-sym { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; white-space: nowrap; color: var(--muted); }
 .key-sym .dot { align-self: center; }
-.key-sym.warn { color: var(--warn); font-weight: 600; } .key-sym.cold { color: var(--bad); }
+.key-sym.warn { color: var(--warn); font-weight: 600; } .key-sym.left { color: var(--text); }
 .key-sym .n { min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--warn); color: var(--on-warn); font-size: 10px; font-weight: 700; display: inline-grid; place-items: center; }
 .key-sym .conn { font-size: 10px; padding: 1px 6px; }
 .key-sym .gdots { display: inline-flex; gap: 3px; } .key-sym .gdots .dot { width: 7px; height: 7px; animation: none; }
@@ -1037,6 +1049,9 @@ html.popout header.top, html.popout .start-banner, html.popout aside.side, html.
 .view-pop .chip-tgl { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; color: var(--text); }
 .view-pop .chip-tgl.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .view-pop .chip-tgl.on::before { content: '✓'; font-size: 11px; }
+/* Reason tags (#686): one choice of three, its own line above the toggles */
+.view-pop .vm-reason { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.view-pop .vm-reason > span { flex-basis: 100%; font-size: 11px; color: var(--muted); }
 .tl-note { font-size: 11px; color: var(--muted); padding: 6px 14px 0; }
 .tl-w { display: flex; flex-direction: column; gap: 1px; border-left: 2px solid var(--line); padding-left: 6px; margin: -4px 0; }
 .tl-e { border: 1px solid transparent; border-radius: 6px; font-size: 12px; min-width: 0; }
@@ -1347,10 +1362,11 @@ const HELP = [
     ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is. Blinks yellow while the session open now needs you to sign in to a site'],
     ['new', '+ New session', 'Start a new conversation with the AI'],
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
-    ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), and which chips each row shows. Each desk keeps its own.'],
+    ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), whether rows show why they need you, and which chips each row shows. Each desk keeps its own.'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
     ['attn', '✦ Needs attention', 'Needs attention: show only sessions that\n• need you (a reply or an error you have not opened yet)\n• wait on your answer\n• are working\n• have a warm cache\nBelow them, dimmed:\n• the ones you touched lately (sent a message or started; the Keep period on the right of ✦ sets how far back, Workday (the last workday) at first; picking one also turns ✦ on)\n• the ones you pinned (right-click a session)\nA family shows whole: a session started from another one sits under it, its parent dimmed if only there for it.\nThe orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then dimmed what you touched lately or pinned. Click to show everything.'],
     ['attn-window', '✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, dimmed, by when you last touched them (sent a message or started them; opening one does not count):\n• Off: none\n• 12 hours\n• Yesterday: from the start of yesterday\n• Workday (the last workday): from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included\n• 7 days\n• Pins: only pinned ones\nPinned sessions show under every choice. Each desk keeps its own.'],
+    ['reasontags', '👁 > Reason tags', 'Reason tags: a session that needs you also shows why on its row, as a small word or an icon (question, merge, done or reply; hover an icon for its word). Only question has color. An error needs no tag: its dot has a red ring and its time says "error". Off: only the dot shows. Each desk keeps its own.'],
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
     ['commentchips', '👁 > Comment chips', 'Comment chips: show a speech bubble on a session\'s row when one of its tickets or pull requests has a new comment', 'Each row shows a speech bubble when a comment is waiting. Turn it off to hide them; Details still shows them.'],
@@ -1562,9 +1578,8 @@ const HELP = [
     ['menu-key', 'Help > Key', 'What the dots, colors and sounds mean'],
     ['menu-help', 'Help > Instructions', 'What every button and symbol does (shortcut: ?)'],
     ['menu-tour', 'Help > Show me around', 'A five-step tour of the main parts of the page'],
-    ['menu-settings', 'Settings', 'Color, sound, reason tags, theme, stopping stuck steps, pausing on sleep and resting idle sessions'],
+    ['menu-settings', 'Settings', 'Color, sound, theme, stopping stuck steps, pausing on sleep and resting idle sessions'],
     ['menu-sound', 'Settings > Sound', () => soundTip()],
-    ['menu-needtags', 'Settings > Reason tags', 'On: a session that needs you also shows a small word on its row saying why (question, problem, merge, done or reply). Off: only the dot shows. Kept on this computer only'],
     ['menu-theme', 'Settings > Theme', 'Pick default (follows the computer), light or dark'],
     ['menu-theme-default', 'Settings > Theme > Default', 'Follow the computer\'s light or dark setting, changing when it changes'],
     ['menu-theme-light', 'Settings > Theme > Light', 'Always light, whatever the computer is set to. Kept in this browser'],
@@ -1955,9 +1970,16 @@ const kidsText = (s) => ([s.kids?.working && `${plural(s.kids.working, 'child se
 // The label on a row that needs you, and its tooltip (#671).
 const NEED_TIPS = { question: 'It asked you something: a question, a permission prompt or a card waits on you', problem: 'Its last turn ended in an error', merge: 'Its pull request is open and waiting on you', done: 'It says its work is complete and ready to close', reply: 'A finished reply to read' };
 const openPR = (id) => (S.prs[id] || []).some((p) => ['open', 'conflict'].includes(prState(p)));
-// ☰ > Settings > Reason tags: off by default while their look is being redesigned; off draws nothing, the dots stay.
-const needTagsOn = () => store.get('needTags', false);
-const needTag = (s) => { if (!needTagsOn() || !needsYou(s)) return ''; const l = needLabel(s, openPR(s.id)); return `<span class="tag need need-${l}" title="${esc(NEED_TIPS[l])}">${l}</span>`; };
+// 👁 > Reason tags (#686): words, icons or off (S.reasonTags, off by default). An error gets none: its dot has a red ring
+// and its time says "error" already.
+const NEED_SVG = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
+const needIcon = (l) => l === 'merge' ? prIcon('merged') : `<svg viewBox="0 0 16 16" aria-hidden="true">${{
+  question: `<circle cx="8" cy="8" r="6.6" ${NEED_SVG}/><path d="M6.1 6.2a2 2 0 1 1 2.9 1.8c-.6.3-1 .7-1 1.4v.3" ${NEED_SVG}/><circle cx="8" cy="11.7" r=".95" fill="currentColor"/>`,
+  done: `<path d="M2.8 8.6 6.3 12 13.2 4.4" ${NEED_SVG} stroke-width="2"/>`,
+  reply: `<path d="M2.4 3.2h11.2v7.4H7.4l-3.2 2.6v-2.6H2.4Z" ${NEED_SVG}/>`
+}[l]}</svg>`;
+const needMark = (l, as = S.reasonTags) => as === 'icons' ? `<span class="nic need-${l}" title="${l}: ${esc(NEED_TIPS[l])}" aria-label="${l}">${needIcon(l)}</span>` : `<span class="tag need need-${l}" title="${esc(NEED_TIPS[l])}">${l}</span>`;
+const needTag = (s) => { if (S.reasonTags === 'off' || !needsYou(s)) return ''; const l = needLabel(s, openPR(s.id)); return l === 'problem' ? '' : needMark(l); };
 // The title a dot carries: the error for a red ring, what resting means for a hollow green one.
 const dotTip = (s, c = dotClass(s)) => c === 'failed' ? ` title="${esc(failedTip(s))}"` : c === 'asking' ? ' title="Waiting on your answer: the session is paused on a question or a permission prompt"' : c === 'resting' ? ` title="${RESTING_TIP}"` : c === 'childwait' || c === 'childnews' ? ` title="${esc(kidsText(s))}"` : '';
 const failedTip = (s) => `Last reply ended in an error: ${s.lastError.text.replace(/[.\s]+$/, '')}. Open it to read the error; send a message to try again.`;
@@ -3032,12 +3054,12 @@ function ctxText(st) {
 }
 // The time column: minutes of cache left while warm (gray), time since the last reply once it expired (red).
 function timeBit(s) {
-  if (dotClass(s) === 'failed') return ['cold', 'error', failedTip(s)];
+  if (dotClass(s) === 'failed') return ['err', 'error', failedTip(s)];
   // The orange dot and its label (needTag) say it needs you and why, so the time column keeps the minutes of cache
-  // left while warm, and the time since the last reply, red, once it has expired, like other expired rows.
+  // left while warm, and the time since the last reply, grey, once it has expired, like other expired rows (#686).
   if (needsYou(s)) {
     const left = cacheLeft(s.stats);
-    if (left !== null && left > 0) return [cacheEnding(s) ? 'warn' : '', `${left}m left`, `Needs you. Prompt cache warm for ${left} more minute${left === 1 ? '' : 's'}`];
+    if (left !== null && left > 0) return [cacheEnding(s) ? 'warn' : 'left', `${left}m left`, `Needs you. Prompt cache warm for ${left} more minute${left === 1 ? '' : 's'}`];
     return s.stats ? ['cold', ago(s.stats.at), `Needs you. Prompt cache expired; last reply ${new Date(s.stats.at).toLocaleString()}`] : ['', ago(s.lastModified || s.createdAt), 'Needs you'];
   }
   if (s.midReply) return ['', 'interrupted', ''];
@@ -3046,7 +3068,7 @@ function timeBit(s) {
   if (inBackground(s)) return ['', 'background', s.runningTasks ? `${s.runningTasks} background job${s.runningTasks === 1 ? '' : 's'} still running` : `Background jobs finished; ${brand(s)} is about to take in their results`];
   if (waitsOnKids(s) && (s.kids?.working || s.kids?.waiting)) return ['', `waiting on ${s.kids.working + s.kids.waiting}`, kidsText(s)];
   const left = cacheLeft(s.stats);
-  if (left !== null && left > 0) return [cacheEnding(s) ? 'warn' : '', `${left}m left`, `Prompt cache warm for ${left} more minute${left === 1 ? '' : 's'} (${s.stats.cacheTtl >= 3600 ? '1 hour' : '5 minute'} cache)`];
+  if (left !== null && left > 0) return [cacheEnding(s) ? 'warn' : 'left', `${left}m left`, `Prompt cache warm for ${left} more minute${left === 1 ? '' : 's'} (${s.stats.cacheTtl >= 3600 ? '1 hour' : '5 minute'} cache)`];
   if (s.stats) return ['cold', ago(s.stats.at), `Prompt cache expired; last reply ${new Date(s.stats.at).toLocaleString()}`];
   return ['', ago(s.lastModified || s.createdAt), ''];
 }
@@ -3140,7 +3162,7 @@ function setPanelWidth(key, w, save = true) {
   const room = innerWidth - (narrow(key === 'left' ? 'no-details' : 'no-list') ? 0 : other.offsetWidth || 0) - PANE_ROOM; // keep the conversation its room
   w = Math.round(Math.max(p.min, Math.min(p.max, room, w)));
   document.documentElement.style.setProperty(p.prop, w + 'px');
-  if (save) { const all = store.get('panelWidths', {}); all[key] = w; store.set('panelWidths', all); fitPanes(); }
+  if (save) { const all = store.get('panelWidths', {}); all[key] = w; store.set('panelWidths', all); fitPanes(); if (key === 'left') fitColumns($('list')); }
 }
 for (const [key, p] of Object.entries(PANELS)) {
   const saved = store.get('panelWidths', {})[key];
@@ -3811,12 +3833,16 @@ function readDeskSettings() {
   S.attn = deskStore.get('attnFilter', false);
   S.attnWindow = attnWindowOf(deskStore.get('attnWindow'));
   for (const [k, key, , , d] of VIEW_OPTS) S[k] = deskStore.get(key, d);
+  // 👁 > Reason tags (#686): words, icons or off. A computer that had ☰ > Settings > Reason tags on (#682) starts on words.
+  S.reasonTags = REASON_TAGS.find(([v]) => v === deskStore.get('reasonTags'))?.[0] || (store.get('needTags', false) ? 'words' : 'off');
 }
+const REASON_TAGS = [['words', 'Words'], ['icons', 'Icons'], ['off', 'Off']];
 readDeskSettings();
 const viewOpen = () => !$('viewMenu').hidden;
 function renderViewMenu() {
   // toggle chips, a filter (DESIGN.md): bordered, and when on a soft tint, main-color border and ✓
-  $('viewMenu').innerHTML = VIEW_OPTS.filter(([k]) => (k !== 'brandLogos' || multiBrand()) && (k !== 'showEmptyGroups' || S.groupView))
+  $('viewMenu').innerHTML = `<div class="vm-reason" role="group" aria-label="Reason tags"><span>Reason tags</span>${REASON_TAGS.map(([v, label]) => `<button class="chip-tgl${S.reasonTags === v ? ' on' : ''}" data-reason="${v}" aria-pressed="${S.reasonTags === v}"${tip('reasontags')}>${label}</button>`).join('')}</div>`
+    + VIEW_OPTS.filter(([k]) => (k !== 'brandLogos' || multiBrand()) && (k !== 'showEmptyGroups' || S.groupView))
     .map(([k, , label, key]) => `<button class="chip-tgl${S[k] ? ' on' : ''}" data-view="${k}" aria-pressed="${!!S[k]}"${tip(key, S[k])}>${label}</button>`).join('');
 }
 // ✦ carries the attention count, so nothing waiting on you goes unseen; the whole control is lit while the list shows only
@@ -3861,6 +3887,8 @@ function viewMenu(open) {
 }
 $('viewBtn').onclick = () => viewMenu(!viewOpen());
 $('viewMenu').addEventListener('click', (e) => {
+  const r = e.target.closest('[data-reason]');
+  if (r) { S.reasonTags = r.dataset.reason; deskStore.set('reasonTags', S.reasonTags); renderViewMenu(); $('viewMenu').querySelector(`[data-reason="${S.reasonTags}"]`)?.focus(); renderList(); return; }
   const b = e.target.closest('[data-view]'); if (!b) return;
   const [k, key] = VIEW_OPTS.find(([x]) => x === b.dataset.view);
   S[k] = !S[k]; deskStore.set(key, S[k]);
@@ -3970,7 +3998,7 @@ function sessionRow(s, depth) {
   const snip = snippetFor(s);
   const pin = !s.archived && pinnedHere(s.id) ? `<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
   return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${S.attn && S.dim.has(s.id) ? 'dim' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
-      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotTip(s)}></span><span class="t ${full ? 'near-full' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${needTag(s)}${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${planBadge(s.id)}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}
+      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotTip(s)}></span><span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>
       <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // The list is only replaced when what it shows actually changed. A redraw is held while the pointer is down on the
@@ -4001,6 +4029,18 @@ function fitChips(list) {
   let w = 0;
   for (const c of list.querySelectorAll('.row .chips:not(:empty)')) if (c.lastElementChild) w = Math.max(w, c.lastElementChild.getBoundingClientRect().right - c.getBoundingClientRect().left);
   if (w) list.style.setProperty('--chips-w', Math.min(CHIPS_MAX, Math.max(44, Math.ceil(w))) + 'px');
+  fitColumns(list);
+}
+// The plan badge, reason tag and time columns (#686): each as wide as its widest entry in the list, so they line up. Only
+// while a title keeps TITLE_MIN of room: a list too narrow for that lets each row's badges take just their own width.
+const TITLE_MIN = 90;
+function fitColumns(list) {
+  const cols = [['--plan-w', '.row .cplan > *'], ['--need-w', '.row .cneed > *'], ['--meta-w', '.row .meta']];
+  for (const [v] of cols) list.style.removeProperty(v);
+  const ws = cols.map(([, sel]) => Math.max(0, ...[...list.querySelectorAll(sel)].map((el) => el.getBoundingClientRect().width)));
+  cols.forEach(([v], i) => { if (ws[i]) list.style.setProperty(v, Math.ceil(ws[i]) + 'px'); });
+  const t = list.querySelector('.row:not(.child) .t');
+  if (t && t.getBoundingClientRect().width < TITLE_MIN) for (const [v] of cols) list.style.removeProperty(v);
 }
 document.fonts?.ready.then(() => fitChips($('list'))); // tag text measured before the font arrived is too narrow
 // Rows glide to their new place instead of jumping, the FLIP way: measure each row before the redraw and
@@ -4649,7 +4689,6 @@ async function setRestMinutes() {
   try { S.restMinutes = (await api('/api/rest-minutes', { minutes: document.getElementById('restMin').value })).minutes; } catch (err) { alert(err.message); }
 }
 const autoPauseLabel = () => `Pause on sleep: ${S.autoPause === false ? 'off' : 'on'}`;
-const needTagsLabel = () => `Reason tags: ${needTagsOn() ? 'on' : 'off'}`;
 // The ☰ menu: Desks (Manage, and every desk's settings), a few things you open often, then groups that open to the side
 // (Tools, Gauges, Help, Settings, About), and Settings > Theme opens one more level. A group opens on hover, on click,
 // and with → or Enter; ← or Escape closes it.
@@ -4662,7 +4701,7 @@ $('menuBtn').onclick = (e) => {
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
-    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()], ['needtags', needTagsLabel()], ['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['rest', restLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ['signins', 'Private browser sign-ins'], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
+    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()],['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['rest', restLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ['signins', 'Private browser sign-ins'], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
     ['about', S.update?.waiting || S.update?.restartWaiting ? 'About · update waiting' : 'About', [...(S.update?.restartWaiting && !S.update.restartWaiting.restarting ? [['restartnow', 'Update now anyway']] : S.update?.waiting ? [['updnow', 'Update now']] : []), ['update', 'Check for updates']]]];
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
     ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${x[0]}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0])}>${esc(x[1])}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
@@ -4758,10 +4797,6 @@ $('menuBtn').onclick = (e) => {
       const b = ev.target.closest('button');
       try { S.autoPause = (await api('/api/auto-pause', { on: S.autoPause === false })).on; } catch (err) { alert(err.message); }
       b.textContent = autoPauseLabel();
-      return;
-    }
-    if (act === 'needtags') { // stays open and shows the new state
-      store.set('needTags', !needTagsOn()); ev.target.closest('button').textContent = needTagsLabel(); renderList();
       return;
     }
     if (act === 'sound') { // stays open and shows the new state
@@ -4933,7 +4968,7 @@ async function showViewHistory() {
 function keyHtml() {
   const row = (sym, text, cls = '', sound = '') => `<div class="key-row"><span class="key-sym ${cls}">${sym}</span><span>${text}</span><span class="key-snd">${sound}</span></div>`;
   const dot = (c) => `<span class="dot ${c}"></span>`;
-  const needSample = (l) => `<span class="tag need need-${l}">${l}</span>`;
+  const needSample = (l) => needMark(l, S.reasonTags === 'icons' ? 'icons' : 'words') + (S.reasonTags === 'icons' ? ` ${l}` : '');
   const chips = (tk, pr) => `<span class="tkb tk-${tk}">12</span><span class="prb pr-${pr}">${prIcon(pr)}</span>`;
   // ▶ plays the real sound function, so the Key never drifts from what Docket plays.
   const play = (k) => `<div class="snd"><button class="snd-play" data-play="${k}" title="Play this sound" aria-label="Play: ${esc(SOUND_WORDS[k])}">▶</button><span>${esc(SOUND_WORDS[k])}</span></div>`;
@@ -4953,13 +4988,12 @@ function keyHtml() {
     ${row(dot('ended'), 'Saved, not running. Open it any time to pick it up again.')}
     ${row(`<span class="gdots">${dot('running')}${dot('idle')}${dot('needs')}</span>`, 'In group view, each group header shows one small dot for each kind of status inside it (not one per session), without blinking. They sit at the right edge in a fixed order, showing only the kinds present: blue (working), hollow blue (background jobs), still hollow blue (waiting on child sessions, with a halo when there is news), green, hollow green (resting), yellow "?" (waiting on your answer), yellow (needs you), ringed red (error), red, grey.')}
     ${head('Time text on the right of each row', true)}
-    ${row('12m left', 'The conversation is still held in Claude’s short-term memory (the prompt cache), so the next message is cheaper and faster.')}
+    ${row('12m left', 'In the text color: the conversation is still held in Claude’s short-term memory (the prompt cache), so the next message is cheaper and faster.', 'left')}
     ${row('8m left', 'A one hour session cache has 10 minutes or less left. Reply soon to keep the saving.', 'warn', play('cache'))}
-    ${row('3h ago', 'The session cache expired, so the next message costs more.', 'cold')}
-    ${row('working', '<b>working</b>, <b>background</b>, <b>interrupted</b>, <b>compacting…</b> and a red <b>error</b> take the place of the time and match the dot. A session that needs you keeps showing its minutes of session cache left, and the time since its last reply in red once that has run out. A gray time like "2d ago" means Docket has no record of that session’s cache.')}
-    ${head('Why a yellow row needs you')}
-    ${row(needSample('question'), 'It asked you something: a question in its reply, a question form, an "Allow this?" prompt, or a card such as a session offer. Work waits on your answer.')}
-    ${row(needSample('problem'), 'Its last turn ended in an error. Open it to read what went wrong.')}
+    ${row('3h ago', 'Grey: the session cache expired, so the next message costs more.', 'cold')}
+    ${row('working', '<b>working</b>, <b>background</b>, <b>interrupted</b>, <b>compacting…</b> and a red <b>error</b> take the place of the time and match the dot. A session that needs you keeps showing its minutes of session cache left, and the time since its last reply once that has run out.')}
+    ${head('Why a yellow row needs you (👁 > Reason tags: words, icons or off)')}
+    ${row(needSample('question'), 'It asked you something: a question in its reply, a question form, an "Allow this?" prompt, or a card such as a session offer. Work waits on your answer. While it is paused on a question form or a prompt (the "?" dot), its title is yellow too. A last turn that ended in an error has no tag: its dot has a red ring and its time says "error".')}
     ${row(needSample('merge'), 'Its pull request is open and waiting on you to say merge.')}
     ${row(needSample('done'), 'It says its work is complete and ready to close.')}
     ${row(needSample('reply'), 'A finished reply to read when you like.')}
@@ -4972,7 +5006,7 @@ function keyHtml() {
     ${row(chips('unknown', 'unknown'), 'Dimmed grey, the ticket dashed: Docket cannot tell, for example the sign-in cannot read it.')}
     <h4>Other colors</h4>
     ${row('<span class="tag stalled">stalled 4m</span>', 'Amber: a step in the session has given no answer for that many minutes. ' + STALL_TIP)}
-    ${row('<span class="near-full">Title</span> <span class="tag near-full">92%</span>', `Red title: the conversation is nearly full (${Math.round(COMPACT_WARN_SHARE * 100)}% of the way) and will soon be compacted, that is, summarised so it can keep going. The small red number beside the title says how full it is. The context reading at the bottom of the open session ("% context") turns red at the same point. Both turn back to normal after that.`)}
+    ${row('<span class="tag near-full">92%</span>', `Red number beside the title: the conversation is nearly full (${Math.round(COMPACT_WARN_SHARE * 100)}% of the way) and will soon be compacted, that is, summarised so it can keep going. The context reading at the bottom of the open session ("% context") turns red at the same point. Both turn back to normal after that.`)}
     ${row('✦<span class="n">3</span>', 'The orange number on the ✦ Needs attention button counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off. Click ✦ to see only what is happening now.')}
     ${row('<span class="ic running">●</span><span class="ic done">✓</span><span class="ic error">✕</span>', 'Steps inside a conversation: blinking blue while running, green when done, red when it failed. The background jobs list also uses red ■ for stopped and gray ? when Docket lost track of how it ended.')}
     ${row('<span class="mcp-st connected"></span><span class="mcp-st needs-auth"></span><span class="mcp-st failed"></span><span class="mcp-st disabled"></span>', 'Connected services (in a session’s details and the desk’s Inspector): green connected, orange needs a sign-in or still connecting, red failed, gray turned off or not checked.')}
