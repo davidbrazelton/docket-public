@@ -317,13 +317,14 @@ const colorOf = (v) => getComputedStyle(document.documentElement).getPropertyVal
 function legend(el, kind) {
   el.innerHTML = SERIES[kind].map(([k, label, c]) => `<button data-s="${kind[0]}:${k}" class="${hidden.has(kind[0] + ':' + k) ? 'off' : ''}" style="--c:var(${c})"><i></i>${label}</button>`).join('');
 }
-function hoverZones(svg, data, lines) {
+// `note` adds a muted line of words after the date, such as what the numbers add up.
+function hoverZones(svg, data, lines, note) {
   const n = data.length, w = (W - PAD.l - PAD.r) / n;
   svg.insertAdjacentHTML('beforeend', data.map((d, i) => `<rect data-i="${i}" x="${PAD.l + w * i}" y="0" width="${w}" height="${H}" fill="transparent"/>`).join(''));
   svg.onmousemove = (e) => {
     const i = e.target.dataset?.i; if (i === undefined) return;
     const tip = $('tip');
-    tip.innerHTML = `<b>${new Date(data[i].day + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</b>` + lines(data[i]).map(([label, c, v]) => `<div><span><i style="--c:var(${c})"></i>${label}</span><span>${v}</span></div>`).join('');
+    tip.innerHTML = `<b>${new Date(data[i].day + 'T12:00:00').toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}</b>${note ? ` <span class="muted">${note(data[i])}</span>` : ''}` + lines(data[i]).map(([label, c, v]) => `<div><span><i style="--c:var(${c})"></i>${label}</span><span>${v}</span></div>`).join('');
     tip.style.display = 'block';
     tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = e.clientY + 14 + 'px';
   };
@@ -333,7 +334,7 @@ function renderCharts(rows) {
   const data = dailyData(rows);
   // added up day by day
   let run = { hypo: 0, save: 0, actual: 0, main: 0, agent: 0, compact: 0 };
-  const cum = data.map((d) => { run = { hypo: run.hypo + d.hypo, actual: run.actual + d.actual, main: run.main + d.main, agent: run.agent + d.agent, compact: run.compact + d.compact }; run.save = run.hypo - run.actual; return { day: d.day, ...run }; });
+  const cum = data.map((d) => { run = { hypo: run.hypo + d.hypo, actual: run.actual + d.actual, main: run.main + d.main, agent: run.agent + d.agent, compact: run.compact + d.compact }; run.save = run.hypo - run.actual; return { day: d.day, ...run, own: { ...d, save: d.hypo - d.actual } }; });
   const cumOn = SERIES.cum.filter(([k]) => !hidden.has('c:' + k));
   const cmax = niceMax(Math.max(0, ...cum.flatMap((d) => cumOn.map(([k]) => d[k]))));
   let s = axes(cmax, data.map((d) => d.day));
@@ -342,7 +343,10 @@ function renderCharts(rows) {
     s += `<polyline points="${pts}" fill="none" stroke="${colorOf(c)}" stroke-width="2"${dashed ? ' stroke-dasharray="6 4"' : ''}/>`;
   }
   const cumSvg = $('cumChart'); cumSvg.setAttribute('viewBox', `0 0 ${W} ${H}`); cumSvg.innerHTML = s;
-  hoverZones(cumSvg, cum, (d) => cumOn.map(([k, label, c]) => [label, c, money(d[k])]));
+  // each value is the total from the range's first day; that day's own amount beside it
+  const sign = (v) => (v < 0 ? '−' : '+') + money(Math.abs(v));
+  hoverZones(cumSvg, cum, (d) => cumOn.map(([k, label, c]) => [label, c, `${money(d[k])} <span class="muted">(${sign(d.own[k])} that day)</span>`]),
+    () => `(total since ${shortDay(cum[0].day)})`);
   legend($('cumLegend'), 'cum');
   // each day: bars stacked, the hypothetical as a bar behind them, cache expiries as a line on the right axis
   const stack = SERIES.day.filter(([k]) => ['main', 'agent', 'compact'].includes(k) && !hidden.has('d:' + k));
