@@ -71,6 +71,22 @@ export function handoffChildren(kids = [], oldId, newId) {
   return { moved, context };
 }
 
+// The old session's plans go with the work too (#667): each plan it coordinates gets the new session as coordinator,
+// and each task it holds that is not done or dropped gets the new session as holder, since the new one carries on that
+// same work (a done task keeps the session that did it). plans: the desk's plans (plans.mjs). Returns the plans to
+// take over, the tasks to move as [{ plan, tasks: [task ids] }], and the line for the new session's first message.
+export function handoffPlans(plans = [], oldId) {
+  const coordinated = plans.filter((p) => oldId && p.coordinator === oldId);
+  const held = plans.map((p) => ({ plan: p, tasks: p.tasks.filter((t) => oldId && t.holder === oldId && t.state !== 'done' && t.state !== 'dropped') }))
+    .filter((h) => h.tasks.length);
+  const parts = [];
+  if (coordinated.length) parts.push(` You are now the coordinator of the plan${coordinated.length > 1 ? 's' : ''} it coordinated: ${coordinated.map((p) => `${p.id} "${p.title}"`).join('; ')}.`);
+  if (held.length) parts.push(` The plan tasks it held are now yours: ${held.flatMap((h) => h.tasks.map((t) => `${h.plan.id}/${t.id} "${t.title}"`)).join('; ')}.`);
+  const ids = new Set([...coordinated.map((p) => p.id), ...held.map((h) => h.plan.id)]);
+  if (parts.length) parts.push(` Read ${ids.size > 1 ? 'them' : 'it'} with mcp__portal__plan_read before you carry on.`);
+  return { coordinated, held: held.map((h) => ({ plan: h.plan.id, tasks: h.tasks.map((t) => t.id) })), context: parts.join('') };
+}
+
 // A handoffPattern as saved in a company's profile, tidied, or undefined when it is not usable.
 export function cleanHandoffPattern(p) {
   if (!p || typeof p !== 'object') return undefined;

@@ -239,3 +239,16 @@ test('only the coordinator changes the goal, and the new goal is saved in the pl
   assert.equal(back.goal, 'Done when notices are connected.\nAnd Sarah has answered.');
   assert.deepEqual(back.tasks.map((t) => t.title), ['A']);
 });
+
+test('a handoff passes the old session\'s unfinished tasks to the new one, and leaves the rest (#667)', () => {
+  const s = createPlanStore({ dir: tmp() });
+  const p = s.create({ title: 'P', coordinator: 'c1', tasks: [{ kind: 'build', title: 'A' }, { kind: 'build', title: 'B' }, { kind: 'build', title: 'C' }] });
+  s.claim(p.id, 'T1', 'old', 'Old'); s.claim(p.id, 'T2', 'old', 'Old'); s.claim(p.id, 'T3', 'other', 'Other');
+  s.update(p.id, 'T2', { state: 'done' }, 'old');
+  assert.deepEqual(s.passTasks(p.id, ['t1', 'T2', 'T3'], 'old', 'new', 'New'), ['T1']);
+  const after = s.read(p.id);
+  assert.deepEqual(after.tasks.map((t) => [t.id, t.holder, t.holderTitle]), [['T1', 'new', 'New'], ['T2', 'old', 'Old'], ['T3', 'other', 'Other']]);
+  // the new session can now change the task it was handed
+  assert.equal(s.update(p.id, 'T1', { state: 'done' }, 'new').task.state, 'done');
+  assert.deepEqual(s.passTasks(p.id, ['T1'], 'old', 'new'), []);
+});

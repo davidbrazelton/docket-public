@@ -373,6 +373,18 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   function setCoordinator(id, actor, actorTitle = '') {
     return locked(() => { const p = must(id); p.coordinator = actor; p.coordinatorTitle = actorTitle; return write(p); });
   }
+  // A handoff (#667): the named tasks still held by session from, and not done or dropped, are held by session to now.
+  // Returns the ids of the tasks that moved.
+  function passTasks(id, taskIds, from, to, toTitle = '') {
+    if (!from || !to) throw new Error('Docket could not tell which sessions the tasks move between.');
+    return locked(() => {
+      const p = must(id), want = new Set(taskIds.map((x) => String(x).toUpperCase()));
+      const moved = p.tasks.filter((t) => want.has(t.id) && t.holder === from && !finished(t));
+      for (const t of moved) Object.assign(t, { holder: to, holderTitle: toTitle });
+      if (moved.length) write(p);
+      return moved.map((t) => t.id);
+    });
+  }
   // The coordinator changes the goal, so it keeps matching the finish line as tasks are added or replaced.
   function setGoal(id, goal, actor) {
     if (!String(goal ?? '').trim()) throw new Error('A goal cannot be empty.');
@@ -405,5 +417,5 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
     }
     return { done, total };
   }
-  return { dir, read, list, create, addTasks, claim, update, setCoordinator, setGoal, markReviewed, rollup, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
+  return { dir, read, list, create, addTasks, claim, update, setCoordinator, passTasks, setGoal, markReviewed, rollup, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
 }

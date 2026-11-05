@@ -18,7 +18,7 @@ import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring } from './tasks.mjs';
 import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal } from './reports.mjs';
-import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, cleanHandoffPattern, weaveCards } from './handoff.mjs';
+import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
 import { transcriptTimes } from './chat-times.mjs';
@@ -2945,7 +2945,8 @@ async function continueHandoff(id) {
   if (place.groupId !== undefined) record.groupId = place.groupId;
   const next = startSession({ clientId: client.id, cwd: h.cwd, title: h.title, parentId: place.parentId, settings: rec.settings || {}, engine: keptEngine(client, rec.engine || old?.engine), record });
   const kids = moveHandoffChildren(client, h.sessionId, next);
-  sendToSession(next, { text: h.brief, attachments: [], from: 'session', context:`(From Docket: this session continues the work of the session "${old?.title || rec.title || h.sessionId}" (id ${h.sessionId}), handed off to a fresh session. The message above is its handoff brief.${kids.context})` });
+  const plans = moveHandoffPlans(client, h.sessionId, next);
+  sendToSession(next, { text: h.brief, attachments: [], from: 'session', context:`(From Docket: this session continues the work of the session "${old?.title || rec.title || h.sessionId}" (id ${h.sessionId}), handed off to a fresh session. The message above is its handoff brief.${kids.context}${plans.context})` });
   settleHandoff(h, { state: 'started', startedId: next.id, archive: 'offered' });
   logEvent('handoff', `${h.sessionId} -> ${next.id}`);
   // The parent gets the new id as a fact, so its follow-ups reach the session doing the work now.
@@ -2980,6 +2981,25 @@ function moveHandoffChildren(client, oldId, next) {
     noticeToSession(client.id, m.id, `The session that started you ("${sessionTitle(client, oldId)}", id ${oldId}) handed its work off to a new session "${next.title || 'Session'}" (id ${next.id}). You are now listed under it, and your reports go to id ${next.id}. Nothing to do now; reply in one line at most.`)
       .catch((e) => console.log('[handoff]', e.message));
   }
+  return { context };
+}
+// The plans the old session coordinates and the tasks it holds move to the new session (handoffPlans in handoff.mjs,
+// #667), through the plan store so its locking and file writes stay as they are. A plan that fails to move is logged
+// and left as it was: the new session can still take it over with plan_take_over.
+function moveHandoffPlans(client, oldId, next) {
+  if (!plansOn(client)) return { context: '' };
+  const store = plansOf(client);
+  const { coordinated, held, context } = handoffPlans(store.list(), oldId);
+  let changed = false;
+  for (const p of coordinated) {
+    try { store.setCoordinator(p.id, next.id, next.title || ''); changed = true; } catch (e) { console.log('[handoff plans]', p.id, e.message); }
+  }
+  for (const h of held) {
+    try { if (store.passTasks(h.plan, h.tasks, oldId, next.id, next.title || '').length) changed = true; } catch (e) { console.log('[handoff plans]', h.plan, e.message); }
+  }
+  if (!changed) return { context: '' };
+  broadcast({ t: 'plans', client: client.id });
+  logEvent('handoff plans', `${oldId} -> ${next.id}: ${[...coordinated.map((p) => p.id), ...held.map((h) => `${h.plan}/${h.tasks.join(',')}`)].join(' ')}`);
   return { context };
 }
 function keepHandoffHere(id) {

@@ -1,7 +1,7 @@
 // Tests for handoff.mjs: handing a session off to a fresh one. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { titleFromBrief, matchHandoff, handoffFromTurn, handoffPlace, handoffChildren, cleanHandoffPattern, weaveCards } from '../handoff.mjs';
+import { titleFromBrief, matchHandoff, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from '../handoff.mjs';
 
 const PATTERN = { marker: '^ACME: handoff - ', block: 'first fenced block after the marker' };
 const BRIEF = [
@@ -130,4 +130,27 @@ test('a card already in the chat is not added twice, and no saved cards changes 
   const evs = [{ k: 'user', text: 'hi' }, c];
   assert.equal(weaveCards(evs, [{ ev: c }]).length, 2);
   assert.deepEqual(weaveCards(evs, undefined), evs);
+});
+
+test('the old session\'s plans go to the new one: the ones it coordinates, and the tasks it still holds (#667)', () => {
+  const plans = [
+    { id: 'p-aaa111', title: 'Ship it', coordinator: 'old', tasks: [
+      { id: 'T1', title: 'Build', holder: 'w1', state: 'claimed' },
+      { id: 'T2', title: 'Check', holder: 'old', state: 'claimed' },
+    ] },
+    { id: 'p-bbb222', title: 'Other plan', coordinator: 'boss', tasks: [
+      { id: 'T1', title: 'Done one', holder: 'old', state: 'done' },
+      { id: 'T2', title: 'Dropped one', holder: 'old', state: 'dropped' },
+      { id: 'T3', title: 'Waiting', holder: 'old', state: 'waiting_on_user' },
+    ] },
+    { id: 'p-ccc333', title: 'Not ours', coordinator: 'boss', tasks: [{ id: 'T1', title: 'X', holder: 'w2', state: 'claimed' }] },
+  ];
+  const r = handoffPlans(plans, 'old');
+  assert.deepEqual(r.coordinated.map((p) => p.id), ['p-aaa111']);
+  assert.deepEqual(r.held, [{ plan: 'p-aaa111', tasks: ['T2'] }, { plan: 'p-bbb222', tasks: ['T3'] }]);
+  assert.ok(r.context.includes('coordinator of the plan it coordinated: p-aaa111 "Ship it".'));
+  assert.ok(r.context.includes('p-aaa111/T2 "Check"; p-bbb222/T3 "Waiting"'));
+  assert.ok(r.context.includes('plan_read'));
+  assert.deepEqual(handoffPlans(plans.slice(2), 'old'), { coordinated: [], held: [], context: '' });
+  assert.deepEqual(handoffPlans(plans, ''), { coordinated: [], held: [], context: '' });
 });
