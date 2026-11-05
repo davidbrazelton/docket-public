@@ -72,7 +72,7 @@ header.top .brand { font-weight: 600; margin-right: 8px; color: var(--accent); }
 .badge { background: var(--warn); color: var(--on-warn); border-radius: 999px; font-size: 11px; padding: 0 6px; font-weight: 600; }
 header.top .spacer { flex: 1; }
 header.top > button { white-space: nowrap; }
-header.top #pauseBtn { padding: 4px 8px; } /* ⏸ Pause all, beside Terminal */
+header.top #pauseBtn { padding: 5px 8px; } /* ⏸ Pause all, beside Terminal: an action, bordered and as tall as it */
 header.top .nav-btns { display: flex; gap: 2px; margin-left: -6px; }
 header.top .nav-btns button { padding: 4px 6px; display: flex; align-items: center; }
 header.top .nav-ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
@@ -85,7 +85,7 @@ header.top .nav-btns button:disabled { opacity: .35; cursor: default; }
    stays high), and the Details panel button last. A panel button is filled in the main color while its panel shows. */
 header.top .pane-btn { position: relative; display: flex; align-items: center; padding: 4px 6px; }
 header.top .pane-ic { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-header.top .pane-btn.on { color: var(--accent); }
+header.top .pane-btn.on { color: var(--accent); background: var(--accent-soft); }
 header.top .pane-btn.on .fillp { fill: currentColor; }
 header.top .pane-btn .badge { position: absolute; right: -4px; top: -3px; font-size: 9px; padding: 0 4px; }
 header.top .top-icons { display: flex; align-items: center; margin-left: -8px; }
@@ -103,6 +103,8 @@ header.top .bi-btn svg path { fill: currentColor; }
 header.top .g-btn { gap: 3px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 header.top .g-btn.warn { color: var(--warn); }
 #termTopBtn .ti { display: none; width: 16px; height: 16px; }
+/* DESIGN.md: links flat, actions bordered, and every small icon-only button at least 32 px wide and 28 px tall */
+header.top #menuBtn, header.top .nav-btns button, header.top .pane-btn, header.top #pauseBtn, header.top #reloadAllBtn, header.top #feedbackBtn { min-width: 32px; min-height: 28px; justify-content: center; }
 /* below 900 px the desk tabs take a row of their own under the buttons (#676) */
 @media (max-width: 900px) {
   header.top { gap: 8px; flex-wrap: wrap; row-gap: 6px; }
@@ -113,7 +115,7 @@ header.top .g-btn.warn { color: var(--warn); }
 @media (max-width: 640px) {
   header.top { gap: 6px; padding: 8px 10px; }
   header.top .gauges, header.top .gsep { display: none; }
-  #termTopBtn { padding: 4px 6px; display: flex; align-items: center; }
+  #termTopBtn { padding: 0 8px; min-width: 32px; display: flex; align-items: center; justify-content: center; align-self: stretch; } /* as tall as ⏸ beside it */
   #termTopBtn .tl { display: none; }
   #termTopBtn .ti { display: block; }
 }
@@ -167,10 +169,25 @@ aside.side { position: relative; border-right: 1px solid var(--divider); backgro
 .tag.unread-n, .run-row .tag.unread { border-color: var(--accent); color: var(--accent); font-weight: 600; }
 .row .meta.cold { color: var(--bad); }
 .row .meta.warn { color: var(--warn); font-weight: 600; }
-/* ✦ Needs attention carries the attention count; the 👁 view menu opens under its button, right aligned. */
+/* ✦ Needs attention and its Keep period are one filter control (#684, DESIGN.md): ✦ and its count on the left turn it
+   on and off; the period on the right opens the Keep menu. On: soft tint on ✦, main-color border round the whole of it. */
 .view-menu { position: relative; flex: none; display: flex; }
-#attnBtn { position: relative; }
-#attnBtn .n { position: absolute; top: -5px; right: -5px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--warn); color: var(--on-warn); font-size: 10px; font-weight: 700; display: grid; place-items: center; }
+.attn-ctl { position: relative; flex: none; display: inline-flex; align-items: stretch; height: 28px; margin-left: auto; border: 1px solid var(--line); border-radius: 8px; }
+.attn-ctl > button { border: none; height: 100%; display: flex; align-items: center; gap: 5px; padding: 0 8px; color: var(--muted); }
+.attn-ctl #attnBtn { border-radius: 7px 0 0 7px; min-width: 32px; justify-content: center; padding-left: 10px; font-size: 13px; }
+.attn-ctl #attnWinBtn { border-radius: 0 7px 7px 0; border-left: 1px solid var(--line); padding-right: 10px; font-size: 12px; opacity: .85; white-space: nowrap; }
+.attn-ctl #attnWinBtn .caret { font-size: 9px; }
+.attn-ctl #attnWinBtn .ws { display: none; }
+.attn-ctl.on { border-color: var(--accent); }
+.attn-ctl.on #attnBtn { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.attn-ctl.on #attnWinBtn { border-left-color: var(--accent); color: var(--accent); opacity: 1; }
+.attn-ctl #attnWinBtn[aria-expanded="true"] { background: var(--panel-2); color: var(--text); }
+.attn-ctl .n { min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--warn); color: var(--on-warn); font-size: 10px; font-weight: 700; display: inline-grid; place-items: center; line-height: 1; }
+.tl-menu.attn-pop { left: auto; right: 0; min-width: 240px; color: var(--text); }
+.attn-pop .mh { padding: 4px 8px 2px; font-size: 11px; color: var(--muted); }
+.attn-pop button { display: flex; align-items: center; width: 100%; text-align: left; border: none; border-radius: 6px; padding: 5px 8px; font-size: 13px; white-space: nowrap; }
+.attn-pop .tick { width: 18px; flex: none; color: var(--accent); }
+.attn-pop .sub { margin-left: auto; padding-left: 10px; color: var(--muted); font-size: 11px; }
 .row { position: relative; }
 .row .arrow { position: absolute; color: var(--muted); left: 16px; }
 /* Tree mode: each level steps in 16px more than the one above, up to a cap set in sessionRow. */
@@ -194,22 +211,20 @@ select.draft-group { max-width: 220px; font: inherit; color: var(--text); backgr
 .pick-bar .msg { flex-basis: 100%; color: var(--bad); }
 .pick-bar .msg:empty { display: none; }
 .attn-bar .gap { margin-left: 8px; }
-/* Order at the left; (while ✦ is on) Keep, then ✦ and the 👁 view menu at the right end of the same line */
+/* Order at the left; the ✦ control and the 👁 view menu at the right end of the same line */
 .list-bar { padding: 0 2px; }
 .list-bar[hidden] { display: none; }
-.list-bar #listOpts, .list-bar #attnOpts { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.list-bar #listOpts { overflow: hidden; }
+.list-bar #listOpts { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
 .list-bar #listOpts > span { flex: none; }
-.list-bar #attnOpts { flex: none; } /* short labels; the Order one gives way first in a narrow panel */
-.list-bar #attnOpts:empty { display: none; }
-.list-bar select { min-width: 0; flex: 0 1 auto; text-overflow: ellipsis; padding: 1px 2px; }
-.list-bar #attnOpts, .list-bar #attnOpts:empty + #attnBtn { margin-left: auto; } /* Keep pushes right, or ✦ when Keep is hidden */
+.list-bar select { min-width: 0; flex: 0 1 auto; height: 28px; text-overflow: ellipsis; }
 .list-bar { container-type: inline-size; }
-@container (max-width: 299px) { .list-bar:has(#attnOpts:not(:empty)) #listOpts > span { display: none; } } /* the dropdown still shows its choice */
-@container (max-width: 229px) { .list-bar:has(#attnOpts:not(:empty)) #listOpts { display: none; } }
-.list-bar button { flex: none; width: 30px; height: 26px; padding: 0; font-size: 14px; }
-.list-bar button.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
-.attn-bar select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 1px 4px; }
+/* a narrow panel: the Order label goes first, then the Keep period takes its short form, then Order goes */
+@container (max-width: 299px) { .list-bar #listOpts > span { display: none; } } /* the dropdown still shows its choice */
+@container (max-width: 259px) { .attn-ctl #attnWinBtn .wl { display: none; } .attn-ctl #attnWinBtn .ws { display: inline; } }
+@container (max-width: 199px) { .list-bar #listOpts { display: none; } }
+.list-bar .view-menu > button { flex: none; min-width: 32px; height: 28px; padding: 0; font-size: 14px; }
+.list-bar .view-menu > button[aria-expanded="true"] { background: var(--panel-2); }
+.attn-bar select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0 4px; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--line); }
 .dot.running, .dot.starting { background: var(--run); animation: pulse 1.2s infinite; }
 .dot.needs { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 25%, transparent); }
@@ -817,7 +832,7 @@ a.pv-tab { padding: 3px 5px; }
 .file-card .note { text-align: left; padding: 4px 14px 2px; }
 .side-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--panel-2); border-radius: 8px; padding: 3px; }
 .side-tabs button { border: none; padding: 4px 8px; font-size: 13px; color: var(--muted); }
-.side-tabs button.on { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
+.side-tabs button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; } /* links: the open tab gets the soft tint (DESIGN.md) */
 .editor { display: flex; flex-direction: column; gap: 14px; padding-bottom: 20px; }
 aside.tasks.wide { width: max(440px, var(--right-w, 330px)); }
 .resizer { position: absolute; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 3; touch-action: none; }
@@ -971,7 +986,7 @@ html.no-list aside.side .pane-close, html.no-details aside.tasks .pane-close { d
 .cfg-banner[hidden] { display: none; }
 .cfg-banner span { flex: 1; }
 .tag.cfg { border-color: var(--warn); color: var(--warn); flex: none; }
-header.top #reloadAllBtn { padding: 4px 8px; color: var(--warn); }
+header.top #reloadAllBtn { padding: 5px 8px; color: var(--warn); }
 .cut-banner span { flex: 1; }
 .cut-banner button { background: var(--on-accent); color: var(--accent); border-color: var(--on-accent); font-weight: 600; }
 /* Docket will not start by itself after a restart: across the whole page, under the top bar. */
@@ -1002,10 +1017,12 @@ html.popout header.top, html.popout .start-banner, html.popout aside.side, html.
 .tl-bar .tl-sum span { flex: 1; min-width: 0; cursor: help; }
 .tl-bar .tl-sum button { font-size: 12px; padding: 2px 8px; }
 .tl-menu a { font-size: 12px; color: var(--accent); }
-.tl-menu.view-pop { left: auto; right: 0; min-width: 210px; }
-.view-pop label { padding: 5px 8px; font-size: 13px; }
-.view-pop label b { white-space: nowrap; }
-.view-pop input { margin: 0; flex: none; }
+/* the 👁 menu: each way of showing the list is a toggle chip, a filter (DESIGN.md): bordered; on, soft tint, main-color border and a ✓ */
+.tl-menu.view-pop { left: auto; right: 0; width: 250px; min-width: 0; padding: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+.tl-menu.view-pop[hidden] { display: none; }
+.view-pop .chip-tgl { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; white-space: nowrap; color: var(--text); }
+.view-pop .chip-tgl.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.view-pop .chip-tgl.on::before { content: '✓'; font-size: 11px; }
 .tl-note { font-size: 11px; color: var(--muted); padding: 6px 14px 0; }
 .tl-w { display: flex; flex-direction: column; gap: 1px; border-left: 2px solid var(--line); padding-left: 6px; margin: -4px 0; }
 .tl-e { border: 1px solid transparent; border-radius: 6px; font-size: 12px; min-width: 0; }
@@ -1136,8 +1153,8 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   <span class="spacer"></span>
   <span class="conn" id="conn" hidden>Portal not reachable, retrying…</span>
   <button id="termTopBtn" data-tip="terminal" aria-haspopup="true" aria-label="Terminal"><span class="tl">Terminal</span><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 17l6-5-6-5M12 19h8"/></svg></button>
-  <button class="ghost" id="pauseBtn" data-tip="pause-all" aria-label="Pause all sessions">⏸︎</button>
-  <button class="ghost" id="reloadAllBtn" data-tip="reload-all" aria-label="Reload all sessions whose config changed" hidden>⟳<span id="reloadAllN"></span></button>
+  <button id="pauseBtn" data-tip="pause-all" aria-label="Pause all sessions">⏸︎</button>
+  <button id="reloadAllBtn" data-tip="reload-all" aria-label="Reload all sessions whose config changed" hidden>⟳<span id="reloadAllN"></span></button>
   <button class="ghost" id="feedbackBtn" data-tip="feedback" aria-label="Suggest a feature" aria-haspopup="dialog" hidden>🔨</button>
   <span class="top-icons"><span class="sep" aria-hidden="true"></span><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
 </header>
@@ -1147,9 +1164,9 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     <div class="resizer" id="leftResizer" role="separator" aria-orientation="vertical" aria-label="Resize the session list" data-tip="resize-left" tabindex="0"></div>
     <div class="side-head">
       <div class="side-top"><div class="side-tabs" role="tablist"><button role="tab" data-mode="sessions" class="on" data-tip="tab-sessions">Sessions</button><button role="tab" data-mode="schedules" data-tip="tab-schedules">Schedules</button></div><button class="ghost pane-close" id="sideClose" aria-label="Close the session list" title="Back to the session (Esc)">✕</button></div>
-      <div class="search-row"><button class="primary" id="newBtn" data-tip="new">+ New session</button><input id="search" placeholder="Search sessions" aria-label="Search sessions" data-tip="search"><button id="textSearchBtn" class="ghost" aria-pressed="false" data-tip="textsearch">❝</button></div>
+      <div class="search-row"><button class="primary" id="newBtn" data-tip="new">+ New session</button><input id="search" placeholder="Search sessions" aria-label="Search sessions" data-tip="search"><button id="textSearchBtn" aria-pressed="false" data-tip="textsearch">❝</button></div>
       <div id="searchNote" class="search-note" hidden></div>
-      <div class="attn-bar list-bar" id="listBar"><span id="listOpts"></span><span id="attnOpts"></span><button id="attnBtn" class="ghost" aria-pressed="false" data-tip="attn">✦</button><div class="view-menu"><button id="viewBtn" class="ghost" aria-haspopup="true" aria-expanded="false" data-tip="view">👁</button><div id="viewMenu" class="tl-menu view-pop" data-menu hidden></div></div></div>
+      <div class="attn-bar list-bar" id="listBar"><span id="listOpts"></span><span class="attn-ctl" id="attnCtl"><button id="attnBtn" aria-pressed="false" data-tip="attn">✦</button><button id="attnWinBtn" aria-haspopup="menu" aria-expanded="false" data-tip="attn-window"></button><div id="attnMenu" class="tl-menu attn-pop" role="menu" aria-label="Which read sessions ✦ Needs attention also keeps" hidden></div></span><div class="view-menu"><button id="viewBtn" aria-haspopup="true" aria-expanded="false" data-tip="view">👁</button><div id="viewMenu" class="tl-menu view-pop" data-menu hidden></div></div></div>
     </div>
     <div id="signin"></div>
     <div id="inbox"></div>
@@ -1318,7 +1335,7 @@ const HELP = [
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
     ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), and which chips each row shows. Each desk keeps its own.'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
-    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that\n• need you (a reply or an error you have not opened yet)\n• wait on your answer\n• are working\n• have a warm cache\nBelow them, dimmed:\n• the ones you touched lately (sent a message or started; the Keep dropdown beside ✦ sets how far back, Workday (the last workday) at first)\n• the ones you pinned (right-click a session)\nA family shows whole: a session started from another one sits under it, its parent dimmed if only there for it.\nThe orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then dimmed what you touched lately or pinned. Click to show everything.'],
+    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that\n• need you (a reply or an error you have not opened yet)\n• wait on your answer\n• are working\n• have a warm cache\nBelow them, dimmed:\n• the ones you touched lately (sent a message or started; the Keep period on the right of ✦ sets how far back, Workday (the last workday) at first; picking one also turns ✦ on)\n• the ones you pinned (right-click a session)\nA family shows whole: a session started from another one sits under it, its parent dimmed if only there for it.\nThe orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then dimmed what you touched lately or pinned. Click to show everything.'],
     ['attn-window', '✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, dimmed, by when you last touched them (sent a message or started them; opening one does not count):\n• Off: none\n• 12 hours\n• Yesterday: from the start of yesterday\n• Workday (the last workday): from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included\n• 7 days\n• Pins: only pinned ones\nPinned sessions show under every choice. Each desk keeps its own.'],
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
@@ -3650,8 +3667,10 @@ document.addEventListener('change', async (e) => {
 
 // ---------- keeping sessions in needs attention (tested in test/attn-keep.test.mjs) ----------
 // With ✦ on, a read, idle session also stays in the list, dimmed, while you touched it (sent it a message or started it;
-// opening it does not count) within the window picked beside Order (the ✦ dropdown), or while it is pinned. Times are local; workdays are Monday to Friday.
-const ATTN_WINDOWS = [['off', 'Off'], ['12h', '12 hours'], ['yesterday', 'Yesterday'], ['workday', 'Workday'], ['7d', '7 days'], ['pins', 'Pins']];
+// opening it does not count) within the Keep period picked on the ✦ control, or while it is pinned. Times are local; workdays are Monday to Friday.
+// [key, name, short name for a narrow panel, what it keeps]
+const ATTN_WINDOWS = [['off', 'Off', 'Off', 'No read ones but pins'], ['12h', '12 hours', '12h', 'Touched in the last 12 hours'], ['yesterday', 'Yesterday', 'Yday', 'Since yesterday morning'],
+  ['workday', 'Workday', 'WD', 'Since the last workday'], ['7d', '7 days', '7d', 'Touched in the last 7 days'], ['pins', 'Pins', 'Pins', 'Pinned sessions only']];
 const attnWindowOf = (v) => ATTN_WINDOWS.some(([k]) => k === v) ? v : 'workday';
 const dayStart = (t, back = 0) => { const d = new Date(t); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - back); return +d; };
 // The start of the latest Monday-to-Friday day before today on which any session was touched. Weekend days after it
@@ -3732,18 +3751,30 @@ let listBarHtml = null;
 function setListBar() {
   $('listBar').hidden = false;
   const order = `<span>Order:</span><select id="listOrder" aria-label="Which sessions go at the top of each section"${tip('order')}>${ORDER_CHOICES.map(([v, l]) => `<option value="${v}" ${listOrder() === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
-  // The look-back sits right after ✦ and only while ✦ Needs attention is on: it changes nothing otherwise.
-  const keep = S.attn ? `<span>Keep:</span><select id="attnWindow" aria-label="Which read sessions ✦ Needs attention also keeps"${tip('attn-window')}>${ATTN_WINDOWS.map(([v, l]) => `<option value="${v}" ${S.attnWindow === v ? 'selected' : ''}>${l}</option>`).join('')}</select>` : '';
-  const html = order + '\n' + keep;
-  if (html === listBarHtml) return;
+  if (order === listBarHtml) return;
   if (listSelectOpen()) { S.listWanted = true; return; }
-  listBarHtml = html; $('listOpts').innerHTML = order; $('attnOpts').innerHTML = keep;
+  listBarHtml = order; $('listOpts').innerHTML = order;
+}
+// The Keep period on the right of the ✦ control (#684): its name, and a short one for a narrow panel. It always shows,
+// dimmed while ✦ is off, so it is plain what ✦ keeps when turned on.
+function attnWinLabel(win) {
+  const w = ATTN_WINDOWS.find(([k]) => k === win) || ATTN_WINDOWS[0];
+  return `<span class="wl">${w[1]}</span><span class="ws">${w[2]}</span> <span class="caret" aria-hidden="true">▼</span>`;
+}
+// The Keep menu: every period, a tick on the one picked.
+function attnMenuHtml(win) {
+  return `<div class="mh">Also keep read sessions from</div>${ATTN_WINDOWS.map(([k, l, , sub]) => `<button role="menuitemradio" aria-checked="${win === k}" data-win="${k}" title="Also keep: ${l}, ${sub.toLowerCase()}"><span class="tick">${win === k ? '✓' : ''}</span>${l}<span class="sub">${sub}</span></button>`).join('')}`;
+}
+// Picking a period: while ✦ is off it also turns ✦ on; while on it only changes the period. It never turns ✦ off.
+function pickAttnWindow(S, win) {
+  const turnedOn = !S.attn;
+  S.attnWindow = attnWindowOf(win); S.attn = true;
+  return turnedOn;
 }
 // end of list bar
 document.addEventListener('change', (e) => {
-  if (['listOrder', 'attnWindow'].includes(e.target.id)) e.target.blur(); // the list is held while it has the focus
+  if (e.target.id === 'listOrder') e.target.blur(); // the list is held while it has the focus
   if (e.target.id === 'listOrder') { deskStore.set('listOrder', e.target.value); $('list').scrollTop = 0; renderList(); }
-  if (e.target.id === 'attnWindow') { S.attnWindow = attnWindowOf(e.target.value); deskStore.set('attnWindow', S.attnWindow); renderList(); }
 });
 // ---------- the 👁 view menu: every way of showing the list, in one place ----------
 // [state name, store key, label, tip key]. Brand logos only show once a company runs more than one brand.
@@ -3765,30 +3796,57 @@ function readDeskSettings() {
 readDeskSettings();
 const viewOpen = () => !$('viewMenu').hidden;
 function renderViewMenu() {
+  // toggle chips, a filter (DESIGN.md): bordered, and when on a soft tint, main-color border and ✓
   $('viewMenu').innerHTML = VIEW_OPTS.filter(([k]) => (k !== 'brandLogos' || multiBrand()) && (k !== 'showEmptyGroups' || S.groupView))
-    .map(([k, , label, key]) => `<label${tip(key, S[k])}><input type="checkbox" data-view="${k}"${tip(key, S[k])}${S[k] ? ' checked' : ''}><b>${label}</b></label>`).join('');
+    .map(([k, , label, key]) => `<button class="chip-tgl${S[k] ? ' on' : ''}" data-view="${k}" aria-pressed="${!!S[k]}"${tip(key, S[k])}>${label}</button>`).join('');
 }
-// ✦ carries the attention count, so nothing waiting on you goes unseen; it is lit while the list shows only what needs attention.
+// ✦ carries the attention count, so nothing waiting on you goes unseen; the whole control is lit while the list shows only
+// what needs attention. The Keep period beside it is redrawn here too.
 function renderAttnBtn() {
   const n = allSessionRows().filter((s) => ['needs', 'waiting', 'ending', 'cut'].includes(attnKind(s))).length;
   const b = $('attnBtn');
-  b.classList.toggle('on', S.attn);
+  $('attnCtl').classList.toggle('on', S.attn);
   b.setAttribute('aria-pressed', String(S.attn));
   b.title = tipText('attn', S.attn);
-  b.innerHTML = '✦' + (n ? `<span class="n">${n}</span>` : '');
+  const html = '✦' + (n ? `<span class="n">${n}</span>` : '');
+  if (b.innerHTML !== html) b.innerHTML = html;
+  const w = attnWinLabel(S.attnWindow);
+  if ($('attnWinBtn').dataset.w !== w) { $('attnWinBtn').innerHTML = w; $('attnWinBtn').dataset.w = w; }
 }
-$('attnBtn').onclick = () => { S.attn = !S.attn; deskStore.set('attnFilter', S.attn); $('list').scrollTop = 0; renderList(); };
+$('attnBtn').onclick = () => { attnMenu(false); S.attn = !S.attn; deskStore.set('attnFilter', S.attn); $('list').scrollTop = 0; renderList(); };
+const attnMenuOpen = () => !$('attnMenu').hidden;
+function attnMenu(open) {
+  $('attnMenu').hidden = !open; $('attnWinBtn').setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  $('attnMenu').innerHTML = attnMenuHtml(S.attnWindow);
+  $('attnMenu').querySelector('[aria-checked="true"]')?.focus();
+}
+$('attnWinBtn').onclick = () => attnMenu(!attnMenuOpen());
+$('attnMenu').onclick = (e) => {
+  const b = e.target.closest('[data-win]'); if (!b) return;
+  if (pickAttnWindow(S, b.dataset.win)) { deskStore.set('attnFilter', true); $('list').scrollTop = 0; }
+  deskStore.set('attnWindow', S.attnWindow);
+  attnMenu(false); $('attnWinBtn').focus(); renderList();
+};
+$('attnMenu').addEventListener('keydown', (e) => { // ↑ ↓ move through the periods
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  e.preventDefault();
+  const items = [...$('attnMenu').querySelectorAll('[data-win]')], i = items.indexOf(document.activeElement);
+  items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
+});
+document.addEventListener('mousedown', (e) => { if (attnMenuOpen() && !e.target.closest('.attn-ctl')) attnMenu(false); });
+document.addEventListener('keydown', (e) => { if (attnMenuOpen() && e.key === 'Escape') { e.stopPropagation(); attnMenu(false); $('attnWinBtn').focus(); } }, true);
 function viewMenu(open) {
   $('viewMenu').hidden = !open; $('viewBtn').setAttribute('aria-expanded', String(open));
   if (open) renderViewMenu();
 }
 $('viewBtn').onclick = () => viewMenu(!viewOpen());
-$('viewMenu').addEventListener('change', (e) => {
-  const o = VIEW_OPTS.find(([k]) => k === e.target.dataset.view); if (!o) return;
-  const [k, key, , tipKey] = o;
-  S[k] = e.target.checked; deskStore.set(key, S[k]);
-  e.target.closest('label').title = e.target.title = tipText(tipKey, S[k]);
-  if (k === 'groupView') renderViewMenu(); // Show empty groups only means something while grouped
+$('viewMenu').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-view]'); if (!b) return;
+  const [k, key] = VIEW_OPTS.find(([x]) => x === b.dataset.view);
+  S[k] = !S[k]; deskStore.set(key, S[k]);
+  renderViewMenu(); // redrawn: the chip's look and tip, and Show empty groups only means something while grouped
+  $('viewMenu').querySelector(`[data-view="${k}"]`)?.focus();
   renderList();
 });
 document.addEventListener('mousedown', (e) => { if (viewOpen() && !e.target.closest('.view-menu')) viewMenu(false); });
