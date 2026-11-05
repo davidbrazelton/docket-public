@@ -1028,6 +1028,23 @@ html.popout header.top, html.popout .start-banner, html.popout aside.side, html.
 .tl-filt { position: relative; }
 .tl-filt > button { font-size: 12px; padding: 2px 10px; }
 .tl-filt > button::after { content: ' ▾'; color: var(--muted); }
+/* the hover card on a session row (#691) */
+.hover-card { position: fixed; z-index: 30; width: 360px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow: hidden; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.2); padding: 11px 14px; pointer-events: none; font-size: 13px; line-height: 1.4; }
+.hover-card[hidden] { display: none; }
+.hover-card .hc-title { font-weight: 600; font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+.hover-card hr { border: 0; border-top: 1px solid var(--line); margin: 9px 0; }
+.hover-card dl { display: grid; grid-template-columns: 92px 1fr; gap: 5px 10px; margin: 0; }
+.hover-card dt { color: var(--muted); }
+.hover-card dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.hover-card .hc-st { display: inline-flex; align-items: center; gap: 7px; }
+.hover-card .hc-st .dot { animation: none; }
+.hover-card .hc-said { grid-column: 1 / -1; background: var(--panel-2); border-radius: 6px; padding: 6px 8px; }
+.hover-card .hc-said > div { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.hover-card .hc-path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.hover-card .hc-bar { display: inline-block; width: 70px; height: 6px; border-radius: 3px; background: var(--line); vertical-align: middle; margin-right: 6px; overflow: hidden; }
+.hover-card .hc-bar i { display: block; height: 100%; background: var(--muted); }
+.hover-card .hc-bar.full i { background: var(--bad); }
+.hover-card .snip { white-space: normal; }
 .tl-menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 10; min-width: 230px; max-height: 360px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
 .tl-menu label { display: flex; gap: 7px; align-items: center; padding: 3px 6px; border-radius: 5px; font-size: 12px; cursor: pointer; }
 .tl-menu label:hover { background: var(--panel-2); }
@@ -1269,6 +1286,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   <details><summary>What else is sent</summary><div>With your message, Docket sends the screen you were on, its version, your window and screen size, your browser and computer type, time zone and language, which Docket settings are on, which AI brands are set up, and how many sessions are open. Never what is in your sessions, file or folder names, sign-ins, or desk names. Keys and phone numbers in your message are removed before it goes.</div><pre id="fbFacts"></pre></details>
   <div class="fb-res" id="fbRes" role="status" aria-live="polite"></div>
 </div><div class="dlg-btns"><button id="fbClose" data-tip="fb-close">Close</button><button class="primary" id="fbSend" data-tip="fb-send">Send</button></div></div></div>
+<div class="hover-card" id="hoverCard" role="tooltip" hidden></div>
 <div class="tour" id="tour" hidden><div class="tour-hole" id="tourHole"></div><div class="tour-card" id="tourCard" role="dialog" aria-modal="true" aria-labelledby="tourTitle" aria-describedby="tourText"><div class="tour-step" id="tourStep"></div><h3 id="tourTitle"></h3><p id="tourText"></p><div class="tour-btns"><button class="ghost" id="tourSkip" data-tip="tour-skip">Skip</button><span class="spacer"></span><button id="tourBack" data-tip="tour-back">Back</button><button class="primary" id="tourNext" data-tip="tour-next">Next</button></div></div></div>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -1367,6 +1385,7 @@ const HELP = [
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
     ['commentchips', '👁 > Comment chips', 'Comment chips: show a speech bubble on a session\'s row when one of its tickets or pull requests has a new comment', 'Each row shows a speech bubble when a comment is waiting. Turn it off to hide them; Details still shows them.'],
+    ['hovercard', '👁 > Hover card', 'Hover card: rest the pointer on a session row to see its full title and every detail (status, last reply, plan, pull requests, memory, folder and more). Off: the row only shows its full title', 'Resting the pointer on a row shows its full title and every detail. Turn it off to see only the full title.'],
     ['brandlogos', '👁 > Brand logos', 'Brand logos: show which AI runs each session, as a small logo on its row', 'Each row shows the logo of the AI that runs it. Turn it off to hide the logos.'],
     ['textsearch', '❝ Search conversations', 'Search conversations: also match what you and the AI wrote in each session', 'Searching what was said in each conversation too. Click to search titles and folders only.'],
     ['order', 'Order', 'Which sessions go at the top of each section. Natural keeps every row in one place, the order the sessions were started; drag a row to move it. Each desk keeps its own.'],
@@ -3818,6 +3837,7 @@ document.addEventListener('change', (e) => {
 // [state name, store key, label, tip key]. Brand logos only show once a company runs more than one brand.
 // The last: what each is when nothing was set yet. Each desk keeps its own (deskStore).
 const VIEW_OPTS = [
+  ['hoverCard', 'hoverCard', 'Hover card', 'hovercard', true],
   ['groupView', 'groupView', 'Grouped', 'groupview', true],
   ['showEmptyGroups', 'showEmptyGroups', 'Show empty groups', 'show-empty', false],
   ['prChips', 'prChips', 'Pull request chips', 'prchips', true],
@@ -3994,10 +4014,90 @@ function sessionRow(s, depth) {
   const more = run && run.unread > (run.topUnread ? 1 : 0) ? `<span class="tag unread-n" title="Runs of this schedule with a reply you have not read. The Details panel lists every run.">${run.unread} unread</span>` : '';
   const snip = snippetFor(s);
   const pin = !s.archived && pinnedHere(s.id) ? `<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
-  return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
+  return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''}${S.hoverCard ? '' : ` title="${esc((run?.title || s.title) || 'Untitled')}"`}>
       ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotTip(s)}></span><span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>
       <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
+// ---------- the hover card (#691): a row's full title and every detail, while 👁 > Hover card is on ----------
+// Each line shows only when it applies. Read from the same data the row itself draws from.
+const NEED_WORDS = { question: 'a question', merge: 'a pull request to merge', done: 'work done, ready to close', reply: 'a reply to read', problem: 'an error' };
+function statusWords(s, c) {
+  if (c === 'asking') return 'Waiting on your answer';
+  if (c === 'needs' || needsYou(s)) return `Waiting on you: ${NEED_WORDS[needLabel(s, openPR(s.id))]}`;
+  if (c === 'failed') return 'Stopped by an error';
+  if (c === 'childwait' || c === 'childnews') return kidsText(s);
+  return { running: s.compactingSince ? 'Compacting the conversation' : 'Working', starting: 'Starting', background: 'Background steps running', idle: 'Done, read',
+    resting: 'Resting: wakes on your next message', stopped: 'Interrupted', ended: 'Done, not running' }[c] || c;
+}
+const cardWhen = (t) => {
+  const d = new Date(t), today = d.toDateString() === new Date().toDateString();
+  return (today ? 'Today ' : d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ', ') + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+};
+const rowById = (id) => S.live[id] || (S.history[S.client] || []).find((r) => r.id === id);
+function hoverCardHtml(s) {
+  const run = S.runInfo.get(s.id), c = dotClass(s), L = [];
+  const line = (k, v) => L.push(`<dt>${k}</dt><dd>${v}</dd>`);
+  line('Status', `<span class="hc-st"><span class="dot ${c}"></span>${esc(statusWords(s, c))}</span>`);
+  if (c === 'failed' && s.lastError?.text) line('Error', esc(s.lastError.text));
+  const at = s.stats?.at || s.lastModified;
+  if (at) line('Last reply', esc(cardWhen(at)));
+  if (s.said) L.push(`<div class="hc-said"><div>${esc(s.said)}</div></div>`);
+  const snip = snippetFor(s);
+  if (snip) line('Search', snip);
+  if (s.scheduleId) line('Schedule', `⏰ ${esc(run?.title || S.schedTitles[s.scheduleId] || 'a schedule')}${run && run.runs.length > 1 ? ` · newest of ${run.runs.length} runs` : ''}${run?.unread ? ` · ${run.unread} not read` : ''}`);
+  const p = S.plans.on && ownPlan(s.id);
+  if (p) line('Plan', `${esc(p.title)} · ${p.done} of ${p.total} tasks done`);
+  const prs = S.prs[s.id] || [];
+  if (prs.length) line('Pull requests', prs.map((x) => `#${x.number}${prState(x) in PR_LABEL && prState(x) !== 'unknown' ? ' ' + PR_LABEL[prState(x)].toLowerCase() : ''}`).join(', '));
+  const tks = S.tickets[s.id] || [];
+  if (tks.length) line('Tickets', tks.map((t) => esc(`${t.key} ${t.status}`)).join(', '));
+  const pct = ctxPct(s.stats);
+  if (pct !== null) line('Memory', `<span class="hc-bar${nearCompact(s) ? ' full' : ''}"><i style="width:${Math.min(100, pct)}%"></i></span>${pct}% toward auto-compact`);
+  if (s.runningTasks) line('Working on', `${plural(s.runningTasks, 'background step')} running`);
+  if (!s.archived && pinnedHere(s.id)) line('Pinned', 'Yes: ✦ Needs attention keeps it');
+  if (isMuted(s.id)) line('Chime', 'Muted');
+  if (s.archived) line('Archived', 'Yes');
+  if (s.parentId && s.parentId !== s.id) line('Started from', esc(rowById(s.parentId)?.title || 'a session not in this list'));
+  const model = s.activeModel || s.stats?.model;
+  line('AI', esc(brand(s) + (model ? ` · ${modelName(model)}` : '') + (s.settings?.model === 'shift' ? ' (Shift mode)' : '')));
+  if (s.createdAt) line('Started', esc(cardWhen(s.createdAt)));
+  if (s.cwd) line('Folder', `<span class="hc-path">${esc(s.cwd)}</span>`);
+  return `<div class="hc-title">${esc((run?.title || s.title) || 'Untitled')}</div><hr><dl>${L.join('')}</dl>`;
+}
+// Opens after resting HOVER_MS on a row; once open, the next row's card shows straight away, the way menus do.
+// Leaving the list, scrolling, a click or a redraw of the list closes it.
+const HOVER_MS = 300;
+const hover = { timer: null, id: null, warm: false };
+function hideHoverCard(cool = true) {
+  clearTimeout(hover.timer); hover.id = null;
+  if (cool) hover.warm = false;
+  $('hoverCard').hidden = true;
+}
+function showHoverCard(row) {
+  const s = allSessionRows().find((x) => x.id === row.dataset.id);
+  if (!s || !S.hoverCard) return;
+  const card = $('hoverCard');
+  card.innerHTML = hoverCardHtml(s);
+  card.hidden = false;
+  hover.id = s.id; hover.warm = true;
+  const r = row.getBoundingClientRect(), w = card.offsetWidth, h = card.offsetHeight, narrow = innerWidth < 700;
+  let left = r.right + 8;
+  if (left + w > innerWidth - 8) left = r.left - w - 8;
+  if (left < 8 || narrow) left = Math.max(8, Math.min(r.left, innerWidth - w - 8));
+  const top = Math.max(8, Math.min(narrow ? r.bottom + 4 : r.top - 6, innerHeight - h - 8));
+  card.style.left = left + 'px'; card.style.top = top + 'px';
+}
+$('list').addEventListener('pointerover', (e) => {
+  if (e.pointerType !== 'mouse' || !S.hoverCard) return;
+  const row = e.target.closest('.row[data-id]');
+  if (row?.dataset.id === hover.id) return;
+  clearTimeout(hover.timer);
+  if (!row) { hideHoverCard(false); return; } // between rows: the next one still opens straight away
+  if (hover.warm) showHoverCard(row); else hover.timer = setTimeout(() => showHoverCard(row), HOVER_MS);
+});
+$('list').addEventListener('pointerleave', () => hideHoverCard());
+$('list').addEventListener('pointerdown', () => hideHoverCard());
+document.addEventListener('scroll', () => { if (hover.id || hover.warm) hideHoverCard(); }, true);
 // The list is only replaced when what it shows actually changed. A redraw is held while the pointer is down on the
 // list (a row must not move out from under a click half done), while a dropdown in the list is open (a redraw would
 // close it) or while a row or section is being dragged; the held redraw runs, gliding, once that ends.
@@ -4014,6 +4114,7 @@ function setList(html) {
   const glide = glideView === view && !glideOff();
   glideView = view;
   const before = glide ? glidePlaces(list) : null;
+  hideHoverCard();
   list.innerHTML = html;
   fitChips(list);
   if (before) glideList(list, before);

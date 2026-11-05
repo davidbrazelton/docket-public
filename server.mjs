@@ -542,6 +542,11 @@ function pushParentOf(id) {
   if (p && p.id !== id && JSON.stringify(kidsOf(p)) !== p.kidsSent) pushSession(p);
 }
 
+function liveSaid(s) {
+  const ev = s.events || [];
+  for (let i = ev.length - 1; i >= 0; i--) if (ev[i].k === 'text' && ev[i].text?.trim()) return saidStart(ev[i].text);
+  return '';
+}
 function summary(s) {
   return {
     id: s.id, client: s.client, title: s.title, cwd: s.cwd, parentId: s.parentId || null,
@@ -572,6 +577,7 @@ function summary(s) {
     asksYou: !!s.pendingAsks?.size || liveAsks(s), // a question form open, or its latest reply ends by asking: "question"
     unreadSaid: s.unread ? s.unreadSaid || null : null, // the label the session declared for that turn
     needsSignin: s.needsSignin || null, // { site, url } while it waits on a private browser sign-in: the 🌐 blinks (#678)
+    said: liveSaid(s), // the start of its last reply: the hover card (#691)
   };
 }
 // Whether a live session's latest reply waits on the user's answer and nothing was sent after it.
@@ -4831,6 +4837,7 @@ async function buildHistoryNow(client) {
     id: r.sessionId, client: client.id, title: r.customTitle || r.summary || r.firstPrompt || '(untitled)',
     stats: statsFor(client, files.get(r.sessionId)),
     cwd: state.sessions[r.sessionId]?.movedTo || r.cwd, lastModified: lastMessageTime(files.get(r.sessionId)) || r.lastModified, createdAt: r.createdAt, live: false,
+    said: transcriptTail(files.get(r.sessionId)).said || '',
     parentId: parentOf(client, r.sessionId),
     interrupted: cutAtStart(r.sessionId),
     archived: isArchived(client, r.sessionId),
@@ -5098,12 +5105,24 @@ function transcriptTail(file) {
     const time = stamps.length ? Date.parse(stamps[stamps.length - 1].slice(13, -1)) || 0 : 0;
     const lines = text.split('\n').slice(len < size ? 1 : 0); // the first line may be cut in half
     const msgs = lines.flatMap((l) => { try { return l.trim() ? [JSON.parse(l)] : []; } catch { return []; } });
-    const out = { size, mtime, time, awaiting: awaitingAnswer(msgs), desktop: desktopTurn(msgs) };
+    const out = { size, mtime, time, awaiting: awaitingAnswer(msgs), desktop: desktopTurn(msgs), said: lastSaid(msgs) };
     tailCache.set(file, out);
     return out;
   } catch { return { time: 0, awaiting: false, desktop: null }; }
 }
 const lastMessageTime = (file) => transcriptTail(file).time;
+// The start of the last reply's words, for the hover card on a list row (#691).
+const SAID_LEN = 240;
+const saidStart = (t) => String(t || '').replace(/\s+/g, ' ').trim().slice(0, SAID_LEN);
+function lastSaid(msgs) {
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const m = msgs[i];
+    if (m.type !== 'assistant' || m.isSidechain || !Array.isArray(m.message?.content)) continue;
+    const t = saidStart(m.message.content.filter((b) => b.type === 'text').map((b) => b.text).join(' '));
+    if (t) return t;
+  }
+  return '';
+}
 
 // A session Claude Desktop ran waits on the person when its last turn there finished after they last opened it in
 // Docket (seenAt). Docket's own sessions keep their saved `waiting`; this only adds the Desktop ones.
