@@ -570,6 +570,7 @@ function summary(s) {
     unreadWhy: s.unread ? s.unreadWhy || null : null, // which path turned it orange: the row's reason (#671)
     asksYou: !!s.pendingAsks?.size || liveAsks(s), // a question form open, or its latest reply ends by asking: "question"
     unreadSaid: s.unread ? s.unreadSaid || null : null, // the label the session declared for that turn
+    needsSignin: s.needsSignin || null, // { site, url } while it waits on a private browser sign-in: the 🌐 blinks (#678)
   };
 }
 // Whether a live session's latest reply waits on the user's answer and nothing was sent after it.
@@ -1874,6 +1875,22 @@ function portalToolDefs(parent) {
           }
           return { content: [{ type: 'text', text: `Shown to the user: ${found.length} file(s).${missing.length ? ' Not found: ' + missing.join(', ') : ''}` }] };
         }),
+      tool('needs_signin',
+        "Tell Docket you need a sign-in in your private browser that it does not have. The user's globe (🌐) button then blinks yellow while they have this session open, naming the site, and opens the sign-in window for it. Call it as well as saying so in your reply, and stop using that site until the user signs in. Call it again with connected: true once the site works, or when you no longer need it. Docket clears it by itself when the user presses Done in the sign-in window.",
+        {
+          site: z.string().optional().describe('The site, as the user knows it (e.g. github.com, Salesforce)'),
+          url: z.string().optional().describe('The address to open for the sign-in, if you know it'),
+          connected: z.boolean().optional().describe('True when you no longer need it: you are signed in, or gave up on that site'),
+        },
+        async ({ site, url, connected }) => {
+          if (connected) { setSigninNeed(parent, null, 'the session said it is connected'); return { content: [{ type: 'text', text: 'Done: the globe no longer asks for a sign-in.' }] }; }
+          const address = /^https?:\/\//.test(url || '') ? String(url).slice(0, 500) : '';
+          let name = String(site || '').trim().slice(0, 120);
+          if (!name && address) name = new URL(address).hostname;
+          if (!name) return { content: [{ type: 'text', text: 'Give the site or its address.' }], isError: true };
+          setSigninNeed(parent, { site: name, url: address });
+          return { content: [{ type: 'text', text: `The user's globe button now blinks for ${name}. Say in your reply what to sign in to; a note appears here when the sign-ins are saved. A private browser you opened before then started without them, so close it (browser_close) and open it again.` }] };
+        }),
       tool('get_schedule',
         "Read one of this client's scheduled tasks in the portal: its title, timing, folder and full instructions.",
         { id: z.string().describe('Schedule id') },
@@ -2658,10 +2675,28 @@ async function openSignInWindow(client, url) {
     clearInterval(w.timer);
     signInWindows.delete(client.id);
     broadcast({ t: 'browser', client: client.id, ...browserStatus(client) });
+    signInsSaved(client);
   });
   const page = context.pages()[0] || await context.newPage();
   if (url) await page.goto(url).catch(() => {});
   broadcast({ t: 'browser', client: client.id, ...browserStatus(client) });
+}
+
+// A session waiting on a private browser sign-in (needs_signin, #678). The page blinks the 🌐 while that session is
+// the one open; it stops when the session says it is connected, or when the sign-in window closes (Done or its X),
+// since that is when the sign-ins are saved.
+function setSigninNeed(s, need, why) {
+  if (!s.needsSignin && !need) return;
+  s.needsSignin = need;
+  logEvent(`sign-in need ${need ? 'on' : 'off'}: ${sessionTag(s)}`, need ? `${need.site}${need.url ? ' ' + need.url : ''}` : why);
+  pushSession(s);
+}
+function signInsSaved(client) {
+  for (const s of live.values()) {
+    if (s.client !== client.id || !s.needsSignin) continue;
+    addEvent(s, { k: 'note', text: `Private browser sign-ins saved (this session asked for ${s.needsSignin.site}).` });
+    setSigninNeed(s, null, 'the sign-in window closed and its sign-ins were saved');
+  }
 }
 
 async function closeSignInWindow(client) {
@@ -3507,7 +3542,7 @@ function promptAppends() {
 }
 
 const APPEND_PROMPT = `You are running inside Docket, the user's session portal, a page on their computer that shows many sessions side by side.
-You also have a private browser (the mcp__playwright__ tools). It starts with the sign-ins the user saved for this client. If a site needs a sign-in it does not have, ask the user to use the Browser button in the portal to sign in; never type their passwords.
+You also have a private browser (the mcp__playwright__ tools). It starts with the sign-ins the user saved for this client. If a site needs a sign-in it does not have, call mcp__portal__needs_signin with the site (the globe button in the portal then blinks so the user can sign in there) and say so in your reply; never type their passwords.
 When you create or update a file the user should look at (a report, page, spreadsheet, document, image or export), call mcp__portal__present_file with its full path so it shows in the portal's Files list, where the user opens it.`;
 
 // The AI brands a session can run on. A company has a brand set up when its entry in the company

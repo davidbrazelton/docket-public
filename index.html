@@ -12,7 +12,7 @@
 <style>
 :root {
   --bg: #e9e7e0; --panel: #fdfcf9; --panel-2: #f1efe9; --line: #e2e0d8; --text: #1f1e1b; --muted: #6b6a64;
-  --accent: #c2410c; --accent-soft: #fde7d9; --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --run: #2563eb;
+  --accent: #c2410c; --accent-soft: #fde7d9; --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --run: #2563eb; --signin: #ca8a04;
   --on-accent: #fff; --on-warn: #fff; --on-bad: #fff; /* text on those colors, 4.5:1 or better */
   --user-bg: #ece9e1; --code-bg: #f1efe9; --shadow: 0 1px 2px rgba(0,0,0,.06);
   --head: #e5e2d9; --head-text: #45443f;
@@ -23,7 +23,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #121210; --panel: #1d1d1b; --panel-2: #272724; --line: #373633; --text: #f2f1ec; --muted: #a3a29a;
-    --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa;
+    --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15;
     --on-accent: #1f1e1b; --on-warn: #1f1e1b; --on-bad: #1f1e1b;
     --user-bg: #2c2b28; --code-bg: #2a2a27; --shadow: none;
     --head: #383733; --head-text: #d4d3cc;
@@ -33,7 +33,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #121210; --panel: #1d1d1b; --panel-2: #272724; --line: #373633; --text: #f2f1ec; --muted: #a3a29a;
-  --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa;
+  --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15;
     --on-accent: #1f1e1b; --on-warn: #1f1e1b; --on-bad: #1f1e1b;
   --user-bg: #2c2b28; --code-bg: #2a2a27; --shadow: none;
     --head: #383733; --head-text: #d4d3cc;
@@ -94,6 +94,10 @@ header.top .sep { width: 1px; height: 18px; background: var(--line); margin: 0 3
 header.top .sites-btn, header.top .bi-btn, header.top .g-btn { border: none; padding: 4px 6px; display: flex; align-items: center; color: var(--muted); }
 header.top .sites-btn, header.top .bi-btn { opacity: .55; }
 header.top .sites-btn.on, header.top .bi-btn.on { color: var(--accent); opacity: 1; }
+/* The session open now waits on a private browser sign-in (#678): the globe blinks yellow (its own color per theme), steady with reduced motion. */
+header.top .sites-btn.need { color: var(--signin); opacity: 1; animation: signin-blink 1.2s ease-in-out infinite; }
+@keyframes signin-blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { header.top .sites-btn.need { animation: none; } }
 header.top .sites-btn svg, header.top .bi-btn svg, header.top .g-btn svg { width: 16px; height: 16px; display: block; }
 header.top .bi-btn svg path { fill: currentColor; }
 header.top .g-btn { gap: 3px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -858,6 +862,7 @@ header.top .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
 .browser-box:empty { display: none; }
 .sites-view { display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--text); }
 .sites-view .sv-note { font-size: 12px; color: var(--muted); line-height: 1.45; }
+.sites-view .sv-need { border: 1px solid var(--signin); border-left-width: 4px; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
 .sites-view .sv-open { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .site-rows { border-top: 1px solid var(--line); }
 .site-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
@@ -1293,7 +1298,7 @@ const HELP = [
     ['g-cpu', 'CPU gauge', "How much of this computer's processor Docket is using: the app, the runner, the sessions and their helpers, as Task Manager counts it. Amber when it stays over 80%. Click for ☰ > Memory and disk"],
     ['g-mem', 'Memory gauge', 'How much memory Docket is using: the app, the runner, the sessions and their helpers. Click for ☰ > Memory and disk'],
     ['g-disk', 'File space gauge', "The size of Docket's folder, as last measured (every 20 minutes). Click for ☰ > Memory and disk"],
-    ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is'],
+    ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is. Blinks yellow while the session open now needs you to sign in to a site'],
     ['new', '+ New session', 'Start a new conversation with the AI'],
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
     ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), and which chips each row shows. Each desk keeps its own.'],
@@ -1520,6 +1525,7 @@ const HELP = [
     ['menu-update', 'About > Check for updates', 'Look on GitHub for a newer Docket now'],
     ['upd-every', 'Check every', 'How often Docket looks on GitHub for a newer version'],
     ['menu-updmode', 'Settings > Updates', 'Automatic: Docket takes each new version from GitHub by itself and restarts once no session is busy (sessions keep working). Manual: it only says when one is waiting, and you press Update now. Kept on this computer only'],
+    ['menu-signins', 'Settings > Private browser sign-ins', 'The sites this desk is signed in to in its private browser, the one its sessions use: add a sign-in or delete one. The same as the 🌐 button'],
     ['menu-fbdest', 'Settings > Feedback destination', 'Where the 🔨 button sends suggestions from this computer: the address of the relay that files them, and its key if it needs one. Not set means nothing is sent. Kept on this computer only'],
     ['rest-min', 'Minutes', 'How many idle minutes before a session is released from memory. 0 means never'],
     ['fb-dest-url', 'Address', 'The full https:// address that takes the reports (http:// only for one on this computer). Leave it empty to stop sending'],
@@ -2615,11 +2621,21 @@ setInterval(refreshPRs, 120000);
 // The 🌐 button opens a dialog that lists the sites and adds or deletes them; it shows in the main color while
 // any sign-in is saved. The box at the bottom of the left column only shows while the sign-in window is open and the
 // dialog is not, so Done is always in reach.
+// While the session open now waits on a sign-in (it called needs_signin, #678), the 🌐 blinks yellow and says which
+// site; moving to another session stops it, and coming back while the need is open starts it again.
 const sitesOpen = () => !$('dlg').hidden && !!$('dlgBody').querySelector('.sites-view');
+const signinNeed = () => { const s = S.live[S.selected]; return s?.client === S.client ? s.needsSignin || null : null; };
+function renderSigninNeed() {
+  const need = signinNeed(), b = $('sitesBtn');
+  b.classList.toggle('need', !!need);
+  b.title = need ? `This session needs you to sign in to ${need.site} in its private browser. Click to open the sign-in window, sign in, then click Done.` : tipText('tab-sites');
+  b.setAttribute('aria-label', need ? `Sites: sign in to ${need.site}` : 'Sites');
+}
 function renderBrowser() {
   const c = S.clients.find((x) => x.id === S.client); if (!c) return;
   const b = c.browser || { sites: [], open: false };
   $('sitesBtn').classList.toggle('on', b.sites.length > 0);
+  renderSigninNeed();
   $('browserBox').innerHTML = b.open && !sitesOpen()
     ? `<div class="bh"><span>Private browser</span></div>
        <div class="sites">A browser window is open. Sign in to the sites ${esc(c.name)} sessions need, then click Done.</div>
@@ -2633,13 +2649,14 @@ async function browserPost(c, what, body) {
   c.browser = st; renderBrowser();
 }
 function sitesHtml(c) {
-  const b = c.browser || { sites: [], open: false };
+  const b = c.browser || { sites: [], open: false }, need = signinNeed();
   const rows = b.sites.map((site) => `<div class="site-row"><span class="sn" title="${esc(site)}">${esc(site)}</span><button data-forget-site="${esc(site)}" title="Delete the saved sign-in for ${esc(site)}">Delete</button></div>`).join('');
   return `<div class="sites-view">
     <div class="sv-note">These sign-ins belong to ${esc(c.name)} on this computer only. ${esc(c.name)} sessions use them in their private browser; other desks and other computers do not see them.</div>
+    ${need ? `<div class="sv-need">This session needs a sign-in to <b>${esc(need.site)}</b>.${b.open ? '' : ' Click + Add a site to open the sign-in window for it.'}</div>` : ''}
     ${b.open ? `<div class="sv-open"><span>A sign-in window is open. Sign in to the sites ${esc(c.name)} sessions need, then click Done.</span><button class="primary" id="svDone"${tip('site-done')}>Done</button></div>` : ''}
     <div class="site-rows">${rows || '<div class="sv-empty">No sign-ins saved yet.</div>'}</div>
-    ${b.open ? '' : `<div class="sv-add"><input id="svUrl" placeholder="Site to sign in to (optional)" aria-label="Site to sign in to"${tip('site-url')}><button id="svAdd"${tip('site-add')}>+ Add a site</button></div>`}
+    ${b.open ? '' : `<div class="sv-add"><input id="svUrl" placeholder="Site to sign in to (optional)" aria-label="Site to sign in to" value="${esc(need?.url || (/\.\w/.test(need?.site || '') ? need.site : ''))}"${tip('site-url')}><button id="svAdd"${tip('site-add')}>+ Add a site</button></div>`}
     ${b.sites.length ? `<button class="sv-forget" id="svForget"${tip('site-forget')}>Forget all sign-ins</button>` : ''}
   </div>`;
 }
@@ -4509,7 +4526,7 @@ $('menuBtn').onclick = (e) => {
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
-    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()], ['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['rest', restLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
+    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()], ['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['rest', restLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ['signins', 'Private browser sign-ins'], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
     ['about', S.update?.waiting || S.update?.restartWaiting ? 'About · update waiting' : 'About', [...(S.update?.restartWaiting && !S.update.restartWaiting.restarting ? [['restartnow', 'Update now anyway']] : S.update?.waiting ? [['updnow', 'Update now']] : []), ['update', 'Check for updates']]]];
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
     ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${x[0]}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0])}>${esc(x[1])}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
@@ -4630,6 +4647,7 @@ $('menuBtn').onclick = (e) => {
     if (act === 'color') pickMainColor();
     if (act === 'fbdest') setFeedbackDestination();
     if (act === 'rest') setRestMinutes();
+    if (act === 'signins') openSites();
     if (act === 'key') showKey();
     if (act === 'help') showHelp();
     if (act === 'tour') startTour();
@@ -6500,6 +6518,7 @@ $('reloadAllBtn').onclick = async () => {
   try { const r = await api('/api/reload-all', {}); if (r.later) alert(`${r.now} reloading now; ${r.later} will reload once their turn and background commands end.`); } catch (err) { alert(err.message); }
 };
 function renderHead() {
+  renderSigninNeed();
   if (menuHold(renderHead)) return; // waits while a menu is open (menu hold)
   renderComposerBar();
   if ($('tlBar').hidden !== !tlSession()) renderTlBar();
@@ -7480,6 +7499,7 @@ function stashBox() {
 }
 // Call right after S.selected changes: puts the old session's text away and brings the new one's back.
 function swapBox() {
+  renderSigninNeed(); // every move to another session (or a draft or schedule) comes through here
   const key = BOX + S.client + ':' + S.selected;
   if (key === boxKey) return;
   typingOff();
