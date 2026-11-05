@@ -51,6 +51,7 @@ import { REVIEW_EVERY_MS, reviewSent, nextReview, reviewText } from './plan-revi
 import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT } from './plan-use.mjs';
 import { planStartNote } from './plan-use.mjs';
 import { createFolderReader, readMarkers, markerPlan, cleanPlanFolder, planFolderProblem } from './plan-folder.mjs';
+import { scanPlanSystem, switchWarning, conversionBrief, systemName } from './plan-switch.mjs';
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
 import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport } from './feedback.mjs';
@@ -1274,6 +1275,8 @@ function crossingTools(parent) {
 // step, or the card shown once to a desk with none set. Each desk's plans are files in a folder of its own, so two
 // desks never share a plan. Only sessions that use a plan carry its full rules and tools (planUseOf, plan-use.mjs).
 const plansOn = (client) => !!client && plansOnFor(client.planSystem);
+// A session converting a desk onto Docket's plans (#700) has the plan tools before the desk switches: it makes them.
+const plansOnIn = (client, id) => plansOn(client) || (!!id && !!client?.planSwitch && plansOnFor(client.planSwitch.to) && client.planSwitch.session === id);
 const planStores = new Map();
 function plansOf(client) {
   const dir = path.resolve(DATA_DIR, 'plans', client.id);
@@ -1295,7 +1298,7 @@ function taskRef(ref, planId) {
 // 'none', 'short' or 'full': how much of the plan rules and tools a session carries (plan-use.mjs says who gets which).
 function planUseOf(s) {
   const client = clientById(s?.client);
-  if (!plansOn(client) || !s.id) return 'none';
+  if (!plansOnIn(client, s.id) || !s.id) return 'none';
   const all = plansOf(client).list(), mine = sessionPlans(client, s.id, all), pid = parentOf(client, s.id);
   return planUse({ on: true, own: !!mine.own, holds: mine.holds.length > 0, parentOwns: !!pid && all.some((p) => p.coordinator === pid) });
 }
@@ -1464,6 +1467,49 @@ async function folderSummary(client) {
   return { on: true, folder: true, root: client.planFolder?.path || '', error: t.error || '', count: t.plans.length, brokenCount: t.broken.length, unlinkedCount: t.unlinked.length,
     plans: t.plans.filter((p) => held(p).length).map((p) => ({ id: p.key, title: p.title, file: p.file, coordinator: '', parent: p.parent, done: p.done, total: p.total, holders: held(p) })),
     elsewhere: holders.filter((h) => !h.key).map((h) => ({ session: h.session || h.prefix, plan: h.plan })) };
+}
+// ---------- switching plan system (#700, plan-switch.mjs) ----------
+// What a desk plans with today: the outside system's markers, plan files and hooks, its plan folder, and Docket's own plans.
+async function planSwitchFound(client) {
+  const store = plansOf(client), all = store.list();
+  const docketPlans = all.map((p) => ({ id: p.id, title: p.title, file: p.file, ...store.rollup(p.id, all) }));
+  const ids = new Set([...Object.keys(state.sessions).filter((id) => state.sessions[id]?.client === client.id), ...[...live.values()].filter((s) => s.client === client.id).map((s) => s.id)]);
+  const sessions = [...ids].map((id) => { const s = live.get(id); return { id, title: knownTitle(client, id), working: !!s && !!workingNow(s, runningTasks(s)) }; });
+  const r = client.planFolder?.path ? folderReader(client) : null; // the plan folder's tree, whatever the plan system is now
+  const folderTree = r ? await r.get().catch(() => null) : null;
+  return scanPlanSystem(client, { docketPlans, sessions, folderTree });
+}
+function savePlanSystem(client, patch) {
+  saveCompanies(CLIENTS.map((c) => { if (c.id !== client.id) return c; const out = { ...c, ...patch }; for (const k of Object.keys(patch)) if (patch[k] === undefined) delete out[k]; return out; }));
+  dropFolderReader(client); profileCache.delete(client.id);
+}
+async function planSwitchAction(client, { to = '', action = '' } = {}) {
+  const from = client.planSystem || '', ps = client.planSwitch;
+  if (action === 'finish' || action === 'cancel') {
+    if (!ps) throw new Error(`${client.name} has no plan switch waiting.`);
+    savePlanSystem(client, action === 'finish' ? { planSystem: ps.to, planSwitch: undefined } : { planSwitch: undefined });
+    logEvent('plan switch', `${client.name}: ${action} (${systemName(ps.from)} to ${systemName(ps.to)})`);
+    return { ok: true, planSystem: action === 'finish' ? ps.to : from };
+  }
+  if (!['docket', 'folder', 'none'].includes(to)) throw new Error('The plan system is docket, folder or none');
+  if (action === 'switch') {
+    savePlanSystem(client, { planSystem: to, planSwitch: undefined });
+    logEvent('plan switch', `${client.name}: ${systemName(from)} to ${systemName(to)}, without converting`);
+    return { ok: true, planSystem: to };
+  }
+  if (action !== 'convert') throw new Error('Unknown plan switch action');
+  if (ps && live.has(ps.session)) throw new Error(`${client.name} is already converting its plans, in session ${ps.session}. Finish or cancel that switch first.`);
+  const found = await planSwitchFound(client);
+  const brief = conversionBrief({ desk: client.name, from, to, found, convertTo: to === 'folder' ? client.planFolder?.path || '' : '' });
+  const s = startSession({ clientId: client.id, cwd: client.folder, title: `Convert ${client.name}'s plans to ${systemName(to)}`.slice(0, 60) });
+  state.sessions[s.id].titleBy = 'you';
+  // Saved before the session's tools are listed, so a conversion onto Docket's plans has the plan tools (plansOnIn).
+  savePlanSystem(client, { planSwitch: { to, from, session: s.id, at: Date.now() } });
+  saveState();
+  sendToSession(s, { text: brief, attachments: [], context: `(From Docket: the user chose to convert this desk's plans before switching its plan system. The desk stays on ${systemName(from)} until they press Finish the switch on Docket's card for it.)` });
+  touchSession(client.id, s.id);
+  logEvent('plan switch', `${client.name}: converting ${systemName(from)} to ${systemName(to)} in ${sessionTag(s)}`);
+  return { ok: true, session: s.id, planSystem: from };
 }
 // One plan with its items, its parent and the plans under it; or the whole tree for the Plan tree window.
 function folderPlanDetail(t, key) {
@@ -1994,7 +2040,7 @@ function portalToolDefs(parent) {
             .map((x) => `${x.id}  [${x.status}]  ${x.title || '(untitled)'}${x.parentId ? `  (spun off from ${x.parentId})` : ''}`);
           return { content: [{ type: 'text', text: rows.join('\n') || 'No running sessions.' }] };
         }),
-      ...(plansOn(clientById(parent.client)) ? planToolDefs(parent) : []),
+      ...(plansOnIn(clientById(parent.client), parent.id) ? planToolDefs(parent) : []),
   ];
 }
 // The helper proves it was started by this Docket with a token kept on this computer.
@@ -5814,6 +5860,9 @@ function cleanCompany(c, taken) {
   // planFolder (#180 step 3): the plan folder's path and its optional marker file pattern, kept whatever the plan
   // system, so switching away and back loses nothing.
   const planFolder = cleanPlanFolder(c.planFolder !== undefined ? c.planFolder : clientById(id)?.planFolder);
+  // planSwitch (#700): a switch of plan system waiting on its conversion session, { to, from, session, at }; only the
+  // plan-switch route sets or clears it, so every other save keeps it.
+  const ps = clientById(id)?.planSwitch, planSwitch = ps && ['docket', 'folder', 'none'].includes(ps.to) ? ps : undefined;
   // docketHooks.off: the Docket hooks this company turned off (the Companies screen); the wizard does not send it, so it is kept.
   const docketHooks = cleanDocketHooks(c.docketHooks !== undefined ? c.docketHooks : clientById(id)?.docketHooks);
   // grokHome sets Grok up for this company: its Grok home folder (its Grok sign-in and settings). defaultEngine
@@ -5898,7 +5947,7 @@ function cleanCompany(c, taken) {
   for (const [label, dir, sub] of [['Claude home', home, 'claude-home'], ['Grok home', grokHome, 'grok-home'], ['Codex home', codexHome, 'codex-home']]) {
     if (dir && isInside(dir, ROOT)) return { error: `${name}: the ${label} folder ${dir} is inside Docket's own folder (${ROOT}). It holds the sign-in, so it must be somewhere else, like ${path.join(homeRoots().claude, `${name}-desk`, sub)}` };
   }
-  return { id, name, home, folder: folder || home, ...(hidden ? { hidden: true } : {}), ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
+  return { id, name, home, folder: folder || home, ...(hidden ? { hidden: true } : {}), ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(planSwitch ? { planSwitch } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
 }
 function saveCompanies(list) {
   for (const c of list) {
@@ -6611,6 +6660,31 @@ async function profileRoutes(req, res, url, p) {
       return json(res, 200, s.mcpAtStart ? { from: 'start', at: s.mcpAtStart.at, servers: s.mcpAtStart.servers.map(mcpRow) } : { from: 'none', servers: [] });
     }
   }
+  // Switching a desk's plan system (#700, plan-switch.mjs). GET ?to=: what the switch would leave behind, and whether to
+  // warn. POST { to, action }: switch (no conversion), convert (a session carries the old plans over, and the desk stays
+  // on its old system until the user presses Finish the switch on the page), finish, or cancel (stays as it is). The
+  // setup wizard asks before the desk exists, with the home and folder it is about to save.
+  if (p === '/api/plan-switch-check' && req.method === 'POST') {
+    const b = await readBody(req);
+    if (!path.isAbsolute(String(b.home || ''))) return json(res, 400, { error: 'Give the Claude home as a full path' });
+    const desk = { home: path.resolve(b.home), folder: path.isAbsolute(String(b.folder || '')) ? path.resolve(b.folder) : '', planSystem: '' };
+    const found = scanPlanSystem(desk);
+    return json(res, 200, { from: '', to: b.to || '', ...switchWarning(found, '', b.to || ''), found });
+  }
+  const sw = p.match(/^\/api\/clients\/(\w+)\/plan-switch$/);
+  if (sw) {
+    const client = clientById(sw[1]);
+    if (!client) return json(res, 404, { error: 'Unknown desk' });
+    const from = client.planSystem || '';
+    if (req.method === 'GET') {
+      const to = url.searchParams.get('to') || '';
+      const found = await planSwitchFound(client);
+      return json(res, 200, { from, to, ...switchWarning(found, from, to), found, pending: client.planSwitch || null });
+    }
+    if (req.method !== 'POST') return json(res, 405, { error: 'GET or POST' });
+    const b = await readBody(req);
+    try { return json(res, 200, await planSwitchAction(client, b)); } catch (e) { return json(res, 400, { error: e.message }); }
+  }
   const pm = p.match(/^\/api\/clients\/(\w+)\/profile(?:\/(file|show|mcp-check|switch|source|source-action))?$/);
   if (!pm) return false; // not one of these: the main handler carries on
   const client = clientById(pm[1]);
@@ -6664,7 +6738,7 @@ async function profileRoutes(req, res, url, p) {
       } else if (kind === 'plans') {
         // A choice: { value } is the plan system: Docket's own, a plan folder shown read-only (#180 step 3), or none.
         if (!['docket', 'folder', 'none'].includes(value)) return json(res, 400, { error: 'The plan system is docket, folder or none' });
-        save({ planSystem: value });
+        save({ planSystem: value, planSwitch: undefined });
       } else if (kind === 'plan-folder') {
         // One of the plan folder's two boxes: { key: 'path' | 'marker', value }. Empty clears it.
         const bad = planFolderProblem(key, value);
@@ -7170,7 +7244,7 @@ const server = http.createServer(async (req, res) => {
         // startGears: the model a new Shift session starts on, per brand, for the model menu's "Shift (starts ...)".
         const startGears = Object.fromEntries(brandsOf(c).map((e) => [e, usableGear(c, e, startGearOf(e, null, c.startGear?.[e])).name]));
         // planSystem: '' while the desk has not chosen one, which the page offers once (the card after the update, #180).
-        return { id: c.id, name: c.name, folder: c.folder, ...(c.hidden ? { hidden: true } : {}), color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', brands, startGears,
+        return { id: c.id, name: c.name, folder: c.folder, ...(c.hidden ? { hidden: true } : {}), color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', ...(c.planSwitch ? { planSwitch: { to: c.planSwitch.to, from: c.planSwitch.from, session: c.planSwitch.session } } : {}), brands, startGears,
           bedrock: isBedrock(c), ...(gatewayFor(c, 'claude') ? { gateway: gatewayHost(c.gateway.url) } : {}), signedIn, forced: forcedOf(c), browser: browserStatus(c) };
       }));
       return json(res, 200, [...rows, ...await remoteRows(!quick)]); // remote desks come after this computer's own

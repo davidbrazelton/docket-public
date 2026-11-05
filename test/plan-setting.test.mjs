@@ -36,7 +36,7 @@ test('the setup wizard has a Plans step, Docket\'s plans unless another is picke
   assert.match(page, /const WIZ_STEPS = \['Name', 'AI brand', 'Sessions', 'Plans', 'Folders', 'Sign in', 'Done'\];/);
   assert.match(page, /split: true, plans: 'docket',/);
   assert.match(page, /On by default: it costs nothing until a session uses a plan\./);
-  assert.match(page, /planSystem: w\.plans,/);
+  assert.match(page, /planSystem: w\.planAnswer === 'convert' \? 'none' : w\.plans,/);
   assert.match(page, /if \(w\.step === SPLIT\) \{ w\.step = PLANS;/);
   assert.match(page, /w\.error = ''; w\.step = FOLDERS; return render\(\);/);
 });
@@ -66,5 +66,7 @@ test('the card after the update: once per desk with no plan system, the desk on 
 
 test('both of the card\'s buttons save a choice on the desk', () => {
   const click = page.slice(page.indexOf("$('planOffer').onclick"), page.indexOf('</script>', page.indexOf("$('planOffer').onclick")));
-  assert.match(click, /profile\/switch`, \{ kind: 'plans', key: 'plans', value \}/);
+  // through the plan switch (#700): a warning first when the choice leaves plans behind, else saved at once
+  assert.match(click, /if \(await switchPlans\(id, b\.dataset\.plan\) === null\)/);
+  assert.match(page, /api\(`\/api\/clients\/\$\{id\}\/plan-switch`, \{ to, action \}\)/);
 });

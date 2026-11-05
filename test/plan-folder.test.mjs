@@ -169,11 +169,13 @@ test('a plan folder desk gets no plan tools and no plan instructions', () => {
   assert.equal(plansOnFor('folder'), false);
   assert.equal(planUse({ on: plansOnFor('folder'), own: true }), 'none');
   assert.match(server, /const plansOn = \(client\) => !!client && plansOnFor\(client\.planSystem\);/);
-  assert.match(server, /\.\.\.\(plansOn\(clientById\(parent\.client\)\) \? planToolDefs\(parent\) : \[\]\)/);
-  assert.match(server, /if \(!plansOn\(client\) \|\| !s\.id\) return 'none';/);
+  assert.match(server, /\.\.\.\(plansOnIn\(clientById\(parent\.client\), parent\.id\) \? planToolDefs\(parent\) : \[\]\)/);
+  assert.match(server, /if \(!plansOnIn\(client, s\.id\) \|\| !s\.id\) return 'none';/);
+  // only the session converting the desk onto Docket's plans (#700) gets them before the switch
+  assert.match(server, /const plansOnIn = \(client, id\) => plansOn\(client\) \|\| \(!!id && !!client\?\.planSwitch && plansOnFor\(client\.planSwitch\.to\) && client\.planSwitch\.session === id\);/);
 });
 
 test('the setup wizard offers the plan folder, with its folder', () => {
   assert.match(page, /plans: 'docket',/);
-  assert.match(page, /planSystem: w\.plans, \.\.\.\(w\.plans === 'folder'/);
+  assert.match(page, /planSystem: w\.planAnswer === 'convert' \? 'none' : w\.plans, \.\.\.\(w\.plans === 'folder'/);
 });

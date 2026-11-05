@@ -608,6 +608,8 @@ header.top #feedbackBtn { padding: 4px 8px; }
 .install-offer img { width: 36px; height: 36px; grid-row: span 2; }
 .install-offer .t { font-weight: 600; }
 .install-offer .d { font-size: 13px; }
+.install-offer .d a { color: inherit; text-decoration: underline; }
+.ps-found { margin: 6px 0 8px; padding-left: 18px; line-height: 1.45; }
 .install-offer .b { grid-column: 2; display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 .install-offer .b button { border-color: currentColor; }
 .install-offer .b button:hover { background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
@@ -1688,6 +1690,12 @@ const HELP = [
     ['cache-never', 'Never', 'Never ask about this desk\'s prompt cache again'],
     ['plan-yes', 'OK', 'Keep Docket\'s plans on for this desk. Change it later in the desk\'s Inspector, under Switches'],
     ['plan-no', 'Turn them off', 'Turn plans off for this desk and don\'t ask again. Turn them on later in the desk\'s Inspector, under Switches'],
+    ['ps-convert', 'Convert in a session', 'Start a session on this desk that carries the plans listed here over to the new plan system. The old files stay as they are, and the desk keeps its old plan system until you press Finish the switch'],
+    ['ps-switch', 'Switch without converting', 'Switch the plan system now and leave what is listed here where it is, unconverted'],
+    ['ps-cancel', 'Cancel', 'Keep the plan system as it is'],
+    ['ps-finish', 'Finish the switch', 'Switch the desk to its new plan system now. Press it once the conversion session says it is done'],
+    ['ps-stop', 'Cancel the switch', 'Keep the desk on its old plan system. The conversion session and anything it made stay as they are'],
+    ['ps-open', 'Open the session', 'Open the session converting this desk\'s plans'],
     ['co-cache', 'Prompt cache', 'How long Claude keeps its short-term memory of a session after each reply. Automatic is Claude Code\'s own choice: 1 hour on a Claude subscription, 5 minutes on an API key or Bedrock. 1 hour keeps it through longer pauses, and starting it costs a bit more each time. New sessions only'],
     ['co-env-name', 'Variable name', 'The name of an environment variable this desk\'s sessions, hooks, Terminal and env script get, like BATON_NOTES_ROOT. Names Docket sets itself (the homes, sign-in and connection) can\'t be used'],
     ['co-env-value', 'Variable value', 'Its value, on one line. Empty sets it to nothing'],
@@ -6225,6 +6233,9 @@ function companyWizard({ first = false } = {}) {
         ${w.plans === 'folder' ? `<label class="wiz-field">The plan folder <input id="wPlanFolder"${tip('w-plan-folder')} value="${esc(w.planFolder)}" placeholder="the full path, or leave it empty to set it later" spellcheck="false"></label>` : ''}
         <label class="wiz-radio"><input type="radio" name="wPlans" value="none"${tip('w-plans-none')} ${w.plans === 'none' ? 'checked' : ''}><span><b>None</b>
           <small>No plans.</small></span></label>`;
+      if (w.step === FOLDERS && w.planWarn && !w.planAnswer) return `<div class="wiz-box"><b>${esc(w.name)}'s Claude home already keeps plans another way</b>
+          <p>${esc(homeOf('claude'))} has another plan system. Turning on Docket's plans leaves this behind:</p><ul class="ps-found">${w.planWarn.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+          <p>Convert starts a session on ${esc(w.name)} once it is signed in, which makes Docket plans from them. The old files stay as they are, and ${esc(w.name)} has plans off until you press Finish the switch. Back goes to the Plans step.</p></div>`;
       if (w.step === FOLDERS) {
         const clash = (p) => takenHome(p) ? '<div class="wiz-err">Another desk already uses this folder. Each desk needs its own, or they would share one sign-in.</div>' : '';
         const inside = (e, typed) => { const d = !typed && w.check?.roots && defaultHome(roots(), w.name, e); return d?.clash ? ` Not ${esc(d.clash)}: that is inside Docket's own folder (${OS.caps}).` : ''; };
@@ -6267,7 +6278,8 @@ function companyWizard({ first = false } = {}) {
           ${w.kind ? `<div class="wiz-sign"><b>Claude</b>${w.kind === 'bedrock' ? bedrockSignin() : claudeSignin()}</div>` : ''}${w.brands.map(other).join('')}`;
       }
       return `<p class="wiz-ok">${esc(w.name)} is set up${allSigned() ? ' and signed in' : ''}.</p>
-        <p>${allSigned() ?'Docket opens on it next, ready for your first session.' : `It is not signed in yet: sessions for ${esc(w.name)} can't run until it is. Sign in from the left column, or ☰ > Desks, whenever you are ready.`}</p>`;
+        <p>${allSigned() ?'Docket opens on it next, ready for your first session.' : `It is not signed in yet: sessions for ${esc(w.name)} can't run until it is. Sign in from the left column, or ☰ > Desks, whenever you are ready.`}</p>
+        ${w.planAnswer === 'convert' ? `<p>${allSigned() ? `A session starts on it too, to carry its old plans over to Docket's plans. ${esc(w.name)} has plans off until you press Finish the switch on Docket's card.` : `Its plans are off for now. Once it is signed in, choose Docket's plans in its Inspector, under Switches, to convert its old plans in a session.`}</p>` : ''}`;
     }
     function claudeSignin() {
       const si = w.si || {};
@@ -6317,6 +6329,10 @@ function companyWizard({ first = false } = {}) {
       const b = [];
       if (!first && !w.id && w.step < SIGNIN) b.push(`<button class="left" data-w="cancel"${tip('w-cancel')}>Cancel</button>`);
       if (w.step > NAME && w.step < DONE && !w.si?.busy && !w.si?.url) b.push(`<button data-w="back"${tip('w-back')}>Back</button>`);
+      if (w.step === FOLDERS && w.planWarn && !w.planAnswer) { // the plan warning's two answers (#700); Back is the cancel
+        b.push(`<button data-w="ps-switch"${tip('ps-switch')}>Switch without converting</button><button class="primary" data-main data-w="ps-convert"${tip('ps-convert')}>Convert in a session</button>`);
+        return b.join('');
+      }
       const act = w.step === SIGNIN && signinAction();
       if (w.step === SIGNIN && !allSigned()) b.push(act && act[0] === 'login' && w.already ? `<button data-w="keep"${tip('w-keep')}>Keep ${w.already.email ? esc(w.already.email) : 'this account'}</button>` : `<button data-w="skip"${tip('w-skip')}>Sign in later</button>`);
       if (act) { b.push(`<button class="primary" data-main data-w="${act[0]}"${act[4] ? ` data-engine="${act[4]}"` : ''}${tip(act[2])} ${act[3] ? '' : 'disabled'}>${act[1]}</button>`); return b.join(''); }
@@ -6356,8 +6372,9 @@ function companyWizard({ first = false } = {}) {
     };
     // Every company has a Claude home (the server needs one), so one without Claude still sends it, with Claude
     // left out (brandsOff). A brand not picked sends an empty home folder, which takes it away again after Back.
+    // A desk converting its old plans (#700) is saved with plans off; the conversion's switch turns them on.
     const save = (extra = {}) => api('/api/clients/save-one', { id: w.id, name: w.name, home: homeOf('claude'), folder: w.folder, email: w.kind === 'claude' ? w.email : '',
-      ...Object.fromEntries(OTHER.map(([e, , k]) => [k, w.brands.includes(e) ? homeOf(e) : ''])), brandsOff: w.kind ? [] : ['claude'], defaultEngine: w.def, splitWork: w.split, planSystem: w.plans, ...(w.plans === 'folder' && w.planFolder.trim() ? { planFolder: { path: w.planFolder.trim() } } : {}),
+      ...Object.fromEntries(OTHER.map(([e, , k]) => [k, w.brands.includes(e) ? homeOf(e) : ''])), brandsOff: w.kind ? [] : ['claude'], defaultEngine: w.def, splitWork: w.split, planSystem: w.planAnswer === 'convert' ? 'none' : w.plans, ...(w.plans === 'folder' && w.planFolder.trim() ? { planFolder: { path: w.planFolder.trim() } } : {}),
       ...(w.kind === 'bedrock' && w.awsProfile.trim() ? { awsProfile: w.awsProfile, awsRegion: w.awsRegion || 'us-east-1' } : {}), ...extra });
     const enterSignin = async () => {
       w.step = SIGNIN; w.signedIn = null; w.si = null; w.already = null; w.forced = null;
@@ -6382,12 +6399,13 @@ function companyWizard({ first = false } = {}) {
       if (pick) { w.folder = pick; w.folderTyped = true; defaults(); return render(); }
       const brand = e.target.closest('[data-brand]')?.dataset.brand;
       if (brand) { w.brands = w.brands.includes(brand) ? w.brands.filter((x) => x !== brand) : OTHER.map(([x]) => x).filter((x) => x === brand || w.brands.includes(x)); w.error = ''; return render(); }
-      const a = e.target.closest('[data-w]')?.dataset.w; if (!a) return;
+      let a = e.target.closest('[data-w]')?.dataset.w; if (!a) return;
       w.error = '';
       if (a === 'cancel') return close(null);
       if (a === 'recheck') return check();
       if ((a === 'back' || a === 'skip') && S.signin?.client === w.id) cancelLogin(); // a Grok or Codex sign-in under way
-      if (a === 'back') { if (w.si && w.kind) api(`/api/clients/${w.id}/login-cancel`, {}).catch(() => {}); w.si = null; w.step--; return render(); }
+      if (a === 'back') { if (w.si && w.kind) api(`/api/clients/${w.id}/login-cancel`, {}).catch(() => {}); w.si = null; if (w.step === FOLDERS) w.planWarn = w.planAnswer = null; w.step--; return render(); }
+      if (a === 'ps-convert' || a === 'ps-switch') { w.planAnswer = a.slice(3); a = 'next'; } // the plan warning's answer (#700), then on as Next
       if (a === 'skip') { if (w.id && w.kind) api(`/api/clients/${w.id}/login-cancel`, {}).catch(() => {}); w.si = null; w.step = DONE; return render(); }
       if (a === 'next') {
         if (w.step === NAME) { w.step = BRAND; if (!w.check) check(); else render(); return; }
@@ -6402,6 +6420,13 @@ function companyWizard({ first = false } = {}) {
           w.error = ''; w.step = FOLDERS; return render();
         }
         if (w.step === FOLDERS) {
+          // A Claude home that already holds another plan system (#700): warned once, before the desk is saved.
+          if (w.plans === 'docket' && w.kind && !w.planAnswer) {
+            w.busy = true; render();
+            try { const r = await api('/api/plan-switch-check', { home: homeOf('claude'), folder: w.folder, to: 'docket' }); w.planWarn = r.warn ? r : null; } catch { w.planWarn = null; }
+            w.busy = false;
+            if (w.planWarn) return render();
+          }
           // A company is saved now, so it can sign in on the next step; a Bedrock-only one once its AWS profile is chosen.
           if (w.kind === 'bedrock' && !w.brands.length) return enterSignin();
           w.busy = true; render();
@@ -6409,6 +6434,7 @@ function companyWizard({ first = false } = {}) {
           w.busy = false; return enterSignin();
         }
         if (w.step === SIGNIN) { w.step = DONE; return render(); }
+        if (w.planAnswer === 'convert' && allSigned()) api(`/api/clients/${w.id}/plan-switch`, { to: 'docket', action: 'convert' }).catch((err) => alert(err.message));
         return close(w.id);
       }
       if (a === 'keep') { claudeIn(); return render(); }
@@ -9004,6 +9030,12 @@ $('profilePage').addEventListener('change', async (e) => { // an on/off checkbox
   const box = e.target.closest?.('[data-pf-switch]'); if (!box) return;
   const it = pf.texts[box.dataset.pfSwitch], id = pf.data.client.id;
   box.disabled = true;
+  if (it.toggle.kind === 'plans') { // the plan system: warned first when the switch leaves something behind (#700)
+    if (await switchPlans(id, box.value) === null) box.value = it.toggle.value;
+    box.disabled = false;
+    if (S.client === id) { loadProfile(true); loadPlans(); }
+    return;
+  }
   try { await api(`/api/clients/${id}/profile/switch`, { kind: it.toggle.kind, key: it.toggle.key, ...(it.toggle.options ? { value: box.value } : { on: box.checked }) }); }
   catch (err) { if (it.toggle.options) box.value = it.toggle.value; else box.checked = !box.checked; alert(err.message); }
   if (S.client === id) { loadProfile(true); if (it.toggle.kind === 'plans') loadPlans(); }
@@ -9159,6 +9191,19 @@ api('/api/cache-offers').then(showCacheOffer).catch(() => {});
 // Closing the page without a choice shows it again next time.
 function showPlanOffer() {
   const el = $('planOffer');
+  // A switch of plan system waiting on its conversion session (#700) comes first: it ends only with Finish or Cancel.
+  const pend = S.clients.filter((c) => !c.remote && c.planSwitch), q = pend.find((c) => c.id === S.client) || pend[0];
+  if (q) {
+    if (el.dataset.client === q.id && el.dataset.kind === 'switch' && !el.hidden) return;
+    const name = esc(q.name);
+    Object.assign(el.dataset, { client: q.id, kind: 'switch' });
+    el.innerHTML = `<span class="ico" aria-hidden="true">📋</span><div class="t" id="planOfferTitle">Switching ${name} to ${esc(PLAN_NAMES[q.planSwitch.to])}</div>
+      <div class="d">A session is carrying the old plans over (<a href="#" data-ps="open"${tip('ps-open')}>open it</a>). ${name} stays on ${esc(PLAN_NAMES[q.planSwitch.from])} until you finish the switch. The old files stay as they are either way.</div>
+      <div class="b"><button data-ps="cancel"${tip('ps-stop')}>Cancel the switch</button><button class="primary" data-ps="finish"${tip('ps-finish')}>Finish the switch</button></div>`;
+    el.hidden = false;
+    return;
+  }
+  el.dataset.kind = 'offer';
   const open = S.clients.filter((c) => !c.remote && c.planSystem === '');
   const o = open.find((c) => c.id === S.client) || open[0];
   if (!o) { el.hidden = true; return; }
@@ -9172,16 +9217,52 @@ function showPlanOffer() {
   el.hidden = false;
 }
 $('planOffer').onclick = async (e) => {
-  const b = e.target.closest('[data-plan]'), el = $('planOffer');
+  const el = $('planOffer'), id = el.dataset.client, c = S.clients.find((x) => x.id === id);
+  const ps = e.target.closest('[data-ps]');
+  if (ps) { // the waiting switch's card: open its session, finish it, or cancel it
+    e.preventDefault();
+    const sid = c?.planSwitch?.session;
+    if (ps.dataset.ps === 'open') { if (sid) { if (S.client === id) openSession(sid); else selectClient(id, sid); } return; }
+    for (const x of el.querySelectorAll('button')) x.disabled = true;
+    let r; try { r = await api(`/api/clients/${id}/plan-switch`, { action: ps.dataset.ps }); }
+    catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return alert(err.message); }
+    if (c) { c.planSystem = r.planSystem; delete c.planSwitch; } // the server's own message about the desk list follows
+    el.hidden = true; delete el.dataset.client;
+    showPlanOffer();
+    if (S.client === id) { loadPlans(); if (pf.data?.client?.id === id) loadProfile(true); }
+    return;
+  }
+  const b = e.target.closest('[data-plan]');
   if (!b) return;
-  const id = el.dataset.client, value = b.dataset.plan, c = S.clients.find((x) => x.id === id);
   for (const x of el.querySelectorAll('button')) x.disabled = true;
-  try { await api(`/api/clients/${id}/profile/switch`, { kind: 'plans', key: 'plans', value }); }
-  catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return alert(err.message); }
-  if (c) c.planSystem = value; // the server's own message about the desk list follows
+  if (await switchPlans(id, b.dataset.plan) === null) { for (const x of el.querySelectorAll('button')) x.disabled = false; return; }
   el.hidden = true;
   showPlanOffer();
 };
+// Switching a desk's plan system (#700), from the Inspector's Switches or the card above: the server says what the
+// switch would leave behind (another system's plan files, claims and hooks, or Docket's own plans). With something
+// there, a warning offers to convert in a session (the main action), to switch without converting, or to cancel;
+// with nothing, it switches at once. A conversion leaves the desk on its old system until Finish the switch on the
+// card. Resolves the desk's plan system afterwards, or null when cancelled or it failed.
+const PLAN_NAMES = { docket: 'Docket\'s plans', folder: 'a plan folder', none: 'no plans', '': 'Docket\'s plans' };
+async function switchPlans(id, to) {
+  const c = S.clients.find((x) => x.id === id), name = c?.name || 'This desk';
+  let w; try { w = await api(`/api/clients/${id}/plan-switch?to=${encodeURIComponent(to)}`); } catch (err) { alert(err.message); return null; }
+  let action = 'switch';
+  if (w.warn) {
+    const into = w.way === 'in';
+    action = await dialog({ title: into ? `${name} already keeps plans another way` : `${name} has plans in Docket`,
+      body: `<p>Switching ${esc(name)} to ${esc(PLAN_NAMES[to])} leaves this behind:</p><ul class="ps-found">${w.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+        <p class="meta">${into ? 'Convert starts a session on this desk that makes Docket plans from them: tasks, who holds each, what waits on what, and what is done.' : 'Convert starts a session on this desk that writes them out as markdown checklists.'} The old files stay as they are, and ${esc(name)} keeps ${esc(PLAN_NAMES[w.from])} until you press Finish the switch.</p>`,
+      buttons: [{ label: 'Cancel', value: null, tip: tipText('ps-cancel') }, { label: 'Switch without converting', value: 'switch', tip: tipText('ps-switch') }, { label: 'Convert in a session', value: 'convert', primary: true, tip: tipText('ps-convert') }] });
+    if (!action) return null;
+  }
+  let r; try { r = await api(`/api/clients/${id}/plan-switch`, { to, action }); } catch (err) { alert(err.message); return null; }
+  if (c) { c.planSystem = r.planSystem; if (r.session) c.planSwitch = { to, from: w.from, session: r.session }; else delete c.planSwitch; }
+  if (r.session && S.client === id) openSession(r.session);
+  showPlanOffer();
+  return r.planSystem;
+}
 </script>
 </body>
 </html>
