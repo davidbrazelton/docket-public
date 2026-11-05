@@ -61,11 +61,13 @@ input, textarea { font: inherit; color: inherit; background: var(--panel); borde
 input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
 /* top bar */
-header.top { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--divider); background: var(--panel); border-radius: var(--card-r); box-shadow: var(--card-shadow); }
+header.top { display: flex; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid var(--divider); background: var(--panel); border-radius: var(--card-r); box-shadow: var(--card-shadow); min-width: 0; }
 header.top .brand { font-weight: 600; margin-right: 8px; color: var(--accent); }
 @media (display-mode: standalone), (display-mode: window-controls-overlay) { header.top .brand { display: none; } } /* the app window's own title bar already says Docket */
-.clients { display: flex; gap: 4px; }
-.clients button { border-color: transparent; display: flex; align-items: center; gap: 6px; }
+/* when the bar runs out of room the desk tabs scroll sideways inside it, so the page never does (#676) */
+.clients { display: flex; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.clients::-webkit-scrollbar { display: none; }
+.clients button { flex: none; border-color: transparent; display: flex; align-items: center; gap: 6px; }
 .clients button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .badge { background: var(--warn); color: var(--on-warn); border-radius: 999px; font-size: 11px; padding: 0 6px; font-weight: 600; }
 header.top .spacer { flex: 1; }
@@ -97,17 +99,19 @@ header.top .bi-btn svg path { fill: currentColor; }
 header.top .g-btn { gap: 3px; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 header.top .g-btn.warn { color: var(--warn); }
 #termTopBtn .ti { display: none; width: 16px; height: 16px; }
-.clients .ci { display: none; }
-@media (max-width: 900px) { header.top { gap: 8px; } header.top .brand { display: none; } }
-/* narrow: the other desks show their initials, Terminal its icon, and the gauges give way (☰ > Gauges has them) */
+/* below 900 px the desk tabs take a row of their own under the buttons (#676) */
+@media (max-width: 900px) {
+  header.top { gap: 8px; flex-wrap: wrap; row-gap: 6px; }
+  header.top .brand { display: none; }
+  header.top .clients { order: 1; flex: 1 0 100%; }
+}
+/* narrow: Terminal shows its icon and the gauges give way (☰ > Gauges has them) */
 @media (max-width: 640px) {
   header.top { gap: 6px; padding: 8px 10px; }
   header.top .gauges, header.top .gsep { display: none; }
   #termTopBtn { padding: 4px 6px; display: flex; align-items: center; }
   #termTopBtn .tl { display: none; }
   #termTopBtn .ti { display: block; }
-  .clients button:not(.on) .cn { display: none; }
-  .clients button:not(.on) .ci { display: inline; }
 }
 .hv-day { font-weight: 600; color: var(--text); margin: 8px 0 2px; }
 .hv-day:first-child { margin-top: 0; }
@@ -2080,7 +2084,7 @@ function renderClients() {
   $('clients').innerHTML = shownDesks().map((c) => {
     const n = waitingCount(c.id);
     const rc = remoteMarkTip(c);
-    return `<button class="${c.id === S.client ? 'on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${esc(c.name)}</span><span class="ci">${esc(c.name.split(/\s+/).map((w) => w[0] || '').join('').slice(0, 3))}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+    return `<button class="${c.id === S.client ? 'on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${esc(c.name)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
   }).join('');
   const total = waitingCount(S.client);
   const name = S.clients.find((c) => c.id === S.client)?.name;
