@@ -364,16 +364,17 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 /* Background steps (#688): View > Background steps in the session menu. Hide takes the lines out; Group folds each run of
    them into one line that opens to the separate lines. */
 #events.steps-hide details.tool, #events.steps-hide details.steps { display: none; }
-.steps { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-.steps > summary { padding: 3px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
-.steps > summary::-webkit-details-marker { display: none; }
-.steps > summary:hover { color: var(--text); }
-.steps > summary .nm { font-weight: 600; color: var(--text); }
-.steps > summary .lb { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.steps, .sreport { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.steps > summary, .sreport > summary { padding: 3px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
+.steps > summary::-webkit-details-marker, .sreport > summary::-webkit-details-marker { display: none; }
+.steps > summary:hover, .sreport > summary:hover { color: var(--text); }
+.steps > summary .nm, .sreport > summary .nm { font-weight: 600; color: var(--text); }
+.steps > summary .lb, .sreport > summary .lb { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .steps > summary .bad { color: var(--bad); }
-.steps > summary .qf-arrow { flex: none; transition: transform .15s; }
-.steps[open] > summary .qf-arrow { transform: rotate(90deg); }
+.steps > summary .qf-arrow, .sreport > summary .qf-arrow { flex: none; transition: transform .15s; }
+.steps[open] > summary .qf-arrow, .sreport[open] > summary .qf-arrow { transform: rotate(90deg); }
 .steps-body { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-top: 1px solid var(--line); }
+.sreport pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line); max-height: 300px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
 .ic { width: 14px; text-align: center; flex: none; }
 .ic.running { color: var(--run); animation: pulse 1.2s infinite; }
 .ic.done { color: var(--ok); }
@@ -6862,7 +6863,8 @@ function renameInline() {
 const earlier = (ev) => ev.earlier ? ' · from earlier in this chat' : '';
 function eventHtml(ev) {
   switch (ev.k) {
-    case 'user': return `<div class="msg-user" data-ev${ev.from ? ` data-from="${esc(ev.from)}"` : ''}>${esc(ev.text)}${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}</div>${ev.at ? `<div class="msg-when">${stamp(ev.at)}</div>` : ''}`;
+    case 'user': if (ev.from === 'docket' && /<session-report>/.test(ev.text)) return reportHtml(ev);
+      return `<div class="msg-user" data-ev${ev.from ? ` data-from="${esc(ev.from)}"` : ''}>${esc(ev.text)}${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}</div>${ev.at ? `<div class="msg-when">${stamp(ev.at)}</div>` : ''}`;
     case 'text': return `<div class="reply"><div class="msg-text" data-text="${esc(ev.id)}">${mdc(ev.text)}</div><div class="reply-actions"><button class="copy-btn" data-copy="reply" data-id="${esc(ev.id)}"${tip('copy-reply')}>Copy reply</button></div></div>`;
     case 'tool': {
       const ic = ev.status === 'running' ? ['running', '●'] : ev.status === 'error' ? ['error', '✕'] : ['done', '✓'];
@@ -7067,6 +7069,27 @@ document.addEventListener('toggle', (e) => {
   const d = e.target;
   if (d.classList?.contains('steps')) { const k = `${S.selected}:${d.dataset.steps}`; if (d.open) S.openSteps.add(k); else S.openSteps.delete(k); checkJump(); }
   else if (d.classList?.contains('tool') && stepsMode() === 'expand') { if (d.open) S.shutSteps.delete(d.dataset.tool); else S.shutSteps.add(d.dataset.tool); }
+}, true);
+// A session report (the <session-report> message Docket sends a parent when its child sessions finish a turn), read
+// back from a saved chat: folded like a group of steps to one line saying who finished, the raw text one click away.
+S.openReports = new Set(); // reports the person opened, by session and time
+function reportHtml(ev) {
+  const body = (ev.text.match(/<session-report>([\s\S]*?)(<\/session-report>|$)/)?.[1] || '').split('\n');
+  const said = body.map((l) => {
+    let m = l.match(/^- "(.+?)" \(id [^)]*\) finished/);
+    if (m) return `${m[1]} finished a turn`;
+    if ((m = l.match(/^- "(.+?)" \(id [^)]*\) is waiting on the user/))) return `${m[1]} is waiting on you`;
+    if ((m = l.match(/^- Plan "(.+?)"/))) return `plan ${m[1]} has tasks free to start`;
+    return '';
+  }).filter(Boolean);
+  const key = `${S.selected}:${ev.at || ev.text.slice(0, 200)}`;
+  return `<details class="sreport" data-report="${esc(key)}"${S.openReports.has(key) ? ' open' : ''} title="Click to show the full report, and again to fold it"><summary><span class="ic done">↩</span><span class="nm">Session report</span><span class="lb">${esc(said.join(' · ') || 'from sessions this one started')}</span><span class="qf-arrow" aria-hidden="true">▸</span></summary><pre>${esc(ev.text)}</pre></details>`;
+}
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (!d.classList?.contains('sreport')) return;
+  if (d.open) S.openReports.add(d.dataset.report); else S.openReports.delete(d.dataset.report);
+  checkJump();
 }, true);
 // end of background steps
 // keep: draw it again where the person is reading (a turn just folded), not at the bottom.
