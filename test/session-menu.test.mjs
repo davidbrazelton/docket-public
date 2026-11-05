@@ -98,11 +98,22 @@ test('Chime and Timeline show their state', () => {
 
 test('View holds the timeline and how background steps show, one ticked (#688)', () => {
   assert.ok(!keys({}).includes('timeline'), 'Timeline in the chat moved under View');
-  assert.deepEqual(subKeys({ steps: 'line' }), ['timeline', 'hr', 'head', 'steps-hide', 'steps-group', 'steps-line', 'steps-expand']);
+  assert.deepEqual(subKeys({ steps: 'line' }), ['timeline', 'hr', 'head', 'steps-hide', 'steps-group', 'steps-narrate', 'steps-line', 'steps-expand']);
   const html = sessionMenuHtml(sessionMenuItems({ ...base, steps: 'group' }));
   assert.match(html, /<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="view" aria-haspopup="menu" aria-expanded="false" title="ctx-view">/);
   assert.match(html, /<div class="ctx sub" role="menu" aria-label="View" hidden>.*data-act="timeline".*<div class="sub-h">Background steps<\/div>/s);
   assert.match(html, /role="menuitemradio" data-act="steps-group" aria-checked="true"[^>]*><span class="ck">✓<\/span>Group/);
-  for (const k of ['hide', 'line', 'expand']) assert.match(html, new RegExp(`role="menuitemradio" data-act="steps-${k}" aria-checked="false"`));
-  assert.ok(page.includes("store.get('steps', 'group')"), 'Group is the default for anyone who has not picked (#695)');
+  for (const k of ['hide', 'narrate', 'line', 'expand']) assert.match(html, new RegExp(`role="menuitemradio" data-act="steps-${k}" aria-checked="false"`));
+});
+
+test('Group is the start, and a Group picked before #706 reads as Narrate', () => {
+  const at = page.indexOf('const stepsMode = () =>');
+  const src = page.slice(at, page.indexOf('\n};', at) + 3);
+  const mode = (saved) => new Function('store', 'STEP_MODES', src + '\nreturn stepsMode();')(
+    { get: (k, d) => (k in saved ? saved[k] : d) }, [['hide'], ['group'], ['narrate'], ['line'], ['expand']]);
+  assert.equal(mode({}), 'group', 'nothing picked: Group (#695)');
+  assert.equal(mode({ steps: 'group' }), 'narrate', 'the old Group is now called Narrate');
+  assert.equal(mode({ steps: 'line' }), 'line');
+  assert.equal(mode({ steps: 'group', stepsView: 'group' }), 'group', 'a pick made since #706 wins');
+  assert.equal(mode({ stepsView: 'gone' }), 'group');
 });

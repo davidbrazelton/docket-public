@@ -361,8 +361,8 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .tool .nm { font-weight: 600; color: var(--text); }
 .tool .lb { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .tool pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line); max-height: 300px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
-/* Background steps (#688): View > Background steps in the session menu. Hide takes the lines out; Group folds each run of
-   them into one line that opens to the separate lines. */
+/* Background steps (#688): View > Background steps in the session menu. Hide takes the lines out; Narrate folds each run
+   of them into one line that opens to the separate lines; Group folds the narration between them in too (#706). */
 #events.steps-hide details.tool, #events.steps-hide details.steps { display: none; }
 .steps, .sreport { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .steps > summary, .sreport > summary { padding: 3px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
@@ -371,6 +371,11 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .steps > summary .nm, .sreport > summary .nm { font-weight: 600; color: var(--text); }
 .steps > summary .lb, .sreport > summary .lb { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .steps > summary .bad { color: var(--bad); }
+.steps.notes > summary { flex-wrap: wrap; row-gap: 0; }
+.steps > summary .nt { flex-basis: 100%; min-width: 0; padding-left: 22px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.steps[open] > summary .nt { display: none; }
+/* Narration (#706): a reply with more steps after it in the same turn, muted and a size smaller, so the turn's final reply stands out. */
+.reply.narr .msg-text { color: var(--muted); font-size: 13px; }
 .steps > summary .qf-arrow, .sreport > summary .qf-arrow { flex: none; transition: transform .15s; }
 .steps[open] > summary .qf-arrow, .sreport[open] > summary .qf-arrow { transform: rotate(90deg); }
 .steps-body { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-top: 1px solid var(--line); }
@@ -1445,7 +1450,8 @@ const HELP = [
     ['ctx-view', 'View ›', 'How the chat is shown: the timeline, and the AI\'s background steps. One setting for every session.'],
     ['ctx-timeline', 'View › Timeline in the chat', 'Show the timeline in the chat: tool runs, hooks, instructions and more, in order between the messages. One setting for every session.'],
     ['ctx-steps-hide', 'View › Background steps: Hide', 'Leave the AI\'s background steps (reading files, running commands, making edits) out of the chat. Its replies still show.'],
-    ['ctx-steps-group', 'View › Background steps: Group', 'Fold each run of background steps into one line, like "9 steps · Edit ×6, Read ×3". Click it to see each step, and again to fold them. A step still running or one that failed shows on the line. This is how the chat starts.'],
+    ['ctx-steps-group', 'View › Background steps: Group', 'Fold the background steps of each turn, and the notes the AI wrote between them, into one line, like "18 steps, 2 notes · Bash ×14, Read ×4", with the last note under it. Only the reply that ends the turn stays open. Click the line to see each step and note, and again to fold them. A step still running or one that failed shows on the line. This is how the chat starts.'],
+    ['ctx-steps-narrate', 'View › Background steps: Narrate', 'Fold each run of background steps into one line, like "9 steps · Edit ×6, Read ×3", with the notes the AI wrote between them showing, dimmed. Click a line to see each step, and again to fold them.'],
     ['ctx-steps-line', 'View › Background steps: Line', 'Show each background step on its own line; click one to see what it did.'],
     ['ctx-steps-expand', 'View › Background steps: Expand', 'Show each background step on its own line, with what it did already open'],
     ['ctx-chime', 'Chime', 'On: this session plays a sound when it needs you. Click to mute it here only, or to turn it back on.'],
@@ -4562,7 +4568,7 @@ $('list').addEventListener('contextmenu', (e) => {
 });
 // ---------- session menu ----------
 // How the chat shows the AI's background steps (tool runs), one setting for every session (#688). Group is the start (#695).
-const STEP_MODES = [['hide', 'Hide'], ['group', 'Group'], ['line', 'Line'], ['expand', 'Expand']];
+const STEP_MODES = [['hide', 'Hide'], ['group', 'Group'], ['narrate', 'Narrate'], ['line', 'Line'], ['expand', 'Expand']];
 // View › in the session menu: how the chat is shown. ['head', label] is a heading over the choices below it.
 const viewMenuItems = (f) => [['timeline', 'Timeline in the chat', { checked: f.timeline }], ['hr'], ['head', 'Background steps'],
   ...STEP_MODES.map(([k, label]) => ['steps-' + k, label, { checked: f.steps === k, radio: true }])];
@@ -7034,13 +7040,19 @@ document.addEventListener('toggle', (e) => {
   checkJump();
 }, true);
 // ---------- background steps (#688) ----------
-// How the AI's tool runs show in the chat, from View ▸ Background steps in the session menu: Hide, Group (each run of
-// them between two other messages folds into one line), Line (one line each, as always) or Expand (each one opened).
-// The chat is drawn as for Line; stepsView then hides, opens or groups the lines, after each draw and each new step.
-// Group is the start for anyone who has not picked one (#695); a pick saved before keeps.
-const stepsMode = () => { const v = store.get('steps', 'group'); return STEP_MODES.some(([k]) => k === v) ? v : 'group'; };
+// How the AI's tool runs show in the chat, from View ▸ Background steps in the session menu: Hide, Group (a turn's steps
+// and the narration between them fold into one line, #706), Narrate (each run of steps between two other messages folds
+// into one line, the narration shows between them), Line (one line each, as always) or Expand (each one opened).
+// The chat is drawn as for Line; stepsView then marks the narration and hides, opens or groups the lines, after each draw
+// and each new step. Group is the start for anyone who has not picked one (#695). Picks are kept under 'stepsView' since
+// #706; one saved under 'steps' before keeps, and its Group (what Narrate is now) reads as Narrate.
+const stepsMode = () => {
+  let v = store.get('stepsView', undefined);
+  if (v === undefined) { v = store.get('steps', 'group'); if (store.get('steps', undefined) === 'group') v = 'narrate'; }
+  return STEP_MODES.some(([k]) => k === v) ? v : 'group';
+};
 function setStepsMode(v) {
-  store.set('steps', v);
+  store.set('stepsView', v);
   $('events').querySelectorAll('details.tool[open]').forEach((d) => { d.open = false; }); // drawn again from closed
   S.shutSteps.clear();
   renderEvents(false, true);
@@ -7051,18 +7063,32 @@ function stepsView() {
   const box = $('events'), mode = stepsMode();
   box.classList.toggle('steps-hide', mode === 'hide');
   if (mode === 'expand') for (const d of box.querySelectorAll('details.tool:not([open])')) if (!S.shutSteps.has(d.dataset.tool)) d.open = true;
-  if (mode === 'group') for (const c of [box, ...box.querySelectorAll('.qf-body')]) groupSteps(c);
+  const boxes = [box, ...box.querySelectorAll('.qf-body')];
+  for (const c of boxes) markNarration(c);
+  if (mode === 'group' || mode === 'narrate') for (const c of boxes) groupSteps(c, mode === 'group');
 }
-// Folds each run of two or more steps among c's children into one group, adding to a group already there. The timeline's
-// woven lines do not break a run; anything else does.
-function groupSteps(c) {
+// Narration (#706): a reply among c's children with more steps after it before its turn's Done line. The last reply of a
+// turn is its final reply and stays as it is; while a turn runs, its latest reply waits until a step comes after it.
+function markNarration(c) {
+  let said = [];
+  for (const el of c.children) {
+    if (el.matches('.reply')) said.push(el);
+    else if (el.matches('details.tool, details.steps')) { for (const r of said) r.classList.add('narr'); said = []; }
+    else if (el.matches('.done-line')) said = [];
+  }
+}
+// Folds each run of steps among c's children into one group, adding to a group already there; with notes (Group), the
+// narration between them joins the run. A run folds when it holds a step and something more. The timeline's woven
+// lines do not break a run; anything else does.
+function groupSteps(c, notes) {
   let run = [];
   const flush = () => {
     const steps = run.flatMap((el) => el.matches('.steps') ? [...el.querySelector('.steps-body').children] : [el]);
-    if (steps.length > 1) {
+    const first = steps.find((el) => el.matches('details.tool'));
+    if (first && steps.length > 1) {
       let g = run[0];
       if (!g.matches('.steps')) {
-        g = document.createElement('details'); g.className = 'steps'; g.dataset.steps = steps[0].dataset.tool;
+        g = document.createElement('details'); g.className = 'steps'; g.dataset.steps = first.dataset.tool;
         if (steps[0].dataset.at) g.dataset.at = steps[0].dataset.at;
         g.innerHTML = '<summary></summary><div class="steps-body"></div>';
         run[0].before(g);
@@ -7076,20 +7102,24 @@ function groupSteps(c) {
     run = [];
   };
   for (const el of [...c.children]) {
-    if (el.matches('details.tool, details.steps')) run.push(el);
+    if (el.matches('details.tool, details.steps') || (notes && el.matches('.reply.narr'))) run.push(el);
     else if (!el.matches('.tl-w')) flush();
   }
   flush();
 }
-// A group's line: how many steps and of what, and a step still running or one that failed shows on it.
+// A group's line: how many steps and of what, and a step still running or one that failed shows on it. In Group it also
+// counts the notes (narration) and shows the last one under the line, dimmed.
 function stepsSummary(g) {
   const steps = [...g.querySelectorAll('.steps-body > details.tool')], n = new Map();
+  const said = [...g.querySelectorAll('.steps-body > .reply')], last = said.length ? said[said.length - 1].querySelector('.msg-text').textContent.replace(/\s+/g, ' ').trim() : '';
   for (const el of steps) { const nm = el.querySelector('.nm')?.textContent || 'Step'; n.set(nm, (n.get(nm) || 0) + 1); }
   const running = steps.some((el) => el.querySelector('.ic.running')), failed = steps.filter((el) => el.querySelector('.ic.error')).length;
   const ic = running ? ['running', '●'] : failed ? ['error', '✕'] : ['done', '✓'];
   const kinds = [...n].sort((a, b) => b[1] - a[1]).map(([k, c]) => `${esc(k)} ×${c}`).join(', ');
-  g.querySelector('summary').innerHTML = `<span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${steps.length} steps</span><span class="lb">${kinds}${failed ? ` · <span class="bad">${failed} failed</span>` : ''}${running ? ' · running' : ''}</span><span class="qf-arrow" aria-hidden="true">▸</span>`;
-  g.title = 'Click to show each step, and again to fold them';
+  const count = `${steps.length} step${steps.length > 1 ? 's' : ''}${said.length ? `, ${said.length} note${said.length > 1 ? 's' : ''}` : ''}`;
+  g.classList.toggle('notes', !!said.length);
+  g.querySelector('summary').innerHTML = `<span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${count}</span><span class="lb">${kinds}${failed ? ` · <span class="bad">${failed} failed</span>` : ''}${running ? ' · running' : ''}</span><span class="qf-arrow" aria-hidden="true">▸</span>${last ? `<span class="nt">Last note: ${esc(last)}</span>` : ''}`;
+  g.title = said.length ? 'Click to show each step and note, and again to fold them' : 'Click to show each step, and again to fold them';
 }
 document.addEventListener('toggle', (e) => {
   const d = e.target;
