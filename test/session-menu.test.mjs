@@ -14,6 +14,8 @@ const { sessionMenuItems, sessionMenuHtml } = new Function('tip', escLine + '\n'
 const base = { archived: false, live: true, midReply: false, cwd: 'C:/Work/acme', parentId: null, noGroup: true, needsYou: false, working: false,
   muted: false, soundOn: true, timeline: false, kids: 0, otherRuns: 0, unreadRuns: 0 };
 const keys = (f) => sessionMenuItems({ ...base, ...f }).map(([k]) => k);
+const view = (f) => sessionMenuItems({ ...base, ...f }).find(([k]) => k === 'view')[2].sub;
+const subKeys = (f) => view(f).map(([k]) => k);
 
 test('both ways in open the one menu: right-click in the list and ⋯ in the header', () => {
   const body = (from) => page.slice(from, page.indexOf('\n});', from));
@@ -23,7 +25,8 @@ test('both ways in open the one menu: right-click in the list and ⋯ in the hea
   assert.match(head, /openSessionMenu\(s\.id, \{ el: e\.currentTarget \}\)/);
   // Only openSessionMenu draws the items, so nothing else can build a second list that drifts away from it.
   assert.equal([...page.matchAll(/sessionMenuItems\(/g)].length, 2, 'sessionMenuItems is defined once and called once');
-  assert.equal([...page.matchAll(/sessionMenuHtml\(/g)].length, 1);
+  assert.equal([...page.matchAll(/sessionMenuHtml\(/g)].length, 2, 'drawn in one place, and by itself for a group like View');
+  assert.ok(page.includes('${sessionMenuHtml(o.sub)}'));
   assert.ok(/m\.innerHTML = sessionMenuHtml\(sessionMenuItems\(ctx\.f\)\)/.test(page));
 });
 
@@ -33,14 +36,14 @@ test('the header has a ⋯ button and no longer its own row of buttons', () => {
 });
 
 test('every action from the old header and the old right-click menu is in it', () => {
-  const all = new Set([...keys({}), ...keys({ archived: true, live: false }), ...keys({ midReply: true, parentId: 'p', kids: 2, unreadRuns: 1 })]);
+  const all = new Set([...keys({}), ...keys({ archived: true, live: false }), ...keys({ midReply: true, parentId: 'p', kids: 2, unreadRuns: 1 }), ...subKeys({})]);
   for (const k of ['newunder', 'archive', 'archive-all', 'restore', 'read', 'unread', 'terminal', 'timeline', 'chime', 'group', 'parent', 'top', 'auto-group', 'rename', 'end', 'delete'])
     assert.ok(all.has(k), k);
 });
 
 test('items come and go with the session', () => {
-  assert.deepEqual(keys({}), ['newunder', 'hr', 'archive', 'unread', 'pin', 'hr', 'popout', 'terminal', 'timeline', 'chime', 'hr', 'group', 'parent', 'auto-group', 'rename', 'hr', 'end', 'delete']);
-  assert.deepEqual(keys({ archived: true, live: false, cwd: '' }), ['restore', 'hr', 'popout', 'timeline', 'chime', 'hr', 'group', 'rename', 'hr', 'delete']);
+  assert.deepEqual(keys({}), ['newunder', 'hr', 'archive', 'unread', 'pin', 'hr', 'popout', 'terminal', 'view', 'chime', 'hr', 'group', 'parent', 'auto-group', 'rename', 'hr', 'end', 'delete']);
+  assert.deepEqual(keys({ archived: true, live: false, cwd: '' }), ['restore', 'hr', 'popout', 'view', 'chime', 'hr', 'group', 'rename', 'hr', 'delete']);
   assert.ok(!keys({ midReply: true }).includes('continue'), 'Continue moved to the banner over the session');
   assert.ok(!keys({ working: true }).includes('unread'));
   assert.ok(keys({ parentId: 'p' }).includes('top'));
@@ -85,10 +88,21 @@ test('Chime and Timeline show their state', () => {
   assert.equal(label({ muted: true }), '🔕 Chime: off');
   assert.equal(label({ soundOn: false }), '🔕 Chime: off');
   assert.match(sessionMenuHtml(sessionMenuItems(base)), /data-act="chime"[^>]*><span class="ck"><\/span>🔔 Chime: on/, 'no ✓ when the label says on');
-  assert.equal(on({ timeline: true }, 'timeline').checked, true);
+  assert.equal(view({ timeline: true }).find(([x]) => x === 'timeline')[2].checked, true);
   const html = sessionMenuHtml(sessionMenuItems({ ...base, timeline: true }));
   assert.match(html, /role="menuitemcheckbox" data-act="timeline" aria-checked="true"/);
   assert.match(html, /role="menuitemcheckbox" data-act="chime" aria-checked="true"/);
   assert.match(html, /role="menuitem" data-act="delete" title="ctx-delete"/);
   assert.match(sessionMenuHtml(sessionMenuItems({ ...base, soundOn: false })), /data-act="chime" aria-checked="false" disabled title="Sound is off/);
+});
+
+test('View holds the timeline and how background steps show, one ticked (#688)', () => {
+  assert.ok(!keys({}).includes('timeline'), 'Timeline in the chat moved under View');
+  assert.deepEqual(subKeys({ steps: 'line' }), ['timeline', 'hr', 'head', 'steps-hide', 'steps-group', 'steps-line', 'steps-expand']);
+  const html = sessionMenuHtml(sessionMenuItems({ ...base, steps: 'group' }));
+  assert.match(html, /<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="view" aria-haspopup="menu" aria-expanded="false" title="ctx-view">/);
+  assert.match(html, /<div class="ctx sub" role="menu" aria-label="View" hidden>.*data-act="timeline".*<div class="sub-h">Background steps<\/div>/s);
+  assert.match(html, /role="menuitemradio" data-act="steps-group" aria-checked="true"[^>]*><span class="ck">✓<\/span>Group/);
+  for (const k of ['hide', 'line', 'expand']) assert.match(html, new RegExp(`role="menuitemradio" data-act="steps-${k}" aria-checked="false"`));
+  assert.ok(page.includes("store.get('steps', 'line')"), 'Line is the default, so nothing changes for anyone who does not pick');
 });

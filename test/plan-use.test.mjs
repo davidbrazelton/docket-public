@@ -90,7 +90,7 @@ test('the page draws the card, and Use a plan and the session menu item both ask
 
 // sessionMenuItems from the page, on made-up facts.
 function menu(f) {
-  const fn = page.slice(page.indexOf('function sessionMenuItems'), page.indexOf('// A toggle shows ✓ while on'));
+  const fn = page.slice(page.indexOf('// ---------- session menu'), page.indexOf('// A toggle shows ✓ while on'));
   return new Function(fn + '\nreturn sessionMenuItems;')()(f).map((i) => i[0]);
 }
 test('the session menu has Use a plan for this work only on a plans-on desk, for a session with no plan', () => {

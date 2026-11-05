@@ -349,6 +349,19 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .tool .nm { font-weight: 600; color: var(--text); }
 .tool .lb { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .tool pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line); max-height: 300px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
+/* Background steps (#688): View > Background steps in the session menu. Hide takes the lines out; Group folds each run of
+   them into one line that opens to the separate lines. */
+#events.steps-hide details.tool, #events.steps-hide details.steps { display: none; }
+.steps { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.steps > summary { padding: 5px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
+.steps > summary::-webkit-details-marker { display: none; }
+.steps > summary:hover { color: var(--text); }
+.steps > summary .nm { font-weight: 600; color: var(--text); }
+.steps > summary .lb { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.steps > summary .bad { color: var(--bad); }
+.steps > summary .qf-arrow { flex: none; transition: transform .15s; }
+.steps[open] > summary .qf-arrow { transform: rotate(90deg); }
+.steps-body { display: flex; flex-direction: column; gap: 6px; padding: 6px; border-top: 1px solid var(--line); }
 .ic { width: 14px; text-align: center; flex: none; }
 .ic.running { color: var(--run); animation: pulse 1.2s infinite; }
 .ic.done { color: var(--ok); }
@@ -925,6 +938,7 @@ header.top .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
 .ctx.row-menu button { display: flex; align-items: center; gap: 8px; }
 .ctx.sess-menu { max-height: calc(100vh - 16px); overflow-y: auto; }
 .ctx.sess-menu .ck { display: inline-block; width: 1.3em; color: var(--accent); }
+.ctx .sub-h { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; color: var(--muted); }
 .ctx .mi { width: 14px; height: 14px; flex: none; color: var(--muted); }
 .row-more { border: none; background: none; color: var(--muted); padding: 0 6px; font-size: 15px; line-height: 1.2; border-radius: 6px; opacity: .6; }
 .file-row:hover .row-more, .pr-row:hover .row-more, .task:hover .row-more, .row-more:focus-visible { opacity: 1; }
@@ -1388,7 +1402,12 @@ const HELP = [
     ['ctx-terminal', 'Terminal…', 'Open a terminal in this session\'s folder, signed in as this desk'],
     ['ctx-editor-vscode', 'Open in VS Code', 'Open the folder this session works in, in VS Code'],
     ['ctx-editor-vs', 'Open in Visual Studio', 'Open the folder this session works in, in Visual Studio: its solution if it has just one, else the folder'],
-    ['ctx-timeline', 'Timeline in the chat', 'Show the timeline in the chat: tool runs, hooks, instructions and more, in order between the messages. One setting for every session.'],
+    ['ctx-view', 'View ›', 'How the chat is shown: the timeline, and the AI\'s background steps. One setting for every session.'],
+    ['ctx-timeline', 'View › Timeline in the chat', 'Show the timeline in the chat: tool runs, hooks, instructions and more, in order between the messages. One setting for every session.'],
+    ['ctx-steps-hide', 'View › Background steps: Hide', 'Leave the AI\'s background steps (reading files, running commands, making edits) out of the chat. Its replies still show.'],
+    ['ctx-steps-group', 'View › Background steps: Group', 'Fold each run of background steps into one line, like "9 steps · Edit ×6, Read ×3". Click it to see each step, and again to fold them. A step still running or one that failed shows on the line.'],
+    ['ctx-steps-line', 'View › Background steps: Line', 'Show each background step on its own line; click one to see what it did. This is how the chat starts.'],
+    ['ctx-steps-expand', 'View › Background steps: Expand', 'Show each background step on its own line, with what it did already open'],
     ['ctx-chime', 'Chime', 'On: this session plays a sound when it needs you. Click to mute it here only, or to turn it back on.'],
     ['ctx-mute', 'Mute chime', 'Turn the picked sessions\' sounds off, or back on'],
     ['ctx-use-plan', 'Use a plan for this work', 'Tell this session to make a plan for its work: a checklist of tasks it hands to sessions of their own, shown in the Plan section'],
@@ -4385,6 +4404,11 @@ $('list').addEventListener('contextmenu', (e) => {
   openSessionMenu(id, { x: e.clientX, y: e.clientY });
 });
 // ---------- session menu ----------
+// How the chat shows the AI's background steps (tool runs), one setting for every session (#688). Line is how it always was.
+const STEP_MODES = [['hide', 'Hide'], ['group', 'Group'], ['line', 'Line'], ['expand', 'Expand']];
+// View › in the session menu: how the chat is shown. ['head', label] is a heading over the choices below it.
+const viewMenuItems = (f) => [['timeline', 'Timeline in the chat', { checked: f.timeline }], ['hr'], ['head', 'Background steps'],
+  ...STEP_MODES.map(([k, label]) => ['steps-' + k, label, { checked: f.steps === k, radio: true }])];
 // One menu for a session, opened two ways: right-click its row in the list, or ⋯ in its header. Both draw
 // it from sessionMenuItems, so the two can never differ. f holds what the menu needs to know about the
 // session (sessionMenuFacts). Each item is [key, label, { checked, disabled }]; ['hr'] is a separator.
@@ -4404,7 +4428,7 @@ function sessionMenuItems(f) {
   items.push(['popout', 'Pop out']);
   if (f.cwd) items.push(['terminal', 'Terminal…']);
   if (f.cwd) for (const ed of f.editors || []) items.push([`editor-${ed.id}`, `Open in ${ed.name}`]); // the ones installed here
-  items.push(['timeline', 'Timeline in the chat', { checked: f.timeline }]);
+  items.push(['view', 'View', { sub: viewMenuItems(f) }]);
   const chimeOn = f.soundOn && !f.muted; // reads like Sound in ☰ > Settings
   items.push(['chime', chimeOn ? '🔔 Chime: on' : '🔕 Chime: off', { checked: chimeOn, disabled: !f.soundOn, stated: true }]);
   items.push(['hr'], ['group', 'Group…']);
@@ -4415,11 +4439,13 @@ function sessionMenuItems(f) {
   items.push(['rename', 'Rename'], ['hr']);
   if (f.live) items.push(['end', 'End']);
   items.push(['delete', 'Delete…']);
-  return items.map(([k, label, o]) => (k === 'hr' ? ['hr'] : [k, label, { checked: o?.checked, disabled: !!o?.disabled, ...(o?.stated && { stated: true }) }]));
+  return items.map(([k, label, o]) => (k === 'hr' ? ['hr'] : [k, label, { checked: o?.checked, disabled: !!o?.disabled, ...(o?.stated && { stated: true }), ...(o?.sub && { sub: o.sub }) }]));
 }
 // A toggle shows ✓ while on, unless its label already says on or off (stated); every item keeps a column for it so the labels line up.
-const sessionMenuHtml = (items) => items.map(([k, label, o]) => k === 'hr' ? '<hr>'
-  : `<button role="${o.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" data-act="${k}"${o.checked === undefined ? '' : ` aria-checked="${!!o.checked}"`}${o.disabled ? ' disabled title="Sound is off for all sessions. Turn it on in ☰ > Settings."' : tip('ctx-' + k)}><span class="ck">${o.checked && !o.stated ? '✓' : ''}</span>${esc(label)}</button>`).join('');
+// A group (o.sub) opens beside the menu, drawn the way ☰ draws its groups.
+const sessionMenuHtml = (items) => items.map(([k, label, o]) => k === 'hr' ? '<hr>' : k === 'head' ? `<div class="sub-h">${esc(label)}</div>`
+  : o.sub ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${k}" aria-haspopup="menu" aria-expanded="false"${tip('ctx-' + k)}><span><span class="ck"></span>${esc(label)}</span><span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(label)}" hidden>${sessionMenuHtml(o.sub)}</div></div>`
+  : `<button role="${o.checked === undefined ? 'menuitem' : o.radio ? 'menuitemradio' : 'menuitemcheckbox'}" data-act="${k}"${o.checked === undefined ? '' : ` aria-checked="${!!o.checked}"`}${o.disabled ? ' disabled title="Sound is off for all sessions. Turn it on in ☰ > Settings."' : tip('ctx-' + k)}><span class="ck">${o.checked && !o.stated ? '✓' : ''}</span>${esc(label)}</button>`).join('');
 // end of session menu
 // Docket's own plans are on for a desk unless it chose a plan folder or none (#605).
 const plansOnDesk = (id) => { const c = S.clients.find((x) => x.id === id); return !!c && !c.remote && !['none', 'folder'].includes(c.planSystem); };
@@ -4436,7 +4462,7 @@ function sessionMenuFacts(s) {
   const unreadRuns = run ? run.runs.map(sessionById).filter((x) => x && isUnread(x)) : isUnread(s) ? [s] : [];
   return { kids, otherRuns, unreadRuns, f: { archived: !!s.archived, live: !!s.live, midReply: !!s.midReply, cwd: s.cwd || '', parentId: s.parentId || null,
     noGroup: hasNoGroup(s), needsYou: needsYou(s), working: !!(s.live && ['running', 'starting'].includes(s.status)),
-    pinned: pinnedHere(s.id), muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
+    pinned: pinnedHere(s.id), muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), steps: stepsMode(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
 }
 // at is { x, y } for a right-click (the menu opens at the cursor) or { el } for ⋯ (it opens under the button,
 // right edges lined up). Either way it stays on screen. Arrow keys move through it, Escape closes it.
@@ -4445,8 +4471,25 @@ function openSessionMenu(id, at) {
   if (!sessionById(id)) return;
   const m = document.createElement('div');
   m.className = 'ctx sess-menu'; m.id = 'ctx'; m.dataset.session = id; m.setAttribute('role', 'menu'); m.setAttribute('aria-label', 'Session menu');
-  let ctx;
-  const draw = () => { const s = sessionById(id); if (s) { ctx = sessionMenuFacts(s); m.innerHTML = sessionMenuHtml(sessionMenuItems(ctx.f)); } };
+  let ctx, subOpen = null; // subOpen: the group open beside the menu (View), kept open across a redraw
+  // A group opens beside the menu, or under its name where there is no room, as in ☰.
+  const openSub = (w, focus) => {
+    for (const x of m.querySelectorAll('.sub-wrap')) if (x !== w) shutSub(x);
+    const sub = w.querySelector('.sub'), b = w.firstChild;
+    w.classList.remove('inline'); sub.hidden = false; b.setAttribute('aria-expanded', 'true'); subOpen = b.dataset.sub;
+    const mr = m.getBoundingClientRect(), br = b.getBoundingClientRect(), sw = sub.offsetWidth, sh = sub.offsetHeight;
+    const x = mr.right - 4 + sw + 8 <= innerWidth ? mr.right - 4 : mr.left + 4 - sw >= 8 ? mr.left + 4 - sw : null;
+    if (x === null) w.classList.add('inline');
+    else { sub.style.left = x + 'px'; sub.style.top = Math.max(8, Math.min(br.top - 5, innerHeight - sh - 8)) + 'px'; }
+    if (focus) (sub.querySelector('[aria-checked=true]') || sub.querySelector('button:not([disabled])'))?.focus();
+  };
+  const shutSub = (w) => { w.querySelector('.sub').hidden = true; w.classList.remove('inline'); w.firstChild.setAttribute('aria-expanded', 'false'); if (subOpen === w.firstChild.dataset.sub) subOpen = null; };
+  const draw = () => {
+    const s = sessionById(id); if (!s) return;
+    const was = subOpen;
+    ctx = sessionMenuFacts(s); m.innerHTML = sessionMenuHtml(sessionMenuItems(ctx.f));
+    const w = was && m.querySelector(`[data-sub="${was}"]`)?.parentElement; if (w) openSub(w);
+  };
   draw();
   document.body.appendChild(m);
   const r = at.el?.getBoundingClientRect();
@@ -4454,18 +4497,33 @@ function openSessionMenu(id, at) {
   m.style.left = Math.max(8, Math.min(x, innerWidth - m.offsetWidth - 8)) + 'px';
   m.style.top = Math.max(8, Math.min(y, innerHeight - m.offsetHeight - 8)) + 'px';
   at.el?.setAttribute('aria-expanded', 'true');
+  const hoverOk = () => matchMedia('(hover: hover)').matches && innerWidth > 600;
+  m.onmouseover = (ev) => {
+    if (!hoverOk()) return;
+    const b = ev.target.closest('button'); if (!b || b.closest('.sub')) return;
+    const w = b.classList.contains('sub-btn') ? b.parentElement : null;
+    if (w) { if (w.querySelector('.sub').hidden) openSub(w); } else m.querySelectorAll('.sub-wrap').forEach(shutSub);
+  };
   m.onkeydown = (ev) => {
-    const btns = [...m.querySelectorAll('button:not([disabled])')], i = btns.indexOf(document.activeElement);
+    const a = document.activeElement, sub = a.closest('.sub');
+    if (sub && (ev.key === 'Escape' || ev.key === 'ArrowLeft')) { ev.preventDefault(); ev.stopPropagation(); shutSub(sub.parentElement); sub.parentElement.firstChild.focus(); return; }
+    if (ev.key === 'ArrowRight' && a.classList.contains('sub-btn')) { ev.preventDefault(); openSub(a.parentElement, true); return; }
+    const btns = [...m.querySelectorAll('button:not([disabled])')].filter((b) => b.closest('.sub') === sub), i = btns.indexOf(a);
     const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: btns.length - 1 }[ev.key];
     if (to !== undefined) { ev.preventDefault(); btns[(to + btns.length) % btns.length]?.focus(); }
     if (ev.key === 'Escape' || ev.key === 'Tab') { ev.preventDefault(); closeMenu(); document.getElementById('sessMenuBtn')?.focus(); }
   };
   m.onclick = async (ev) => {
+    const sb = ev.target.closest('.sub-btn');
+    if (sb) { // a click opens the group (and closes it again where hovering does not open it); Enter also moves into it
+      if (!sb.nextSibling.hidden && !hoverOk() && ev.detail) shutSub(sb.parentElement); else openSub(sb.parentElement, !ev.detail);
+      return;
+    }
     const b = ev.target.closest('[data-act]'); if (!b || b.disabled) return;
     const act = b.dataset.act, { kids, otherRuns, unreadRuns } = ctx, s = sessionById(id);
-    if (act === 'chime' || act === 'timeline') { // stays open and shows the new state, like Sound in ☰ > Settings
+    if (act === 'chime' || act === 'timeline' || act.startsWith('steps-')) { // stays open and shows the new state, like Sound in ☰ > Settings
       ev.stopPropagation(); // the redraw takes the clicked button out, so the page would read it as a click outside
-      if (act === 'chime') setMuted(id, !isMuted(id)); else toggleTimeline();
+      if (act === 'chime') setMuted(id, !isMuted(id)); else if (act === 'timeline') toggleTimeline(); else setStepsMode(act.slice(6));
       draw(); m.querySelector(`[data-act="${act}"]`)?.focus();
       return;
     }
@@ -6801,12 +6859,76 @@ document.addEventListener('toggle', (e) => {
   if (d.open) S.openFolds.add(d.dataset.fold); else S.openFolds.delete(d.dataset.fold);
   checkJump();
 }, true);
+// ---------- background steps (#688) ----------
+// How the AI's tool runs show in the chat, from View ▸ Background steps in the session menu: Hide, Group (each run of
+// them between two other messages folds into one line), Line (one line each, as always) or Expand (each one opened).
+// The chat is drawn as for Line; stepsView then hides, opens or groups the lines, after each draw and each new step.
+const stepsMode = () => { const v = store.get('steps', 'line'); return STEP_MODES.some(([k]) => k === v) ? v : 'line'; };
+function setStepsMode(v) {
+  store.set('steps', v);
+  $('events').querySelectorAll('details.tool[open]').forEach((d) => { d.open = false; }); // drawn again from closed
+  S.shutSteps.clear();
+  renderEvents(false, true);
+}
+S.openSteps = new Set(); // groups the person opened, by session and their first step
+S.shutSteps = new Set(); // steps the person closed in Expand, so a new step does not open them again
+function stepsView() {
+  const box = $('events'), mode = stepsMode();
+  box.classList.toggle('steps-hide', mode === 'hide');
+  if (mode === 'expand') for (const d of box.querySelectorAll('details.tool:not([open])')) if (!S.shutSteps.has(d.dataset.tool)) d.open = true;
+  if (mode === 'group') for (const c of [box, ...box.querySelectorAll('.qf-body')]) groupSteps(c);
+}
+// Folds each run of two or more steps among c's children into one group, adding to a group already there. The timeline's
+// woven lines do not break a run; anything else does.
+function groupSteps(c) {
+  let run = [];
+  const flush = () => {
+    const steps = run.flatMap((el) => el.matches('.steps') ? [...el.querySelector('.steps-body').children] : [el]);
+    if (steps.length > 1) {
+      let g = run[0];
+      if (!g.matches('.steps')) {
+        g = document.createElement('details'); g.className = 'steps'; g.dataset.steps = steps[0].dataset.tool;
+        if (steps[0].dataset.at) g.dataset.at = steps[0].dataset.at;
+        g.innerHTML = '<summary></summary><div class="steps-body"></div>';
+        run[0].before(g);
+        if (S.openSteps.has(`${S.selected}:${g.dataset.steps}`)) g.open = true;
+      }
+      const body = g.querySelector('.steps-body');
+      for (const el of steps) if (el.parentElement !== body) body.append(el);
+      for (const el of run) if (el !== g && el.matches('.steps')) el.remove();
+      stepsSummary(g);
+    }
+    run = [];
+  };
+  for (const el of [...c.children]) {
+    if (el.matches('details.tool, details.steps')) run.push(el);
+    else if (!el.matches('.tl-w')) flush();
+  }
+  flush();
+}
+// A group's line: how many steps and of what, and a step still running or one that failed shows on it.
+function stepsSummary(g) {
+  const steps = [...g.querySelectorAll('.steps-body > details.tool')], n = new Map();
+  for (const el of steps) { const nm = el.querySelector('.nm')?.textContent || 'Step'; n.set(nm, (n.get(nm) || 0) + 1); }
+  const running = steps.some((el) => el.querySelector('.ic.running')), failed = steps.filter((el) => el.querySelector('.ic.error')).length;
+  const ic = running ? ['running', '●'] : failed ? ['error', '✕'] : ['done', '✓'];
+  const kinds = [...n].sort((a, b) => b[1] - a[1]).map(([k, c]) => `${esc(k)} ×${c}`).join(', ');
+  g.querySelector('summary').innerHTML = `<span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${steps.length} steps</span><span class="lb">${kinds}${failed ? ` · <span class="bad">${failed} failed</span>` : ''}${running ? ' · running' : ''}</span><span class="qf-arrow" aria-hidden="true">▸</span>`;
+  g.title = 'Click to show each step, and again to fold them';
+}
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (d.classList?.contains('steps')) { const k = `${S.selected}:${d.dataset.steps}`; if (d.open) S.openSteps.add(k); else S.openSteps.delete(k); checkJump(); }
+  else if (d.classList?.contains('tool') && stepsMode() === 'expand') { if (d.open) S.shutSteps.delete(d.dataset.tool); else S.shutSteps.add(d.dataset.tool); }
+}, true);
+// end of background steps
 // keep: draw it again where the person is reading (a turn just folded), not at the bottom.
 function renderEvents(force, keep) {
   const t = $('transcript'), stick = atBottom(), top = t.scrollTop;
   const openTools = keep ? new Set([...$('events').querySelectorAll('details.tool[open]')].map((x) => x.dataset.tool)) : null;
   $('events').innerHTML = chatHtml(S.events, S.lineAt?.id === S.selected ? S.lineAt.at : null) || '<div class="empty">No messages yet.</div>';
   for (const id of openTools || []) { const x = $('events').querySelector(`details.tool[data-tool="${CSS.escape(id)}"]`); if (x) x.open = true; }
+  stepsView();
   weave();
   if (!keep || stick) scrollDown(true); else t.scrollTop = top;
   checkJump();
@@ -6817,6 +6939,7 @@ function appendEvent(ev) {
   const stick = atBottom();
   if ($('events').querySelector('.empty')) $('events').innerHTML = '';
   $('events').insertAdjacentHTML('beforeend', atHtml(ev));
+  if (ev.k === 'tool') stepsView();
   scrollDown(stick);
   if (ev.login) showSignin();
   tlSoon();
@@ -8007,7 +8130,7 @@ function setMuted(id, muted) {
   store.set('mutedSessions', m);
   renderList(); if (id === S.selected && !S.schedOpen) renderHead();
 }
-// The timeline in the chat is one setting for every session; the session menu turns it on and off.
+// The timeline in the chat is one setting for every session; View › Timeline in the chat in the session menu turns it on and off.
 function toggleTimeline() { const on = sections(); on.timeline = !on.timeline; store.set('sections', on); tl.menu = false; renderHead(); renderTlBar(); weave(); }
 const soundLabel = () => soundOn() ? '🔔 Sound: on' : '🔕 Sound: off';
 function soundTip() {
@@ -8236,7 +8359,7 @@ function connect() {
       refreshFiles();
       const ev = S.events.find((x) => x.k === 'tool' && x.id === m.ev.id);
       branchesSoon(ev);
-      if (ev) { ev.status = m.ev.error ? 'error' : 'done'; ev.result = m.ev.text; const el = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`); if (el) { const open = el.open; el.outerHTML = eventHtml(ev); if (open) document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`).open = true; } }
+      if (ev) { ev.status = m.ev.error ? 'error' : 'done'; ev.result = m.ev.text; const el = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`); if (el) { const open = el.open; el.outerHTML = eventHtml(ev); if (open) document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`).open = true; const g = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`)?.closest('.steps'); if (g) stepsSummary(g); } }
       tlSoon();
     } else if (m.t === 'task' && mine) {
       S.tasks[m.task.id] = m.task; renderTasks();
@@ -8429,8 +8552,9 @@ function weave() {
   const kids = [...box.children];
   const place = new Map(kids.map((el, i) => [el, i]));
   const tools = new Map(), texts = new Map(), users = [];
-  // What a fold of quiet turns holds stands at the fold's place, so lines for it gather after the fold.
-  for (const k of kids) for (const el of k.classList.contains('qfold') ? k.querySelectorAll('.qf-body > *') : [k]) {
+  // What a fold of quiet turns or a group of steps holds stands at the fold's place, so lines for it gather after the fold.
+  const inside = (el) => el.matches('.qfold, .steps') ? [...el.querySelector('.qf-body, .steps-body').children].flatMap(inside) : [el];
+  for (const k of kids) for (const el of inside(k)) {
     place.set(el, place.get(k));
     if (el.dataset.tool) tools.set(el.dataset.tool, el);
     else if (el.classList.contains('msg-user')) users.push(el);
