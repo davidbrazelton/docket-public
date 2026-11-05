@@ -64,7 +64,7 @@ test('recent and pinned sessions are kept beside the live ones; archived ones ne
 test('a shown session brings its parents, so a family stays whole', () => {
   const rows = [{ id: 'top' }, { id: 'mid', parentId: 'top' }, { id: 'kid', parentId: 'mid' }, { id: 'other', parentId: 'top' }, { id: 'gone', archived: true }, { id: 'orphan', parentId: 'gone' }];
   const r = attnShown(rows, { kind: kindOf(['kid', 'orphan']), since: null });
-  assert.equal(sorted(r.family), 'mid,top', 'the whole chain up, dimmed');
+  assert.equal(sorted(r.family), 'mid,top', 'the whole chain up');
   assert.ok(!r.has('other'), 'brothers and sisters are not brought in');
   assert.ok(!r.has('gone'), 'an archived parent is not brought back');
   const loop = attnShown([{ id: 'x', parentId: 'y' }, { id: 'y', parentId: 'x' }], { kind: kindOf(['x']), since: null });

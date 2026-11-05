@@ -143,9 +143,6 @@ aside.side { position: relative; border-right: 1px solid var(--divider); backgro
 .row.sel { background: var(--accent-soft); border-left-color: var(--accent); }
 .row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row.archived .t { color: var(--muted); } /* the open session after Archive: greyed until another one is opened */
-/* ✦ Needs attention: a session kept for being recent or pinned, or a parent shown to keep its family whole, is dimmed */
-.row.dim { opacity: .55; }
-.row.dim:hover, .row.dim.sel { opacity: .85; }
 .row .pin { font-size: 10px; flex: none; }
 .near-full { color: var(--bad); }
 .row .meta { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: var(--meta-w, 0); text-align: right; flex: none; } /* as wide as the widest time (fitColumns), so the plan and reason columns left of it line up */
@@ -1364,8 +1361,8 @@ const HELP = [
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
     ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), whether rows show why they need you, and which chips each row shows. Each desk keeps its own.'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
-    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that\n• need you (a reply or an error you have not opened yet)\n• wait on your answer\n• are working\n• have a warm cache\nBelow them, dimmed:\n• the ones you touched lately (sent a message or started; the Keep period on the right of ✦ sets how far back, Workday (the last workday) at first; picking one also turns ✦ on)\n• the ones you pinned (right-click a session)\nA family shows whole: a session started from another one sits under it, its parent dimmed if only there for it.\nThe orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then dimmed what you touched lately or pinned. Click to show everything.'],
-    ['attn-window', '✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, dimmed, by when you last touched them (sent a message or started them; opening one does not count):\n• Off: none\n• 12 hours\n• Yesterday: from the start of yesterday\n• Workday (the last workday): from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included\n• 7 days\n• Pins: only pinned ones\nPinned sessions show under every choice. Each desk keeps its own.'],
+    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that\n• need you (a reply or an error you have not opened yet)\n• wait on your answer\n• are working\n• have a warm cache\nBelow them:\n• the ones you touched lately (sent a message or started; the Keep period on the right of ✦ sets how far back, Workday (the last workday) at first; picking one also turns ✦ on)\n• the ones you pinned (right-click a session)\nA family shows whole: a session started from another one sits under it, its parent shown too.\nThe orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then what you touched lately or pinned. Click to show everything.'],
+    ['attn-window', '✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, below the others, by when you last touched them (sent a message or started them; opening one does not count):\n• Off: none\n• 12 hours\n• Yesterday: from the start of yesterday\n• Workday (the last workday): from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included\n• 7 days\n• Pins: only pinned ones\nPinned sessions show under every choice. Each desk keeps its own.'],
     ['reasontags', '👁 > Reason tags', 'Reason tags: a session that needs you also shows why on its row, as a small word or an icon (question, merge, done or reply; hover an icon for its word). Only question has color. An error needs no tag: its dot has a red ring and its time says "error". Off: only the dot shows. Each desk keeps its own.'],
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
@@ -1408,7 +1405,7 @@ const HELP = [
     ['ctx-restore', 'Restore from archive', 'Move it back out of the archive'],
     ['ctx-read', 'Mark read', 'Mark the reply as seen, so it stops counting as waiting on you'],
     ['ctx-unread', 'Mark unread', 'Mark it as having a reply you have not read, so it stands out again'],
-    ['ctx-pin', 'Pin to ✦ Needs attention', 'Keep it in the ✦ Needs attention list, dimmed, until you unpin it, however long since you touched it. A 📌 marks it on its row. Archiving it takes the pin away'],
+    ['ctx-pin', 'Pin to ✦ Needs attention', 'Keep it in the ✦ Needs attention list until you unpin it, however long since you touched it. A 📌 marks it on its row. Archiving it takes the pin away'],
     ['ctx-unpin', 'Unpin from ✦', 'Take its pin away: ✦ Needs attention keeps it again only while something is happening in it or you touched it lately'],
     ['ctx-group', 'Group…', 'Put it in a group'],
     ['ctx-parent', 'Move under…', 'List it under another session'],
@@ -3425,10 +3422,10 @@ function renderGroupView(q = '') {
     const members = (s, d = 0, seen = new Set()) => (seen.has(s.id) ? [] : (seen.add(s.id), [[s, d], ...(kids[s.id] || []).flatMap((c) => members(c, d + 1, seen))]));
     for (const k of Object.values(kids)) k.sort(placeSort());
     // Families waiting on you first, then working ones, then read ones, then closed ones (see familyTier).
-    // With ✦ on, families that are only there for being recent or pinned (every row dimmed) go below the live ones.
+    // With ✦ on, families that are only there for being recent or pinned (every row kept only) go below the live ones.
     const tops = sortTops(list.filter((s) => !(s.parentId && ids.has(s.parentId) && s.parentId !== s.id)), kids);
-    const lit = (top) => members(top).some(([s]) => !S.dim.has(s.id));
-    return (S.dim.size ? [...tops.filter(lit), ...tops.filter((t) => !lit(t))] : tops)
+    const lit = (top) => members(top).some(([s]) => !S.keptOnly.has(s.id));
+    return (S.keptOnly.size ? [...tops.filter(lit), ...tops.filter((t) => !lit(t))] : tops)
       .map((top) => members(top).map(([s, d]) => sessionRow(s, familyDepth(d))).join('')).join('');
   };
   if (archiveMode && !S.groupView) {
@@ -3707,7 +3704,7 @@ document.addEventListener('change', async (e) => {
 });
 
 // ---------- keeping sessions in needs attention (tested in test/attn-keep.test.mjs) ----------
-// With ✦ on, a read, idle session also stays in the list, dimmed, while you touched it (sent it a message or started it;
+// With ✦ on, a read, idle session also stays in the list, below the live ones, while you touched it (sent it a message or started it;
 // opening it does not count) within the Keep period picked on the ✦ control, or while it is pinned. Times are local; workdays are Monday to Friday.
 // [key, name, short name for a narrow panel, what it keeps]
 const ATTN_WINDOWS = [['off', 'Off', 'Off', 'No read ones but pins'], ['12h', '12 hours', '12h', 'Touched in the last 12 hours'], ['yesterday', 'Yesterday', 'Yday', 'Since yesterday morning'],
@@ -3756,16 +3753,16 @@ function attnShown(rows, { kind, match = () => true, since = null, touched = {},
   return { live, kept, family, has: (id) => live.has(id) || kept.has(id) || family.has(id) };
 }
 // end of keeping sessions in needs attention
-S.dim = new Set(); // the rows the list draws dimmed, set by the ✦ list each time it is drawn
+S.keptOnly = new Set(); // the rows the ✦ list shows only for being kept or for family, which sort below; set each time it is drawn
 function attnPick(match, kind) {
   const k = S.keep[S.client] || {}, touched = k.touched || {};
   const a = attnShown(allSessionRows(), { kind, match, since: keepSince(S.attnWindow, Date.now(), Object.values(touched)), touched, pins: k.pins || [] });
-  S.dim = new Set([...a.kept, ...a.family]);
+  S.keptOnly = new Set([...a.kept, ...a.family]);
   return a;
 }
 // ---------- needs attention: what is happening now, and what you touched lately ----------
 // Needs you, a 1 hour cache with 10 minutes or less left, cut off mid-reply, working, waiting on your answer, or any cache still warm.
-// Below those, dimmed: sessions touched within the Keep window (beside ✦) or pinned, and parents that keep a family whole (attnShown).
+// Below those: sessions touched within the Keep window (beside ✦) or pinned, and parents that keep a family whole (attnShown).
 // Waiting on your answer: read, but its latest reply asks something or ends with next steps and nothing was
 // sent to it since (s.awaitingAnswer, worked out by the server). No time limit: it stays until you answer or archive it.
 const cacheEnding = (s) => { const left = s.stats && s.stats.cacheExpiresAt - Date.now(); return !!s.stats && s.stats.cacheTtl > 600 && left > 0 && left <= 10 * 60000; };
@@ -3997,7 +3994,7 @@ function sessionRow(s, depth) {
   const more = run && run.unread > (run.topUnread ? 1 : 0) ? `<span class="tag unread-n" title="Runs of this schedule with a reply you have not read. The Details panel lists every run.">${run.unread} unread</span>` : '';
   const snip = snippetFor(s);
   const pin = !s.archived && pinnedHere(s.id) ? `<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
-  return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${S.attn && S.dim.has(s.id) ? 'dim' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
+  return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''} title="${esc(s.cwd || '')}">
       ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotTip(s)}></span><span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>
       <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
@@ -4148,7 +4145,7 @@ function renderList() {
   if (S.mode === 'schedules') return renderScheduleList();
   if (remoteOff(S.client)) { setListBar(); return setList(remoteGoneHtml(S.clients.find((c) => c.id === S.client))); }
   S.runInfo = new Map();
-  S.dim = new Set();
+  S.keptOnly = new Set();
   const q = $('search').value.trim().toLowerCase();
   if (S.textSearch && q && !textHitsFor(q) && S.textAsked !== S.client + '\n' + q) askTextSearch(); // another desk, or a search set by code
   const match = sessionMatch(q);
