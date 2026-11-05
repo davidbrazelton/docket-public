@@ -374,9 +374,13 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .tool .nm { font-weight: 600; color: var(--text); }
 .tool .lb { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
 .tool pre { margin: 0; padding: 8px 10px; border-top: 1px solid var(--line); max-height: 300px; overflow: auto; white-space: pre-wrap; font-size: 12px; }
-/* Background steps (#688): View > Background steps in the session menu. Hide takes the lines out; Narrate folds each run
-   of them into one line that opens to the separate lines; Group folds the narration between them in too (#706). */
-#events.steps-hide details.tool, #events.steps-hide details.steps { display: none; }
+/* View > Chat in the session menu (#709): a checkmark off takes those messages out. Grouped folds each run of steps into
+   one line that opens to the separate lines; Grouped with notes folds the narration between them in too (#706). Messages
+   between sessions: another session's (data-from), session reports, child reports (one waiting on you stays), and the
+   quiet-turn fold (#672), whose kept last reply shows outside it. */
+#events.steps-hide details.tool, #events.steps-hide details.steps, #events.notes-hide .reply.narr, #events.done-hide .done-line,
+#events.msgs-hide .msg-user[data-from], #events.msgs-hide .msg-user[data-from] + .msg-when, #events.msgs-hide .sreport,
+#events.msgs-hide .child-report:not(.waiting), #events.msgs-hide .qfold { display: none; }
 .steps, .sreport { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .steps > summary, .sreport > summary { padding: 3px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
 .steps > summary::-webkit-details-marker, .sreport > summary::-webkit-details-marker { display: none; }
@@ -974,6 +978,14 @@ header.top .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
 .ctx.sess-menu { max-height: calc(100vh - 16px); overflow-y: auto; }
 .ctx.sess-menu .ck { display: inline-block; width: 1.3em; color: var(--accent); }
 .ctx .sub-h { padding: 6px 10px 2px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.ctx .sub-f { padding: 4px 10px 6px; font-size: 11px; color: var(--muted); max-width: 260px; }
+.ctx button.ind { padding-left: 28px; }
+/* View > Chat's presets: filters (DESIGN.md), as in the 👁 menu; Custom says the checkmarks match none of them */
+.ctx .ctx-presets { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; padding: 6px 10px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.ctx .ctx-presets .chip-tgl { width: auto; height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 400; white-space: nowrap; color: var(--text); border: 1px solid var(--line); border-radius: 8px; }
+.ctx .ctx-presets .chip-tgl.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.ctx .ctx-presets .chip-tgl.on::before { content: '✓'; font-size: 11px; }
+.ctx .ctx-presets .custom { cursor: default; }
 .ctx .mi { width: 14px; height: 14px; flex: none; color: var(--muted); }
 .row-more { border: none; background: none; color: var(--muted); padding: 0 6px; font-size: 15px; line-height: 1.2; border-radius: 6px; opacity: .6; }
 .file-row:hover .row-more, .pr-row:hover .row-more, .task:hover .row-more, .row-more:focus-visible { opacity: 1; }
@@ -1460,13 +1472,20 @@ const HELP = [
     ['ctx-terminal', 'Terminal…', 'Open a terminal in this session\'s folder, signed in as this desk'],
     ['ctx-editor-vscode', 'Open in VS Code', 'Open the folder this session works in, in VS Code'],
     ['ctx-editor-vs', 'Open in Visual Studio', 'Open the folder this session works in, in Visual Studio: its solution if it has just one, else the folder'],
-    ['ctx-view', 'View ›', 'How the chat is shown: the timeline, and the AI\'s background steps. One setting for every session.'],
+    ['ctx-view', 'View ›', 'How the chat is shown: which messages show, how the AI\'s steps look, and the timeline. One setting for every session.'],
     ['ctx-timeline', 'View › Timeline in the chat', 'Show the timeline in the chat: tool runs, hooks, instructions and more, in order between the messages. One setting for every session.'],
-    ['ctx-steps-hide', 'View › Background steps: Hide', 'Leave the AI\'s background steps (reading files, running commands, making edits) out of the chat. Its replies still show.'],
-    ['ctx-steps-group', 'View › Background steps: Group', 'Fold the background steps of each turn, and the notes the AI wrote between them, into one line, like "18 steps, 2 notes · Bash ×14, Read ×4", with the last note under it. Only the reply that ends the turn stays open. Click the line to see each step and note, and again to fold them. A step still running or one that failed shows on the line. This is how the chat starts.'],
-    ['ctx-steps-narrate', 'View › Background steps: Narrate', 'Fold each run of background steps into one line, like "9 steps · Edit ×6, Read ×3", with the notes the AI wrote between them showing, dimmed. Click a line to see each step, and again to fold them.'],
-    ['ctx-steps-line', 'View › Background steps: Line', 'Show each background step on its own line; click one to see what it did.'],
-    ['ctx-steps-expand', 'View › Background steps: Expand', 'Show each background step on its own line, with what it did already open'],
+    ['ctx-preset-everything', 'View › Chat: Everything', 'Show everything, with each step already open'],
+    ['ctx-preset-default', 'View › Chat: Default', 'Show everything, with each turn\'s steps and the notes between them folded into one line. This is how the chat starts.'],
+    ['ctx-preset-replies', 'View › Chat: Replies only', 'Show only your messages, the reply that ends each turn, and anything that needs you'],
+    ['ctx-preset-custom', 'View › Chat: Custom', 'The checkmarks below match none of the presets. Pick one to set them all.'],
+    ['ctx-show-steps', 'View › Chat: Steps', 'Show the AI\'s background steps: reading files, running commands, making edits'],
+    ['ctx-look-group', 'View › Chat › Steps: Grouped', 'Fold each run of steps into one line, like "9 steps · Edit ×6, Read ×3", with the notes between them showing. Click a line to see each step, and again to fold them. A step still running or one that failed shows on the line.'],
+    ['ctx-look-notes', 'View › Chat › Steps: Grouped with notes', 'Fold each turn\'s steps, and the notes the AI wrote between them, into one line, like "18 steps, 2 notes · Bash ×14, Read ×4", with the last note under it. Only the reply that ends the turn stays open. Needs Notes ticked.'],
+    ['ctx-look-line', 'View › Chat › Steps: One line each', 'Show each step on its own line; click one to see what it did'],
+    ['ctx-look-open', 'View › Chat › Steps: Opened', 'Show each step on its own line, with what it did already open'],
+    ['ctx-show-notes', 'View › Chat: Notes', 'Show the notes the AI writes between its steps, dimmed. The reply that ends a turn always shows.'],
+    ['ctx-show-msgs', 'View › Chat: Messages between sessions', 'Show the messages another session or Docket sent this one, session reports, and the notes when a session started from this one finishes a turn. One waiting on you always shows, and so does this session\'s answer.'],
+    ['ctx-show-done', 'View › Chat: Done lines', 'Show the line that ends each turn, with its time and how long it took'],
     ['ctx-chime', 'Chime', 'On: this session plays a sound when it needs you. Click to mute it here only, or to turn it back on.'],
     ['ctx-mute', 'Mute chime', 'Turn the picked sessions\' sounds off, or back on'],
     ['ctx-use-plan', 'Use a plan for this work', 'Tell this session to make a plan for its work: a checklist of tasks it hands to sessions of their own, shown in the Plan section'],
@@ -4580,11 +4599,29 @@ $('list').addEventListener('contextmenu', (e) => {
   openSessionMenu(id, { x: e.clientX, y: e.clientY });
 });
 // ---------- session menu ----------
-// How the chat shows the AI's background steps (tool runs), one setting for every session (#688). Group is the start (#695).
-const STEP_MODES = [['hide', 'Hide'], ['group', 'Group'], ['narrate', 'Narrate'], ['line', 'Line'], ['expand', 'Expand']];
+// View › Chat in the session menu (#709): checkmarks for what the chat shows, one setting for every session, with presets
+// that set them. How steps look is one pick: Grouped, Grouped with notes (#706: the narration folds in with them), One line
+// each or Opened. Timeline is its own check and no preset touches it.
+const CHAT_LOOKS = [['group', 'Grouped'], ['notes', 'Grouped with notes'], ['line', 'One line each'], ['open', 'Opened']];
+const CHAT_SHOWS = [['steps', 'Steps'], ['notes', 'Notes'], ['msgs', 'Messages between sessions'], ['done', 'Done lines']];
+const CHAT_PRESETS = [['everything', 'Everything', { steps: true, look: 'open', notes: true, msgs: true, done: true }],
+  ['default', 'Default', { steps: true, look: 'notes', notes: true, msgs: true, done: true }],
+  ['replies', 'Replies only', { steps: false, notes: false, msgs: false, done: false }]];
+// Which preset the checkmarks match, or 'custom'. With Steps off, how they look does not count.
+const chatPreset = (v) => CHAT_PRESETS.find(([, , p]) => Object.keys(p).every((k) => p[k] === v[k] || (k === 'look' && !v.steps)))?.[0] || 'custom';
+// The presets as a row of filters (DESIGN.md), the one the checkmarks match shown on; Custom when none.
+const presetsHtml = (label, o) => `<div class="ctx-presets" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>${o.presets.map(([p, pl, on]) => `<button class="chip-tgl${on ? ' on' : ''}" data-act="preset-${p}" aria-pressed="${on}"${tip('ctx-preset-' + p)}>${esc(pl)}</button>`).join('')}${o.custom ? `<span class="chip-tgl on custom"${tip('ctx-preset-custom')}>Custom</span>` : ''}</div>`;
+const SOUND_OFF = 'Sound is off for all sessions. Turn it on in ☰ > Settings.'; // why Chime is greyed out
 // View › in the session menu: how the chat is shown. ['head', label] is a heading over the choices below it.
-const viewMenuItems = (f) => [['timeline', 'Timeline in the chat', { checked: f.timeline }], ['hr'], ['head', 'Background steps'],
-  ...STEP_MODES.map(([k, label]) => ['steps-' + k, label, { checked: f.steps === k, radio: true }])];
+const viewMenuItems = (f) => {
+  const v = f.chat || CHAT_PRESETS[1][2], preset = chatPreset(v);
+  return [['head', 'Chat'], ['presets', 'Presets', { presets: CHAT_PRESETS.map(([k, label]) => [k, label, preset === k]), custom: preset === 'custom' }], ['hr'],
+    ...CHAT_SHOWS.flatMap(([k, label]) => [['show-' + k, label, { checked: v[k] }],
+      ...(k === 'steps' ? CHAT_LOOKS.map(([l, ll]) => ['look-' + l, ll, { checked: v.look === l, radio: true, indent: true,
+        disabled: !v.steps || (l === 'notes' && !v.notes), why: !v.steps ? 'Tick Steps to choose how they look' : 'Tick Notes too: with Notes off this is the same as Grouped' }]) : [])]),
+    ['timeline', 'Timeline in the chat', { checked: f.timeline }],
+    ['foot', 'Always shown: your messages, final replies, and anything that needs you (questions, permission asks, cards, errors)']];
+};
 // One menu for a session, opened two ways: right-click its row in the list, or ⋯ in its header. Both draw
 // it from sessionMenuItems, so the two can never differ. f holds what the menu needs to know about the
 // session (sessionMenuFacts). Each item is [key, label, { checked, disabled }]; ['hr'] is a separator.
@@ -4619,9 +4656,10 @@ function sessionMenuItems(f) {
 }
 // A toggle shows ✓ while on, unless its label already says on or off (stated); every item keeps a column for it so the labels line up.
 // A group (o.sub) opens beside the menu, drawn the way ☰ draws its groups.
-const sessionMenuHtml = (items) => items.map(([k, label, o]) => k === 'hr' ? '<hr>' : k === 'head' ? `<div class="sub-h">${esc(label)}</div>`
+const sessionMenuHtml = (items) => items.map(([k, label, o]) => k === 'hr' ? '<hr>' : k === 'head' || k === 'foot' ? `<div class="sub-${k[0]}">${esc(label)}</div>`
+  : k === 'presets' ? presetsHtml(label, o)
   : o.sub ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${k}" aria-haspopup="menu" aria-expanded="false"${tip('ctx-' + k)}><span><span class="ck"></span>${esc(label)}</span><span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(label)}" hidden>${sessionMenuHtml(o.sub)}</div></div>`
-  : `<button role="${o.checked === undefined ? 'menuitem' : o.radio ? 'menuitemradio' : 'menuitemcheckbox'}" data-act="${k}"${o.checked === undefined ? '' : ` aria-checked="${!!o.checked}"`}${o.disabled ? ' disabled title="Sound is off for all sessions. Turn it on in ☰ > Settings."' : tip('ctx-' + k)}><span class="ck">${o.checked && !o.stated ? '✓' : ''}</span>${esc(label)}</button>`).join('');
+  : `<button role="${o.checked === undefined ? 'menuitem' : o.radio ? 'menuitemradio' : 'menuitemcheckbox'}" data-act="${k}"${o.indent ? ' class="ind"' : ''}${o.checked === undefined ? '' : ` aria-checked="${!!o.checked}"`}${o.disabled ? ` disabled title="${esc(o.why || SOUND_OFF)}"` : tip('ctx-' + k)}><span class="ck">${o.checked && !o.stated ? '✓' : ''}</span>${esc(label)}</button>`).join('');
 // end of session menu
 // Docket's own plans are on for a desk unless it chose a plan folder or none (#605).
 const plansOnDesk = (id) => { const c = S.clients.find((x) => x.id === id); return !!c && !c.remote && !['none', 'folder'].includes(c.planSystem); };
@@ -4638,7 +4676,7 @@ function sessionMenuFacts(s) {
   const unreadRuns = run ? run.runs.map(sessionById).filter((x) => x && isUnread(x)) : isUnread(s) ? [s] : [];
   return { kids, otherRuns, unreadRuns, f: { archived: !!s.archived, live: !!s.live, midReply: !!s.midReply, cwd: s.cwd || '', parentId: s.parentId || null,
     noGroup: hasNoGroup(s), needsYou: needsYou(s), working: !!(s.live && ['running', 'starting'].includes(s.status)),
-    pinned: pinnedHere(s.id), muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), steps: stepsMode(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
+    pinned: pinnedHere(s.id), muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), chat: chatView(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
 }
 // at is { x, y } for a right-click (the menu opens at the cursor) or { el } for ⋯ (it opens under the button,
 // right edges lined up). Either way it stays on screen. Arrow keys move through it, Escape closes it.
@@ -4697,9 +4735,9 @@ function openSessionMenu(id, at) {
     }
     const b = ev.target.closest('[data-act]'); if (!b || b.disabled) return;
     const act = b.dataset.act, { kids, otherRuns, unreadRuns } = ctx, s = sessionById(id);
-    if (act === 'chime' || act === 'timeline' || act.startsWith('steps-')) { // stays open and shows the new state, like Sound in ☰ > Settings
+    if (act === 'chime' || act === 'timeline' || /^(preset|show|look)-/.test(act)) { // stays open and shows the new state, like Sound in ☰ > Settings
       ev.stopPropagation(); // the redraw takes the clicked button out, so the page would read it as a click outside
-      if (act === 'chime') setMuted(id, !isMuted(id)); else if (act === 'timeline') toggleTimeline(); else setStepsMode(act.slice(6));
+      if (act === 'chime') setMuted(id, !isMuted(id)); else if (act === 'timeline') toggleTimeline(); else setChatView(chatViewChange(act, chatView()));
       draw(); m.querySelector(`[data-act="${act}"]`)?.focus();
       return;
     }
@@ -7001,7 +7039,7 @@ function eventHtml(ev) {
       return `<div class="scard ${ev.state === 'open' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Suggested title${earlier(ev)}</div><div class="st">${esc(ev.title)}</div>${ev.reason ? `<div class="sb">${esc(ev.reason)}</div>` : ''}${tail}</div>`;
     }
     case 'child-report':
-      return `<div class="child-report"><a href="#session:${esc(ev.childId)}"${tip('open-session')}>${esc(ev.title)}</a> ${ev.waiting ? 'is waiting on you' : 'finished a turn'}<div class="ct">${esc(ev.text)}${ev.text.length >= 400 ? '…' : ''}</div></div>`;
+      return `<div class="child-report${ev.waiting ? ' waiting' : ''}"><a href="#session:${esc(ev.childId)}"${tip('open-session')}>${esc(ev.title)}</a> ${ev.waiting ? 'is waiting on you' : 'finished a turn'}<div class="ct">${esc(ev.text)}${ev.text.length >= 400 ? '…' : ''}</div></div>`;
     case 'permission': {
       if (ev.tool === 'AskUserQuestion' && Array.isArray(ev.input?.questions)) return questionFormHtml(ev);
       const done = ev.state !== 'pending';
@@ -7091,33 +7129,51 @@ document.addEventListener('toggle', (e) => {
   checkJump();
 }, true);
 // ---------- background steps (#688) ----------
-// How the AI's tool runs show in the chat, from View ▸ Background steps in the session menu: Hide, Group (a turn's steps
-// and the narration between them fold into one line, #706), Narrate (each run of steps between two other messages folds
-// into one line, the narration shows between them), Line (one line each, as always) or Expand (each one opened).
-// The chat is drawn as for Line; stepsView then marks the narration and hides, opens or groups the lines, after each draw
-// and each new step. Group is the start for anyone who has not picked one (#695). Picks are kept under 'stepsView' since
-// #706; one saved under 'steps' before keeps, and its Group (what Narrate is now) reads as Narrate.
-const stepsMode = () => {
-  let v = store.get('stepsView', undefined);
-  if (v === undefined) { v = store.get('steps', 'group'); if (store.get('steps', undefined) === 'group') v = 'narrate'; }
-  return STEP_MODES.some(([k]) => k === v) ? v : 'group';
+// What the chat shows, from View ▸ Chat in the session menu (#709): Steps (the AI's tool runs), Notes (the narration
+// between them, #706), Messages between sessions (another session's messages, session reports, child reports) and Done
+// lines, each ticked or not, and how steps look: Grouped (each run of steps between two other messages folds into one
+// line), Grouped with notes (a turn's steps and the narration between them fold into one line; only with Notes ticked,
+// else it acts as Grouped), One line each, or Opened. Your messages, final replies and anything that needs you always
+// show. The chat is drawn as for One line each; stepsView then marks the narration and hides, opens or groups the lines,
+// after each draw and each new step. Default is the start for anyone who has not picked (#695). Picks are kept under
+// 'chatView'; one kept under 'stepsView' (#706) or 'steps' (#688, where Group meant what Grouped means now) carries over.
+const CHAT_DEFAULT = { steps: true, look: 'notes', notes: true, msgs: true, done: true };
+const OLD_STEPS = { expand: { look: 'open' }, line: { look: 'line' }, narrate: { look: 'group' }, group: {}, hide: { steps: false } };
+const chatView = () => {
+  const v = store.get('chatView', undefined);
+  if (v && typeof v === 'object') return { ...CHAT_DEFAULT, ...v, look: CHAT_LOOKS.some(([k]) => k === v.look) ? v.look : CHAT_DEFAULT.look };
+  let old = store.get('stepsView', undefined);
+  if (old === undefined && (old = store.get('steps', undefined)) === 'group') old = 'narrate';
+  return { ...CHAT_DEFAULT, ...OLD_STEPS[old] };
 };
-function setStepsMode(v) {
-  store.set('stepsView', v);
+function setChatView(change) {
+  store.set('chatView', { ...chatView(), ...change });
   $('events').querySelectorAll('details.tool[open]').forEach((d) => { d.open = false; }); // drawn again from closed
   S.shutSteps.clear();
   renderEvents(false, true);
 }
+// What a click in View ▸ Chat changes: a preset, a checkmark, or how steps look.
+const chatViewChange = (act, v) => act.startsWith('preset-') ? CHAT_PRESETS.find(([k]) => 'preset-' + k === act)[2]
+  : act.startsWith('look-') ? { look: act.slice(5) } : { [act.slice(5)]: !v[act.slice(5)] };
 S.openSteps = new Set(); // groups the person opened, by session and their first step
-S.shutSteps = new Set(); // steps the person closed in Expand, so a new step does not open them again
+S.shutSteps = new Set(); // steps the person closed in Opened, so a new step does not open them again
 function stepsView() {
-  const box = $('events'), mode = stepsMode();
-  box.classList.toggle('steps-hide', mode === 'hide');
-  if (mode === 'expand') for (const d of box.querySelectorAll('details.tool:not([open])')) if (!S.shutSteps.has(d.dataset.tool)) d.open = true;
+  const box = $('events'), v = chatView(), look = v.steps ? (v.look === 'notes' && !v.notes ? 'group' : v.look) : '';
+  box.classList.toggle('steps-hide', !v.steps);
+  box.classList.toggle('notes-hide', !v.notes);
+  box.classList.toggle('msgs-hide', !v.msgs);
+  box.classList.toggle('done-hide', !v.done);
+  if (look === 'open') for (const d of box.querySelectorAll('details.tool:not([open])')) if (!S.shutSteps.has(d.dataset.tool)) d.open = true;
   const boxes = [box, ...box.querySelectorAll('.qf-body')];
   for (const c of boxes) markNarration(c);
-  if (mode === 'group' || mode === 'narrate') for (const c of boxes) groupSteps(c, mode === 'group');
+  if (look === 'group' || look === 'notes') for (const c of boxes) groupSteps(c, look === 'notes');
 }
+// What the chat leaves out with a checkmark off (the CSS for #events.*-hide below), so a run of steps folds across it.
+const hiddenHere = (el) => {
+  const c = $('events').classList;
+  return (c.contains('notes-hide') && el.matches('.reply.narr')) || (c.contains('done-hide') && el.matches('.done-line'))
+    || (c.contains('msgs-hide') && el.matches('.msg-user[data-from], .msg-user[data-from] + .msg-when, .sreport, .child-report:not(.waiting), .qfold'));
+};
 // Narration (#706): a reply among c's children with more steps after it before its turn's Done line. The last reply of a
 // turn is its final reply and stays as it is; while a turn runs, its latest reply waits until a step comes after it.
 function markNarration(c) {
@@ -7130,7 +7186,7 @@ function markNarration(c) {
 }
 // Folds each run of steps among c's children into one group, adding to a group already there; with notes (Group), the
 // narration between them joins the run. A run folds when it holds a step and something more. The timeline's woven
-// lines do not break a run; anything else does.
+// lines, and what a checkmark leaves out, do not break a run; anything else does.
 function groupSteps(c, notes) {
   let run = [];
   const flush = () => {
@@ -7154,7 +7210,7 @@ function groupSteps(c, notes) {
   };
   for (const el of [...c.children]) {
     if (el.matches('details.tool, details.steps') || (notes && el.matches('.reply.narr'))) run.push(el);
-    else if (!el.matches('.tl-w')) flush();
+    else if (!el.matches('.tl-w') && !hiddenHere(el)) flush();
   }
   flush();
 }
@@ -7175,7 +7231,7 @@ function stepsSummary(g) {
 document.addEventListener('toggle', (e) => {
   const d = e.target;
   if (d.classList?.contains('steps')) { const k = `${S.selected}:${d.dataset.steps}`; if (d.open) S.openSteps.add(k); else S.openSteps.delete(k); checkJump(); }
-  else if (d.classList?.contains('tool') && stepsMode() === 'expand') { if (d.open) S.shutSteps.delete(d.dataset.tool); else S.shutSteps.add(d.dataset.tool); }
+  else if (d.classList?.contains('tool') && chatView().steps && chatView().look === 'open') { if (d.open) S.shutSteps.delete(d.dataset.tool); else S.shutSteps.add(d.dataset.tool); }
 }, true);
 // A session report (the <session-report> message Docket sends a parent when its child sessions finish a turn), read
 // back from a saved chat: folded like a group of steps to one line saying who finished, the raw text one click away.

@@ -63,7 +63,7 @@ test('every menu item built from a list has a tip in the list', () => {
   const missing = [];
   for (const m of page.matchAll(/tip\('([a-z]+-)' \+ k\)/g)) {
     const from = page.lastIndexOf('const items =', m.index);
-    assert.ok(from > 0 && m.index - from < 3000, `no items list above line ${lineOf(m.index)}`);
+    assert.ok(from > 0 && m.index - from < 3500, `no items list above line ${lineOf(m.index)}`);
     const keys = [...page.slice(from, m.index).matchAll(/\['([a-z-]+)', [^\]]*\](?!\.includes)/g)].map((x) => x[1]); // not ['a', 'b'].includes(...)
     assert.ok(keys.length, `no items found above line ${lineOf(m.index)}`);
     for (const k of keys) if (!TIP_ROWS[m[1] + k]) missing.push(`line ${lineOf(m.index)}: ${m[1] + k}`);

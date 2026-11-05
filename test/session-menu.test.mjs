@@ -12,7 +12,7 @@ const escLine = page.split('\n').find((l) => l.startsWith('const esc = '));
 const { sessionMenuItems, sessionMenuHtml } = new Function('tip', escLine + '\n' + page.slice(start, end) + '\nreturn { sessionMenuItems, sessionMenuHtml };')((k) => ` title="${k}"`);
 
 const base = { archived: false, live: true, midReply: false, cwd: 'C:/Work/acme', parentId: null, noGroup: true, needsYou: false, working: false,
-  muted: false, soundOn: true, timeline: false, kids: 0, otherRuns: 0, unreadRuns: 0 };
+  muted: false, soundOn: true, timeline: false, kids: 0, otherRuns: 0, unreadRuns: 0, chat: { steps: true, look: 'notes', notes: true, msgs: true, done: true } };
 const keys = (f) => sessionMenuItems({ ...base, ...f }).map(([k]) => k);
 const view = (f) => sessionMenuItems({ ...base, ...f }).find(([k]) => k === 'view')[2].sub;
 const subKeys = (f) => view(f).map(([k]) => k);
@@ -96,24 +96,87 @@ test('Chime and Timeline show their state', () => {
   assert.match(sessionMenuHtml(sessionMenuItems({ ...base, soundOn: false })), /data-act="chime" aria-checked="false" disabled title="Sound is off/);
 });
 
-test('View holds the timeline and how background steps show, one ticked (#688)', () => {
+// View › Chat (#709): checkmarks for what shows, how steps look, and presets that set them.
+const DEF = { steps: true, look: 'notes', notes: true, msgs: true, done: true };
+const viewHtml = (chat, f = {}) => sessionMenuHtml(view({ chat, ...f }));
+const act = (html, k) => html.match(new RegExp(`<button[^>]*data-act="${k}"[^>]*>.*?</button>`))?.[0] || '';
+
+test('View holds the presets, the checkmarks with how steps look under Steps, and the timeline (#709)', () => {
   assert.ok(!keys({}).includes('timeline'), 'Timeline in the chat moved under View');
-  assert.deepEqual(subKeys({ steps: 'line' }), ['timeline', 'hr', 'head', 'steps-hide', 'steps-group', 'steps-narrate', 'steps-line', 'steps-expand']);
-  const html = sessionMenuHtml(sessionMenuItems({ ...base, steps: 'group' }));
+  assert.deepEqual(subKeys({ chat: DEF }), ['head', 'presets', 'hr', 'show-steps', 'look-group', 'look-notes', 'look-line', 'look-open',
+    'show-notes', 'show-msgs', 'show-done', 'timeline', 'foot']);
+  const html = sessionMenuHtml(sessionMenuItems({ ...base, chat: DEF }));
   assert.match(html, /<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="view" aria-haspopup="menu" aria-expanded="false" title="ctx-view">/);
-  assert.match(html, /<div class="ctx sub" role="menu" aria-label="View" hidden>.*data-act="timeline".*<div class="sub-h">Background steps<\/div>/s);
-  assert.match(html, /role="menuitemradio" data-act="steps-group" aria-checked="true"[^>]*><span class="ck">✓<\/span>Group/);
-  for (const k of ['hide', 'narrate', 'line', 'expand']) assert.match(html, new RegExp(`role="menuitemradio" data-act="steps-${k}" aria-checked="false"`));
+  assert.match(html, /<div class="ctx sub" role="menu" aria-label="View" hidden><div class="sub-h">Chat<\/div><div class="ctx-presets" role="group" aria-label="Presets">/);
+  for (const k of ['steps', 'notes', 'msgs', 'done']) assert.match(act(html, 'show-' + k), /role="menuitemcheckbox" data-act="show-[a-z]+" aria-checked="true" title="ctx-show-[a-z]+"><span class="ck">✓/);
+  assert.match(act(html, 'look-notes'), /role="menuitemradio" data-act="look-notes" class="ind" aria-checked="true"[^>]*><span class="ck">✓<\/span>Grouped with notes/);
+  for (const k of ['group', 'line', 'open']) assert.match(act(html, 'look-' + k), /aria-checked="false" title="ctx-look-/);
+  assert.match(html, /<div class="sub-f">Always shown: your messages, final replies, and anything that needs you/);
 });
 
-test('Group is the start, and a Group picked before #706 reads as Narrate', () => {
-  const at = page.indexOf('const stepsMode = () =>');
-  const src = page.slice(at, page.indexOf('\n};', at) + 3);
-  const mode = (saved) => new Function('store', 'STEP_MODES', src + '\nreturn stepsMode();')(
-    { get: (k, d) => (k in saved ? saved[k] : d) }, [['hide'], ['group'], ['narrate'], ['line'], ['expand']]);
-  assert.equal(mode({}), 'group', 'nothing picked: Group (#695)');
-  assert.equal(mode({ steps: 'group' }), 'narrate', 'the old Group is now called Narrate');
-  assert.equal(mode({ steps: 'line' }), 'line');
-  assert.equal(mode({ steps: 'group', stepsView: 'group' }), 'group', 'a pick made since #706 wins');
-  assert.equal(mode({ stepsView: 'gone' }), 'group');
+test('a preset shows as on while the checkmarks match it, and Custom once they do not (#709)', () => {
+  const on = (chat) => [...viewHtml(chat).matchAll(/class="chip-tgl on[^"]*"[^>]*>([^<]+)</g)].map((m) => m[1]);
+  assert.deepEqual(on(DEF), ['Default']);
+  assert.deepEqual(on({ ...DEF, look: 'open' }), ['Everything']);
+  assert.deepEqual(on({ steps: false, look: 'line', notes: false, msgs: false, done: false }), ['Replies only'], 'with Steps off, how they look does not count');
+  assert.deepEqual(on({ ...DEF, done: false }), ['Custom']);
+  assert.deepEqual(on({ ...DEF, look: 'line' }), ['Custom']);
+  assert.deepEqual(on({ ...DEF, steps: false }), ['Custom']);
+  assert.match(viewHtml(DEF), /<button class="chip-tgl on" data-act="preset-default" aria-pressed="true" title="ctx-preset-default">Default<\/button>/);
+  assert.ok(!viewHtml(DEF).includes('Custom'));
+  assert.match(viewHtml(DEF, { timeline: true }), /data-act="preset-default" aria-pressed="true"/, 'Timeline is no part of a preset');
+});
+
+test('how steps look is greyed out with Steps off, and Grouped with notes with Notes off (#709)', () => {
+  let html = viewHtml({ ...DEF, steps: false });
+  for (const k of ['group', 'notes', 'line', 'open']) assert.match(act(html, 'look-' + k), /disabled title="Tick Steps to choose how they look"/);
+  html = viewHtml({ ...DEF, notes: false });
+  assert.match(act(html, 'look-notes'), /disabled title="Tick Notes too: with Notes off this is the same as Grouped"/);
+  for (const k of ['group', 'line', 'open']) assert.ok(!act(html, 'look-' + k).includes('disabled'), k);
+});
+
+// The background steps part of index.html, run with a store holding what was saved.
+const stepsPart = page.slice(page.indexOf('// ---------- background steps (#688)'), page.indexOf('S.openSteps = new Set();'));
+const menuPart = page.slice(page.indexOf('const CHAT_LOOKS'), page.indexOf('// View › in the session menu'));
+const chatFns = (saved) => new Function('store', 'S', '$', menuPart + stepsPart + '\nreturn { chatView, chatViewChange, CHAT_PRESETS, chatPreset };')(
+  { get: (k, d) => (k in saved ? saved[k] : d), set: (k, v) => { saved[k] = v; } }, {}, () => null);
+
+test('Default is the start, and picks saved before #709 carry over', () => {
+  const v = (saved) => chatFns(saved).chatView();
+  assert.deepEqual(v({}), DEF, 'nothing picked: Default');
+  assert.deepEqual(v({ stepsView: 'expand' }), { ...DEF, look: 'open' }, 'expand: Everything');
+  assert.equal(chatFns({}).chatPreset(v({ stepsView: 'expand' })), 'everything');
+  assert.deepEqual(v({ stepsView: 'line' }), { ...DEF, look: 'line' });
+  assert.deepEqual(v({ stepsView: 'narrate' }), { ...DEF, look: 'group' });
+  assert.deepEqual(v({ stepsView: 'group' }), DEF);
+  assert.deepEqual(v({ stepsView: 'hide' }), { ...DEF, steps: false }, 'hide: Steps off, the rest ticked');
+  assert.deepEqual(v({ steps: 'group' }), { ...DEF, look: 'group' }, 'the #688 Group is Grouped');
+  assert.deepEqual(v({ steps: 'line' }), { ...DEF, look: 'line' });
+  assert.deepEqual(v({ steps: 'group', stepsView: 'group' }), DEF, 'a pick made since #706 wins');
+  assert.deepEqual(v({ stepsView: 'gone' }), DEF);
+  assert.deepEqual(v({ stepsView: 'hide', chatView: { ...DEF, done: false } }), { ...DEF, done: false }, 'a pick made since #709 wins');
+  assert.deepEqual(v({ chatView: { msgs: false, look: 'gone' } }), { ...DEF, msgs: false }, 'what is missing or unknown reads as Default');
+});
+
+test('a click on a preset sets every checkmark, and one on a checkmark or a look changes just that (#709)', () => {
+  const { chatViewChange: ch, CHAT_PRESETS: P } = chatFns({});
+  const all = (act, v = DEF) => ({ ...v, ...ch(act, v) });
+  assert.deepEqual(all('preset-everything'), { ...DEF, look: 'open' });
+  assert.deepEqual(all('preset-default', { steps: false, look: 'line', notes: false, msgs: false, done: false }), DEF);
+  assert.deepEqual(all('preset-replies'), { steps: false, look: 'notes', notes: false, msgs: false, done: false }, 'Replies only keeps how steps looked, for when Steps is ticked again');
+  assert.deepEqual(all('show-done'), { ...DEF, done: false });
+  assert.deepEqual(all('show-msgs', { ...DEF, msgs: false }), DEF);
+  assert.deepEqual(all('look-line'), { ...DEF, look: 'line' });
+  assert.equal(P.length, 3);
+});
+
+test('the chat leaves out what a checkmark turns off, and a run of steps folds across it (#709)', () => {
+  const css = page.slice(page.indexOf('/* View > Chat in the session menu (#709)'), page.indexOf('.steps, .sreport {'));
+  for (const sel of ['#events.steps-hide details.tool', '#events.steps-hide details.steps', '#events.notes-hide .reply.narr', '#events.done-hide .done-line',
+    '#events.msgs-hide .msg-user[data-from]', '#events.msgs-hide .msg-user[data-from] + .msg-when', '#events.msgs-hide .sreport',
+    '#events.msgs-hide .child-report:not(.waiting)', '#events.msgs-hide .qfold']) assert.ok(css.includes(sel), sel);
+  assert.ok(page.includes("<div class=\"child-report${ev.waiting ? ' waiting' : ''}\">"), 'a child waiting on you always shows');
+  assert.ok(page.includes("else if (!el.matches('.tl-w') && !hiddenHere(el)) flush();"));
+  assert.ok(page.includes("look = v.steps ? (v.look === 'notes' && !v.notes ? 'group' : v.look) : ''"), 'Grouped with notes acts as Grouped with Notes off');
+  assert.ok(!/stepsMode|STEP_MODES|ctx-steps-/.test(page), 'the old Background steps names are gone');
 });
