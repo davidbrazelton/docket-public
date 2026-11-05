@@ -337,6 +337,11 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 @media (max-width: 640px) { .lightbox { padding: 56px 8px; } .lightbox .lb-prev, .lightbox .lb-next { top: auto; bottom: 8px; transform: none; } .lightbox .lb-count { bottom: 20px; } }
 .msg-text { word-wrap: break-word; }
 .msg-text p { margin: .4em 0; }
+/* A little less height between turns (#695): no margin above a reply's first line or below its last, a slimmer
+   Copy reply row, a smaller gap between messages and slimmer step lines. */
+#events { gap: 8px; }
+.msg-text > :first-child { margin-top: 0; }
+.msg-text > :last-child { margin-bottom: 0; }
 .msg-text pre { background: var(--code-bg); padding: 10px 12px; border-radius: 8px; overflow: auto; }
 .msg-text code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .msg-text :not(pre) > code { background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
@@ -348,10 +353,10 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .code-wrap .code-btns button { font-size: 12px; padding: 2px 8px; background: var(--panel); }
 .reply-actions { display: flex; justify-content: flex-end; opacity: 0; transition: opacity .15s; }
 .reply:hover .reply-actions, .reply-actions:focus-within { opacity: 1; }
-.reply-actions .copy-btn { font-size: 12px; padding: 2px 8px; border-color: transparent; color: var(--muted); }
+.reply-actions .copy-btn { font-size: 12px; padding: 0 8px; border-color: transparent; color: var(--muted); }
 @media (hover: none) { .reply-actions { opacity: 1; } }
 .tool { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-.tool summary { padding: 5px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
+.tool summary { padding: 3px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
 .tool summary::-webkit-details-marker { display: none; }
 .tool .nm { font-weight: 600; color: var(--text); }
 .tool .lb { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
@@ -360,7 +365,7 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
    them into one line that opens to the separate lines. */
 #events.steps-hide details.tool, #events.steps-hide details.steps { display: none; }
 .steps { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
-.steps > summary { padding: 5px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
+.steps > summary { padding: 3px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
 .steps > summary::-webkit-details-marker { display: none; }
 .steps > summary:hover { color: var(--text); }
 .steps > summary .nm { font-weight: 600; color: var(--text); }
@@ -1437,8 +1442,8 @@ const HELP = [
     ['ctx-view', 'View ›', 'How the chat is shown: the timeline, and the AI\'s background steps. One setting for every session.'],
     ['ctx-timeline', 'View › Timeline in the chat', 'Show the timeline in the chat: tool runs, hooks, instructions and more, in order between the messages. One setting for every session.'],
     ['ctx-steps-hide', 'View › Background steps: Hide', 'Leave the AI\'s background steps (reading files, running commands, making edits) out of the chat. Its replies still show.'],
-    ['ctx-steps-group', 'View › Background steps: Group', 'Fold each run of background steps into one line, like "9 steps · Edit ×6, Read ×3". Click it to see each step, and again to fold them. A step still running or one that failed shows on the line.'],
-    ['ctx-steps-line', 'View › Background steps: Line', 'Show each background step on its own line; click one to see what it did. This is how the chat starts.'],
+    ['ctx-steps-group', 'View › Background steps: Group', 'Fold each run of background steps into one line, like "9 steps · Edit ×6, Read ×3". Click it to see each step, and again to fold them. A step still running or one that failed shows on the line. This is how the chat starts.'],
+    ['ctx-steps-line', 'View › Background steps: Line', 'Show each background step on its own line; click one to see what it did.'],
     ['ctx-steps-expand', 'View › Background steps: Expand', 'Show each background step on its own line, with what it did already open'],
     ['ctx-chime', 'Chime', 'On: this session plays a sound when it needs you. Click to mute it here only, or to turn it back on.'],
     ['ctx-mute', 'Mute chime', 'Turn the picked sessions\' sounds off, or back on'],
@@ -1986,7 +1991,7 @@ const kidsText = (s) => ([s.kids?.working && `${plural(s.kids.working, 'child se
 // The label on a row that needs you, and its tooltip (#671).
 const NEED_TIPS = { question: 'It asked you something: a question, a permission prompt or a card waits on you', problem: 'Its last turn ended in an error', merge: 'Its pull request is open and waiting on you', done: 'It says its work is complete and ready to close', reply: 'A finished reply to read' };
 const openPR = (id) => (S.prs[id] || []).some((p) => ['open', 'conflict'].includes(prState(p)));
-// 👁 > Reason tags (#686): words, icons or off (S.reasonTags, off by default). An error gets none: its dot has a red ring
+// 👁 > Reason tags (#686): words, icons or off (S.reasonTags, icons by default since #695). An error gets none: its dot has a red ring
 // and its time says "error" already.
 const NEED_SVG = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
 const needIcon = (l) => l === 'merge' ? prIcon('merged') : `<svg viewBox="0 0 16 16" aria-hidden="true">${{
@@ -3850,8 +3855,10 @@ function readDeskSettings() {
   S.attn = deskStore.get('attnFilter', false);
   S.attnWindow = attnWindowOf(deskStore.get('attnWindow'));
   for (const [k, key, , , d] of VIEW_OPTS) S[k] = deskStore.get(key, d);
-  // 👁 > Reason tags (#686): words, icons or off. A computer that had ☰ > Settings > Reason tags on (#682) starts on words.
-  S.reasonTags = REASON_TAGS.find(([v]) => v === deskStore.get('reasonTags'))?.[0] || (store.get('needTags', false) ? 'words' : 'off');
+  // 👁 > Reason tags (#686): words, icons or off. Icons for anyone who has not picked (#695); a computer that set
+  // ☰ > Settings > Reason tags (#682) keeps it: on starts on words, off on off.
+  const oldTags = store.get('needTags', null);
+  S.reasonTags = REASON_TAGS.find(([v]) => v === deskStore.get('reasonTags'))?.[0] || (oldTags === null ? 'icons' : oldTags ? 'words' : 'off');
 }
 const REASON_TAGS = [['words', 'Words'], ['icons', 'Icons'], ['off', 'Off']];
 readDeskSettings();
@@ -4542,7 +4549,7 @@ $('list').addEventListener('contextmenu', (e) => {
   openSessionMenu(id, { x: e.clientX, y: e.clientY });
 });
 // ---------- session menu ----------
-// How the chat shows the AI's background steps (tool runs), one setting for every session (#688). Line is how it always was.
+// How the chat shows the AI's background steps (tool runs), one setting for every session (#688). Group is the start (#695).
 const STEP_MODES = [['hide', 'Hide'], ['group', 'Group'], ['line', 'Line'], ['expand', 'Expand']];
 // View › in the session menu: how the chat is shown. ['head', label] is a heading over the choices below it.
 const viewMenuItems = (f) => [['timeline', 'Timeline in the chat', { checked: f.timeline }], ['hr'], ['head', 'Background steps'],
@@ -6995,7 +7002,8 @@ document.addEventListener('toggle', (e) => {
 // How the AI's tool runs show in the chat, from View ▸ Background steps in the session menu: Hide, Group (each run of
 // them between two other messages folds into one line), Line (one line each, as always) or Expand (each one opened).
 // The chat is drawn as for Line; stepsView then hides, opens or groups the lines, after each draw and each new step.
-const stepsMode = () => { const v = store.get('steps', 'line'); return STEP_MODES.some(([k]) => k === v) ? v : 'line'; };
+// Group is the start for anyone who has not picked one (#695); a pick saved before keeps.
+const stepsMode = () => { const v = store.get('steps', 'group'); return STEP_MODES.some(([k]) => k === v) ? v : 'group'; };
 function setStepsMode(v) {
   store.set('steps', v);
   $('events').querySelectorAll('details.tool[open]').forEach((d) => { d.open = false; }); // drawn again from closed

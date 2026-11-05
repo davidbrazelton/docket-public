@@ -104,5 +104,5 @@ test('View holds the timeline and how background steps show, one ticked (#688)',
   assert.match(html, /<div class="ctx sub" role="menu" aria-label="View" hidden>.*data-act="timeline".*<div class="sub-h">Background steps<\/div>/s);
   assert.match(html, /role="menuitemradio" data-act="steps-group" aria-checked="true"[^>]*><span class="ck">✓<\/span>Group/);
   for (const k of ['hide', 'line', 'expand']) assert.match(html, new RegExp(`role="menuitemradio" data-act="steps-${k}" aria-checked="false"`));
-  assert.ok(page.includes("store.get('steps', 'line')"), 'Line is the default, so nothing changes for anyone who does not pick');
+  assert.ok(page.includes("store.get('steps', 'group')"), 'Group is the default for anyone who has not picked (#695)');
 });
