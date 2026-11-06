@@ -6521,6 +6521,7 @@ function companyWizard({ first = false } = {}) {
       if (a === 'brand') { startLogin(w.id, e.target.closest('[data-engine]').dataset.engine); return render(); } // Grok or Codex
       if (a === 'login') { // Claude: a link to sign in, then the code pasted back
         const tab = window.open('', '_blank'); // opened during the click so the browser allows it
+        waitingTab(tab);
         w.si = { busy: 'Getting a sign-in link…' }; render();
         try { const { url } = await api(`/api/clients/${w.id}/login`, {}); if (tab) tab.location = url; w.si = { url }; }
         catch (err) { if (tab) tab.close(); w.si = { error: 'Could not start sign-in: ' + err.message }; }
@@ -7434,6 +7435,10 @@ function coSignHtml(clientId, engine, unsaved) {
   const btn = canSign ? `<button${b.signedIn ? '' : ' class="primary"'} data-login="${esc(engine)}" data-sign-client="${esc(clientId)}"${tip(b.signedIn ? 'sign-in-again' : 'sign-in-brand')}>${b.signedIn ? 'Sign in again' : 'Sign in'}</button>` : '';
   return `<span class="co-sign-line"><span>${brandState(c, b)}</span>${btn}</span>${err ? `<span class="signin-err">${esc(err.text)}</span>` : ''}`;
 }
+// The tab opened for a sign-in says what it is waiting for until its link arrives, rather than staying blank.
+function waitingTab(tab) {
+  try { tab.document.title = 'Getting a sign-in link…'; tab.document.body.innerHTML = '<p style="font: 16px system-ui; margin: 2em">Getting a sign-in link… This page moves on once it arrives. The sign-in service or the network can be slow, so this may take a minute.</p>'; } catch {}
+}
 // Counts sign-ins started and cancelled, so a cancelled one that ends later does not overwrite the panel.
 let loginSeq = 0;
 // A sign-in under way in the app that this page did not start, or started before the page reloaded: put its
@@ -7461,9 +7466,13 @@ async function startLogin(clientId, engine = 'claude') {
   // Opened during the click so the browser allows it. Not for Grok: `grok login` opens the page itself, and has no way
   // to stop it, so a tab here would be a second one.
   const tab = engine === 'grok' ? null : window.open('', '_blank');
+  waitingTab(tab);
   setSignin(clientId, engine, 'working', 'Getting a sign-in link…');
+  // The sign-in program asks its servers first, which can take over a minute when they or the network are slow.
+  const service = engine === 'claude' && S.clients.find((c) => c.id === clientId)?.bedrock ? 'AWS' : 'The sign-in service';
+  const slow = setTimeout(() => { if (seq === loginSeq && S.signin?.step === 'working') setSignin(clientId, engine, 'working', `Still waiting for the sign-in link. ${service} or the network may be slow; this can take up to a minute and a half…`); }, 10000);
   try {
-    const { url, auto, code } = await api(`/api/clients/${clientId}/login${signinQ(engine)}`, {});
+    const { url, auto, code } = await api(`/api/clients/${clientId}/login${signinQ(engine)}`, {}).finally(() => clearTimeout(slow));
     if (tab) tab.location = url;
     if (seq !== loginSeq) return;
     if (auto) return waitForLogin(clientId, url, code, engine, seq);

@@ -25,3 +25,19 @@ export async function recheckSignIns(clients, known, check, onChange) {
     if (now !== before) onChange(c, now);
   }
 }
+
+// What AWS says when a Bedrock desk's credentials are missing, expired or refused: the expired wordings above, and
+// "Error loading SSO Token", "Unable to locate credentials", an unknown profile, or a key AWS turns down.
+const AWS_SIGNED_OUT = new RegExp(`${AWS_EXPIRED.source}|token has expired|error loading sso token|unable to locate credentials|` +
+  'profile .* could not be found|invalidclienttokenid|unrecognizedclientexception|signaturedoesnotmatch|invalidgrant', 'i');
+// What `aws sts get-caller-identity` ({ code, out, err, timedOut }) says about a Bedrock desk's AWS sign-in: true,
+// false only when AWS itself says the credentials are expired or invalid, and null (unknown) when it ran out of time,
+// could not run, or failed some other way (AWS or the network being slow or unreachable, say).
+export function awsSignedIn({ code, out = '', err = '', timedOut = false } = {}) {
+  if (timedOut) return null;
+  if (code === 0) return true;
+  return AWS_SIGNED_OUT.test(`${err}\n${out}`) ? false : null;
+}
+// An unknown answer keeps the last one; with none yet it counts as signed in, so a slow check never shows the Sign in
+// prompt (a turn that fails on its credentials still does, through signInFailure).
+export const keepKnown = (now, before) => now ?? before ?? true;

@@ -1,7 +1,7 @@
 // Tests for spotting a turn that failed on its sign-in, and the periodic sign-in recheck. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { signInFailure, retryText, recheckSignIns } from '../signin-errors.mjs';
+import { signInFailure, retryText, recheckSignIns, awsSignedIn, keepKnown } from '../signin-errors.mjs';
 
 // What Claude Code says on Bedrock once the AWS single sign-on token has run out (seen 2026-10-30).
 const AWS_SSO = "Could not load AWS credentials · Token is expired. To refresh this SSO session run 'aws sso login' with the corresponding profile.";
@@ -52,4 +52,37 @@ test('a check that fails is skipped, and the rest still run', async () => {
   const changed = [];
   await recheckSignIns(['a', 'b'], () => true, async (c) => { if (c === 'a') throw new Error('aws not found'); return false; }, (c, s) => changed.push([c, s]));
   assert.deepEqual(changed, [['b', false]]);
+});
+
+test('an AWS check that ran out of time or could not run is unknown, not signed out', () => {
+  assert.equal(awsSignedIn({ code: null, out: '', err: '', timedOut: true }), null);
+  assert.equal(awsSignedIn({ code: 1, err: 'Token has expired', timedOut: true }), null); // stopped: its output is not an answer
+  assert.equal(awsSignedIn({ code: -1, out: '', err: 'spawn aws ENOENT' }), null);
+  for (const err of ['Could not connect to the endpoint URL: "https://sts.us-east-1.amazonaws.com/"', 'Connect timeout on endpoint URL', 'Read timeout on endpoint URL', ''])
+    assert.equal(awsSignedIn({ code: 255, err }), null, err);
+});
+
+test('AWS saying the credentials are expired or invalid is signed out; a clean answer is signed in', () => {
+  assert.equal(awsSignedIn({ code: 0, out: '{"Account":"123456789012"}' }), true);
+  for (const err of ['Error when retrieving token from sso: Token has expired and refresh failed', 'Error loading SSO Token: Token for claude-code does not exist',
+    'The SSO session associated with this profile has expired or is otherwise invalid. To refresh this SSO session run aws sso login with the corresponding profile.',
+    'An error occurred (ExpiredToken) when calling the GetCallerIdentity operation: The security token included in the request is expired',
+    'Unable to locate credentials. You can configure credentials by running "aws configure".', 'The config profile (claude-code) could not be found',
+    'An error occurred (InvalidClientTokenId) when calling the GetCallerIdentity operation: The security token included in the request is invalid.'])
+    assert.equal(awsSignedIn({ code: 255, err }), false, err);
+});
+
+test('an unknown answer keeps the last one, and counts as signed in with none yet', () => {
+  assert.equal(keepKnown(null, true), true);
+  assert.equal(keepKnown(null, false), false);
+  assert.equal(keepKnown(null, undefined), true);
+  assert.equal(keepKnown(false, true), false);
+  assert.equal(keepKnown(true, false), true);
+});
+
+test('a timed-out AWS check does not count as a change for the periodic recheck', async () => {
+  const known = new Map([['acme', true]]), changes = [];
+  const check = async (c) => { const now = keepKnown(awsSignedIn({ code: null, timedOut: true }), known.get(c)); known.set(c, now); return now; };
+  await recheckSignIns(['acme'], (c) => known.get(c), check, (c, v) => changes.push([c, v]));
+  assert.deepEqual(changes, []);
 });

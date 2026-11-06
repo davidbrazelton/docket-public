@@ -66,7 +66,7 @@ import { ARTIFACT_URL, artifactPublished } from './artifacts.mjs';
 import { copyPlan, runCopy, copyGroups, groupAction, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
 import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
 import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox } from './crossings.mjs';
-import { signInFailure, retryText, recheckSignIns } from './signin-errors.mjs';
+import { signInFailure, retryText, recheckSignIns, awsSignedIn, keepKnown } from './signin-errors.mjs';
 import WebSocket, { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 import { REMOTE_HOURS, ASK_WAIT_MS, newSecret, checkCode, stepOf, otpUri, makeCertificate, fingerprintOf, checkCodeOf, sameCheck, isOfficeAddress, officeAddresses,
@@ -266,8 +266,9 @@ async function authInfo(client, force, engine = 'claude') {
     const r = await runCommand(cmd, args, envFor(client, 'codex'));
     loggedIn = codexSignedIn(r.code, r.out);
   } else if (isBedrock(client)) {
-    // claude auth status says Bedrock is signed in whatever the AWS credentials are, so ask AWS.
-    loggedIn = (await runCommand('aws', ['sts', 'get-caller-identity', '--output', 'json'], envFor(client))).code === 0;
+    // claude auth status says Bedrock is signed in whatever the AWS credentials are, so ask AWS. AWS or the network
+    // can be slow: a check that runs out of time or can't reach AWS keeps the last answer rather than signing the desk out.
+    loggedIn = keepKnown(awsSignedIn(await runCommand('aws', ['sts', 'get-caller-identity', '--output', 'json'], envFor(client), 45000)), hit?.loggedIn);
   } else {
     const { out } = await runClaude(client, ['auth', 'status', '--json']);
     try {
@@ -356,6 +357,12 @@ function forcedOf(client) {
 // A Grok company signs in the same way as Bedrock: `grok login --device-auth` gives a link that carries its code and
 // finishes once the code is approved in the browser, saving the sign-in in that company's Grok home.
 // Codex signs in the same way, except that its link does not carry the code: the code is typed on that page.
+// How long a sign-in program may take to print its link: AWS SSO and the others ask their servers first, which can
+// take over a minute when they or the network are slow.
+const LINK_WAIT = 90000;
+const noLinkText = (out, service = 'The sign-in service') => out.trim()
+  ? `No sign-in link appeared in ${LINK_WAIT / 1000} seconds. Output: ${out.trim().slice(-300)}`
+  : `The sign-in program gave no output in ${LINK_WAIT / 1000} seconds. ${service}, the network or this computer may be slow: try again in a minute.`;
 function startLogin(client, oldAws = false, engine = 'claude') {
   const gw = gatewayFor(client, engine);
   if (gw) return startGatewayLogin(client, gw, engine);
@@ -400,7 +407,7 @@ function startLogin(client, oldAws = false, engine = 'claude') {
       if (!login.url) reject(new Error(login.out.trim().split('\n').filter((l) => l.trim()).slice(-2).join(' ') || 'The sign-in program stopped without giving a link.'));
     });
     proc.on('error', (err) => reject(err));
-    setTimeout(() => { if (!login.url && !login.closed) { proc.kill(); reject(new Error(`No sign-in link appeared. Output: ${login.out.slice(-300)}`)); } }, 20000);
+    setTimeout(() => { if (!login.url && !login.closed) { proc.kill(); reject(new Error(noLinkText(login.out, bedrock ? 'AWS' : undefined))); } }, LINK_WAIT);
   });
 }
 
@@ -427,7 +434,7 @@ function startDeviceLogin(client, engine) {
       if (!login.url) reject(new Error(login.out.trim().split('\n').filter((l) => l.trim()).slice(-2).join(' ') || `The ${engine} sign-in stopped without giving a link.`));
     });
     proc.on('error', (err) => reject(new Error(`Could not run ${engine} (${cmd}): ${err.message}`)));
-    setTimeout(() => { if (!login.url && !login.closed) { proc.kill(); reject(new Error(`No sign-in link appeared. Output: ${login.out.slice(-300)}`)); } }, 20000);
+    setTimeout(() => { if (!login.url && !login.closed) { proc.kill(); reject(new Error(noLinkText(login.out))); } }, LINK_WAIT);
   });
 }
 
@@ -459,7 +466,7 @@ function startGatewayLogin(client, gw, engine, device = loginOf(gw) === 'device'
       reject(new Error(login.out.trim().split('\n').filter((l) => l.trim()).slice(-2).join(' ') || 'lite stopped without giving a sign-in link.'));
     });
     proc.on('error', (err) => reject(new Error(`Could not run lite (${cmd}): ${err.message}. Install LiteLLM's lite, or set its path in ☰ > Companies….`)));
-    setTimeout(() => { if (!login.url && !login.closed) { proc.kill(); reject(new Error(`No sign-in link appeared. Output: ${login.out.slice(-300)}`)); } }, 20000);
+    setTimeout(() => { if (!login.url && !login.closed) { proc.kill(); reject(new Error(noLinkText(login.out))); } }, LINK_WAIT);
   });
 }
 
@@ -5837,15 +5844,16 @@ function changeLinks(id, { ticket, pr, unlink }) {
   broadcast({ t: 'links', id });
 }
 
+// { code, out, err, timedOut }: out is stdout only; timedOut when it was stopped for running past timeout.
 function runCommand(cmd, args, env, timeout = 30000) {
   return new Promise((resolve) => {
     const proc = spawn(cmd, args, { env, windowsHide: true });
-    let out = '';
+    let out = '', err = '', timedOut = false;
     proc.stdout.on('data', (d) => { out += d; });
-    proc.stderr.on('data', () => {});
-    const timer = setTimeout(() => proc.kill(), timeout);
-    proc.on('close', (code) => { clearTimeout(timer); resolve({ code, out }); });
-    proc.on('error', () => { clearTimeout(timer); resolve({ code: -1, out: '' }); });
+    proc.stderr.on('data', (d) => { err += d; });
+    const timer = setTimeout(() => { timedOut = true; proc.kill(); }, timeout);
+    proc.on('close', (code) => { clearTimeout(timer); resolve({ code, out, err, timedOut }); });
+    proc.on('error', (e) => { clearTimeout(timer); resolve({ code: -1, out: '', err: e.message, timedOut }); });
   });
 }
 
