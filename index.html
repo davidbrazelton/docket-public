@@ -420,6 +420,15 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .note .spin { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: bootspin .8s linear infinite; }
 .err { border: 1px solid var(--bad); color: var(--bad); border-radius: 8px; padding: 8px 12px; white-space: pre-wrap; font-size: 13px; }
 .done-line { font-size: 12px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 4px; }
+/* A turn the session marked done (#726): its Done line in green with a check, and its ready-to-close sentence on its own
+   line in a soft green band. Status, not a control: --ok only, no border. */
+.done-line.fin { color: var(--ok); border-top-color: color-mix(in srgb, var(--ok) 40%, var(--panel)); }
+.done-line.fin::before { content: '✓ '; font-weight: 700; }
+.msg-text .fin-band { display: flex; align-items: flex-start; gap: 8px; margin: .7em 0 .4em; padding: 6px 12px 6px 10px; width: fit-content; max-width: 100%;
+  background: color-mix(in srgb, var(--ok) 13%, var(--panel)); border-radius: 8px; color: var(--text); }
+.msg-text > .fin-band:last-child { margin-bottom: 0; }
+.fin-band .ck { flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-top: 1px; border-radius: 50%;
+  background: var(--ok); color: var(--panel); font-size: 12px; font-weight: 700; line-height: 1; }
 .empty { color: var(--muted); text-align: center; margin-top: 18vh; }
 
 /* composer */
@@ -7068,7 +7077,8 @@ function eventHtml(ev) {
     case 'tool': {
       const ic = ev.status === 'running' ? ['running', '●'] : ev.status === 'error' ? ['error', '✕'] : ['done', '✓'];
       const body = JSON.stringify(ev.input ?? {}, null, 2) + (ev.result ? '\n\n── result ──\n' + ev.result : '');
-      return `<details class="tool" data-tool="${esc(ev.id)}"><summary><span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${esc(ev.name.replace(/^mcp__\w+?__/, ''))}</span><span class="lb">${esc(ev.label)}</span>${stepsWhen([ev])}</summary><pre>${esc(body)}</pre></details>`;
+      const said = /mark_turn$/.test(ev.name) && ev.input?.label === 'done' ? ' data-said="done"' : ''; // a turn marked done (#726)
+      return `<details class="tool" data-tool="${esc(ev.id)}"${said}><summary><span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${esc(ev.name.replace(/^mcp__\w+?__/, ''))}</span><span class="lb">${esc(ev.label)}</span>${stepsWhen([ev])}</summary><pre>${esc(body)}</pre></details>`;
     }
     case 'files': return `<div class="file-card">${ev.note ? `<div class="note">${esc(ev.note)}</div>` : ''}${(ev.paths || []).map((p) => fileRow({ path: p, name: p.split(/[\\/]/).pop(), folder: p.replace(/[\\/][^\\/]*$/, ''), exists: true, canOpen: true, kind: 'presented', modified: ev.at }, S.selected)).join('')}</div>`;
     case 'proposal': {
@@ -7135,7 +7145,7 @@ function eventHtml(ev) {
     case 'error': return `<div class="err">${esc(ev.text)}${ev.login ? '\n\nThis client is not signed in. Use the Sign in button in the left column, then send your message again.' : ''}</div>`;
     // Signed in again after a turn failed on its sign-in: offer to send that message again; nothing resends on its own.
     case 'retry': return `<div class="note retry" data-retry="${esc(ev.id)}">Signed in again. <button class="primary" data-retry-send${tip('send-again')}>Send again</button><div class="retry-text">${esc(ev.text.length > 200 ? ev.text.slice(0, 200) + '…' : ev.text)}</div></div>`;
-    case 'result': return `<div class="done-line">${ev.at ? stamp(ev.at) + ' · ' : ''}${ev.error ? 'Stopped' : 'Done'}${ev.ms ? ' in ' + dur(ev.ms) : ''}</div>`;
+    case 'result': return `<div class="done-line"${ev.error ? '' : ' data-end="done"'}>${ev.at ? stamp(ev.at) + ' · ' : ''}${ev.error ? 'Stopped' : 'Done'}${ev.ms ? ' in ' + dur(ev.ms) : ''}</div>`;
     default: return '';
   }
 }
@@ -7246,6 +7256,7 @@ function stepsView() {
   for (const c of boxes) markNarration(c);
   if (look === 'group' || look === 'notes') for (const c of boxes) groupSteps(c, look === 'notes');
   markLatestStep();
+  markFinished(box);
 }
 // What the chat leaves out with a checkmark off (the CSS for #events.*-hide below), so a run of steps folds across it.
 const hiddenHere = (el) => {
@@ -7373,12 +7384,56 @@ function renderEvents(force, keep) {
   checkJump();
   if (S.events.some((e) => e.login)) showSignin();
 }
+// A turn the session marked done (mark_turn "done", #726): its Done line turns green, and the ready-to-close sentence of
+// its last reply moves onto its own line in a green band, splitting its paragraph in place. Only marked turns: the
+// pattern just finds the sentence, so it can be loose. A turn that stopped on an error is not done.
+const FIN_SENT = /\b(?:ready|safe|fine|ok(?:ay)?|good) to (?:be )?close(?:d)?\b|\bcan (?:now )?be closed\b|\bcomplete and ready\b/i;
+function markFinished(box) {
+  let said = false, last = null;
+  for (const el of box.querySelectorAll('details.tool[data-said], .reply, .done-line')) {
+    if (el.matches('details.tool')) said = true;
+    else if (el.matches('.reply')) last = el;
+    else {
+      if (said && el.dataset.end === 'done' && !el.classList.contains('fin')) { el.classList.add('fin'); if (last) finBand(last.querySelector('.msg-text')); }
+      said = false; last = null;
+    }
+  }
+}
+// The last paragraph of t with a ready-to-close sentence: the sentence goes into a band, and the text before and after
+// it stays in paragraphs on either side, so the session's words keep their order.
+function finBand(t) {
+  if (!t || t.querySelector('.fin-band')) return;
+  const p = [...t.querySelectorAll(':scope > p')].reverse().find((x) => FIN_SENT.test(x.textContent));
+  if (!p) return;
+  const text = p.textContent, m = FIN_SENT.exec(text);
+  const ends = [...text.slice(0, m.index).matchAll(/[.!?]["')\]]*\s+/g)];
+  const start = ends.length ? ends.at(-1).index + ends.at(-1)[0].length : 0;
+  const after = /[.!?]["')\]]*(?=\s|$)/.exec(text.slice(m.index));
+  const end = after ? m.index + after.index + after[0].length : text.length;
+  if (/\bnot\b|n't\b/i.test(text.slice(start, end))) return; // "not ready to close yet" is nothing to celebrate
+  // an offset in p's text, as a point in its text nodes
+  const at = (n) => {
+    const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+    for (let x; (x = w.nextNode());) { if (n <= x.length) return [x, n]; n -= x.length; }
+    return [p, p.childNodes.length];
+  };
+  const cut = (a, b) => { const r = document.createRange(); r.setStart(...at(a)); r.setEnd(...at(b)); return r.extractContents(); };
+  const tail = cut(end, text.length), sent = cut(start, end);
+  const band = document.createElement('div'); band.className = 'fin-band';
+  band.innerHTML = '<span class="ck" aria-hidden="true">✓</span><span></span>';
+  band.lastChild.append(sent);
+  const rest = document.createElement('p'); rest.append(tail);
+  p.after(band);
+  if (rest.textContent.trim()) band.after(rest);
+  if (!p.textContent.trim()) p.remove();
+}
 function appendEvent(ev) {
   if (ev.k === 'result' && ev.quiet) { renderEvents(false, true); tlSoon(); return; } // the turn just ended folds
   const stick = atBottom();
   if ($('events').querySelector('.empty')) $('events').innerHTML = '';
   $('events').insertAdjacentHTML('beforeend', atHtml(ev));
   if (ev.k === 'tool') stepsView();
+  if (ev.k === 'result') markFinished($('events'));
   scrollDown(stick);
   if (ev.login) showSignin();
   tlSoon();
