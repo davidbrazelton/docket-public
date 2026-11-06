@@ -10,12 +10,12 @@ import { start } from '../engines/acp.mjs';
 const AGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fake-acp-agent.mjs');
 
 // Runs one turn and returns the messages, the questions asked, and the engine.
-async function turn({ permissionMode = 'default', answer = { behavior: 'allow' }, rules = '', env = process.env, allowTools, resume, text = 'hi there' } = {}) {
+async function turn({ permissionMode = 'default', answer = { behavior: 'allow' }, rules = '', env = process.env, allowTools, resume, text = 'hi there', mcpServers = [{ name: 'portal', command: 'x', args: [], env: [] }], mcpHttp } = {}) {
   const items = [];
   const input = { async *[Symbol.asyncIterator]() { yield { type: 'user', message: { role: 'user', content: [{ type: 'text', text }] } }; await new Promise(() => {}); } };
   const asked = [];
   const q = start({
-    options: { command: process.execPath, args: [AGENT], cwd: process.cwd(), env, permissionMode, rules, allowTools, resume, mcpServers: [{ name: 'portal', command: 'x', args: [], env: [] }] },
+    options: { command: process.execPath, args: [AGENT], cwd: process.cwd(), env, permissionMode, rules, allowTools, resume, mcpServers, mcpHttp },
     input,
     canUseTool: async (name, inp, opts) => { asked.push({ name, inp, opts }); return answer; },
   });
@@ -115,4 +115,20 @@ test('an agent that cannot pick up a conversation starts a new one and says so',
     assert.equal(gone.items[0].resumed, false);
     assert.equal(gone.items.at(-1).result, 'echo: three | remembers: nothing');
   } finally { fs.rmSync(memory, { recursive: true, force: true }); }
+});
+
+test('the desk browser server goes over HTTP only to an agent that says it takes HTTP servers (#757)', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'acp-http-'));
+  const seen = path.join(dir, 'seen.json');
+  const playwright = { name: 'playwright', command: 'node', args: ['cli.js'], env: [] };
+  const mcpServers = [{ name: 'portal', command: 'x', args: [], env: [] }, playwright];
+  const mcpHttp = { playwright: 'http://localhost:1234/mcp' };
+  try {
+    await turn({ env: { ...process.env, FAKE_ACP_SEEN: seen, FAKE_ACP_HTTP: '1' }, mcpServers, mcpHttp });
+    const http = JSON.parse(fs.readFileSync(seen, 'utf8'));
+    assert.deepEqual(http[1], { type: 'http', name: 'playwright', url: 'http://localhost:1234/mcp', headers: [] });
+    assert.equal(http[0].command, 'x', 'a server with no HTTP address stays as it was');
+    await turn({ env: { ...process.env, FAKE_ACP_SEEN: seen }, mcpServers, mcpHttp });
+    assert.deepEqual(JSON.parse(fs.readFileSync(seen, 'utf8'))[1], playwright, 'without the capability it keeps its own');
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

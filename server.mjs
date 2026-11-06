@@ -78,8 +78,9 @@ import { REMOTE_HOURS, ASK_WAIT_MS, newSecret, checkCode, stepOf, otpUri, makeCe
   remoteRoute, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedTls, pinnedRequest, connectError } from './remote.mjs';
 import { z } from 'zod';
 import { deskCheck, deskCheckText } from './desk-check.mjs';
-import { createSharedMcp } from './shared-mcp.mjs';
+import { createSharedMcp, freePort } from './shared-mcp.mjs';
 import { KEEP_DAYS, OUTPUT_FOLDER } from './output-limits.mjs';
+import { deskServerArgs, mcpUrl, savedFiles } from './desk-browser.mjs';
 import { outputUseRows, addRows, readLog, outputFolders, OUTPUT_LOG } from './big-output-use.mjs';
 import {
   query, listSessions, getSessionMessages, renameSession, tool, createSdkMcpServer,
@@ -1152,6 +1153,7 @@ function applyToolResult(s, ev) {
   const pub = tev?.name === 'Artifact' && artifactPublished(tev.input, ev.text, ev.error);
   const client = pub && isFullPath(pub.path) && clientById(s.client);
   if (client) keepArtifactLink(client, pub.path, pub.url);
+  if (tev?.name?.startsWith('mcp__playwright__') && !ev.error) keepBrowserFiles(s, ev.text);
   broadcast({ t: 'tool_result', id: s.id, ev });
   const task = s.tasks.get(ev.id);
   // A subagent sent to the background answers its call at once; it keeps running until its notification.
@@ -3054,6 +3056,7 @@ async function forgetBrowser(client) {
   const w = signInWindows.get(client.id);
   if (w) { clearInterval(w.timer); await w.context.close().catch(() => {}); }
   fs.rmSync(browserDir(client), { recursive: true, force: true });
+  keepStorageFile(client); // the desk's server reads it for each session that starts browsing
   broadcast({ t: 'browser', client: client.id, ...browserStatus(client) });
 }
 
@@ -3096,7 +3099,8 @@ async function forgetSite(client, site) {
   broadcast({ t: 'browser', client: client.id, ...browserStatus(client) });
 }
 
-// The Playwright tool server for one session: its own invisible browser, started from the client's saved sign-ins.
+// The Playwright tool server of a session that cannot use its desk's (below): its own process and invisible browser,
+// started from the client's saved sign-ins.
 function browserTools(client, sessionId) {
   const st = storageFile(client);
   return {
@@ -3106,6 +3110,86 @@ function browserTools(client, sessionId) {
       ...(fs.existsSync(st) ? ['--storage-state', st] : []),
       '--output-dir', path.join(UPLOADS, sessionId, 'browser')],
   };
+}
+
+// One Playwright tool server per desk, kept running by the runner, that the desk's sessions connect to over HTTP
+// (desk-browser.mjs, #757). Codex sessions keep their own: Codex may not tell an MCP server its folder.
+const PLAYWRIGHT_VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(path.dirname(PLAYWRIGHT_MCP), 'package.json'), 'utf8')).version; } catch { return ''; } })();
+const deskBrowserOut = (client) => path.resolve(DATA_DIR, 'browser-output', client.id); // whole: it is also the server's folder
+const deskBrowserStarts = new Map(); // server name -> its start under way, so sessions starting together share it
+const DESK_BROWSER_GRACE_MS = 10 * 60_000; // a server this new is kept even with no session on it yet: one may be starting
+// The server reads the sign-ins file for each session that starts browsing, so it has to be there, empty if need be.
+function keepStorageFile(client) {
+  const st = storageFile(client);
+  if (fs.existsSync(st)) return st;
+  fs.mkdirSync(browserDir(client), { recursive: true });
+  fs.writeFileSync(st, JSON.stringify({ cookies: [], origins: [] }));
+  return st;
+}
+const browserAnswers = (port) => fetch(mcpUrl(port), { signal: AbortSignal.timeout(5000) }).then(() => true, () => false);
+// Whether the server on port answers within ms. A busy app (sessions starting together) can miss one answer, and
+// starting a new server in place of one that runs ends the browsing of the sessions on it, so it asks until then.
+async function browserAnswersWithin(port, ms) {
+  for (const end = Date.now() + ms; ;) {
+    if (await browserAnswers(port)) return true;
+    if (Date.now() > end) return false;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+// The desk's server, started if it is not running. Its name changes with its command line or Playwright's version,
+// so a session already on an older one keeps it (stopOldDeskBrowsers stops it once nothing uses it).
+async function deskBrowser(client) {
+  const args = deskServerArgs({ cli: PLAYWRIGHT_MCP, storage: keepStorageFile(client), outDir: deskBrowserOut(client) });
+  const name = `playwright-${client.id}-${createHash('sha1').update(JSON.stringify([PLAYWRIGHT_VERSION, args])).digest('hex').slice(0, 10)}`;
+  if (deskBrowserStarts.has(name)) return deskBrowserStarts.get(name);
+  const started = (async () => {
+    const have = (await runnerCall('/helpers')).find((h) => h.name === name);
+    if (have && await browserAnswersWithin(have.meta.port, 20000)) return { name, url: mcpUrl(have.meta.port) };
+    if (have) logEvent('starting the private browser server again', `${name} did not answer on port ${have.meta.port}`);
+    fs.mkdirSync(deskBrowserOut(client), { recursive: true });
+    const port = await freePort();
+    await runnerCall('/helpers', { name, command: process.execPath, args: [...args, '--port', String(port)], cwd: deskBrowserOut(client), meta: { port, desk: client.id, at: Date.now() } });
+    if (!await browserAnswersWithin(port, 10000)) throw new Error(`it did not answer on port ${port}`); // the session waits for it
+    logEvent('started the private browser server', `${client.id} on port ${port}`);
+    return { name, url: mcpUrl(port) };
+  })().finally(() => deskBrowserStarts.delete(name));
+  deskBrowserStarts.set(name, started);
+  return started;
+}
+// The desk's server in place of the session's own, in the options it starts with; its name, or '' when it cannot
+// be had (an older runner, or it did not start), and the session keeps its own.
+async function useDeskBrowser(s, client, options) {
+  if (s.engine === 'codex' || !client) return '';
+  let desk;
+  try { desk = await deskBrowser(client); }
+  catch (err) { logEvent('private browser server not used', `${client.id}: ${err.message}`); return ''; }
+  if (s.engine === 'grok') options.mcpHttp = { playwright: desk.url }; // engines/acp.mjs uses it when Grok can
+  else options.mcpServers.playwright = { type: 'http', url: desk.url };
+  return desk.name;
+}
+// A server no open session uses stops (older ones, and those of desks with no session open): Playwright then closes
+// its browser too. The next session of the desk starts it again.
+async function stopOldDeskBrowsers() {
+  const helpers = await runnerCall('/helpers').catch(() => []);
+  const inUse = new Set([...live.values()].filter((s) => s.status !== 'ended').map((s) => state.sessions[s.id]?.browserHelper));
+  for (const h of helpers) {
+    if (!h.name.startsWith('playwright-') || inUse.has(h.name) || Date.now() - (h.meta?.at || 0) < DESK_BROWSER_GRACE_MS) continue;
+    await runnerCall('/helpers/stop', { name: h.name }).catch(() => {});
+    logEvent('stopped the private browser server', `${h.name}: no open session uses it`);
+  }
+}
+setInterval(() => stopOldDeskBrowsers().catch(() => {}), 5 * 60_000).unref();
+// Files a browser tool saved in the desk's folder go in the session's own too (a link, not a second copy), where its
+// Files list looks.
+function keepBrowserFiles(s, text) {
+  const client = clientById(s.client);
+  if (!client) return;
+  for (const f of savedFiles(text, deskBrowserOut(client))) {
+    const to = path.join(UPLOADS, s.id, 'browser', path.basename(f));
+    if (fs.existsSync(to) || !fs.existsSync(f)) continue;
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    try { fs.linkSync(f, to); } catch { try { fs.copyFileSync(f, to); } catch {} }
+  }
 }
 
 // ---------- sessions starting other sessions (rules in prompts/*.md) ----------
@@ -4560,11 +4644,13 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
   const print = (s.engine || 'claude') === 'claude' ? configNow(s) : null; // the config this process starts with (config-watch.mjs)
   // The runner starts it, or reconnects if it is still running there (s.runnerSeq: read from the start).
   s.asyncHooks = asyncHookEvents(hookSettings(client, s.cwd)); // the hook events the step times leave out (#743)
+  let browserHelper = '';
   s.ready = ensureRunner().then(() => ghForSession(s, client)).then((gh) => { if (gh) options.env = { ...options.env, GH_TOKEN: gh }; })
+    .then(() => useDeskBrowser(s, client, options)).then((name) => { browserHelper = name; })
     .then(() => runnerCall(`/sessions/${id}/start`, { options }))
     .then((r) => {
       if (r.attached) s.runnerSeq = r.seq;
-      else if (state.sessions[id]) { state.sessions[id].processStart = Date.now(); if (print) state.sessions[id].configPrint = print; saveState(); } // see repairTasks
+      else if (state.sessions[id]) { state.sessions[id].processStart = Date.now(); state.sessions[id].browserHelper = browserHelper; if (print) state.sessions[id].configPrint = print; saveState(); } // see repairTasks
       if (!r.attached && keepsChat(s.engine)) keepChat(id, { type: 'docket_start' }); // the runner numbers this run's messages from 1
       s.configReady = true;
     });
@@ -7344,7 +7430,7 @@ function profileFor(client, force) {
   docketTools.push({ name: 'mcp__playwright__*', description: 'A private browser with the sign-ins saved for this desk (the Browser button)' });
   const docketMcp = [
     { name: 'portal', detail: `${process.execPath} ${path.join(ROOT, 'tools-helper.mjs')}`, note: 'Docket\'s own tools (sessions, files, schedules)' },
-    { name: 'playwright', detail: `${process.execPath} ${PLAYWRIGHT_MCP} --isolated --headless`, note: 'the private browser with this desk\'s saved sign-ins' },
+    { name: 'playwright', detail: `${process.execPath} ${PLAYWRIGHT_MCP} --isolated --headless --port <port>`, note: 'the private browser with this desk\'s saved sign-ins: one server for the desk, its own browser for each session' },
   ];
   const profile = buildProfile(client, { isDefaultHome: isDefaultHome(client), docket: docketTexts(), docketTools, docketMcp, docketHooks: hooksFor(client, PLUGIN_DIR), latestFile: newestRecord(client), brands: brandsOf(client), grokHookFile: GROK_HOOK_FILE });
   profileCache.set(client.id, { at: Date.now(), profile });

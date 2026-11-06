@@ -6,7 +6,8 @@
 // Options, built by the app: command and args (the agent program), env, cwd, mcpServers (in ACP's
 // list shape), rules (Docket's instructions, sent ahead of the first message and not shown in the
 // chat), permissionMode (Docket's names), allowTools (tools allowed without asking, in any mode), effort, resume (the
-// agent's own id for an earlier conversation to pick up).
+// agent's own id for an earlier conversation to pick up), mcpHttp (an HTTP address for some of those servers, by name, used
+// instead when the agent says it can reach MCP servers over HTTP).
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -156,6 +157,9 @@ export function start({ options, input, canUseTool, stderr }) {
     return blocks;
   }
 
+  // The MCP servers as this agent can reach them: over HTTP when it can and the app gave an address.
+  const mcpServers = (caps) => (options.mcpServers || []).map((m) => caps.mcpCapabilities?.http && options.mcpHttp?.[m.name]
+    ? { type: 'http', name: m.name, url: options.mcpHttp[m.name], headers: [] } : m);
   // The conversation: the earlier one picked up again when asked and the agent can (session/resume, which Grok
   // offers, or else session/load, whose replay of the old conversation is not shown, since Docket keeps its own
   // copy of the chat), otherwise a new one. resumed says which.
@@ -163,11 +167,11 @@ export function start({ options, input, canUseTool, stderr }) {
     const how = !options.resume ? null : caps.sessionCapabilities?.resume ? 'session/resume' : caps.loadSession ? 'session/load' : null;
     if (how) {
       loading = how === 'session/load';
-      try { return { s: await starting(how, { sessionId: options.resume, cwd: options.cwd, mcpServers: options.mcpServers || [] }), resumed: true }; }
+      try { return { s: await starting(how, { sessionId: options.resume, cwd: options.cwd, mcpServers: mcpServers(caps) }), resumed: true }; }
       catch (e) { if (out.closed) throw e; stderr?.(`${how} failed: ${e.message}\n`); }
       finally { loading = false; }
     }
-    return { s: await starting('session/new', { cwd: options.cwd, mcpServers: options.mcpServers || [] }), resumed: false };
+    return { s: await starting('session/new', { cwd: options.cwd, mcpServers: mcpServers(caps) }), resumed: false };
   }
 
   (async () => {

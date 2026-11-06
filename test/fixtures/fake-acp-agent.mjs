@@ -33,8 +33,10 @@ process.stdin.on('data', (d) => {
     // FAKE_ACP_QUIT names the request it quits on, with exit code 0, as an agent that dies quietly would.
     if (process.env.FAKE_ACP_QUIT && m.method === process.env.FAKE_ACP_QUIT) process.exit(0);
     if (m.method === 'initialize') send({ id: m.id, result: { protocolVersion: 1,
-      agentCapabilities: MEMORY ? { loadSession: HOW === 'load', sessionCapabilities: HOW === 'resume' ? { resume: {} } : {} } : {} } });
+      agentCapabilities: { ...(MEMORY ? { loadSession: HOW === 'load', sessionCapabilities: HOW === 'resume' ? { resume: {} } : {} } : {}),
+        ...(process.env.FAKE_ACP_HTTP ? { mcpCapabilities: { http: true } } : {}) } } }); // FAKE_ACP_HTTP: it takes MCP servers over HTTP
     else if (m.method === 'session/new') {
+      if (process.env.FAKE_ACP_SEEN) fs.writeFileSync(process.env.FAKE_ACP_SEEN, JSON.stringify(m.params.mcpServers || [])); // the servers it was given
       const env = Object.fromEntries((m.params.mcpServers || []).find((s) => s.name === 'portal')?.env?.map((e) => [e.name, e.value]) || []);
       if (env.DOCKET_URL) portal = { url: env.DOCKET_URL, session: env.DOCKET_SESSION, token: env.DOCKET_TOKEN };
       if (MEMORY) { sid = 'S-' + randomUUID(); fs.mkdirSync(MEMORY, { recursive: true }); fs.writeFileSync(memoryFile(sid), '[]'); }

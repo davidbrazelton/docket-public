@@ -53,7 +53,7 @@ async function startCopy(env = {}) {
   const health = () => fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1000) }).then((r) => r.ok, () => false);
   for (let i = 0; i < 80 && !(await health()); i++) await new Promise((r) => setTimeout(r, 250));
   assert.ok(await health(), 'the runner started');
-  return { dir, tmp, proc, exited, health };
+  return { dir, tmp, proc, exited, health, port };
 }
 const within = (p, ms, what) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(what)), ms))]);
 
@@ -74,5 +74,33 @@ test('a test runner stops once its app stops checking on it', { timeout: 60000 }
     for (let i = 0; i < 12; i++) { await r.health(); assert.equal(r.proc.exitCode, null, 'still running while its app is in touch'); await new Promise((res) => setTimeout(res, 1000)); }
     assert.equal(await within(r.exited, 20000, 'the runner did not stop'), 0);
     assert.match(fs.readFileSync(path.join(r.tmp, 'data', 'runner-events.log'), 'utf8'), /stopping for good: test runner with no word from its app/);
+  } finally { r.proc.kill(); }
+});
+
+// Programs the runner keeps for the app, such as a desk's private browser server (#757): they stop when asked, and
+// with the runner, as their standard input closes.
+test('a helper starts, is listed, stops when asked, and stops with the runner', { timeout: 60000 }, async () => {
+  const r = await startCopy();
+  try {
+    const token = fs.readFileSync(path.join(r.tmp, 'data', 'runner-token'), 'utf8').trim();
+    const call = (p, body) => fetch(`http://127.0.0.1:${r.port}${p}`, { method: body ? 'POST' : 'GET', headers: { 'x-docket-token': token, 'content-type': 'application/json' }, body: body && JSON.stringify(body) }).then((x) => x.json());
+    const waitFor = async (f) => { for (let i = 0; i < 80 && !fs.existsSync(f); i++) await new Promise((res) => setTimeout(res, 250)); return fs.existsSync(f); };
+    const helper = (name) => {
+      const out = path.join(r.tmp, `${name}.done`);
+      const code = "const bye = () => { require('fs').writeFileSync(process.argv[1], 'bye'); process.exit(0); }; process.stdin.resume(); process.stdin.on('end', bye);";
+      return { out, body: { name, command: process.execPath, args: ['-e', code, out], cwd: r.tmp, meta: { port: 1 } } };
+    };
+    const a = helper('a'), b = helper('b');
+    assert.equal((await call('/helpers', a.body)).name, 'a');
+    const bPid = (await call('/helpers', b.body)).pid;
+    assert.deepEqual((await call('/helpers')).map((h) => [h.name, h.meta.port]).sort(), [['a', 1], ['b', 1]]);
+    await call('/helpers/stop', { name: 'a' });
+    assert.ok(await waitFor(a.out), 'a stopped when its input closed');
+    assert.deepEqual((await call('/helpers')).map((h) => h.name), ['b']);
+    // One whose runner is killed stops too: its input ends (on Windows the runner's children are ended with it).
+    r.proc.kill();
+    const alive = () => { try { process.kill(bPid, 0); return true; } catch { return false; } };
+    for (let i = 0; i < 80 && alive(); i++) await new Promise((res) => setTimeout(res, 250));
+    assert.equal(alive(), false, 'b stopped with the runner');
   } finally { r.proc.kill(); }
 });

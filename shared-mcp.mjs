@@ -60,7 +60,7 @@ function stop(pid) {
   try { if (process.platform === 'win32') execFileSync('taskkill', ['/T', '/F', '/PID', String(pid)], { stdio: 'ignore', windowsHide: true }); else process.kill(-pid); }
   catch { try { process.kill(pid); } catch {} }
 }
-const freePort = () => new Promise((resolve, reject) => {
+export const freePort = () => new Promise((resolve, reject) => {
   const srv = net.createServer().once('error', reject);
   srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolve(port)); });
 });
