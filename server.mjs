@@ -17,7 +17,8 @@ import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from '.
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText } from './reports.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from './reports.mjs';
+import { KEEP_WARM, PING_TEXT, keepWarmDue, isPing } from './keep-warm.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
 import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
@@ -1051,7 +1052,7 @@ async function resumeAll(reason = 'user') {
         addEvent(target, { k: 'note', text: 'Resumed by Resume all' });
         sendToSession(target, { text: '', system: true, context: resumeNote(paused, { stopped: x.stopped, woke: x.woke }) });
         resumed++;
-      } else sendToSession(target, { text: x.text, attachments: x.attachments || [], context: x.context, system: x.system, from: x.from });
+      } else sendToSession(target, { text: x.text, attachments: x.attachments || [], context: x.context, system: x.system, from: x.from, byPerson: !!x.byPerson, report: !!x.report, news: x.news || '' });
     } catch (e) { logEvent(`resume all: could not reach ${x.id}`, e.message); }
   }
   return { resumed };
@@ -1148,6 +1149,7 @@ function handleSdkMessage(s, m) {
   if (m.parent_tool_use_id) return; // subagent chatter: tracked through task events only
   switch (m.type) {
     case 'stream_event': {
+      if (s.pingTurn) { sdkStatus(s, 'running'); return; } // a keep-warm ping stays out of the chat
       const e = m.event;
       if (e.type === 'message_start') { s.curMsg = e.message.id; }
       else if (e.type === 'content_block_start' && e.content_block.type === 'text') {
@@ -1163,7 +1165,7 @@ function handleSdkMessage(s, m) {
     }
     case 'assistant': {
       for (const b of m.message?.content || []) if (b.type === 'tool_use') shiftUpForWork(s, b.name, b.input, b.id).catch(() => {});
-      for (const ev of convertMessage(s, m, { live: true, textCounter: s.textCounter })) {
+      for (const ev of s.pingTurn ? [] : convertMessage(s, m, { live: true, textCounter: s.textCounter })) {
         if (ev.k === 'text') {
           const existing = s.events.find((x) => x.k === 'text' && x.id === ev.id);
           if (existing) { existing.text = ev.text; broadcast({ t: 'replace', id: s.id, ev: existing }); continue; }
@@ -1189,6 +1191,7 @@ function handleSdkMessage(s, m) {
     }
     case 'result': {
       s.curText = null;
+      if (s.pingTurn && endPing(s, m)) return;
       if (state.sessions[s.id]?.unsent) { delete state.sessions[s.id].unsent; saveState(); } // it answered, so the message got there
       const err = m.is_error || m.subtype !== 'success';
       const text = typeof m.result === 'string' ? m.result : '';
@@ -1216,6 +1219,7 @@ function handleSdkMessage(s, m) {
       const said = s.turnSaid; // endTurnMark takes it; a turn marked done reports even with jobs running (#713)
       const endedQuietly = !quiet && endTurnMark(s, err); // its Done line says so, and the chat folds the turn (#672)
       addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err, ...(endedQuietly ? { quiet: true } : {}) });
+      s.reportNews = err ? '' : endedQuietly ? 'quiet' : s.turnNews || ''; s.turnNews = ''; s.costSeen = m.total_cost_usd || 0; // what its report is, for a held turn too (#734)
       s.stats = statsFor(clientById(s.client), sessionFile(clientById(s.client), s.id)) || s.stats;
       setTimeout(() => refreshUsage(clientById(s.client), s.id), s.engine === 'grok' ? 3000 : 1000); // Grok writes usage.json just after the turn
       s.heldTurn = runningTasks(s) > 0;
@@ -1232,7 +1236,7 @@ function handleSdkMessage(s, m) {
     }
     case 'system': {
       switch (m.subtype) {
-        case 'init': s.model = m.model; s.mcpAtStart = { at: Date.now(), servers: m.mcp_servers || [] }; noteCommands(s, m.slash_commands, m.skills, m.terminal_slash_commands); addEvent(s, { k: 'note', text: `Started in ${m.cwd} · ${m.model}` });
+        case 'init': s.model = m.model; s.mcpAtStart = { at: Date.now(), servers: m.mcp_servers || [] }; noteCommands(s, m.slash_commands, m.skills, m.terminal_slash_commands); if (!s.pingTurn) addEvent(s, { k: 'note', text: `Started in ${m.cwd} · ${m.model}` });
           if (keepsChat(s.engine)) {
             // The brand's own id for this conversation, so a pickup after End or a restart continues it.
             const rec = state.sessions[s.id], key = conversationKey(s.engine);
@@ -1881,8 +1885,9 @@ function portalToolDefs(parent) {
         {
           id: z.string().describe('Session id'), message: z.string().describe('The message, complete on its own'),
           gear: z.string().optional().describe(`Only for a Shift session you started: raise it to this gear before it reads the message (never lower). ${Object.entries(GEARS).map(([b, gs]) => `${BRANDS[b]?.name || b}: ${gs.map((g) => g.key).join(', ')}`).join('; ')}. Set it to the top gear when the message corrects a result that was wrong or incomplete`),
+          done: z.boolean().optional().describe('True when this message tells the session you checked and agree its work is done. Its reply ("complete and ready to close") then comes into your chat as a note instead of waking you, unless it is the last session you are waiting on'),
         },
-        async ({ id, message, gear: to }) => {
+        async ({ id, message, gear: to, done }) => {
           // A raise: decided on the child's saved record, which a resume reads its gear from.
           let raise = null;
           if (to) {
@@ -1894,7 +1899,7 @@ function portalToolDefs(parent) {
           }
           const raising = raise?.gear && !raise.same;
           try {
-            const { reportsTo, restored } = await deliverToSession(parent.client, id, message, parent, raising ? (t) => raiseChild(t, raise, parent) : null);
+            const { reportsTo, restored } = await deliverToSession(parent.client, id, message, parent, raising ? (t) => raiseChild(t, raise, parent) : null, !!done);
             const sent = (raise?.ignored ? `Sent, but ${raise.ignored}.` : raising ? `Sent, after raising it to ${raise.gear.name}.` : raise?.same ? `Sent; it was already on ${raise.gear.name}.` : 'Sent.')
               + (restored ? ' It was archived, so it is back in the session list as an open session; once it is done, close it again (close_session) or leave it for the user.' : '');
             // A session that is not yours: say where it reports, and that this one piece of work comes back here.
@@ -3237,7 +3242,8 @@ async function savedRow(client, id) {
 // before: run on the session once it is live, before it gets the message (a parent raising its gear).
 // A sender that is not the session's parent is saved as its replyTo, so its next finished turn reports
 // to the sender rather than waking a parent that did not ask for the work. Returns the parent's id.
-async function deliverToSession(clientId, id, message, from, before) {
+// done: the sender's send_to_session done flag (it checked and agrees the work is done), so the reply is only news.
+async function deliverToSession(clientId, id, message, from, before, done = false) {
   const target = await sessionToMessage(clientId, id);
   // Work sent to an archived session brings it back to the list for good, so it shows open and close_session works
   // on it again (#717); left archived, it ran and showed as open but could not be closed.
@@ -3250,7 +3256,7 @@ async function deliverToSession(clientId, id, message, from, before) {
   else delete rec.replyTo;
   saveState();
   const back = from && rec.replyTo ? ' When you finish this work, that session gets a short report of your reply.' : '';
-  sendToSession(target, { text: message, attachments: [], from: 'session', context: from ?`(Sent by the session "${from.title || from.id}" in the portal, id ${from.id}.${back})` : '' });
+  sendToSession(target, { text: message, attachments: [], from: 'session', context: from ?`(Sent by the session "${from.title || from.id}" in the portal, id ${from.id}.${back})` : '', news: from ? turnNewsFor({ message, done }) : '' });
   return { reportsTo, restored };
 }
 // A notice from Docket itself: a line in the chat, and the same words to Claude (not shown as the person's message).
@@ -3258,7 +3264,7 @@ async function deliverToSession(clientId, id, message, from, before) {
 async function noticeToSession(clientId, id, text, { byPerson = false } = {}) {
   const target = await sessionToMessage(clientId, id);
   addEvent(target, { k: 'note', text });
-  sendToSession(target, { text: '', system: true, byPerson, context: `(From Docket: ${text})` });
+  sendToSession(target, { text: '', system: true, byPerson, context: `(From Docket: ${text})`, news: turnNewsFor({ notice: text }) });
 }
 // The Summary button in the send box (#724): the session says where its work stands, as an outline. Top is this
 // session only; Deep also reads the open sessions under it (children, their children, and so on), read only: it
@@ -3456,7 +3462,7 @@ async function reportToParent(child, leftover = []) {
   const view = client && familyView(client);
   const to = view && !view.open(route.to) ? view.openParent(child.id) : route.to;
   if (!to) return;
-  const report = { childId: child.id, title: child.title || 'Session', text: reply.slice(0, 400), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}), ...(leftover.length ? { jobs: leftover } : {}) };
+  const report = { childId: child.id, title: child.title || 'Session', text: reply.slice(0, 400), at: Date.now(), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}), ...(leftover.length ? { jobs: leftover } : {}) };
   if (route.waiting) {
     const parent = live.get(to);
     if (parent && parent.status !== 'ended') {
@@ -3466,9 +3472,28 @@ async function reportToParent(child, leftover = []) {
     }
     return;
   }
-  if (!await wakeWith(client, to, report)) return;
+  // Only news (#734): a note with the halo, and it reaches the parent with its next turn rather than waking it now.
+  const others = kidsOf({ id: to, client: child.client }).list.filter((k) => k.id !== child.id);
+  const news = reportIsNews({ cause: child.reportNews, lastOpen: !others.length }) && holdNews(to, report, child.reportNews);
+  if (!news && !await wakeWith(client, to, report)) return;
   const own = route.noteTo !== to && route.noteTo && live.get(route.noteTo);
   if (own && own.status !== 'ended') addEvent(own, { k: 'note', text: `"${report.title}" finished work sent by the session "${sessionTitle(client, to)}"; its report went there.` });
+}
+// A news-only report (reportIsNews): kept on the parent's record until its next turn (heldNewsText), and shown in its
+// chat with the halo when it is open here. A parent not running here gets it with its next turn all the same.
+function holdNews(id, report, cause) {
+  const rec = state.sessions[id];
+  if (!rec) return false;
+  rec.heldNews = [...(rec.heldNews || []), { childId: report.childId, title: report.title, text: report.text }].slice(-20);
+  saveState();
+  const p = live.get(id);
+  if (p && p.status !== 'ended') {
+    addEvent(p, { k: 'child-report', ...report, news: true });
+    if (!p.unread) p.kidNews = true;
+    pushSession(p);
+  }
+  logEvent(`news held for ${sessionTag({ id, title: p?.title || rec.title })}`, `from "${report.title}" (${report.childId}), ${cause}`);
+  return true;
 }
 // Queue a report (a child's finished turn, or freed plan tasks) for a session and wake it, resuming it when it
 // is not running. `note` is shown in its chat instead of the child-report card. False when there is no such session.
@@ -3491,11 +3516,16 @@ async function wakeWith(client, id, report, note = '') {
 function flushWaitingOn(s) {
   for (const p of live.values()) if (p !== s && p.pendingReports?.some((r) => r.waitFor === s.id)) flushReports(p);
 }
+// PORTAL_REPORT_DEBOUNCE (JSON, e.g. {"quietMs":0,"maxMs":0}) changes it; the tests that wait for a report turn it off.
+const reportDebounce = (() => { try { return { ...REPORT_DEBOUNCE, ...JSON.parse(process.env.PORTAL_REPORT_DEBOUNCE || '{}') }; } catch { return REPORT_DEBOUNCE; } })();
 function flushReports(parent) {
   if (!parent.pendingReports?.length) return;
   if (parent.pendingAsks?.size || !['idle', 'starting'].includes(parent.status)) return; // busy: delivered when it finishes
   const ready = readyReports(parent.pendingReports, (id) => live.get(id)?.status === 'running');
   if (!ready.length) return;
+  // Children that finish close together share one wake-up (REPORT_DEBOUNCE in reports.mjs).
+  const left = debounceLeft(ready, Date.now(), reportDebounce);
+  if (left > 0) { clearTimeout(parent.flushTimer); parent.flushTimer = setTimeout(() => flushReports(parent), left + 50); return; }
   const d = wakeDecision({ autoWakes: parent.autoWakes || 0, reports: ready, limit: WAKE_LIMIT });
   if (!d.wake) {
     const fresh = ready.filter((r) => !r.heldNoted);
@@ -3517,6 +3547,42 @@ ${body}
 These are reports from sessions you started or sent work to with send_to_session, not messages from the user, and not proof: check a result (mcp__portal__get_session_report, its files, git branch or pull request) before telling the user it is done. If it is not done, send that session what is missing (mcp__portal__send_to_session). If it is done, follow "When a session you started says it is done" in your instructions, which also covers a session you sent work to; close_session only works on your own children, so a session you only sent work to is told the work is done instead: a small, safe task with nothing left for the user is closed with mcp__portal__close_session and reported here in a line or two; otherwise tell that session the work is done, and say in the same message if anything is still left for the user (an open pull request, a question, a decision), so it tells the user it is ready to close only when nothing is left for them. Carry on with any step of what the user asked you that these unblock, saying so in a line. Start nothing the user did not ask for. With no such step left, report in a line or two. If that report only passes on news (progress, a session finished with nothing left for the user, a session waiting on the user in its own chat), end the turn quietly with mcp__portal__report_quiet, whether or not any session is still working (see "When sessions you started report" in your instructions); anything the user should act on here is never quiet. A report that shows a session asking the user something is that session's question, asked in its own chat: do not repeat, rephrase or answer it; at most one line saying "[its title](#session:<id>) is waiting on you".
 </session-report>` });
 }
+// ---------- keeping a waiting parent's prompt cache warm (keep-warm.mjs, #734) ----------
+// PORTAL_KEEP_WARM (JSON, e.g. {"afterMin":1,"minTokens":1000}) changes the thresholds, for trying it on the test copy.
+const keepWarmCfg = (() => { try { return { ...KEEP_WARM, ...JSON.parse(process.env.PORTAL_KEEP_WARM || '{}') }; } catch { return KEEP_WARM; } })();
+// A tiny turn that only reads the cache: nothing in the chat, no report to its parent, no mark, not a wake.
+function pingSession(s) {
+  s.pingTurn = true; s.quietTurn = true;
+  s.turnBy = 'docket'; s.reportTurn = false; s.turnNews = '';
+  logEvent(`keep-warm ping: ${sessionTag(s)}`, `last reply ${Math.round((Date.now() - s.stats.at) / 60000)} min ago, ${s.stats.tokens} tokens, ${kidsOf(s).working} working`);
+  setStatus(s, 'running');
+  s.input.push({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: PING_TEXT }] }, parent_tool_use_id: null });
+}
+// The ping's turn ended: the log keeps what it cost and whether it read the cache rather than writing it again.
+function endPing(s, m) {
+  s.pingTurn = false; s.quietTurn = false;
+  const u = m.usage || {}, err = m.is_error || m.subtype !== 'success';
+  // total_cost_usd counts the whole run of the session's process, so the ping's own cost is what it added.
+  const total = m.total_cost_usd || 0, cost = total >= (s.costSeen || 0) ? total - (s.costSeen || 0) : total;
+  s.costSeen = total;
+  logEvent(`keep-warm ping done: ${sessionTag(s)}`, `${err ? 'error: ' + (m.result || m.subtype) + '; ' : ''}$${cost.toFixed(4)}, cache read ${u.cache_read_input_tokens || 0}, cache write ${u.cache_creation_input_tokens || 0}, input ${u.input_tokens || 0}, output ${u.output_tokens || 0}`);
+  s.stats = statsFor(clientById(s.client), sessionFile(clientById(s.client), s.id)) || s.stats;
+  setStatus(s, 'idle');
+  pushSession(s);
+  setTimeout(() => flushReports(s), 500); // a report that came in during the ping
+  return true;
+}
+function keepWarmTick() {
+  const now = Date.now();
+  for (const s of live.values()) {
+    if (s.status !== 'idle' || !state.sessions[s.id]) continue;
+    const busy = !!(s.pendingAsks?.size || s.pendingReports?.length || s.heldTurn || s.compacting || s.reloading || s.waking || runningTasks(s));
+    const d = keepWarmDue({ engine: s.engine, status: s.status, resting: !!s.resting, paused: !!state.paused, busy, cacheTtl: s.stats?.cacheTtl, tokens: s.stats?.tokens, lastReplyAt: s.stats?.at, working: kidsOf(s).working, warmSince: s.warmSince || null, now, cfg: keepWarmCfg });
+    s.warmSince = d.warmSince;
+    if (d.ping) { try { pingSession(s); } catch (e) { s.pingTurn = false; s.quietTurn = false; logEvent(`keep-warm ping failed: ${sessionTag(s)}`, e.message); } }
+  }
+}
+setInterval(keepWarmTick, keepWarmCfg.checkSec * 1000);
 // Save before compact: once a session passes its company's share of the auto-compact point, it is asked once,
 // between turns, to write down what a compact summary would lose. One per compact cycle; a session mid-turn gets it
 // when the turn ends. savePrompted is kept in the state file so an app restart does not ask again.
@@ -4183,17 +4249,18 @@ function saveUploads(id, attachments) {
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
 // from: 'session' when another session wrote the text, so the page can tell it from what the person typed
-function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false, report = false }) {
+// news: what makes this turn's report only news for its parent (turnNewsFor in reports.mjs), '' for none.
+function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false, report = false, news = '' }) {
   if (holdsMessage(state.paused, { system, from })) { // waits for Resume all
-    state.paused.held.push({ id: s.id, client: s.client, text, attachments, context, system, from });
+    state.paused.held.push({ id: s.id, client: s.client, text, attachments, context, system, from, byPerson, report, news });
     saveState();
     return;
   }
   if (state.paused && !system && noteMessaged(state.paused, s.id)) { saveState(); broadcastPause(); }
   // Resting: started again first, and the message goes to the new process.
-  if (s.resting) { s.reloadQueue.push({ text, attachments, context, system, from }); wakeSession(s).catch((e) => logEvent(`wake failed: ${sessionTag(s)}`, e.message)); return; }
+  if (s.resting) { s.reloadQueue.push({ text, attachments, context, system, from, byPerson, report, news }); wakeSession(s).catch((e) => logEvent(`wake failed: ${sessionTag(s)}`, e.message)); return; }
   // Its Claude config changed and it may restart now: restarted first, and the message goes to the new process.
-  if (s.reloading || checkConfig(s) === 'reload') { s.reloadQueue.push({ text, attachments, context, system, from }); return; }
+  if (s.reloading || checkConfig(s) === 'reload') { s.reloadQueue.push({ text, attachments, context, system, from, byPerson, report, news }); return; }
   const files = saveUploads(s.id, attachments);
   const blocks = [];
   const images = [];
@@ -4210,6 +4277,8 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   const full = [text, ...notes].filter(Boolean).join('\n\n');
   if (full) blocks.push({ type: 'text', text: full });
   if (context) blocks.push({ type: 'text', text: context }); // for Claude only; the chat shows just what the person typed
+  const held = state.sessions[s.id]?.heldNews;
+  if (held?.length && blocks.length) { blocks.push({ type: 'text', text: heldNewsText(held) }); delete state.sessions[s.id].heldNews; saveState(); } // news-only reports ride along (#734)
   if (state.sessions[s.id]?.moveNote) { blocks.push({ type: 'text', text: state.sessions[s.id].moveNote }); delete state.sessions[s.id].moveNote; saveState(); }
   if (state.sessions[s.id]?.restartNote) { blocks.push({ type: 'text', text: RUNNER_RESTART_NOTE }); delete state.sessions[s.id].restartNote; saveState(); }
   if (state.sessions[s.id]?.recallNote) { blocks.push({ type: 'text', text: RECALL_NOTE }); delete state.sessions[s.id].recallNote; saveState(); }
@@ -4217,6 +4286,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   if (!blocks.length) return;
   s.turnBy = turnStarter({ system, from, byPerson }); // whether its report counts toward the parent's wake limit
   s.reportTurn = !!report; // woken by session reports: the only turn that may end quietly (quietRefusal)
+  s.turnNews = news; // its report is only news for the parent (#734)
   s.turnSaid = '';
   s.closedKid = false; // close_session this turn: with no other child open, the job is done (#694)
   if (byPerson) s.autoWakes = 0; // a button the person pressed: wake-ups may continue
@@ -6714,8 +6784,11 @@ async function loadTranscript(client, id) {
   // A Claude transcript has no record of a turn's end, so its Done line is the time of the turn's last reply (no duration).
   let turnAt = 0;
   const endTurn = () => { if (turnAt) { events.push({ k: 'result', at: turnAt }); turnAt = 0; } };
+  let inPing = false; // a keep-warm ping and its reply stay out of the chat (keep-warm.mjs)
   for (const { msg: m, at } of rows) {
     if (m.parent_tool_use_id) continue;
+    if (m.type === 'user' && !(Array.isArray(m.message?.content) && m.message.content.some((b) => b.type === 'tool_result'))) inPing = isPing(m);
+    if (inPing) continue;
     if (m.type === 'docket_note') { events.push({ k: 'note', text: m.text }); continue; }
     if (m.type === 'docket_error' || (m.type === 'result' && (m.is_error || m.subtype !== 'success'))) { events.push({ k: 'error', text: m.text || m.result || m.subtype }); continue; }
     if (m.type === 'result') { events.push({ k: 'result', ms: m.duration_ms, at }); continue; }

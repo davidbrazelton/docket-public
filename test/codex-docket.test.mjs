@@ -59,7 +59,7 @@ async function startDocket() {
   server = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
-      PORTAL_STATE: STATE, PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
+      PORTAL_REPORT_DEBOUNCE: '{"quietMs":0,"maxMs":0}', PORTAL_STATE: STATE, PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
       PORTAL_CODEX_EXE: path.join(HERE, 'fixtures', 'fake-codex.mjs'), PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs'),
       CODEX_HOME: path.join(tmp, 'shared-codex') }, // the Codex home of sessions run outside Docket: not this computer's own
   });

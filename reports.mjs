@@ -195,3 +195,45 @@ export function doneWithJobsReply(jobs) {
 // The line a parent's report adds for jobs a child left running when it marked its turn done.
 export const leftoverJobsText = (jobs) => !jobs?.length ? ''
   : `It marked its turn done with ${jobs.length === 1 ? '1 background job' : `${jobs.length} background jobs`} still running: ${jobs.join('; ')}.`;
+
+// ---------- news-only reports (#734) ----------
+// Most child reports used to wake the parent for a full turn that only read the news and replied. Docket knows when
+// a child's turn can only be news, from what started it, so it marks the turn when it starts (turnNews):
+// 'ack'    a Docket notice that says "Nothing to do now; reply in one line at most" (a move, a handoff, a start);
+// 'agreed' the parent's send_to_session that says it checked and agrees the work is done (its done flag, or the
+//          wording the rules give it), so the reply is the child's "complete and ready to close";
+// 'quiet'  the child is a parent too, and ended its own turn with report_quiet: it only passed news up.
+// Such a report goes into the parent's chat as a note with the halo, and reaches the parent with its next turn
+// (its next wake-up or the person's next message), so a parent whose cache went cold is not woken to re-read it all.
+// A turn that failed is never news, nor an 'agreed' reply from the last session the parent waits on: that finishes
+// the parent's own job, so it is woken to write the closing reply.
+export const ACK_NOTICE = /Nothing to do now; reply in one line at most/;
+const AGREES = /\b(checked and agree|i agree (it|this|the work) is done|agree (that )?(it is|it's|the work is|your work is) done)\b/i;
+const DISAGREES = /(\bnot|n't|\bcannot)\s+(yet\s+)?agree\b/i;
+// The cause a message gives the turn it starts. done: the send_to_session flag.
+export function turnNewsFor({ notice = '', message = '', done = false } = {}) {
+  if (notice) return ACK_NOTICE.test(notice) ? 'ack' : '';
+  return done || (AGREES.test(message) && !DISAGREES.test(message)) ? 'agreed' : '';
+}
+// Whether a finished child turn is only news. cause: its turnNews ('' when nothing marked it), or 'quiet'.
+// lastOpen: no other session the parent waits on is still working or waiting on the person.
+export function reportIsNews({ cause = '', error = false, lastOpen = false } = {}) {
+  if (error || !cause) return false;
+  if (cause === 'agreed' && lastOpen) return false;
+  return true;
+}
+// The block a session's next turn carries for the news it took in without a wake-up.
+export function heldNewsText(news = []) {
+  if (!news.length) return '';
+  const lines = news.map((r) => `- "${r.title}" (id ${r.childId}) finished a turn: ${r.text}`);
+  return `(From Docket: while you were not working, these sessions you started reported news only, so Docket left it in your chat instead of waking you. Nothing to do about it unless it changes what you are doing.\n${lines.join('\n')})`;
+}
+
+// Children that finish close together share one wake-up: an idle session's reports wait until none has come for
+// quietMs, but no longer than maxMs after the first. A report from a turn the person started goes at once.
+export const REPORT_DEBOUNCE = { quietMs: 10000, maxMs: 45000 };
+export function debounceLeft(reports = [], now = Date.now(), { quietMs, maxMs } = REPORT_DEBOUNCE) {
+  if (!reports.length || reports.some((r) => r.byPerson)) return 0;
+  const ats = reports.map((r) => r.at || 0);
+  return Math.max(0, Math.min(Math.max(...ats) + quietMs, Math.min(...ats) + maxMs) - now);
+}

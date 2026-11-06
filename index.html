@@ -7230,7 +7230,7 @@ function eventHtml(ev) {
       return `<div class="scard ${ev.state === 'open' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Suggested title${earlier(ev)}</div><div class="st">${esc(ev.title)}</div>${ev.reason ? `<div class="sb">${esc(ev.reason)}</div>` : ''}${tail}</div>`;
     }
     case 'child-report':
-      return `<div class="child-report${ev.waiting ? ' waiting' : ''}"><a href="#session:${esc(ev.childId)}"${tip('open-session')}>${esc(ev.title)}</a> ${ev.waiting ? 'is waiting on you' : 'finished a turn'}<div class="ct">${esc(ev.text)}${ev.text.length >= 400 ? '…' : ''}</div>${ev.jobs?.length ? `<div class="ct">Still running: ${esc(ev.jobs.join('; '))}</div>` : ''}</div>`;
+      return `<div class="child-report${ev.waiting ? ' waiting' : ''}"><a href="#session:${esc(ev.childId)}"${tip('open-session')}>${esc(ev.title)}</a> ${ev.waiting ? 'is waiting on you' : ev.news ? 'finished a turn: news only, so this session was not woken (it reads it with its next turn)' : 'finished a turn'}<div class="ct">${esc(ev.text)}${ev.text.length >= 400 ? '…' : ''}</div>${ev.jobs?.length ? `<div class="ct">Still running: ${esc(ev.jobs.join('; '))}</div>` : ''}</div>`;
     case 'permission': {
       if (ev.tool === 'AskUserQuestion' && Array.isArray(ev.input?.questions)) return questionFormHtml(ev);
       const done = ev.state !== 'pending';
