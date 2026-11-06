@@ -222,6 +222,13 @@ export function reportIsNews({ cause = '', error = false, lastOpen = false } = {
   if (cause === 'agreed' && lastOpen) return false;
   return true;
 }
+// The other way (#755): a parent's 'agreed' message to a child whose last finished turn already said it is complete
+// and ready to close goes into the child's chat as a note, not a new turn that would only say so again. Only when
+// nothing waits on the person: lastDone (its last turn was marked done, asking nothing), state (childState) 'done'
+// (idle, no jobs, no prompt, no question), and no open pull request. Otherwise the turn runs, to end on that one thing.
+export function agreedAsNote({ news = '', lastDone = false, state = '', pr = null } = {}) {
+  return news === 'agreed' && !!lastDone && state === 'done' && !(pr && (pr.status === 'open' || pr.status === 'conflict'));
+}
 // The block a session's next turn carries for the news it took in without a wake-up.
 export function heldNewsText(news = []) {
   if (!news.length) return '';

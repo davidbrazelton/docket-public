@@ -2,7 +2,7 @@
 // parent, how held news reaches it, and the debounce for children that finish close together. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { turnNewsFor, reportIsNews, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from '../reports.mjs';
+import { turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from '../reports.mjs';
 
 test('turnNewsFor: a Nothing to do now notice and an agree-done message mark the turn as news', () => {
   assert.equal(turnNewsFor({ notice: 'The session "X" (id 1) now reports to you. Its finished turns will come to you as session reports. Nothing to do now; reply in one line at most.' }), 'ack');
@@ -48,4 +48,18 @@ test('debounceLeft: reports to an idle parent wait for a quiet spell, but not pa
   assert.equal(debounceLeft([{ at: now - maxMs + 5000 }, { at: now }], now), 5000); // the first one's cap holds
   assert.equal(debounceLeft([{ at: now, byPerson: true }], now), 0); // a turn the person started goes at once
   assert.equal(debounceLeft([{ kind: 'plan' }], now), 0); // freed plan tasks carry no time and go at once
+});
+
+test('agreedAsNote: a done message to a child that already said ready to close is a note, else a turn (#755)', () => {
+  const ok = { news: 'agreed', lastDone: true, state: 'done', pr: null };
+  assert.equal(agreedAsNote(ok), true);
+  assert.equal(agreedAsNote({ ...ok, pr: { status: 'merged' } }), true);
+  assert.equal(agreedAsNote({ ...ok, news: '' }), false); // not an agree-done message
+  assert.equal(agreedAsNote({ ...ok, news: 'ack' }), false);
+  assert.equal(agreedAsNote({ ...ok, lastDone: false }), false); // its last turn did not mark itself done
+  assert.equal(agreedAsNote({ ...ok, state: 'waiting' }), false); // a question or prompt waits on the person
+  assert.equal(agreedAsNote({ ...ok, state: 'working' }), false); // a turn or jobs still running
+  assert.equal(agreedAsNote({ ...ok, pr: { status: 'open' } }), false); // an unmerged pull request
+  assert.equal(agreedAsNote({ ...ok, pr: { status: 'conflict' } }), false);
+  assert.equal(agreedAsNote(), false);
 });

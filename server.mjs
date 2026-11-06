@@ -17,7 +17,7 @@ import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from '.
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from './reports.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from './reports.mjs';
 import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from './keep-warm.mjs';
 import { WAITS, CONDITIONS, parseWait, waitWhat, prVerdict, sessionVerdict, portVerdict, portAnswers, timeoutLine, nextLook, waitInline, kindOf, checksOf, stateLine, branchPr } from './waits.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
@@ -666,13 +666,14 @@ function endTurnMark(s, err) {
   let said = s.turnSaid; s.turnSaid = '';
   const closedLast = closedLastKid(s); s.closedKid = false;
   if (closedLast && !said && !liveAsks(s)) said = 'done';
+  const rec = state.sessions[s.id]; // a parent's agree-done message to it then goes as a note (agreedAsNote, #755)
+  if (rec && !!rec.lastDone !== (!err && said === 'done' && !liveAsks(s))) { if (rec.lastDone) delete rec.lastDone; else rec.lastDone = true; saveState(); }
   if (reason) {
     const k = kidsOf(s), why = quietRefusal({ turnBy: s.turnBy, report: s.reportTurn, error: err, said: liveAsks(s) ? 'question' : said, closedLast }); // a reply that asks is a question
     if (!why) {
       if (!s.unread) s.kidNews = true;
       logEvent(`quiet turn: ${sessionTag(s)}`, `${reason} (${k.working} working, ${k.waiting} waiting on the person)`);
-      const rec = state.sessions[s.id]; // kept, so the chat folds this turn after a restart too (#672)
-      if (rec) { rec.quietTurns = keepQuiet(rec.quietTurns, turnKey(s.events)); saveState(); }
+      if (rec) { rec.quietTurns = keepQuiet(rec.quietTurns, turnKey(s.events)); saveState(); } // kept, so the chat folds this turn after a restart too (#672)
       return true;
     }
     logEvent(`quiet turn refused: ${sessionTag(s)}`, `${why}; asked for: ${reason}`);
@@ -1941,7 +1942,8 @@ function portalToolDefs(parent) {
           }
           const raising = raise?.gear && !raise.same;
           try {
-            const { reportsTo, restored } = await deliverToSession(parent.client, id, message, parent, raising ? (t) => raiseChild(t, raise, parent) : null, !!done);
+            const { reportsTo, restored, noted } = await deliverToSession(parent.client, id, message, parent, raising ? (t) => raiseChild(t, raise, parent) : null, !!done);
+            if (noted) return { content: [{ type: 'text', text: 'Delivered as a note in its chat, not a new turn: its last turn already said it is complete and ready to close, and nothing waits on the user there. No reply will come. If it was the last session you were waiting on, write your closing reply now.' }] };
             const sent = (raise?.ignored ? `Sent, but ${raise.ignored}.` : raising ? `Sent, after raising it to ${raise.gear.name}.` : raise?.same ? `Sent; it was already on ${raise.gear.name}.` : 'Sent.')
               + (restored ? ' It was archived, so it is back in the session list as an open session; once it is done, close it again (close_session) or leave it for the user.' : '');
             // A session that is not yours: say where it reports, and that this one piece of work comes back here.
@@ -3318,7 +3320,19 @@ async function savedRow(client, id) {
 // A sender that is not the session's parent is saved as its replyTo, so its next finished turn reports
 // to the sender rather than waking a parent that did not ask for the work. Returns the parent's id.
 // done: the sender's send_to_session done flag (it checked and agrees the work is done), so the reply is only news.
+// Agreeing with a child that already said it is ready to close, with nothing waiting on the person, runs no turn:
+// the message goes into its chat as a note (agreedAsNote, #755), and noted is true.
 async function deliverToSession(clientId, id, message, from, before, done = false) {
+  const news = from ? turnNewsFor({ message, done }) : '';
+  const was = live.get(id);
+  if (news === 'agreed' && was && was.status !== 'ended' && state.sessions[id]?.lastDone && !before) {
+    if (!stateSnaps.has(id)) await refreshStateSnap(was).catch(() => {});
+    if (agreedAsNote({ news, lastDone: true, state: liveChildState(was), pr: stateSnaps.get(id)?.pr })) {
+      addEvent(was, { k: 'note', text: `"${from.title || from.id}" checked and agrees the work is done (no turn ran, since this session had already said it is ready to close): ${message}` });
+      logEvent(`agreed as a note: ${sessionTag(was)}`, `from ${sessionTag(from)}`);
+      return { reportsTo: state.sessions[id]?.reportsTo || null, restored: false, noted: true };
+    }
+  }
   const target = await sessionToMessage(clientId, id);
   // Work sent to an archived session brings it back to the list for good, so it shows open and close_session works
   // on it again (#717); left archived, it ran and showed as open but could not be closed.
@@ -3331,7 +3345,7 @@ async function deliverToSession(clientId, id, message, from, before, done = fals
   else delete rec.replyTo;
   saveState();
   const back = from && rec.replyTo ? ' When you finish this work, that session gets a short report of your reply.' : '';
-  sendToSession(target, { text: message, attachments: [], from: 'session', context: from ?`(Sent by the session "${from.title || from.id}" in the portal, id ${from.id}.${back})` : '', news: from ? turnNewsFor({ message, done }) : '' });
+  sendToSession(target, { text: message, attachments: [], from: 'session', context: from ?`(Sent by the session "${from.title || from.id}" in the portal, id ${from.id}.${back})` : '', news });
   return { reportsTo, restored };
 }
 // A notice from Docket itself: a line in the chat, and the same words to Claude (not shown as the person's message).
@@ -4514,6 +4528,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   s.turnBy = turnStarter({ system, from, byPerson }); // whether its report counts toward the parent's wake limit
   s.reportTurn = !!report; // woken by session reports: the only turn that may end quietly (quietRefusal)
   s.turnNews = news; // its report is only news for the parent (#734)
+  if (state.sessions[s.id]?.lastDone) { delete state.sessions[s.id].lastDone; saveState(); } // a turn runs: done again only if it says so (#755)
   s.turnSaid = '';
   s.closedKid = false; // close_session this turn: with no other child open, the job is done (#694)
   if (byPerson) s.autoWakes = 0; // a button the person pressed: wake-ups may continue
