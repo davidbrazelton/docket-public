@@ -3,6 +3,7 @@
 // shell commands made or pushed) and the issues its own shell commands filed, never from text it read or printed: a
 // session reviewing others' work mentions dozens of tickets. Status is plain REST, no AI.
 import path from 'node:path';
+import { checksOf } from './waits.mjs';
 
 const NOT_BRANCHES = new Set(['master', 'main', 'develop', 'head', 'origin', 'upstream']);
 const SHELL_TOOLS = new Set(['Bash', 'PowerShell']);
@@ -266,11 +267,13 @@ export const ghStatus = (d) => d?.state === 'MERGED' ? 'merged' : d?.state === '
 export const CLOSES = 'closingIssuesReferences(first: 10) { nodes { number repository { nameWithOwner } } }';
 export const closesOf = (d) => (d?.closingIssuesReferences?.nodes || []).filter((i) => i?.repository?.nameWithOwner && i.number)
   .map((i) => parseIssueUrl(`https://github.com/${i.repository.nameWithOwner}/issues/${i.number}`));
+// The checks on a pull request's last commit (pass, fail, pending, or '' for none), asked with its status (#749).
+export const CHECKS = 'commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }';
 // One GraphQL query for the pull requests opened from each { repo, branch }, open or finished.
 export function ghBranchQuery(pairs) {
   return 'query { ' + pairs.map(({ repo, branch }, n) => {
     const [owner, name] = repo.split('/');
-    return `b${n}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequests(headRefName: ${JSON.stringify(branch)}, first: 20, orderBy: { field: CREATED_AT, direction: DESC }) { nodes { number url state isDraft mergeable title headRefName ${CLOSES} } } }`;
+    return `b${n}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequests(headRefName: ${JSON.stringify(branch)}, first: 20, orderBy: { field: CREATED_AT, direction: DESC }) { nodes { number url state isDraft mergeable title headRefName ${CLOSES} ${CHECKS} } } }`;
   }).join(' ') + ' }';
 }
 // Its answer per pair: the pull requests, or null where GitHub could not say (no such repo, no access).
@@ -278,7 +281,7 @@ export function ghBranchAnswer(pairs, data) {
   return pairs.map(({ repo }, n) => {
     const nodes = data?.[`b${n}`]?.pullRequests?.nodes;
     if (!Array.isArray(nodes)) return null;
-    return nodes.map((d) => ({ kind: 'github', url: d.url, number: d.number, repo, status: ghStatus(d), draft: !!d.isDraft, title: d.title || '', branch: d.headRefName || '', closes: closesOf(d) }));
+    return nodes.map((d) => ({ kind: 'github', url: d.url, number: d.number, repo, status: ghStatus(d), draft: !!d.isDraft, title: d.title || '', branch: d.headRefName || '', closes: closesOf(d), checks: checksOf(d.commits?.nodes?.[0]?.commit?.statusCheckRollup) }));
   });
 }
 

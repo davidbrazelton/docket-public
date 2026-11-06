@@ -19,6 +19,7 @@ import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
 import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from './reports.mjs';
 import { KEEP_WARM, PING_TEXT, keepWarmDue, isPing } from './keep-warm.mjs';
+import { WAITS, CONDITIONS, parseWait, waitWhat, prVerdict, sessionVerdict, portVerdict, portAnswers, timeoutLine, nextLook, waitInline, kindOf, checksOf, stateLine, branchPr } from './waits.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
 import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
@@ -60,7 +61,7 @@ import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport
 import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
 import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE } from './recall.mjs';
 import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPrUrl, adoPRsForBranch, adoPRById, adoWorkItemIds, adoItemKey, isAdoItemKey, adoItemKeyFrom, adoPRWorkItemIds, adoWorkItems, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, linkTtl, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
-  parseIssueUrl, branchIssue, githubTicket, CLOSES, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, sessionBranches,
+  parseIssueUrl, branchIssue, githubTicket, CLOSES, CHECKS, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, sessionBranches,
   prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe, ticketFinished } from './links.mjs';
 import { currentBranch } from './git-head.mjs';
 import { restDue, restMinutes } from './rest.mjs';
@@ -1260,6 +1261,7 @@ function handleSdkMessage(s, m) {
       setTimeout(() => flushReports(s), 500);
       setTimeout(() => flushWaitingOn(s), 600); // after setStatus below: freed plan tasks that waited for this turn
       setTimeout(() => saveBeforeCompact(s), 1500); // after any reports, which go first
+      setTimeout(() => refreshStateSnap(s).catch((e) => console.log('[state line]', e.message)), 2000); // for the next note's state line (#749)
       setStatus(s, 'idle');
       pushSession(s);
       return;
@@ -2014,6 +2016,38 @@ function portalToolDefs(parent) {
         async ({ id }) => {
           const r = await sessionReport(parent.client, id);
           return { content: [{ type: 'text', text: r ? `Title: ${r.title}\nStatus: ${r.status}\n\nLatest reply:\n${r.reply || '(none yet)'}` : 'No session with that id for this client.' }] };
+        }),
+      tool('wait_until',
+        `Wait for something without spending model calls: Docket looks for you and answers with one line. Use it instead of sleep loops, repeated polling, or checking again and again with gh pr view, gh pr checks, curl, netstat or get_session_report. Conditions: pr_merged (a GitHub pull request merged; also answers if it is closed unmerged), pr_closed (merged or closed), pr_checks (its checks finished, pass or fail), port (a port on this computer answers, e.g. a test server you started), session_idle / session_done / session_waiting (another session finishes its turn / is done / waits on the user; sessions you started already report to you, so this is for others). The call itself waits up to ${WAITS.inlineSec} seconds. If the condition is not met by then, it returns at once and Docket keeps waiting until it is met or the minutes run out, then sends you a (From Docket: wait_until ...) note with the answer, which starts a turn here: then carry on with other work or end your turn, and do not poll for it. cancel: true stops this session's waits.`,
+        {
+          condition: z.enum(CONDITIONS).optional().describe('What to wait for'),
+          pr: z.string().optional().describe("For pr_*: the pull request number (in this folder's GitHub repository) or its URL"),
+          repo: z.string().optional().describe("For pr_* with a number: owner/name, when it is not this folder's repository"),
+          port: z.number().int().optional().describe('For port: the port number'),
+          session: z.string().optional().describe('For session_*: the session id'),
+          minutes: z.number().optional().describe(`Most minutes to wait (default ${WAITS.defaultMinutes}, at most ${WAITS.maxMinutes})`),
+          cancel: z.boolean().optional().describe("True to stop this session's waits instead"),
+        },
+        async (a) => {
+          const say = (text, isError = false) => ({ content: [{ type: 'text', text }], ...(isError ? { isError: true } : {}) });
+          if (a.cancel) { const n = dropWaits(parent.id); return say(n ? `Stopped ${n} wait${n === 1 ? '' : 's'}.` : 'No waits to stop.'); }
+          const c = parseWait(a);
+          if (c.error) return say('Not waiting: ' + c.error + '.', true);
+          if (c.session === parent.id) return say('Not waiting: that is this session.', true);
+          if (c.session) c.title = sessionTitle(clientById(parent.client), c.session) || '';
+          if (kindOf(c.condition) === 'pr' && !c.repo) {
+            c.repo = await folderGithubRepo(parent.cwd);
+            if (!c.repo) return say("Not waiting: this session's folder is not on GitHub. Give repo (owner/name) or the pull request's URL.", true);
+          }
+          const at = Date.now();
+          const v = await waitInline(c, (ms) => lookAt(parent.client, c, ms), { ms: Math.min(WAITS.inlineSec, c.minutes * 60) * 1000 });
+          if (v.met) return say(v.line, !!v.error);
+          if (c.minutes * 60 <= WAITS.inlineSec) return say(timeoutLine(c, v.line));
+          const w = { id: randomUUID().slice(0, 8), by: parent.id, client: parent.client, ...c, at, until: at + c.minutes * 60000, next: nextLook(c, Date.now()), last: v.line };
+          (state.waits ||= []).push(w); saveState();
+          logEvent(`wait set: ${sessionTag(parent)}`, `${waitWhat(c)}, until ${clock(w.until)}`);
+          addEvent(parent, { k: 'note', text: `Docket is waiting for ${waitWhat(c)}, until ${clock(w.until)}.` });
+          return say(`Not yet: ${v.line} Docket keeps waiting for ${waitWhat(c)} until ${clock(w.until)}, then sends you a (From Docket: wait_until ...) note with the answer, which starts a turn here once you are between turns. Do not poll or sleep for it: carry on with other work, or end your turn now.`);
         }),
       tool('create_schedule',
         'Create a scheduled task in the session portal: the portal runs the prompt as a new session of this client on a schedule, on this computer, and catches up a run missed while the portal was off. Give either cron (5 parts, local time, e.g. "0 9 * * 1-5" for 9am on weekdays) or at (one time, ISO date-time). Write the prompt as complete, self-contained instructions.',
@@ -3579,11 +3613,101 @@ function flushReports(parent) {
     ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'them'} as the plan's rules say, unless the user said to wait${r.tasks.some((t) => t.title.endsWith(userTag({ forUser: true }))) ? "; for the user's step, tell the user in a line or two what to do now" : ''}.`
     : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}.${r.jobs ? ' ' + leftoverJobsText(r.jobs) : ''} Its latest reply begins: ${r.text}`;
   const body = [...reports.map(line), ...waiting].join('\n');
-  sendToSession(parent, { text: '', system: true, report: true, context: `<session-report>
+  sendToSession(parent, { text: '', system: true, report: true, reported: reports.map((r) => r.childId).filter(Boolean), context: `<session-report>
 ${body}
 These are reports from sessions you started or sent work to, not messages from the user. Handle them as "When a session you started says it is done" and "When sessions you started report" in your instructions say.
 </session-report>` });
 }
+// ---------- wait_until (waits.mjs, #749) ----------
+// The waits a session left with Docket after the call's own minute ran out, kept in state.waits so an app restart
+// picks them up again. Each is looked at on its own clock (every few seconds for a port or a session, every 30-60
+// seconds on GitHub). Once met, or out of time, its line goes to the session as a (From Docket: ...) note when the
+// session is between turns, which starts a turn there; a session in a turn gets it when the turn ends.
+const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+// One look at a condition: a verdict from waits.mjs ({ met, line }). ms: how long the wait has run.
+async function lookAt(clientId, c, ms) {
+  const kind = kindOf(c.condition), client = clientById(clientId);
+  if (kind === 'port') return portVerdict(c, await portAnswers(c.port, c.host));
+  if (kind === 'session') {
+    const s = live.get(c.session);
+    const st = s && s.client === clientId ? (s.status === 'ended' ? 'done' : liveChildState(s))
+      : s ? 'gone' : await savedRow(client, c.session).catch(() => null) ? 'done' : 'gone';
+    return sessionVerdict(c, st);
+  }
+  const [owner, name] = c.repo.split('/');
+  const json = await ghAsk(client, owner, `query { repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequest(number: ${Number(c.number)}) { state ${CHECKS} } } }`);
+  if (!json?.data) return { met: false, line: `GitHub did not answer the last look at pull request #${c.number}.` }; // looked at again next time
+  const pr = json.data.repository?.pullRequest;
+  return prVerdict(c, pr && { state: pr.state, checks: checksOf(pr.commits?.nodes?.[0]?.commit?.statusCheckRollup) }, ms);
+}
+function dropWaits(sessionId) {
+  const before = (state.waits || []).length;
+  state.waits = (state.waits || []).filter((w) => w.by !== sessionId);
+  if (state.waits.length !== before) saveState();
+  return before - state.waits.length;
+}
+const waitsBusy = new Set(); // wait ids with a look or a delivery under way
+function tickWaits() {
+  for (const w of state.waits || []) {
+    if (waitsBusy.has(w.id) || (!w.line && w.next > Date.now() && Date.now() < w.until)) continue;
+    waitsBusy.add(w.id);
+    (async () => {
+      if (!w.line) {
+        const v = Date.now() < w.until ? await lookAt(w.client, w, Date.now() - w.at).catch((e) => ({ met: false, line: w.last, why: e.message })) : null;
+        if (v?.met) w.line = v.line;
+        else if (Date.now() >= w.until) w.line = timeoutLine(w, v?.line || w.last);
+        else { w.last = v.line; w.next = nextLook(w, Date.now()); return; }
+        saveState();
+      }
+      await deliverWait(w);
+    })().catch((e) => logEvent('wait failed', e.message)).finally(() => waitsBusy.delete(w.id));
+  }
+}
+// The answer goes once the session is between turns. A session closed or deleted since gets nothing.
+async function deliverWait(w) {
+  const client = clientById(w.client);
+  const drop = () => { state.waits = (state.waits || []).filter((x) => x !== w); saveState(); };
+  if (!client || wasDeleted(w.by) || isArchived(client, w.by)) { logEvent('wait dropped', `${w.by} is closed or gone: ${w.line}`); return drop(); }
+  const s = live.get(w.by);
+  if (s && s.status !== 'ended' && (s.status !== 'idle' || s.pendingAsks?.size)) return; // in a turn: goes when it ends
+  drop();
+  logEvent(`wait over: ${s ? sessionTag(s) : w.by}`, w.line);
+  await noticeToSession(w.client, w.by, `wait_until: ${w.line}`);
+}
+setInterval(tickWaits, 2000);
+
+// ---------- the state line on Docket's notes (waits.mjs, #749) ----------
+// Reports and notices end with one line saying the session's branch, the pull request from it and the sessions
+// under it still working or waiting on the user, so it need not run git status, gh pr view or list_sessions to
+// learn them again. The branch and pull request come from what the session list's links already know (asked
+// again at the end of each turn, and every two minutes while a pull request is open); the children as the note goes.
+const stateSnaps = new Map(); // session id -> { at, branch, pr }
+async function refreshStateSnap(s) {
+  const client = clientById(s.client);
+  if (!client || s.stateBusy) return;
+  s.stateBusy = true;
+  try {
+    const ask = async () => (await sessionLinks(client, [s.id]))[s.id];
+    let links = await ask();
+    const branch = links?.current || await branchNow(s.cwd) || '';
+    // A pull request opened in the turn just ended: by branch, "none" is otherwise kept for ten minutes.
+    const stale = [...ghByBranch].filter(([k, v]) => branch && k.endsWith('|' + branch.toLowerCase()) && Date.now() - v.at > 60000);
+    if (stale.length && !branchPr(links?.prs, branch)) { for (const [k] of stale) ghByBranch.delete(k); links = await ask(); }
+    stateSnaps.set(s.id, { at: Date.now(), branch, pr: branchPr(links?.prs, branch) });
+  } finally { s.stateBusy = false; }
+}
+function stateLineFor(s, reported = []) {
+  const snap = stateSnaps.get(s.id);
+  if (!snap || Date.now() - snap.at > 120000) refreshStateSnap(s).catch((e) => console.log('[state line]', e.message));
+  return stateLine({ branch: snap?.branch, pr: snap?.pr, kids: kidsOf(s).list.filter((k) => !reported.includes(k.id)), at: snap?.at || Date.now() });
+}
+setInterval(() => {
+  for (const s of live.values()) {
+    const pr = stateSnaps.get(s.id)?.pr;
+    if (s.status === 'idle' && !s.resting && pr && (pr.status === 'open' || pr.status === 'conflict')) refreshStateSnap(s).catch(() => {});
+  }
+}, 120000);
+
 // ---------- keeping a waiting parent's prompt cache warm (keep-warm.mjs, #734) ----------
 // PORTAL_KEEP_WARM (JSON, e.g. {"afterMin":1,"minTokens":1000}) changes the thresholds, for trying it on the test copy.
 const keepWarmCfg = (() => { try { return { ...KEEP_WARM, ...JSON.parse(process.env.PORTAL_KEEP_WARM || '{}') }; } catch { return KEEP_WARM; } })();
@@ -4308,7 +4432,8 @@ const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp
 
 // from: 'session' when another session wrote the text, so the page can tell it from what the person typed
 // news: what makes this turn's report only news for its parent (turnNewsFor in reports.mjs), '' for none.
-function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false, report = false, news = '' }) {
+// reported: the children whose finished turns this report carries, not counted as working in the state line.
+function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false, report = false, news = '', reported = [] }) {
   if (holdsMessage(state.paused, { system, from })) { // waits for Resume all
     state.paused.held.push({ id: s.id, client: s.client, text, attachments, context, system, from, byPerson, report, news });
     saveState();
@@ -4342,6 +4467,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   if (state.sessions[s.id]?.recallNote) { blocks.push({ type: 'text', text: RECALL_NOTE }); delete state.sessions[s.id].recallNote; saveState(); }
   if (s.shiftRulesPending && isShift(s)) { blocks.push({ type: 'text', text: '(From the session portal: this session was switched to Shift mode.)\n\n' + shiftRules(s) }); s.shiftRulesPending = false; }
   if (!blocks.length) return;
+  if (system) { const line = stateLineFor(s, reported); if (line) blocks.push({ type: 'text', text: line }); } // reports and notices (#749)
   s.turnBy = turnStarter({ system, from, byPerson }); // whether its report counts toward the parent's wake limit
   s.reportTurn = !!report; // woken by session reports: the only turn that may end quietly (quietRefusal)
   s.turnNews = news; // its report is only news for the parent (#734)
@@ -5833,7 +5959,7 @@ async function fetchPRStatus(client, prs) {
   for (const chunk of byOwner(todo, 40)) {
     const parts = chunk.map((p, n) => {
       const [owner, name] = p.repo.split('/');
-      return `p${n}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequest(number: ${Number(p.number)}) { state isDraft mergeable title headRefName ${CLOSES} } }`;
+      return `p${n}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequest(number: ${Number(p.number)}) { state isDraft mergeable title headRefName ${CLOSES} ${CHECKS} } }`;
     });
     const data = (await ghAsk(client, chunk[0].repo.split('/')[0], `query { ${parts.join(' ')} }`))?.data || {};
     chunk.forEach((p, n) => {
@@ -5844,7 +5970,7 @@ async function fetchPRStatus(client, prs) {
   return prs.map((p) => {
     const d = prStatus.get(p.url)?.data || { state: 'UNKNOWN' };
     // p.branch (the branch last seen before the link) only when GitHub could not say; closes: the issues it fixes
-    return { ...p, status: ghStatus(d), draft: !!d.isDraft, title: d.title || '', branch: d.headRefName || p.branch || '', closes: closesOf(d) };
+    return { ...p, status: ghStatus(d), draft: !!d.isDraft, title: d.title || '', branch: d.headRefName || p.branch || '', closes: closesOf(d), checks: checksOf(d.commits?.nodes?.[0]?.commit?.statusCheckRollup) };
   });
 }
 
