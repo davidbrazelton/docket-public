@@ -1989,7 +1989,7 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: 'This turn will end quietly. Finish with your usual short reply.' }] };
         }),
       tool('mark_turn',
-        'Say why this turn needs the user, for the short label on your row in the session list: "done" when your work is complete and ready to close, "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default). Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. Call it at most once per turn, near the end.',
+        'Say why this turn needs the user, for the short label on your row in the session list: "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default), including a reply that lists things left for the user before the session can close. Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. Call it at most once per turn, near the end.',
         { label: z.enum(['done', 'question', 'reply']).describe('What this turn needs from the user') },
         async ({ label }) => {
           parent.turnSaid = label;

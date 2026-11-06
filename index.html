@@ -7503,33 +7503,46 @@ function renderEvents(force, keep) {
   checkJump();
   if (S.events.some((e) => e.login)) showSignin();
 }
+// ---------- done turns
 // A turn the session marked done (mark_turn "done", #726): its Done line turns green, and the ready-to-close sentence of
 // its last reply moves onto its own line in a green band, splitting its paragraph in place. Only marked turns: the
 // pattern just finds the sentence, so it can be loose. A turn that stopped on an error is not done.
 const FIN_SENT = /\b(?:ready|safe|fine|ok(?:ay)?|good) to (?:be )?close(?:d)?\b|\bcan (?:now )?be closed\b|\bcomplete and ready\b/i;
+// A ready-to-close sentence that waits on something first ("Two things are left for you, then ...", #764): no band.
+const FIN_LATER = /\b(?:then|once|after|when|until)\b|\bleft for you\b/i;
 function markFinished(box) {
   let said = false, last = null;
   for (const el of box.querySelectorAll('details.tool[data-said], .reply, .done-line')) {
     if (el.matches('details.tool')) said = true;
     else if (el.matches('.reply')) last = el;
     else {
-      if (said && el.dataset.end === 'done' && !el.classList.contains('fin')) { el.classList.add('fin'); if (last) finBand(last.querySelector('.msg-text')); }
+      if (said && el.dataset.end === 'done' && !el.classList.contains('fin')) { if (!last || finBand(last.querySelector('.msg-text')) !== false) el.classList.add('fin'); }
       said = false; last = null;
     }
   }
 }
-// The last paragraph of t with a ready-to-close sentence: the sentence goes into a band, and the text before and after
-// it stays in paragraphs on either side, so the session's words keep their order.
-function finBand(t) {
-  if (!t || t.querySelector('.fin-band')) return;
-  const p = [...t.querySelectorAll(':scope > p')].reverse().find((x) => FIN_SENT.test(x.textContent));
-  if (!p) return;
-  const text = p.textContent, m = FIN_SENT.exec(text);
+// Where the ready-to-close sentence of a paragraph's text starts and ends, null when there is none, or false when it is
+// "not ready to close yet" or "then ready to close": nothing to celebrate.
+function finSpan(text) {
+  const m = FIN_SENT.exec(text);
+  if (!m) return null;
   const ends = [...text.slice(0, m.index).matchAll(/[.!?]["')\]]*\s+/g)];
   const start = ends.length ? ends.at(-1).index + ends.at(-1)[0].length : 0;
   const after = /[.!?]["')\]]*(?=\s|$)/.exec(text.slice(m.index));
   const end = after ? m.index + after.index + after[0].length : text.length;
-  if (/\bnot\b|n't\b/i.test(text.slice(start, end))) return; // "not ready to close yet" is nothing to celebrate
+  const sent = text.slice(start, end);
+  return /\bnot\b|n't\b/i.test(sent) || FIN_LATER.test(sent) ? false : [start, end];
+}
+// The last paragraph of t with a ready-to-close sentence: the sentence goes into a band, and the text before and after
+// it stays in paragraphs on either side, so the session's words keep their order. False when that sentence is not one
+// to celebrate, which leaves the Done line grey too.
+function finBand(t) {
+  if (!t || t.querySelector('.fin-band')) return;
+  const p = [...t.querySelectorAll(':scope > p')].reverse().find((x) => FIN_SENT.test(x.textContent));
+  if (!p) return;
+  const text = p.textContent, span = finSpan(text);
+  if (!span) return false;
+  const [start, end] = span;
   // an offset in p's text, as a point in its text nodes
   const at = (n) => {
     const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
@@ -7546,6 +7559,7 @@ function finBand(t) {
   if (rest.textContent.trim()) band.after(rest);
   if (!p.textContent.trim()) p.remove();
 }
+// end of done turns
 function appendEvent(ev) {
   if (ev.k === 'result' && ev.quiet) { renderEvents(false, true); tlSoon(); return; } // the turn just ended folds
   const stick = atBottom();
