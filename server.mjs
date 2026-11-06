@@ -23,7 +23,7 @@ import { openParent, openFamily, closedNote } from './family.mjs';
 import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
-import { transcriptTimes } from './chat-times.mjs';
+import { transcriptTimes, asyncHookEvents, covered, turnSplit } from './chat-times.mjs';
 import { DOCKET_BLOCK, SESSION_BLOCK, messageFrom, lastTyped, mergeTouches } from './touches.mjs';
 import { GEARS, gearsOf, findGear, topGearOf, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear } from './gears.mjs';
 import { shiftUpFor, coordinatorHold } from './shift-up.mjs';
@@ -248,6 +248,19 @@ function policyProvider() {
     }
   }
   return null;
+}
+// The settings files a session's hooks come from, parsed: the computer's managed policy, the desk's and the folder's
+// settings (the layers the desk loads), and Docket's own plugin. Read when a session starts, for the events whose hooks
+// are all async, which the chat's step times leave out (#743).
+function hookSettings(client, cwd) {
+  const files = MANAGED_SETTINGS.flatMap((dir) => {
+    const out = [path.join(dir, 'managed-settings.json')];
+    try { out.push(...fs.readdirSync(path.join(dir, 'managed-settings.d')).filter((n) => n.endsWith('.json')).map((n) => path.join(dir, 'managed-settings.d', n))); } catch {}
+    return out;
+  });
+  files.push(...configFiles({ home: client?.home, cwd, sources: client?.settingSources }).filter((f) => f.kind === 'settings').map((f) => f.file));
+  files.push(path.join(PLUGIN_DIR, 'hooks', 'hooks.json'));
+  return files.map((f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return null; } }).filter(Boolean);
 }
 const forcedText = (provider) => `This computer's policy makes every Claude run use ${provider}, so a Claude sign-in will not work here.${provider === 'Amazon Bedrock' ? ' Use an AWS profile instead.' : ''}`;
 
@@ -1124,7 +1137,10 @@ function convertMessage(s, msg, { live: isLive, textCounter }) {
 function applyToolResult(s, ev) {
   const tev = [...s.events].reverse().find((e) => e.k === 'tool' && e.id === ev.id);
   ev.endAt = Date.now(); // when the step finished, for the chat's step times (#721)
-  if (tev) { tev.status = ev.error ? 'error' : 'done'; tev.result = ev.text; tev.endAt = ev.endAt; }
+  // The time synchronous hooks held this step up (its PreToolUse and PostToolUse), shown apart from the step's own (#743).
+  const hookMs = tev?.at ? covered(hookSpans(s), tev.at, ev.endAt) : 0;
+  if (hookMs) ev.hookMs = hookMs;
+  if (tev) { tev.status = ev.error ? 'error' : 'done'; tev.result = ev.text; tev.endAt = ev.endAt; if (hookMs) tev.hookMs = hookMs; }
   // A page the session published a file to becomes that file's link, as Publish as artifact keeps it (#608).
   const pub = tev?.name === 'Artifact' && artifactPublished(tev.input, ev.text, ev.error);
   const client = pub && isFullPath(pub.path) && clientById(s.client);
@@ -1134,6 +1150,17 @@ function applyToolResult(s, ev) {
   // A subagent sent to the background answers its call at once; it keeps running until its notification.
   if (task && !task.background && /^Async agent launched/.test(ev.text)) { upsertTask(s, ev.id, { background: true }); return; }
   if (task && !task.background) upsertTask(s, ev.id, { status: ev.error ? 'failed' : 'completed', end: Date.now() });
+}
+
+// The synchronous hooks of a session's turn so far, as [start, end] (end now while one runs).
+const hookSpans = (s) => [...(s.hooks?.values() || [])].map((h) => [h.start, h.end || Date.now()]);
+// The turn that just ended split into hook, step and model time, when hooks held it up; the next turn starts with none.
+function hookSplit(s, ms) {
+  const end = Date.now(), start = end - (ms || 0);
+  const tools = s.events.filter((e) => e.k === 'tool' && e.at >= start).map((e) => [e.at, e.endAt || end]);
+  const split = ms ? turnSplit({ start, end, hooks: hookSpans(s), tools }) : null;
+  s.hooks?.clear();
+  return split;
 }
 
 function handleSdkMessage(s, m) {
@@ -1217,8 +1244,9 @@ function handleSdkMessage(s, m) {
       // Docket's own save-before-compact turn is not news: no report to the parent and no unread mark.
       const quiet = s.quietTurn; s.quietTurn = false;
       const said = s.turnSaid; // endTurnMark takes it; a turn marked done reports even with jobs running (#713)
+      const split = hookSplit(s, m.duration_ms); // how hooks held the turn up, for its Done line (#743)
       const endedQuietly = !quiet && endTurnMark(s, err); // its Done line says so, and the chat folds the turn (#672)
-      addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err, ...(endedQuietly ? { quiet: true } : {}) });
+      addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err, ...(endedQuietly ? { quiet: true } : {}), ...(split || {}) });
       s.reportNews = err ? '' : endedQuietly ? 'quiet' : s.turnNews || ''; s.turnNews = ''; s.costSeen = m.total_cost_usd || 0; // what its report is, for a held turn too (#734)
       s.stats = statsFor(clientById(s.client), sessionFile(clientById(s.client), s.id)) || s.stats;
       setTimeout(() => refreshUsage(clientById(s.client), s.id), s.engine === 'grok' ? 3000 : 1000); // Grok writes usage.json just after the turn
@@ -1268,6 +1296,12 @@ function handleSdkMessage(s, m) {
           if (state.sessions[s.id]) { delete state.sessions[s.id].savePrompted; state.sessions[s.id].compactedAt = Date.now(); state.sessions[s.id].recallNote = true; saveState(); }
           return;
         }
+        // When each synchronous hook started and ended, for the step times (#743). An event whose hooks are all async
+        // does not hold the turn up, so it is left out.
+        case 'hook_started':
+          if (!s.asyncHooks?.has(m.hook_event)) (s.hooks ||= new Map()).set(m.hook_id, { start: Date.now(), end: 0 });
+          return;
+        case 'hook_response': { const h = s.hooks?.get(m.hook_id); if (h) h.end = Date.now(); return; }
         case 'api_retry': addEvent(s, { k: 'note', text: 'Retrying a request to Claude…' }); return;
         default: return;
       }
@@ -4210,6 +4244,7 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
     ...(s.settings.model ? { model: modelFor(client, 'claude', isShift(s) ? shiftModel(s, client) : s.settings.model) } : {}),
     ...(s.settings.effort ? { effort: s.settings.effort } : {}),
     includePartialMessages: true,
+    includeHookEvents: true, // when hooks run, so the step times can show them apart (#743)
     agentProgressSummaries: true,
     promptSuggestions: true,
     systemPrompt: { type: 'preset', preset: 'claude_code', append: sessionRules(s) },
@@ -4218,6 +4253,7 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
   };
   const print = (s.engine || 'claude') === 'claude' ? configNow(s) : null; // the config this process starts with (config-watch.mjs)
   // The runner starts it, or reconnects if it is still running there (s.runnerSeq: read from the start).
+  s.asyncHooks = asyncHookEvents(hookSettings(client, s.cwd)); // the hook events the step times leave out (#743)
   s.ready = ensureRunner().then(() => ghForSession(s, client)).then((gh) => { if (gh) options.env = { ...options.env, GH_TOKEN: gh }; })
     .then(() => runnerCall(`/sessions/${id}/start`, { options }))
     .then((r) => {

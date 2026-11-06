@@ -7248,7 +7248,7 @@ function eventHtml(ev) {
     case 'error': return `<div class="err">${esc(ev.text)}${ev.login ? '\n\nThis client is not signed in. Use the Sign in button in the left column, then send your message again.' : ''}</div>`;
     // Signed in again after a turn failed on its sign-in: offer to send that message again; nothing resends on its own.
     case 'retry': return `<div class="note retry" data-retry="${esc(ev.id)}">Signed in again. <button class="primary" data-retry-send${tip('send-again')}>Send again</button><div class="retry-text">${esc(ev.text.length > 200 ? ev.text.slice(0, 200) + '…' : ev.text)}</div></div>`;
-    case 'result': return `<div class="done-line"${ev.error ? '' : ' data-end="done"'}>${ev.at ? stamp(ev.at) + ' · ' : ''}${ev.error ? 'Stopped' : 'Done'}${ev.ms ? ' in ' + dur(ev.ms) : ''}</div>`;
+    case 'result': return `<div class="done-line"${ev.error ? '' : ' data-end="done"'}${ev.hookMs ? ` title="${esc(HOOK_SPLIT_TIP)}"` : ''}>${ev.at ? stamp(ev.at) + ' · ' : ''}${ev.error ? 'Stopped' : 'Done'}${ev.ms ? ' in ' + dur(ev.ms) : ''}${ev.hookMs ? ` · model ${dur(ev.modelMs)} · steps ${dur(ev.toolMs)} · hooks ${dur(ev.hookMs)}` : ''}</div>`;
     default: return '';
   }
 }
@@ -7425,15 +7425,19 @@ function stepsSummary(g) {
 // them runs, a live timer from when that step started. Steps keep their times in S.events (at, and endAt from the server).
 const toolEvent = (id) => S.events.find((x) => x.k === 'tool' && x.id === id);
 const sinceText = (ms) => { const m = Math.floor(ms / 60000); return ms < 60000 ? Math.max(0, Math.floor(ms / 1000)) + 's' : m < 60 ? m + 'm' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; };
+// A turn that hooks held up says on its Done line how its time split: hooks first, then steps, then the model (#743).
+const HOOK_SPLIT_TIP = 'How this turn\'s time split: hooks is the time synchronous hooks held it up (a company\'s hooks before and after each step, say), steps the time steps ran besides that, and model the rest: the model\'s calls and Claude\'s own work between them.';
 function stepsWhen(evs) {
   evs = evs.filter(Boolean);
   const run = S.live[S.selected]?.status === 'running' && evs.find((e) => e.status === 'running' && e.at);
   if (run) return `<span class="st-when" title="This step has been running this long"><span class="dur" data-start="${run.at}" data-live>${dur(Date.now() - run.at)}</span></span>`;
   const end = Math.max(0, ...evs.map((e) => e.endAt || 0)), start = Math.min(...evs.map((e) => e.at || Infinity));
   if (!end) return '';
-  const took = end - start >= 1000 ? dur(end - start) : '';
-  const tipText = `${took ? `Took ${took}; the` : 'The'} last step finished at ${stamp(end)}`;
-  return `<span class="st-when" title="${esc(tipText)}">${took ? took + ' · ' : ''}${stamp(end)}<span class="ago" data-end="${end}"></span></span>`;
+  // Time synchronous hooks held these steps up shows apart, and not in how long they took (#743).
+  const hooks = Math.min(end - start, evs.reduce((n, e) => n + (e.hookMs || 0), 0)), hk = hooks >= 1000 ? dur(hooks) : '';
+  const took = end - start - hooks >= 1000 ? dur(end - start - hooks) : '';
+  const tipText = `${took ? `Took ${took}${hk ? `, and hooks held it up ${hk} more` : ''}; the` : hk ? `Hooks held it up ${hk}; the` : 'The'} last step finished at ${stamp(end)}`;
+  return `<span class="st-when" title="${esc(tipText)}">${took ? took + ' · ' : ''}${hk ? 'hooks ' + hk + ' · ' : ''}${stamp(end)}<span class="ago" data-end="${end}"></span></span>`;
 }
 // The chat's newest step line, while its turn is still running, also says how long ago it finished; only that one, so
 // the chat stays uncluttered. Run from stepsView and every second from tick.
@@ -8965,7 +8969,7 @@ function connect() {
       refreshFiles();
       const ev = S.events.find((x) => x.k === 'tool' && x.id === m.ev.id);
       branchesSoon(ev);
-      if (ev) { ev.status = m.ev.error ? 'error' : 'done'; ev.result = m.ev.text; if (m.ev.endAt) ev.endAt = m.ev.endAt; const el = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`); if (el) { const open = el.open; el.outerHTML = eventHtml(ev); if (open) document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`).open = true; const g = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`)?.closest('.steps'); if (g) stepsSummary(g); } }
+      if (ev) { ev.status = m.ev.error ? 'error' : 'done'; ev.result = m.ev.text; if (m.ev.endAt) ev.endAt = m.ev.endAt; if (m.ev.hookMs) ev.hookMs = m.ev.hookMs; const el = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`); if (el) { const open = el.open; el.outerHTML = eventHtml(ev); if (open) document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`).open = true; const g = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`)?.closest('.steps'); if (g) stepsSummary(g); } }
       tlSoon();
     } else if (m.t === 'task' && mine) {
       S.tasks[m.task.id] = m.task; renderTasks();
