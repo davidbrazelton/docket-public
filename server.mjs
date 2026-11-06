@@ -77,6 +77,7 @@ import { REMOTE_HOURS, ASK_WAIT_MS, newSecret, checkCode, stepOf, otpUri, makeCe
   remoteRoute, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedTls, pinnedRequest, connectError } from './remote.mjs';
 import { z } from 'zod';
 import { deskCheck, deskCheckText } from './desk-check.mjs';
+import { createSharedMcp } from './shared-mcp.mjs';
 import { KEEP_DAYS, OUTPUT_FOLDER } from './output-limits.mjs';
 import { outputUseRows, addRows, readLog, outputFolders, OUTPUT_LOG } from './big-output-use.mjs';
 import {
@@ -2242,6 +2243,14 @@ const PRICING_FILE = path.join(ROOT, 'pricing.json');
 const USAGE_INDEX = path.join(DATA_DIR, 'usage-index.json');
 const USAGE_CSV = path.join(DATA_DIR, 'ai-usage-raw.csv');
 fs.mkdirSync(DATA_DIR, { recursive: true });
+
+// One copy of each mcp-atlassian server per desk, shared by its Claude sessions (shared-mcp.mjs), checked every 30s.
+const claudeJsonOf = (client) => isDefaultHome(client) ? path.join(os.homedir(), '.claude.json') : path.join(client.home, '.claude.json');
+const sharedMcp = createSharedMcp({ dataDir: DATA_DIR, log: (m) => console.log(m),
+  readClaudeJson: (client) => { try { return JSON.parse(fs.readFileSync(claudeJsonOf(client), 'utf8')); } catch { return null; } } });
+const checkSharedMcp = () => sharedMcp.check(CLIENTS.filter((c) => c.home && brandsOf(c).includes('claude'))).catch((e) => console.log('[shared mcp]', e.message));
+setTimeout(checkSharedMcp, 0);
+setInterval(checkSharedMcp, 30000).unref?.();
 let usage = {};
 try { usage = JSON.parse(fs.readFileSync(USAGE_INDEX, 'utf8')); } catch {}
 let usageWriteTimer = null;
@@ -4451,7 +4460,7 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
     agentProgressSummaries: true,
     promptSuggestions: true,
     systemPrompt: { type: 'preset', preset: 'claude_code', append: sessionRules(s) },
-    mcpServers: { portal: portalTools(id), playwright: browserTools(client, id) },
+    mcpServers: { ...sharedMcp.forSession(client, s.cwd), portal: portalTools(id), playwright: browserTools(client, id) },
     plugins: [{ type: 'local', path: PLUGIN_DIR }],
   };
   const print = (s.engine || 'claude') === 'claude' ? configNow(s) : null; // the config this process starts with (config-watch.mjs)
