@@ -17,7 +17,7 @@ import { spawnSync } from 'node:child_process';
 import * as claude from './engines/claude.mjs';
 import * as acp from './engines/acp.mjs';
 import * as codex from './engines/codex.mjs';
-import { restartBlocked } from './runner-idle.mjs';
+import { restartBlocked, stopForGood } from './runner-idle.mjs';
 
 const ENGINES = { claude, acp, codex };
 
@@ -48,6 +48,7 @@ class InputQueue {
   }
 }
 
+let lastContact = Date.now(); // the app's last request: a test runner whose app is gone stops (stopForGood)
 const sessions = new Map(); // id -> { q, input, log: [{seq, msg}], seq, listeners, asks, ended, stderr }
 
 function emit(r, msg) {
@@ -93,6 +94,7 @@ const info = (r) => ({ id: r.id, seq: r.seq, ended: r.ended, busy: r.busy, asks:
 
 const server = http.createServer(async (req, res) => {
   try {
+    lastContact = Date.now();
     const url = new URL(req.url, 'http://localhost');
     const p = url.pathname;
     if (p === '/health') return json(res, 200, { ok: true, pid: process.pid, sessions: sessions.size });
@@ -154,15 +156,20 @@ const ROOT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WATCHED = [fileURLToPath(import.meta.url), ...['claude.mjs', 'acp.mjs', 'codex.mjs'].map((f) => path.join(ROOT_DIR, 'engines', f)), path.join(ROOT_DIR, 'runner-idle.mjs'),
   path.join(ROOT_DIR, 'node_modules', '@anthropic-ai', 'claude-agent-sdk', 'package.json')];
 let restartWanted = false;
+let gone = 0; // checks in a row that found runner.mjs missing (its folder removed)
 for (const f of WATCHED) fs.watchFile(f, { interval: 5000 }, (cur, prev) => {
   if (cur.mtimeMs !== prev.mtimeMs && !restartWanted) { restartWanted = true; log(`${path.basename(f)} changed; restarting once nothing is working`); }
 });
 setInterval(() => {
-  if (!restartWanted) return;
   const open = [...sessions.values()].filter((r) => !r.ended);
+  gone = fs.existsSync(WATCHED[0]) ? 0 : gone + 1;
+  // DOCKET_RUNNER_APP_GONE_MS: only the tests set it, to not wait minutes.
+  const stop = stopForGood({ port: PORT, open: open.length, filesGone: gone >= 2, lastContact, appGoneMs: Number(process.env.DOCKET_RUNNER_APP_GONE_MS) || undefined });
+  if (stop) { log(`stopping for good: ${stop}`); process.exit(0); }
+  if (!restartWanted || gone) return;
   if (restartBlocked(open)) return;
   for (const f of WATCHED.filter((f) => f.endsWith('.mjs'))) {
-    const check = spawnSync(process.execPath, ['--check', f]);
+    const check = spawnSync(process.execPath, ['--check', f], { windowsHide: true }); // the runner has no console: without it each check opens a window
     if (check.status !== 0) { log(`not restarting: ${path.basename(f)} has a mistake ` + String(check.stderr).slice(0, 500)); restartWanted = false; return; }
   }
   log(`restarting to take in changes (${open.length} idle session(s) handed back)`);

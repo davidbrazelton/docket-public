@@ -65,3 +65,15 @@ export function restartWaiter({ check, go, log = () => {}, changed = () => {}, e
     get pending() { return pending; },
   };
 }
+
+// When a runner with no open session stops for good (#740), so leftovers don't pile up: its folder was removed (a
+// worktree gone, its files with it), or it is a test runner (not on the real port) whose app has not been in touch
+// for appGoneMs (the app checks on it every few seconds). '' = keep running. The real runner only stops when its files are gone.
+export const REAL_RUNNER_PORT = 4410;
+export const APP_GONE_MS = 3 * 60000;
+export function stopForGood({ port, open, filesGone, lastContact, now = Date.now(), appGoneMs = APP_GONE_MS }) {
+  if (open > 0) return '';
+  if (filesGone) return 'its files are gone';
+  if (port !== REAL_RUNNER_PORT && now - lastContact >= appGoneMs) return `test runner with no word from its app for ${Math.round(appGoneMs / 1000)} s`;
+  return '';
+}
