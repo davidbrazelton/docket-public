@@ -364,10 +364,16 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .code-wrap { position: relative; }
 .code-wrap .code-btns { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; }
 .code-wrap .code-btns button { font-size: 12px; padding: 2px 8px; background: var(--panel); }
-.reply-actions { display: flex; justify-content: flex-end; opacity: 0; transition: opacity .15s; }
-.reply:hover .reply-actions, .reply-actions:focus-within { opacity: 1; }
+.reply-actions { display: flex; justify-content: flex-end; align-items: center; }
+.reply-actions .copy-btn { opacity: 0; transition: opacity .15s; }
+.reply:hover .reply-actions .copy-btn, .reply-actions .copy-btn:focus-visible { opacity: 1; }
 .reply-actions .copy-btn { font-size: 12px; padding: 0 8px; border-color: transparent; color: var(--muted); }
-@media (hover: none) { .reply-actions { opacity: 1; } }
+@media (hover: none) { .reply-actions .copy-btn { opacity: 1; } }
+/* When a reply or note was written, and when steps ran (#721): muted and small, like the time under your own messages */
+.reply-when { margin-right: auto; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-when { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.st-when .ago { display: none; }
+.latest-step > summary .st-when .ago { display: inline; }
 .tool { font-size: 13px; color: var(--muted); border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
 .tool summary { padding: 3px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; list-style: none; }
 .tool summary::-webkit-details-marker { display: none; }
@@ -7018,11 +7024,11 @@ function eventHtml(ev) {
       if (ev.from === 'docket') return docketHtml(ev);
       if (ev.from === 'session') return sentHtml(ev);
       return `<div class="msg-user" data-ev${ev.from ? ` data-from="${esc(ev.from)}"` : ''}>${esc(ev.text)}${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}</div>${ev.at ? `<div class="msg-when">${stamp(ev.at)}</div>` : ''}`;
-    case 'text': return `<div class="reply"><div class="msg-text" data-text="${esc(ev.id)}">${mdc(ev.text)}</div><div class="reply-actions"><button class="copy-btn" data-copy="reply" data-id="${esc(ev.id)}"${tip('copy-reply')}>Copy reply</button></div></div>`;
+    case 'text': return `<div class="reply"><div class="msg-text" data-text="${esc(ev.id)}">${mdc(ev.text)}</div><div class="reply-actions">${ev.at ? `<span class="reply-when">${stamp(ev.at)}</span>` : ''}<button class="copy-btn" data-copy="reply" data-id="${esc(ev.id)}"${tip('copy-reply')}>Copy reply</button></div></div>`;
     case 'tool': {
       const ic = ev.status === 'running' ? ['running', '●'] : ev.status === 'error' ? ['error', '✕'] : ['done', '✓'];
       const body = JSON.stringify(ev.input ?? {}, null, 2) + (ev.result ? '\n\n── result ──\n' + ev.result : '');
-      return `<details class="tool" data-tool="${esc(ev.id)}"><summary><span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${esc(ev.name.replace(/^mcp__\w+?__/, ''))}</span><span class="lb">${esc(ev.label)}</span></summary><pre>${esc(body)}</pre></details>`;
+      return `<details class="tool" data-tool="${esc(ev.id)}"><summary><span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${esc(ev.name.replace(/^mcp__\w+?__/, ''))}</span><span class="lb">${esc(ev.label)}</span>${stepsWhen([ev])}</summary><pre>${esc(body)}</pre></details>`;
     }
     case 'files': return `<div class="file-card">${ev.note ? `<div class="note">${esc(ev.note)}</div>` : ''}${(ev.paths || []).map((p) => fileRow({ path: p, name: p.split(/[\\/]/).pop(), folder: p.replace(/[\\/][^\\/]*$/, ''), exists: true, canOpen: true, kind: 'presented', modified: ev.at }, S.selected)).join('')}</div>`;
     case 'proposal': {
@@ -7199,6 +7205,7 @@ function stepsView() {
   const boxes = [box, ...box.querySelectorAll('.qf-body')];
   for (const c of boxes) markNarration(c);
   if (look === 'group' || look === 'notes') for (const c of boxes) groupSteps(c, look === 'notes');
+  markLatestStep();
 }
 // What the chat leaves out with a checkmark off (the CSS for #events.*-hide below), so a run of steps folds across it.
 const hiddenHere = (el) => {
@@ -7257,8 +7264,35 @@ function stepsSummary(g) {
   const kinds = [...n].sort((a, b) => b[1] - a[1]).map(([k, c]) => `${esc(k)} ×${c}`).join(', ');
   const count = `${steps.length} step${steps.length > 1 ? 's' : ''}${said.length ? `, ${said.length} note${said.length > 1 ? 's' : ''}` : ''}`;
   g.classList.toggle('notes', !!said.length);
-  g.querySelector('summary').innerHTML = `<span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${count}</span><span class="lb">${kinds}${failed ? ` · <span class="bad">${failed} failed</span>` : ''}${running ? ' · running' : ''}</span><span class="qf-arrow" aria-hidden="true">▸</span>${last ? `<span class="nt">Last note: ${esc(last)}</span>` : ''}`;
+  g.querySelector('summary').innerHTML = `<span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${count}</span><span class="lb">${kinds}${failed ? ` · <span class="bad">${failed} failed</span>` : ''}${running ? ' · running' : ''}</span>${stepsWhen(steps.map((el) => toolEvent(el.dataset.tool)))}<span class="qf-arrow" aria-hidden="true">▸</span>${last ? `<span class="nt">Last note: ${esc(last)}</span>` : ''}`;
   g.title = said.length ? 'Click to show each step and note, and again to fold them' : 'Click to show each step, and again to fold them';
+}
+// When a step or a run of steps happened (#721): how long it took and when its last step finished, or, while one of
+// them runs, a live timer from when that step started. Steps keep their times in S.events (at, and endAt from the server).
+const toolEvent = (id) => S.events.find((x) => x.k === 'tool' && x.id === id);
+const sinceText = (ms) => { const m = Math.floor(ms / 60000); return ms < 60000 ? Math.max(0, Math.floor(ms / 1000)) + 's' : m < 60 ? m + 'm' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm'; };
+function stepsWhen(evs) {
+  evs = evs.filter(Boolean);
+  const run = S.live[S.selected]?.status === 'running' && evs.find((e) => e.status === 'running' && e.at);
+  if (run) return `<span class="st-when" title="This step has been running this long"><span class="dur" data-start="${run.at}" data-live>${dur(Date.now() - run.at)}</span></span>`;
+  const end = Math.max(0, ...evs.map((e) => e.endAt || 0)), start = Math.min(...evs.map((e) => e.at || Infinity));
+  if (!end) return '';
+  const took = end - start >= 1000 ? dur(end - start) : '';
+  const tipText = `${took ? `Took ${took}; the` : 'The'} last step finished at ${stamp(end)}`;
+  return `<span class="st-when" title="${esc(tipText)}">${took ? took + ' · ' : ''}${stamp(end)}<span class="ago" data-end="${end}"></span></span>`;
+}
+// The chat's newest step line, while its turn is still running, also says how long ago it finished; only that one, so
+// the chat stays uncluttered. Run from stepsView and every second from tick.
+function markLatestStep() {
+  const box = $('events');
+  const tops = [...box.querySelectorAll('details.tool, details.steps')].filter((el) => !el.parentElement.closest('details.steps'));
+  const last = tops[tops.length - 1], done = [...box.querySelectorAll('.done-line')].pop();
+  const latest = S.live[S.selected]?.status === 'running' && last && !(done && last.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING) ? last : null;
+  for (const el of box.querySelectorAll('.latest-step')) if (el !== latest) el.classList.remove('latest-step');
+  const ago = latest?.querySelector(':scope > summary .ago');
+  if (!ago) return;
+  latest.classList.add('latest-step');
+  ago.textContent = ` · finished ${sinceText(Date.now() - Number(ago.dataset.end))} ago`;
 }
 document.addEventListener('toggle', (e) => {
   const d = e.target;
@@ -8048,6 +8082,7 @@ function tick() {
     $('pill').textContent = quiet > 120000 ? `running · quiet ${dur(quiet)}` : 'running';
   }
   for (const el of document.querySelectorAll('.dur[data-live]')) el.textContent = dur(Date.now() - Number(el.dataset.start));
+  markLatestStep();
 }
 
 // ---------- composer: text, paste, files ----------
@@ -8732,7 +8767,7 @@ function connect() {
       refreshFiles();
       const ev = S.events.find((x) => x.k === 'tool' && x.id === m.ev.id);
       branchesSoon(ev);
-      if (ev) { ev.status = m.ev.error ? 'error' : 'done'; ev.result = m.ev.text; const el = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`); if (el) { const open = el.open; el.outerHTML = eventHtml(ev); if (open) document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`).open = true; const g = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`)?.closest('.steps'); if (g) stepsSummary(g); } }
+      if (ev) { ev.status = m.ev.error ? 'error' : 'done'; ev.result = m.ev.text; if (m.ev.endAt) ev.endAt = m.ev.endAt; const el = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`); if (el) { const open = el.open; el.outerHTML = eventHtml(ev); if (open) document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`).open = true; const g = document.querySelector(`[data-tool="${CSS.escape(ev.id)}"]`)?.closest('.steps'); if (g) stepsSummary(g); } }
       tlSoon();
     } else if (m.t === 'task' && mine) {
       S.tasks[m.task.id] = m.task; renderTasks();

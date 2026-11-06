@@ -1105,7 +1105,8 @@ function convertMessage(s, msg, { live: isLive, textCounter }) {
 // Apply a tool_result to the matching tool event and task.
 function applyToolResult(s, ev) {
   const tev = [...s.events].reverse().find((e) => e.k === 'tool' && e.id === ev.id);
-  if (tev) { tev.status = ev.error ? 'error' : 'done'; tev.result = ev.text; }
+  ev.endAt = Date.now(); // when the step finished, for the chat's step times (#721)
+  if (tev) { tev.status = ev.error ? 'error' : 'done'; tev.result = ev.text; tev.endAt = ev.endAt; }
   // A page the session published a file to becomes that file's link, as Publish as artifact keeps it (#608).
   const pub = tev?.name === 'Artifact' && artifactPublished(tev.input, ev.text, ev.error);
   const client = pub && isFullPath(pub.path) && clientById(s.client);
@@ -6539,7 +6540,7 @@ async function loadTranscript(client, id) {
     for (const ev of convertMessage(s, m, { live: false })) {
       if (ev.k === 'tool_result') {
         const tev = [...events].reverse().find((e) => e.k === 'tool' && e.id === ev.id);
-        if (tev) { tev.status = ev.error ? 'error' : 'done'; tev.result = ev.text; }
+        if (tev) { tev.status = ev.error ? 'error' : 'done'; tev.result = ev.text; if (at) tev.endAt = at; }
       } else {
         if (ev.k === 'user' && !kept) endTurn();
         if (at) ev.at = at;
