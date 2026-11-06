@@ -67,7 +67,8 @@ import { ARTIFACT_URL, artifactPublished } from './artifacts.mjs';
 import { copyPlan, runCopy, copyGroups, groupAction, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
 import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
 import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox } from './crossings.mjs';
-import { signInFailure, retryText, recheckSignIns, awsSignedIn, keepKnown } from './signin-errors.mjs';
+import { signInFailure, recheckSignIns, awsSignedIn, keepKnown } from './signin-errors.mjs';
+import { newSigninFail, messagedSince, signinResumeCheck, dropsMark, signinNote, SIGNIN_NOTE } from './signin-resume.mjs';
 import WebSocket, { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 import { REMOTE_HOURS, ASK_WAIT_MS, newSecret, checkCode, stepOf, otpUri, makeCertificate, fingerprintOf, checkCodeOf, sameCheck, isOfficeAddress, officeAddresses,
@@ -281,6 +282,7 @@ async function authInfo(client, force, engine = 'claude') {
   }
   const info = { at: Date.now(), loggedIn, forced, email, ...extra };
   authCache.set(key, info);
+  if (loggedIn) signedInAgain(client, engine, 'seen'); // sessions that failed on it carry on (also after a restart, when nothing changed)
   return info;
 }
 // Runs lite for a gateway: { code, out, err }, with stdout and stderr apart (print-token prints only the key on stdout).
@@ -337,7 +339,7 @@ async function recheckConnections() {
     let now; try { now = (await authInfo(c, true, e)).loggedIn; } catch { continue; }
     if (now === before) continue;
     if (conn.type === 'gateway') broadcastGateway(conn.key, now); else broadcast({ t: 'auth', client: c.id, engine: e, signedIn: now });
-    if (now) for (const x of conn.type === 'gateway' ? onGateway(conn.key) : [{ client: c, engine: e }]) signedInAgain(x.client, x.engine);
+    if (now) for (const x of conn.type === 'gateway' ? onGateway(conn.key) : [{ client: c, engine: e }]) signedInAgain(x.client, x.engine, 'seen');
   }
 }
 setInterval(() => recheckConnections().catch(() => {}), RECHECK_MINUTES * 60000).unref?.();
@@ -715,33 +717,47 @@ function addEvent(s, ev) {
   broadcast({ t: 'event', id: s.id, ev });
 }
 
-// A turn that failed on its sign-in: mark the company signed out, so the page shows its Sign in prompt, and
-// remember the session, so it can offer to send its last message again once the sign-in is back (signedInAgain).
+// A turn that failed on its sign-in: mark the company signed out, so the page shows its Sign in prompt, and mark
+// the session in its saved record (signinFail, signin-resume.mjs), so once the sign-in is back it carries on by itself
+// or offers to send its last message again (signedInAgain). The mark survives resting and restarts.
 // A gateway's sign-in is shared, so every company on it is told.
 function signedOutTurn(s) {
   authCache.set(authKey(s.client, s.engine), { at: Date.now(), loggedIn: false });
   const gw = gatewayFor(clientById(s.client), s.engine);
   if (gw) broadcastGateway(gw.url, false); else broadcast({ t: 'auth', client: s.client, engine: s.engine, signedIn: false });
-  s.signinRetry = true;
+  const rec = state.sessions[s.id];
+  if (!rec) return;
+  rec.signinFail = newSigninFail({ events: s.events, tried: !!rec.signinTried });
+  delete rec.signinTried;
+  saveState();
 }
-function signedInAgain(client, engine = 'claude') {
-  for (const s of live.values()) {
-    if (s.client !== client.id || (s.engine || 'claude') !== engine || !s.signinRetry) continue;
-    s.signinRetry = false;
-    const text = retryText(s.events);
-    if (text) addEvent(s, { k: 'retry', id: `retry-${Date.now()}`, text });
+// The sign-in of client's engine is back. how: 'user' when the person signed in, 'seen' when Docket noticed it.
+// Each session marked as failed on it is looked at in turn (resumeAfterSignIn).
+function signedInAgain(client, engine = 'claude', how = 'seen') {
+  for (const [id, rec] of Object.entries(state.sessions)) {
+    if (rec.signinFail && rec.client === client.id && (rec.engine || 'claude') === engine) queueSignInResume(id, how);
   }
 }
-// A message sent another way makes the Send again offer moot.
+// A turn on this connection got through, so a sign-in marked as run out is back: told like any other sign-in.
+function signInWorks(client, engine = 'claude') {
+  const key = authKey(client.id, engine);
+  if (authCache.get(key)?.loggedIn !== false) return;
+  authCache.set(key, { ...authCache.get(key), at: Date.now(), loggedIn: true });
+  const gw = gatewayFor(client, engine);
+  if (gw) broadcastGateway(gw.url, true); else broadcast({ t: 'auth', client: client.id, engine, signedIn: true });
+  for (const x of gw ? onGateway(gw.url) : [{ client, engine }]) signedInAgain(x.client, x.engine, 'seen');
+}
+// A message sent another way makes the Send again offer, and the automatic try, moot.
 function dropRetries(s) {
-  s.signinRetry = false;
+  const rec = state.sessions[s.id];
+  if (rec?.signinFail || rec?.signinTried) { delete rec.signinFail; delete rec.signinTried; saveState(); }
   for (const ev of s.events.filter((e) => e.k === 'retry')) { s.events.splice(s.events.indexOf(ev), 1); broadcast({ t: 'remove', id: s.id, evId: ev.id }); }
 }
 // Bedrock's AWS sign-in runs out on its own clock, so check it every few minutes and tell the page when it changes,
 // rather than waiting for a turn to fail or the page to reload.
 setInterval(() => recheckSignIns(CLIENTS.filter((c) => isBedrock(c) && brandsOf(c).includes('claude')),
   (c) => authCache.get(c.id)?.loggedIn, async (c) => (await authInfo(c, true)).loggedIn,
-  (c, signedIn) => { broadcast({ t: 'auth', client: c.id, engine: 'claude', signedIn }); if (signedIn) signedInAgain(c); }).catch(() => {}), 5 * 60000);
+  (c, signedIn) => { broadcast({ t: 'auth', client: c.id, engine: 'claude', signedIn }); if (signedIn) signedInAgain(c, 'claude', 'seen'); }).catch(() => {}), 5 * 60000);
 
 // The compact in progress lives on the session (for the list) and as one event (for the chat).
 function startCompact(s) {
@@ -1027,6 +1043,7 @@ async function resumeAll(reason = 'user') {
   const plan = resumePlan(paused);
   logEvent(`resumed all (${reason})`, `${plan.filter((x) => x.kind === 'note').length} told to carry on, ${paused.held.length} held messages sent`);
   let resumed = 0;
+  setTimeout(resumeSignInsAfterPause, 1000);
   for (const x of plan) {
     try {
       const target = await sessionToMessage(x.client, x.id);
@@ -1188,6 +1205,9 @@ function handleSdkMessage(s, m) {
       if (!err) {
         setLastError(s, null);
         if (state.sessions[s.id]?.autoContinued) { delete state.sessions[s.id].autoContinued; saveState(); } // a turn got through: the next cut-off may be continued again
+        const rec = state.sessions[s.id];
+        if (rec?.signinFail || rec?.signinTried) { delete rec.signinFail; delete rec.signinTried; saveState(); } // it carried on
+        signInWorks(clientById(s.client), s.engine || 'claude');
         const h = handoffFromTurn(s.events, clientById(s.client)?.handoffPattern);
         if (h) proposeHandoff(s, h);
       }
@@ -4466,21 +4486,23 @@ function markCutOff(id, clientId, how) {
   saveState();
   queueAutoContinue(id);
 }
-// One at a time with a gap, not every desk at once. The first wait also gives the runner check time to start it again.
+// One at a time with a gap, not every desk at once: continues after a cut-off and after a sign-in share the queue.
+// The first wait also gives the runner check time to start it again. key: one entry per session and kind.
 const autoQueue = [];
 let autoDraining = false;
-function queueAutoContinue(id) {
-  if (!autoQueue.includes(id)) autoQueue.push(id);
+function queueAuto(key, run) {
+  if (!autoQueue.some((x) => x.key === key)) autoQueue.push({ key, run });
   if (autoDraining) return;
   autoDraining = true;
   (async () => {
     while (autoQueue.length) {
       await new Promise((r) => setTimeout(r, GAP_MS));
-      const id = autoQueue.shift();
-      await autoContinue(id).catch((e) => logEvent(`continue by itself failed (${id})`, e.message));
+      const x = autoQueue.shift();
+      await x.run().catch((e) => logEvent(`continue by itself failed (${x.key})`, e.message));
     }
   })().finally(() => { autoDraining = false; });
 }
+const queueAutoContinue = (id) => queueAuto(`cut-off ${id}`, () => autoContinue(id));
 async function autoContinue(id) {
   const rec = state.sessions[id], client = clientById(rec?.client);
   if (!rec?.cutOff || !client) return;
@@ -4495,6 +4517,60 @@ async function autoContinue(id) {
   addEvent(target, { k: 'note', text: 'Docket stopped unexpectedly partway through this turn, so it continued it by itself' });
   sendToSession(target, { text: '', system: true, context: cutOffNote(cut) });
   logEvent(`continued by itself after a cut-off: ${tag}`, `cut off ${new Date(cut.at).toLocaleString()}, ${cut.how === 'runner' ? 'the runner stopped' : 'found at start'}`);
+}
+// ---------- carrying on a session after its desk signs in again (#719) ----------
+// The rules are in signin-resume.mjs. The desk's setting (resumeAfterSignIn, on unless false) is on the Inspector's
+// Switches; off, the session offers Send again as before. signinTried marks the one automatic try as used, so a try
+// that fails on the sign-in again waits for the next sign-in; a turn that gets through, or a message, clears it.
+const resumeOn = (client) => client?.resumeAfterSignIn !== false;
+// The last 256 KB of a Claude session's transcript, or '' (another brand, or no file).
+function transcriptEnd(client, id, bytes = 256 * 1024) {
+  let fd;
+  try {
+    const f = sessionFile(client, id);
+    if (!f) return '';
+    fd = fs.openSync(f, 'r');
+    const size = fs.fstatSync(fd).size, n = Math.min(size, bytes), buf = Buffer.alloc(n);
+    fs.readSync(fd, buf, 0, n, size - n);
+    return buf.toString('utf8');
+  } catch { return ''; } finally { if (fd !== undefined) fs.closeSync(fd); }
+}
+// A sign-in by the person counts over one Docket noticed for the same wait in the queue.
+const signInHow = new Map();
+function queueSignInResume(id, how) {
+  signInHow.set(id, how === 'user' || signInHow.get(id) === 'user' ? 'user' : 'seen');
+  queueAuto(`sign-in ${id}`, () => { const h = signInHow.get(id); signInHow.delete(id); return resumeAfterSignIn(id, h); });
+}
+async function resumeAfterSignIn(id, how) {
+  const rec = state.sessions[id], client = clientById(rec?.client);
+  const f = rec?.signinFail;
+  if (!f || !client) return;
+  const tag = `"${rec.title || 'Untitled'}" (${id})`;
+  const s = live.get(id);
+  const working = !!s && !s.resting && !['idle', 'ended'].includes(s.status);
+  const on = resumeOn(client);
+  const check = signinResumeCheck({ on, rec, how, messaged: messagedSince(transcriptEnd(client, id), f.at), paused: !!state.paused, archived: isArchived(client, id), working });
+  if (!check.go) {
+    if (!on && s && f.text) addEvent(s, { k: 'retry', id: `retry-${Date.now()}`, text: f.text }); // the Send again offer
+    if (dropsMark(check.why)) delete rec.signinFail;
+    saveState();
+    logEvent(`failed on its sign-in, left for the user: ${tag}`, check.why);
+    return;
+  }
+  await ensureRunner();
+  delete rec.signinFail;
+  rec.signinTried = true; // before it starts, so a try that fails on the sign-in again waits for the next sign-in
+  saveState();
+  const target = await sessionToMessage(client.id, id);
+  addEvent(target, { k: 'note', text: SIGNIN_NOTE });
+  sendToSession(target, { text: f.text || '', system: true, context: signinNote(f) });
+  logEvent(`continued by itself after signing in again: ${tag}`, `failed ${new Date(f.at).toLocaleString()}; ${f.midTurn ? 'told to carry on' : 'its message sent again'}; sign-in ${how === 'user' ? 'by the user' : 'seen by Docket'}`);
+}
+// After Resume all: sessions held back by the pause whose desk is known to be signed in again.
+function resumeSignInsAfterPause() {
+  for (const [id, rec] of Object.entries(state.sessions)) {
+    if (rec.signinFail && authCache.get(authKey(rec.client, rec.engine || 'claude'))?.loggedIn === true) queueSignInResume(id, 'seen');
+  }
 }
 // At start, once the runner's sessions are back: those still interrupted mid-reply were cut off, and ones cut off
 // before this start that were never picked up get their check again.
@@ -4513,7 +4589,7 @@ function findCutOffs() {
 // - the library list changed: run npm install first;
 // - only the page changed: open pages reload themselves (version below).
 const RESTART_CODE = 75;
-const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs'];
+const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'signin-resume.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs'];
 const PAGE_FILES = ['index.html', 'view.html', 'usage.html', 'plans.html'];
 const LIB_FILES = ['package.json', 'package-lock.json'];
 // While a restart waits for a quiet moment this app keeps serving the pages it started with, which go with
@@ -5964,6 +6040,8 @@ function cleanCompany(c, taken) {
   // splitWork: false when its sessions should not send work to child sessions on their own (splitOn); set in the
   // setup wizard and on the profile page, kept when not sent. On is the default and is not written.
   const splitWork = (c.splitWork !== undefined ? c.splitWork : before.splitWork) !== false;
+  // resumeAfterSignIn: false when its sessions should not carry on by themselves once its sign-in is back (#719).
+  const resumeSignIn = (c.resumeAfterSignIn !== undefined ? c.resumeAfterSignIn : before.resumeAfterSignIn) !== false;
   // configReload: 'ask' when a session whose Claude config changed waits for Reload; Automatic (not written) reloads it at its next idle moment.
   const configReload = (c.configReload !== undefined ? c.configReload : before.configReload) === 'ask';
   // hidden: the desk has no button at the top, so its sessions are out of the list, until it is shown again (☰ > Desks >
@@ -6033,7 +6111,7 @@ function cleanCompany(c, taken) {
   for (const [label, dir, sub] of [['Claude home', home, 'claude-home'], ['Grok home', grokHome, 'grok-home'], ['Codex home', codexHome, 'codex-home']]) {
     if (dir && isInside(dir, ROOT)) return { error: `${name}: the ${label} folder ${dir} is inside Docket's own folder (${ROOT}). It holds the sign-in, so it must be somewhere else, like ${path.join(homeRoots().claude, `${name}-desk`, sub)}` };
   }
-  return { id, name, home, folder: folder || home, ...(hidden ? { hidden: true } : {}), ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(planSwitch ? { planSwitch } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
+  return { id, name, home, folder: folder || home, ...(hidden ? { hidden: true } : {}), ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(planSwitch ? { planSwitch } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(resumeSignIn ? {} : { resumeAfterSignIn: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
 }
 function saveCompanies(list) {
   for (const c of list) {
@@ -6821,6 +6899,8 @@ async function profileRoutes(req, res, url, p) {
         save({ configReload: value === 'ask' ? 'ask' : undefined });
       } else if (kind === 'split') {
         save({ splitWork: on ? undefined : false });
+      } else if (kind === 'resume') {
+        save({ resumeAfterSignIn: on ? undefined : false });
       } else if (kind === 'plans') {
         // A choice: { value } is the plan system: Docket's own, a plan folder shown read-only (#180 step 3), or none.
         if (!['docket', 'folder', 'none'].includes(value)) return json(res, 400, { error: 'The plan system is docket, folder or none' });
@@ -7622,7 +7702,7 @@ const server = http.createServer(async (req, res) => {
       // ?engine= names which brand's sign-in; Claude when it is left out, as the setup wizard does.
       const engine = url.searchParams.get('engine') || 'claude';
       if (!lm[2].startsWith('browser-') && !brandsOf(client).includes(engine)) return json(res, 400, { error: `${client.name} has no ${BRANDS[engine]?.name || engine} sign-in set up` });
-      if (lm[2] === 'auth-check') { const a = await authInfo(client, true, engine); if (a.loggedIn) signedInAgain(client, engine); return json(res, 200, { signedIn: a.loggedIn, email: a.email, forced: engine === 'claude' ? forcedOf(client) : null }); }
+      if (lm[2] === 'auth-check') { const a = await authInfo(client, true, engine); const gw = gatewayFor(client, engine); if (a.loggedIn) for (const x of gw ? onGateway(gw.url) : [{ client, engine }]) signedInAgain(x.client, x.engine, 'user'); return json(res, 200, { signedIn: a.loggedIn, email: a.email, forced: engine === 'claude' ? forcedOf(client) : null }); }
       if (lm[2] === 'login') return json(res, 200, await startLogin(client, false, engine));
       if (lm[2].startsWith('browser-')) {
         const b = await readBody(req);
@@ -7641,7 +7721,7 @@ const server = http.createServer(async (req, res) => {
         const r = await finishLogin(client, String(b.code || ''), engine);
         const gw = gatewayFor(client, engine);
         if (gw) broadcastGateway(gw.url, r.loggedIn); else broadcast({ t: 'auth', client: client.id, engine, signedIn: r.loggedIn });
-        if (r.loggedIn) for (const x of gw ? onGateway(gw.url) : [{ client, engine }]) signedInAgain(x.client, x.engine);
+        if (r.loggedIn) for (const x of gw ? onGateway(gw.url) : [{ client, engine }]) signedInAgain(x.client, x.engine, 'user');
         return json(res, 200, r);
       }
       logins.get(authKey(client.id, engine))?.proc.kill();
