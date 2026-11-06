@@ -13,6 +13,7 @@ import { createScheduler } from './scheduler.mjs';
 import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, wokeByItself, noteWoke, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
+import { netError, refused, netText, withRetries, noConversation, startMode, continueNudge, firstMessage, reportText, firstStore } from './first-start.mjs';
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from './needs-you.mjs';
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
@@ -1201,6 +1202,7 @@ function handleSdkMessage(s, m) {
       return;
     }
     case 'assistant': {
+      if (!m.parent_tool_use_id && (s.freshStart || state.sessions[s.id]?.firstPending)) gotThrough(s); // Claude Code has its first message
       for (const b of m.message?.content || []) if (b.type === 'tool_use') shiftUpForWork(s, b.name, b.input, b.id).catch(() => {});
       for (const ev of s.pingTurn ? [] : convertMessage(s, m, { live: true, textCounter: s.textCounter })) {
         if (ev.k === 'text') {
@@ -1234,17 +1236,25 @@ function handleSdkMessage(s, m) {
       if (state.sessions[s.id]?.unsent) { delete state.sessions[s.id].unsent; saveState(); } // it answered, so the message got there
       const err = m.is_error || m.subtype !== 'success';
       const text = typeof m.result === 'string' ? m.result : '';
+      // Resumed with no conversation behind it: not a turn to show or report. The run's end starts it afresh (restartFresh).
+      if (err && s.engine === 'claude' && noConversation([text, ...(m.errors || [])].join('\n')) && !state.sessions[s.id]?.freshTried) {
+        s.noConversation = true;
+        addEvent(s, { k: 'note', text: 'Claude Code has no conversation for this session to resume: its first message never reached it' });
+        return;
+      }
       if (err) {
         // The error text usually arrived already as the reply; mark that one instead of repeating it.
         const last = [...s.events].reverse().find((e) => e.k === 'text');
         if (last && text && last.text.trim() === text.trim()) { s.events.splice(s.events.indexOf(last), 1); broadcast({ t: 'remove', id: s.id, evId: last.id }); }
         const conn = signInConnectionOf(clientById(s.client), s.engine);
         const login = signInFailure(text, s.engine === 'claude' && isBedrock(clientById(s.client))) || !!CONNECTIONS[conn.type]?.refused(text);
-        addEvent(s, { k: 'error', text: text || m.subtype, login });
-        setLastError(s, text || m.subtype);
+        const errText = text || (m.errors || []).join('; ') || m.subtype; // an error result often has no text, only errors
+        addEvent(s, { k: 'error', text: errText, login });
+        setLastError(s, errText);
         if (login) signedOutTurn(s);
       }
       if (!err) {
+        gotThrough(s);
         setLastError(s, null);
         if (state.sessions[s.id]?.autoContinued) { delete state.sessions[s.id].autoContinued; saveState(); } // a turn got through: the next cut-off may be continued again
         const rec = state.sessions[s.id];
@@ -3738,7 +3748,8 @@ async function reportToParent(child, leftover = []) {
   const view = client && familyView(client);
   const to = view && !view.open(route.to) ? view.openParent(child.id) : route.to;
   if (!to) return;
-  const report = { childId: child.id, title: child.title || 'Session', text: reply.slice(0, 400), at: Date.now(), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}), ...(leftover.length ? { jobs: leftover } : {}) };
+  // A turn with no reply text (an error before any answer) says so in a line, not as an empty report (#759).
+  const report = { childId: child.id, title: child.title || 'Session', text: reportText(reply, { error: rec?.lastError?.text }).slice(0, 400), at: Date.now(), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}), ...(leftover.length ? { jobs: leftover } : {}) };
   if (route.waiting) {
     const parent = live.get(to);
     if (parent && parent.status !== 'ended') {
@@ -4552,7 +4563,7 @@ function makeSession({ clientId, cwd, title, parentId, resumeId, settings = {}, 
   // Where it sits in the list: when it last turned orange, else when it last spoke (an older
   // saved session), else when it was started.
   s.readyAt = saved.readyAt || (resumeId && lastMessageTime(sessionFile(client, id))) || s.createdAt;
-  state.sessions[id] = { ...saved, engine: s.engine, settings: s.settings, client: s.client, cwd: s.cwd, title: s.title, parentId: s.parentId, createdAt: s.createdAt, readyAt: s.readyAt, running: true, ...(s.gear ? { gear: s.gear } : {}), ...record };
+  state.sessions[id] = { ...saved, engine: s.engine, settings: s.settings, client: s.client, cwd: s.cwd, title: s.title, parentId: s.parentId, createdAt: s.createdAt, readyAt: s.readyAt, running: true, ...(s.gear ? { gear: s.gear } : {}), ...(!resumeId && brand === 'claude' ? { firstPending: true } : {}), ...record };
   // Who it is billed to, recorded when it starts with no spend yet, so a later change to the desk's sign-in or
   // AWS profile does not move its spend. A session from before this keeps reading today's setup (marked inferred).
   if (!state.sessions[id].via && !usage[id]?.rows?.length) { const bedrock = brand === 'claude' && isBedrock(client); state.sessions[id].via = viaOf(connectionFor(client, brand, bedrock), bedrock); }
@@ -4607,9 +4618,15 @@ async function pruneToolOutput() {
 }
 setTimeout(() => pruneToolOutput().catch(() => {}), 5 * 60_000).unref();
 setInterval(() => pruneToolOutput().catch(() => {}), 6 * 3600_000).unref();
-function startSession({ clientId, cwd, title, parentId, resumeId, settings = {}, engine, record, gear }) {
+// fresh: start a new conversation under this id even if Claude Code may have one (a resume of it just failed); last:
+// the message that resume was sending, sent again after the first one (#759).
+function startSession({ clientId, cwd, title, parentId, resumeId, settings = {}, engine, record, gear, fresh = false, last = null }) {
   const s = makeSession({ clientId, cwd, title, parentId, resumeId, settings, engine, record, gear });
   const client = clientById(s.client), id = s.id;
+  // Picked up again with no conversation to resume: its first message never reached Claude Code. A new conversation
+  // under the same id, so the row, its parent and links stay as they are; the next message sends the first one first.
+  const mode = startMode({ engine: s.engine, resumeId, hasTranscript: !!(resumeId && client && sessionFile(client, id)), fresh });
+  if (mode === 'fresh') s.freshStart = { last };
   // A session running again is open: an archived one leaves the archive, so the list and its record agree (#717).
   if (resumeId && client && isArchived(client, id)) setArchived(client.id, id, false);
   if (resumeId && s.cwd && !fs.existsSync(s.cwd) && !protectedFolder(s.cwd)) {
@@ -4627,7 +4644,7 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
     ...claudeSettings(client),
     // The settings layers the desk turned off on its profile page; left out, Claude Code loads all three.
     ...(client.settingSources ? { settingSources: client.settingSources } : {}),
-    ...(resumeId ? { resume: resumeId } : { sessionId: id, ...(s.title ? { title: s.title } : {}) }),
+    ...(mode === 'resume' ? { resume: resumeId } : { sessionId: id, ...(s.title ? { title: s.title } : {}) }),
     permissionMode: s.settings.permissionMode,
     allowDangerouslySkipPermissions: true,
     allowedTools: MESSAGING_TOOLS,
@@ -4647,7 +4664,14 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
   let browserHelper = '';
   s.ready = ensureRunner().then(() => ghForSession(s, client)).then((gh) => { if (gh) options.env = { ...options.env, GH_TOKEN: gh }; })
     .then(() => useDeskBrowser(s, client, options)).then((name) => { browserHelper = name; })
-    .then(() => runnerCall(`/sessions/${id}/start`, { options }))
+    // A start that never got an answer (the runner restarting, or too busy to answer) is tried again for about a
+    // minute, starting the runner if it is gone; the runner attaches to a start that did get there (#759).
+    .then(() => withRetries((i) => (i ? ensureRunner() : Promise.resolve()).then(() => runnerCall(`/sessions/${id}/start`, { options })), {
+      onRetry: (err, n, wait) => {
+        if (n === 1) addEvent(s, { k: 'note', text: `Could not reach the session runner (${netText(err)}), so Docket is trying again` });
+        logEvent(`start retry ${n}: ${sessionTag(s)}`, `${netText(err)}; again in ${wait / 1000}s`);
+      },
+    }))
     .then((r) => {
       if (r.attached) s.runnerSeq = r.seq;
       else if (state.sessions[id]) { state.sessions[id].processStart = Date.now(); state.sessions[id].browserHelper = browserHelper; if (print) state.sessions[id].configPrint = print; saveState(); } // see repairTasks
@@ -4676,6 +4700,37 @@ function saveUploads(id, attachments) {
 
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
+// ---------- a session whose first message never reached Claude Code (the rules are in first-start.mjs, #759) ----------
+// Kept from the first send until Claude Code answers, so a start the runner never got can be made again.
+const firsts = firstStore(path.join(DATA_DIR, 'first-messages'));
+// Claude Code has the session's conversation now: nothing to start afresh any more.
+function gotThrough(s) {
+  s.freshStart = null;
+  const rec = state.sessions[s.id];
+  if (!rec?.firstPending && !rec?.freshTried) return;
+  delete rec.firstPending; delete rec.freshTried; saveState();
+  firsts.drop(s.id);
+}
+// A session started afresh sends its first message before anything else, once. True when it sent one.
+function sendFirst(s) {
+  const fresh = s.freshStart;
+  if (!fresh || fresh.sent) return false;
+  fresh.sent = true;
+  const kept = firsts.read(s.id);
+  const msg = firstMessage({ kept, events: s.events, last: fresh.last });
+  if (!msg) return false;
+  const text = (msg.message?.content || []).find((b) => b.type === 'text')?.text || '';
+  if (text && !s.events.some((e) => e.k === 'user')) addEvent(s, { k: 'user', text: text.split('\n\n(From Docket')[0] }); // the chat shows the brief it runs
+  addEvent(s, { k: 'note', text: `Its first message never reached Claude Code, so Docket started this session afresh${kept ? ' with that message' : ', with the first message its chat shows'}` });
+  logEvent(`started afresh with its first message: ${sessionTag(s)}`, kept ? 'the kept first message' : fresh.last && msg === fresh.last ? 'the last message sent' : 'the first message in its chat');
+  s.titleNoted = true; // the kept message has the title line already
+  s.unread = false; setLastError(s, null); setStatus(s, 'running');
+  s.lastMessage = msg; s.lastNudge = false;
+  s.input.push(msg);
+  // A resume that failed was sending something else (not a mere "carry on"): it goes next.
+  if (fresh.last && fresh.last !== msg) s.input.push(fresh.last);
+  return true;
+}
 // from: 'session' when another session wrote the text, so the page can tell it from what the person typed
 // news: what makes this turn's report only news for its parent (turnNewsFor in reports.mjs), '' for none.
 // reported: the children whose finished turns this report carries, not counted as working in the state line.
@@ -4690,6 +4745,8 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   if (s.resting) { s.reloadQueue.push({ text, attachments, context, system, from, byPerson, report, news }); wakeSession(s).catch((e) => logEvent(`wake failed: ${sessionTag(s)}`, e.message)); return; }
   // Its Claude config changed and it may restart now: restarted first, and the message goes to the new process.
   if (s.reloading || checkConfig(s) === 'reload') { s.reloadQueue.push({ text, attachments, context, system, from, byPerson, report, news }); return; }
+  // Started afresh: its first message goes first, and a mere "carry on" after it means nothing (#759).
+  if (sendFirst(s) && continueNudge({ text, system, context })) return;
   const files = saveUploads(s.id, attachments);
   const blocks = [];
   const images = [];
@@ -4746,6 +4803,8 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   const content = blocks.map((b) => b.type === 'text' ? { ...b, text: forEngine(s.engine, b.text) } : b);
   const message = { type: 'user', message: { role: 'user', content }, parent_tool_use_id: null };
   if (keepsChat(s.engine)) keepChat(s.id, message);
+  if (state.sessions[s.id]?.firstPending) firsts.save(s.id, message); // until Claude Code answers (gotThrough)
+  s.lastMessage = message; s.lastNudge = continueNudge({ text, system, context });
   s.input.push(message);
 }
 
@@ -4955,8 +5014,13 @@ function remoteSession(s) {
       const mark = { at: Date.now(), text: messageText(message).slice(0, 300) };
       if (state.sessions[id]) { state.sessions[id].unsent = mark; saveState(); }
       const clear = () => { if (state.sessions[id]?.unsent === mark) { delete state.sessions[id].unsent; saveState(); } };
-      return s.ready.then(() => runnerCall(`/sessions/${id}/send`, { message })).then(clear)
-        .catch((err) => { clear(); stoppedNote(s, 'Could not send: ' + err.message); setStatus(s, 'idle'); });
+      // One at a time, in order (a fresh start sends its first message first); a send the runner refused is tried
+      // again, as it cannot have got there.
+      const kept = () => (state.sessions[id]?.firstPending && firsts.has(id) ? '. Docket keeps its first message and sends it when the session starts again' : '');
+      return s.sending = (s.sending || Promise.resolve()).then(() => s.ready)
+        .then(() => withRetries(() => runnerCall(`/sessions/${id}/send`, { message }), { retryIf: refused })).then(clear)
+        // Not idle once ended: a start that failed ends it, and the next message must start it again, not push into it.
+        .catch((err) => { clear(); stoppedNote(s, 'Could not send: ' + netText(err) + kept()); if (s.status !== 'ended') setStatus(s, 'idle'); });
     },
     close: () => {},
   };
@@ -4969,7 +5033,7 @@ function remoteSession(s) {
     close: () => { s.closing = true; s.ready.then(() => runnerCall(`/sessions/${id}/end`, {})).catch((e) => logEvent(`could not end ${sessionTag(s)} in the runner`, e.message)); },
     async *[Symbol.asyncIterator]() {
       await s.ready;
-      const res = await fetch(`${RUNNER}/sessions/${id}/stream?since=${s.runnerSeq || 0}`, { headers: { 'x-docket-token': runnerToken } });
+      const res = await withRetries(() => fetch(`${RUNNER}/sessions/${id}/stream?since=${s.runnerSeq || 0}`, { headers: { 'x-docket-token': runnerToken } }));
       if (!res.ok) throw new Error('The session runner does not have this session');
       let buf = '';
       for await (const chunk of res.body) {
@@ -5013,6 +5077,7 @@ function runLoop(s) {
   (async () => {
     try {
       for await (const m of s.query) handleSdkMessage(s, m);
+      if (s.noConversation && live.get(s.id) === s) return restartFresh(s);
       if (s.runnerRestarted) return; // the runner is taking in a change; the check below puts it back
       if (s.reloading || s.resting) return; // reloadSession or wakeSession puts it back
       if (docketRestarting) return; // Restart Docket: left as it was, so the new app finds it was open
@@ -5023,14 +5088,29 @@ function runLoop(s) {
       markRunning(s.id, false);
     } catch (err) {
       if (live.get(s.id) !== s || s.reloading || s.resting || docketRestarting) return;
+      if (s.noConversation) return restartFresh(s); // the resume found no conversation: once more, afresh (#759)
       // The runner went away partway through a turn (a crash, or it was killed): a cut-off, as after a start.
+      // So is a first start that never reached it, even once it answers again: its first message is kept (#759).
       const midTurn = !s.closing && ['starting', 'running'].includes(s.status);
-      stoppedNote(s, `Session stopped: ${err.message}`);
-      if (midTurn && !(await runnerHealth())) markCutOff(s.id, s.client, 'runner');
+      stoppedNote(s, `Session stopped: ${netText(err)}`);
+      const neverRan = !!state.sessions[s.id]?.firstPending && firsts.has(s.id) && !!netError(err);
+      if (midTurn && (neverRan || !(await runnerHealth()))) markCutOff(s.id, s.client, 'runner');
       setStatus(s, 'ended');
       markRunning(s.id, false);
     }
   })().finally(() => done());
+}
+// A resume Claude Code answered with "No conversation found": started again once as a new conversation under the same
+// id, with its first message and then what the resume was sending (#759). freshTried stops a second go until one gets through.
+function restartFresh(old) {
+  const rec = state.sessions[old.id];
+  if (rec) { rec.freshTried = true; saveState(); }
+  live.delete(old.id);
+  const s = startSession({ clientId: old.client, cwd: old.cwd, title: old.title, resumeId: old.id, fresh: true, last: old.lastNudge ? null : old.lastMessage });
+  s.events = old.events; s.tasks = old.tasks; s.readyAt = old.readyAt;
+  logEvent(`no conversation to resume, starting afresh: ${sessionTag(s)}`, rec?.firstPending && firsts.has(s.id) ? 'with its kept first message' : 'with the first message its chat shows');
+  if (!sendFirst(s)) { stoppedNote(s, 'Claude Code has no conversation for this session and Docket has no first message for it, so send a message to start it afresh'); setStatus(s, 'idle'); }
+  pushSession(s);
 }
 // After the app starts: pick up every session the runner is still holding.
 let reattached = Promise.resolve(); // settles once reattachSessions has finished, after a start
@@ -5123,8 +5203,11 @@ async function autoContinue(id) {
   rec.autoContinued = true; // before it starts, so a turn that takes the runner down again is not continued a second time
   saveState();
   const target = await sessionToMessage(client.id, id);
-  addEvent(target, { k: 'note', text: 'Docket stopped unexpectedly partway through this turn, so it continued it by itself' });
-  sendToSession(target, { text: '', system: true, context: cutOffNote(cut) });
+  if (target.freshStart) sendFirst(target); // its first message never got there: sent now, with no "carry on" after it (#759)
+  else {
+    addEvent(target, { k: 'note', text: 'Docket stopped unexpectedly partway through this turn, so it continued it by itself' });
+    sendToSession(target, { text: '', system: true, context: cutOffNote(cut) });
+  }
   logEvent(`continued by itself after a cut-off: ${tag}`, `cut off ${new Date(cut.at).toLocaleString()}, ${cut.how === 'runner' ? 'the runner stopped' : 'found at start'}`);
 }
 // ---------- carrying on a session after its desk signs in again (#719) ----------
@@ -5198,7 +5281,7 @@ function findCutOffs() {
 // - the library list changed: run npm install first;
 // - only the page changed: open pages reload themselves (version below).
 const RESTART_CODE = 75;
-const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'signin-resume.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs'];
+const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'first-start.mjs', 'signin-resume.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs'];
 const PAGE_FILES = ['index.html', 'view.html', 'usage.html', 'plans.html'];
 const LIB_FILES = ['package.json', 'package-lock.json'];
 // While a restart waits for a quiet moment this app keeps serving the pages it started with, which go with
