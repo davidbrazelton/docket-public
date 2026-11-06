@@ -523,3 +523,65 @@ export function folderPickStart(typed, exists, platform = process.platform) {
   }
   return '';
 }
+
+// ☰ > Restart Docket stops everything the app and the runner started, at any depth: the session programs, their
+// connected services and the private browser. The list is read once, before anything is stopped, so a program whose
+// parent goes first is still found. Windows: one PowerShell call, with each program's start time (Windows keeps a
+// dead parent's number on its children, and a new program may get that number, so a child counts only if it started
+// after its parent). macOS and Linux: ps (a program whose parent ends goes to launchd, so numbers are not reused).
+export function treeListCommand(platform = process.platform) {
+  if (platform === 'win32') return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command',
+    "Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,@{n='Start';e={if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }}} | ConvertTo-Json -Compress"] };
+  return { cmd: 'ps', args: ['-axo', 'pid=,ppid='] };
+}
+// The output of treeListCommand as [{ pid, ppid, start }]; start is 0 where it is not known.
+export function parseTreeList(text, platform = process.platform) {
+  if (platform === 'win32') {
+    let l; try { l = JSON.parse(text); } catch { return []; }
+    return (Array.isArray(l) ? l : [l]).filter(Boolean).map((p) => ({ pid: Number(p.ProcessId), ppid: Number(p.ParentProcessId), start: Number(p.Start) || 0 }));
+  }
+  return String(text).split('\n').map((line) => line.match(/^\s*(\d+)\s+(\d+)\s*$/)).filter(Boolean).map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), start: 0 }));
+}
+// Every program below the roots (process numbers) in a parseTreeList list, at any depth, not the roots themselves.
+export function descendants(list, roots, skip = new Set()) {
+  const byPid = new Map(list.map((p) => [p.pid, p]));
+  const kids = new Map();
+  for (const p of list) if (p.pid !== p.ppid) (kids.get(p.ppid) || kids.set(p.ppid, []).get(p.ppid)).push(p);
+  const found = new Set(), todo = roots.filter((r) => byPid.has(r));
+  const seen = new Set(todo);
+  while (todo.length) {
+    const parent = byPid.get(todo.shift());
+    for (const c of kids.get(parent.pid) || []) {
+      if (seen.has(c.pid) || (c.start && parent.start && c.start < parent.start)) continue; // started before its "parent": not its child
+      if (skip.has(c.pid)) continue; // left out, and what it started with it
+      seen.add(c.pid); found.add(c.pid); todo.push(c.pid);
+    }
+  }
+  return [...found];
+}
+// The command that stops these programs at once, without waiting for them to close: taskkill /F on Windows (not
+// /T, which goes by parent numbers alone; the caller lists again for anything started meanwhile), else kill -9.
+export function killCommand(pids, platform = process.platform) {
+  if (!pids.length) return null;
+  if (platform === 'win32') return { cmd: 'taskkill.exe', args: ['/F', ...pids.flatMap((p) => ['/PID', String(p)])] };
+  return { cmd: 'kill', args: ['-9', ...pids.map(String)] };
+}
+// The command line of the program that started the app (pid), to tell whether it starts the app again when it
+// exits with the restart code: supervisor.mjs (Windows sign-in, the shortcuts, launchd on a Mac) or start-docket.cmd
+// (its console window) do; `node server.mjs` typed by hand, or a test copy, does not.
+export function commandLineCommand(pid, platform = process.platform) {
+  if (platform === 'win32') return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${Number(pid)}").CommandLine`] };
+  return { cmd: 'ps', args: ['-o', 'command=', '-p', String(Number(pid))] };
+}
+export const relaunchesApp = (commandLine) => /supervisor\.mjs|start-docket\.cmd/i.test(String(commandLine || ''));
+// A second list, read after the first stop, for anything left: a program stopped then that is still running (the
+// same number and start time), and a program whose parent was stopped and that started after it (started while
+// the rest went). stopped: the numbers stopped; before: the first list, which has their start times.
+export function leftBehind(before, after, stopped) {
+  const was = new Map(before.map((p) => [p.pid, p]));
+  return after.filter((p) => {
+    if (stopped.has(p.pid)) return !p.start || p.start === was.get(p.pid)?.start;
+    const parent = stopped.has(p.ppid) && was.get(p.ppid);
+    return !!parent && (!p.start || !parent.start || p.start >= parent.start);
+  }).map((p) => p.pid);
+}

@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart } from '../platform.mjs';
+import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, treeListCommand, parseTreeList, descendants, killCommand, commandLineCommand, relaunchesApp, leftBehind } from '../platform.mjs';
 
 test('vsCodePaths: Code.exe for the user, for everyone, and beside a code.cmd on the PATH, on Windows', () => {
   const env = { LOCALAPPDATA: 'C:\\Users\\pat\\AppData\\Local', ProgramFiles: 'C:\\Program Files',
@@ -610,4 +610,74 @@ test('folderPickStart: the typed folder, else the nearest one above it that exis
   assert.equal(folderPickStart('/Users/pat/Work/new', have('/Users/pat/Work'), 'darwin'), '/Users/pat/Work');
   assert.equal(folderPickStart('/nowhere', have(), 'darwin'), '');
   assert.equal(folderPickStart('~/Work', have('~/Work'), 'darwin'), '');
+});
+
+// ☰ > Restart Docket: everything below the app and the runner, and whether the app is started again.
+test('parseTreeList: Windows JSON with start times, or the single object for one program; ps on a Mac', () => {
+  assert.deepEqual(parseTreeList('[{"ProcessId":10,"ParentProcessId":4,"Start":500},{"ProcessId":11,"ParentProcessId":10,"Start":null}]', 'win32'),
+    [{ pid: 10, ppid: 4, start: 500 }, { pid: 11, ppid: 10, start: 0 }]);
+  assert.deepEqual(parseTreeList('{"ProcessId":10,"ParentProcessId":4,"Start":7}', 'win32'), [{ pid: 10, ppid: 4, start: 7 }]);
+  assert.deepEqual(parseTreeList('', 'win32'), []);
+  assert.deepEqual(parseTreeList('    1     0\n  501     1\n\n', 'darwin'), [{ pid: 1, ppid: 0, start: 0 }, { pid: 501, ppid: 1, start: 0 }]);
+});
+
+test('descendants: every depth below the roots, not the roots, and not a program that only took a dead parent\'s number', () => {
+  const list = [
+    { pid: 1, ppid: 0, start: 1 },     // the supervisor
+    { pid: 10, ppid: 1, start: 10 },   // the app
+    { pid: 20, ppid: 999, start: 20 }, // the runner (detached: its parent is gone)
+    { pid: 21, ppid: 20, start: 21 }, { pid: 22, ppid: 21, start: 22 }, { pid: 23, ppid: 22, start: 23 }, // claude, an MCP server, its browser
+    { pid: 11, ppid: 10, start: 11 },  // a helper the app started
+    { pid: 30, ppid: 20, start: 5 },   // older than the runner: its parent was an earlier program numbered 20
+    { pid: 31, ppid: 30, start: 6 },
+    { pid: 40, ppid: 40, start: 40 },  // its own parent (Windows' idle process)
+  ];
+  assert.deepEqual(descendants(list, [20, 10]).sort((a, b) => a - b), [11, 21, 22, 23]);
+  assert.deepEqual(descendants(list, [20]).sort((a, b) => a - b), [21, 22, 23]);
+  assert.deepEqual(descendants(list, [404]), []);
+  // Left out (the app's own listing helper): neither it nor what it started.
+  assert.deepEqual(descendants(list, [20, 10], new Set([11, 22])).sort((a, b) => a - b), [21]);
+  // No start times (a Mac): parent numbers alone.
+  assert.deepEqual(descendants(list.map((p) => ({ ...p, start: 0 })), [20]).sort((a, b) => a - b), [21, 22, 23, 30, 31]);
+});
+
+test('leftBehind: a stopped program still running, and one its stopped parent started meanwhile; not a newcomer that took a number', () => {
+  const before = [{ pid: 20, ppid: 1, start: 20 }, { pid: 21, ppid: 20, start: 21 }];
+  const after = [
+    { pid: 21, ppid: 20, start: 21 }, // did not stop
+    { pid: 22, ppid: 21, start: 30 }, // started by 21 after the list was read
+    { pid: 20, ppid: 5, start: 99 },  // a new program that got 20's number
+    { pid: 50, ppid: 20, start: 15 }, // older than 20: not its child
+    { pid: 60, ppid: 7, start: 60 },  // nothing to do with it
+  ];
+  assert.deepEqual(leftBehind(before, after, new Set([20, 21])), [21, 22]);
+  assert.deepEqual(leftBehind(before, [], new Set([20, 21])), []);
+});
+
+test('killCommand: taskkill /F on Windows, kill -9 elsewhere, nothing for no programs', () => {
+  assert.deepEqual(killCommand([5, 6], 'win32'), { cmd: 'taskkill.exe', args: ['/F', '/PID', '5', '/PID', '6'] });
+  assert.deepEqual(killCommand([5, 6], 'darwin'), { cmd: 'kill', args: ['-9', '5', '6'] });
+  assert.equal(killCommand([], 'win32'), null);
+});
+
+test('commandLineCommand and relaunchesApp: the supervisor and start-docket.cmd start the app again; a bare node does not', () => {
+  assert.equal(commandLineCommand(42, 'win32').cmd, 'powershell.exe');
+  assert.match(commandLineCommand(42, 'win32').args.at(-1), /ProcessId=42/);
+  assert.deepEqual(commandLineCommand(42, 'darwin'), { cmd: 'ps', args: ['-o', 'command=', '-p', '42'] });
+  assert.equal(relaunchesApp('"C:\\Program Files\\nodejs\\node.exe" "V:\\Repos\\docket\\supervisor.mjs"'), true);
+  assert.equal(relaunchesApp('/opt/homebrew/bin/node /Users/pat/Docket/supervisor.mjs'), true);
+  assert.equal(relaunchesApp('C:\\WINDOWS\\system32\\cmd.exe /c ""V:\\Repos\\docket\\start-docket.cmd" "'), true);
+  assert.equal(relaunchesApp('/usr/bin/bash'), false);
+  assert.equal(relaunchesApp(''), false);
+});
+
+// The real commands on this computer: the list holds this test's program below its parent, and this program's
+// own command line is found.
+test('treeListCommand and commandLineCommand run here', () => {
+  const { cmd, args } = treeListCommand();
+  const list = parseTreeList(spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true, maxBuffer: 64 << 20 }).stdout);
+  assert.ok(list.some((p) => p.pid === process.pid && p.ppid === process.ppid));
+  assert.ok(descendants(list, [process.ppid]).includes(process.pid));
+  const c = commandLineCommand(process.pid);
+  assert.match(spawnSync(c.cmd, c.args, { encoding: 'utf8', windowsHide: true }).stdout, /node/i);
 });

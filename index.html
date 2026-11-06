@@ -1346,7 +1346,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     </section>
     <div class="main-head" id="head"></div>
     <div class="cfg-banner" id="cfgBanner" role="status" hidden><span id="cfgText"></span><button id="cfgReload" data-tip="cfg-reload">Reload</button></div>
-    <div class="cut-banner" id="cutBanner" role="status" hidden><span>Docket stopped unexpectedly partway through this session's turn, so its reply was cut off.</span><button id="cutContinue" data-tip="cut-continue">Continue</button></div>
+    <div class="cut-banner" id="cutBanner" role="status" hidden><span id="cutWhy">Docket stopped unexpectedly partway through this session's turn, so its reply was cut off.</span><button id="cutContinue" data-tip="cut-continue">Continue</button></div>
     <button class="last-msg" id="lastMsg" hidden data-tip="last-msg"><div class="lm-text"><span class="lm-label">Your last message</span><span id="lastMsgText"></span></div></button>
     <div class="tl-bar" id="tlBar" hidden aria-label="Timeline in the chat"></div>
     <div class="transcript" id="transcript"><div class="jump-wrap"><button class="primary" id="jumpNew" hidden data-tip="jump-new">Jump to new</button></div><div class="inner" id="events"></div></div>
@@ -1734,6 +1734,9 @@ const HELP = [
     ['menu-rest', 'Settings > Rest idle sessions', 'How long a session sits idle, with nothing running or waiting on you, before Docket releases it from memory (its claude process, connected services and browser). It stays in the list with a hollow dot and wakes on its next message. 0 means never; the default, 60, matches the prompt cache.'],
     ['menu-autopause', 'Settings > Pause on sleep', 'On: when the computer is about to sleep, hibernate or shut down, Docket pauses every working session by itself, and resumes them when it wakes or starts again. A pause you made with the ⏸ button always waits for you.'],
     ['menu-about', 'About', 'Which version of Docket this is, and its updates from GitHub'],
+    ['menu-restartdocket', 'Restart Docket', 'Start Docket over to free everything it holds: it stops every session program, connected service and private browser, and the session runner, then starts again. Not a page reload. It says first which sessions are working or waiting on you; those show under "Open when the portal stopped" with Continue afterwards, and nothing continues by itself'],
+    ['rd-anyway', 'Restart anyway', 'Restart now and cut off the sessions listed. Each shows under "Open when the portal stopped" with Continue afterwards'],
+    ['rd-go', 'Restart', 'Stop everything Docket started and start it again'],
     ['menu-update', 'About > Check for updates', 'Look on GitHub for a newer Docket now'],
     ['upd-every', 'Check every', 'How often Docket looks on GitHub for a newer version'],
     ['menu-updmode', 'Settings > Updates', 'Automatic: Docket takes each new version from GitHub by itself and restarts once no session is busy (sessions keep working). Manual: it only says when one is waiting, and you press Update now. Kept on this computer only'],
@@ -5047,7 +5050,7 @@ $('menuBtn').onclick = (e) => {
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
     ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()],['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['rest', restLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ['signins', 'Private browser sign-ins'], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
-    ['about', S.update?.waiting || S.update?.restartWaiting ? 'About · update waiting' : 'About', [...(S.update?.restartWaiting && !S.update.restartWaiting.restarting ? [['restartnow', 'Update now anyway']] : S.update?.waiting ? [['updnow', 'Update now']] : []), ['update', 'Check for updates']]]];
+    ['about', S.update?.waiting || S.update?.restartWaiting ? 'About · update waiting' : 'About', [...(S.update?.restartWaiting && !S.update.restartWaiting.restarting ? [['restartnow', 'Update now anyway']] : S.update?.waiting ? [['updnow', 'Update now']] : []), ['update', 'Check for updates']]], 'hr', ['restartdocket', 'Restart Docket']];
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
     ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${x[0]}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0])}>${esc(x[1])}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
     : x[0].startsWith('theme-') ? `<button role="menuitemradio" data-mact="${x[0]}" aria-checked="${x[0] === 'theme-' + themeChoice()}"${tip('menu-' + x[0])}><span class="tick">${x[0] === 'theme-' + themeChoice() ? '✓' : ''}</span>${esc(x[1])}</button>`
@@ -5138,6 +5141,7 @@ $('menuBtn').onclick = (e) => {
     }
     if (act === 'updnow') { closeMenu(); updateNow(); return; }
     if (act === 'restartnow') { closeMenu(); restartAnyway(); return; }
+    if (act === 'restartdocket') { closeMenu(); restartDocketAsk(); return; }
     if (act === 'autopause') { // stays open and shows the new state
       const b = ev.target.closest('button');
       try { S.autoPause = (await api('/api/auto-pause', { on: S.autoPause === false })).on; } catch (err) { alert(err.message); }
@@ -7095,6 +7099,7 @@ function renderHead() {
   renderComposerBar();
   if ($('tlBar').hidden !== !tlSession()) renderTlBar();
   $('cutBanner').hidden = S.schedOpen || !cutOffShown(current());
+  $('cutWhy').textContent = current()?.cutBy === 'restart' ? "Docket was restarted (☰ > Restart Docket) partway through this session's turn, so its reply was cut off." : "Docket stopped unexpectedly partway through this session's turn, so its reply was cut off.";
   renderCfgBanner();
   const s = S.schedOpen ? null : current();
   renderStatusBit(s);
@@ -8910,6 +8915,7 @@ $('pauseBtn').onclick = async () => {
 function connect() {
   const ws = new WebSocket(`ws://${location.host}/ws`);
   ws.onopen = async () => {
+    if ($('restartCover') && S.restartDown) { stashBox(); try { sessionStorage.setItem('docket-reload', JSON.stringify({ client: S.client, selected: S.selected })); } catch {} location.reload(); return; } // back after Restart Docket
     $('conn').hidden = true;
     loadPaused();
     api('/api/reloads').then(showReloads).catch(() => {});
@@ -8992,6 +8998,8 @@ function connect() {
         if (!S.schedOpen) renderTasks();
       }
       renderList(); if (mine) renderHead();
+    } else if (m.t === 'restarting') {
+      showRestartCover(m.relaunch);
     } else if (m.t === 'paused') {
       showPaused(m.paused);
     } else if (m.t === 'reloads') {
@@ -9059,7 +9067,7 @@ function connect() {
       loadSessions(m.client, true).then(() => { renderList(); renderClients(); if (mine) renderHead(); });
     }
   };
-  ws.onclose = () => { if (S.wasConnected) $('conn').hidden = false; setTimeout(connect, 1500); };
+  ws.onclose = () => { if (S.wasConnected) $('conn').hidden = false; if ($('restartCover')) S.restartDown = true; setTimeout(connect, 1500); };
 }
 
 // Theme: default (no stored choice, so the page follows the computer's light/dark setting live), light or dark.
@@ -9553,6 +9561,35 @@ async function takeUpdate(anyway) {
   if (anyway || !u.busyNow) updateBusyNote('Updated: Docket is restarting');
   else updateBusyNote('Updated: waiting for sessions to finish'); // the waiting card follows once the app says so
   showUpdate(u);
+}
+// ☰ > Restart Docket: first say what it would cut off (sessions working or waiting on you, by name; idle ones only
+// counted, since they start again cleanly), with Cancel the main choice; with nothing at risk a plain confirm. Then
+// the page is covered until the app answers again, and reloads.
+async function restartDocketAsk() {
+  let r; try { r = await api('/api/restart-docket'); } catch (err) { return alert(err.message); }
+  const at = [...r.working.map((x) => ({ ...x, how: 'working' })), ...r.waiting.map((x) => ({ ...x, how: 'waiting on you' }))];
+  const what = '<div>Docket stops every session program, connected service and private browser, and the session runner, then starts again. Nothing continues by itself afterwards.</div>';
+  const idle = r.idle ? `<div class="meta" style="margin-top:8px">${r.idle} idle session${r.idle === 1 ? '' : 's'} will start again on ${r.idle === 1 ? 'its' : 'their'} next message.</div>` : '';
+  const v = at.length
+    ? await dialog({ title: 'Better not restart now', body: `${what}<div style="margin-top:8px">${at.length === 1 ? 'This session is' : 'These sessions are'} busy and would be cut off, then shown under "Open when the portal stopped" with Continue:</div>`
+        + `<ul style="margin:6px 0 0;padding-left:20px">${at.map((x) => `<li>${esc(x.title)}${x.desk ? ` <span class="meta">(${esc(x.desk)})</span>` : ''}: ${x.how}</li>`).join('')}</ul>${idle}<div style="margin-top:8px">Wait until ${at.length === 1 ? 'it is' : 'they are'} done unless you need to start over now.</div>`,
+        buttons: [{ label: 'Restart anyway', value: 'go', tip: tipText('rd-anyway') }, { label: 'Cancel', value: null, primary: true }] })
+    : await dialog({ title: 'Restart Docket?', body: what + idle, buttons: [{ label: 'Cancel', value: null }, { label: 'Restart', value: 'go', primary: true, tip: tipText('rd-go') }] });
+  if (v !== 'go') return;
+  showRestartCover(true);
+  try { await api('/api/restart-docket', {}); } catch (err) { $('restartCover')?.remove(); alert(err.message); }
+}
+// Covers the page while Docket restarts (any open page: the app tells them all); the page reloads once the app is
+// back (connect). relaunch false: nothing starts the app again by itself (it was started by hand), so the page says how.
+function showRestartCover(relaunch) {
+  let c = $('restartCover');
+  if (!c) {
+    c = document.createElement('div'); c.className = 'booting'; c.id = 'restartCover'; c.setAttribute('role', 'status'); c.setAttribute('aria-live', 'polite');
+    c.innerHTML = '<div class="boot-card"><div class="boot-name">Docket</div><div class="boot-spin" aria-hidden="true"></div><div class="boot-msg" id="restartMsg"></div></div>';
+    document.body.appendChild(c);
+  }
+  $('restartMsg').textContent = relaunch ? 'Docket is restarting. This page reloads by itself once it is back.'
+    : `Docket has stopped. It was not started by its launcher, so it cannot start itself again: start it ${OS.mac ? 'from Docket in Applications' : 'from the Docket shortcut'}. This page reloads by itself once it is back.`;
 }
 async function restartAnyway() {
   try { showUpdate(await api('/api/update/restart-now', {})); } catch (err) { alert(err.message); }

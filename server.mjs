@@ -42,7 +42,7 @@ import { homeRootsFor } from './home-roots.mjs';
 import { homeInUse, freeHome } from './home-in-use.mjs';
 import { workFolders, existingHomes } from './work-folders.mjs';
 import { sourceHomes, findGroups, planRun, writeReport, readReports, reportPaths, copyRun, checkCopies, undoRun } from './bring-in.mjs';
-import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash,
+import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, treeListCommand, parseTreeList, descendants, leftBehind, killCommand, commandLineCommand, relaunchesApp,
   startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, findLite } from './platform.mjs';
 import { cleanGateway, gatewayFor, loginOf, claudeRouteOf, claudeGateway, visibleGears, usableGear, modelFor, gearModelMap, liteArgs, liteCommand, loginLink, loginDone, pkceUnsupported, whoamiUser, tokenFrom, gatewayRefused, gatewayHost } from './gateway.mjs';
 import { groupProcesses, folderSize, cpuPercent, diskKeeper } from './machine-use.mjs';
@@ -621,6 +621,7 @@ function summary(s) {
     reloadAsk: reloadMode(clientById(s.client)) === 'ask', // its desk waits for Reload
     lastError: state.sessions[s.id]?.lastError || null,
     cutOff: !!state.sessions[s.id]?.cutOff,
+    cutBy: state.sessions[s.id]?.cutOff?.how || null,
     awaitingAnswer: liveAwaiting(s),
     kids: kidsOf(s), // the child sessions it waits on: the still blue ring (#645)
     kidNews: !!s.kidNews, // a report it took in quietly that the person has not opened: the ring's halo
@@ -4827,10 +4828,12 @@ setInterval(() => diskUse.refresh(), DISK_EVERY_MS).unref();
 const RUNNER_PORT = Number(process.env.DOCKET_RUNNER_PORT || PORT + 10);
 const RUNNER = `http://127.0.0.1:${RUNNER_PORT}`;
 let runnerToken = '';
+let docketRestarting = false; // ☰ > Restart Docket is under way: the runner's sessions ending is the restart, not a cut-off
 async function runnerHealth() {
   try { const r = await fetch(RUNNER + '/health', { signal: AbortSignal.timeout(2000) }); return r.ok ? await r.json() : null; } catch { return null; }
 }
 async function ensureRunner() {
+  if (docketRestarting) throw new Error('Docket is restarting'); // the new app starts the fresh runner
   if (!(await runnerHealth())) {
     const child = spawn(process.execPath, [path.join(ROOT, 'runner.mjs')], {
       detached: true, stdio: 'ignore', windowsHide: true,
@@ -4926,13 +4929,14 @@ function runLoop(s) {
       for await (const m of s.query) handleSdkMessage(s, m);
       if (s.runnerRestarted) return; // the runner is taking in a change; the check below puts it back
       if (s.reloading || s.resting) return; // reloadSession or wakeSession puts it back
+      if (docketRestarting) return; // Restart Docket: left as it was, so the new app finds it was open
       if (live.get(s.id) !== s) return; // archived or ended from here: already taken off the list
       // It stopped by itself with a message unanswered: say so, rather than look read and finished.
       if (!s.closing && ['starting', 'running', 'requires_action'].includes(s.status)) stoppedNote(s, 'Session stopped before it answered. Send the message again to start it afresh.');
       setStatus(s, 'ended');
       markRunning(s.id, false);
     } catch (err) {
-      if (live.get(s.id) !== s || s.reloading || s.resting) return;
+      if (live.get(s.id) !== s || s.reloading || s.resting || docketRestarting) return;
       // The runner went away partway through a turn (a crash, or it was killed): a cut-off, as after a start.
       const midTurn = !s.closing && ['starting', 'running'].includes(s.status);
       stoppedNote(s, `Session stopped: ${err.message}`);
@@ -5227,6 +5231,56 @@ async function restartAfterWait(p, how) {
   setTimeout(() => process.exit(RESTART_CODE), 200);
 }
 
+// ---------- ☰ > Restart Docket ----------
+// Starts over to free everything Docket holds, unlike the restart above, which leaves the runner and its sessions
+// alone: every program this app and the runner started, at any depth (session programs, their connected services,
+// the private browser), and the runner itself are stopped; then this app exits with RESTART_CODE and supervisor.mjs
+// (or start-docket.cmd) starts it again, and it starts a fresh runner. Sessions that were working or waiting on the
+// person are marked cut off by the restart, so they show under "Open when the portal stopped" with Continue and
+// never continue by themselves; idle ones start again on their next message. Nothing here starts the app again
+// when something else started it (node server.mjs by hand, a test copy): then it only stops, and the page says so.
+// What the page's warning names: sessions working or waiting on the person, and how many are idle.
+function restartRisk() {
+  const working = [], waiting = []; let idle = 0;
+  for (const s of live.values()) {
+    if (s.status === 'ended' || s.resting) continue;
+    const item = { id: s.id, title: s.title || 'Untitled', desk: clientById(s.client)?.name || '' };
+    if (s.status === 'requires_action' || s.pendingAsks?.size) waiting.push(item);
+    else if (s.compacting || holdsRunner(s, runningTasks(s))) working.push(item);
+    else idle++;
+  }
+  return { working, waiting, idle };
+}
+const ownHelpers = new Set(); // the listings and stops below, and what they start (a console host): children of this app too, never in what is stopped
+const outOf = ({ cmd, args }) => new Promise((resolve) => ownHelpers.add(execFile(cmd, args, { windowsHide: true, maxBuffer: 64 << 20, timeout: 20_000 }, (err, stdout) => resolve(String(stdout || ''))).pid));
+async function restartDocket() {
+  docketRestarting = true; exiting = true; restarting = true;
+  const risk = restartRisk(), cut = [...risk.working, ...risk.waiting];
+  const relaunch = relaunchesApp(await outOf(commandLineCommand(process.ppid)));
+  broadcast({ t: 'restarting', relaunch });
+  for (const x of cut) { const rec = state.sessions[x.id]; if (rec) rec.cutOff = newCutOff('restart', fileTime(clientById(rec.client), x.id)); }
+  saveState(); // written on exit
+  const runnerPid = (await runnerHealth())?.pid;
+  const before = parseTreeList(await outOf(treeListCommand()));
+  const stopped = new Set([...descendants(before, [process.pid, runnerPid].filter(Boolean), ownHelpers), ...(runnerPid ? [runnerPid] : [])].filter((p) => !ownHelpers.has(p)));
+  const stop = (pids) => { const c = killCommand(pids); return c ? outOf(c) : null; };
+  await stop([...stopped]);
+  // Look again, up to three times a second apart, for anything still there or started meanwhile (a browser can take
+  // a moment to go).
+  let again = 0, left = [];
+  for (let i = 0; i < 3; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const after = parseTreeList(await outOf(treeListCommand()));
+    left = [...new Set([...leftBehind(before, after, stopped), ...descendants(after, [process.pid], ownHelpers)])].filter((p) => !ownHelpers.has(p));
+    if (!left.length) break;
+    again += left.length; await stop(left); for (const p of left) stopped.add(p);
+  }
+  const detail = [`stopped the runner${runnerPid ? ` (pid ${runnerPid})` : ' (not running)'} and ${stopped.size - (runnerPid ? 1 : 0)} program(s) below it and the app${again ? `, ${again} on a second look` : ''}${left.length ? `; still there after three looks: pid ${left.join(', ')}` : ''}`,
+    cut.length ? `cut off, left for Continue: ${cut.map((x) => `"${x.title}" (${x.id})`).join(', ')}` : 'nothing was working or waiting', `${risk.idle} idle session(s) start again on their next message`].join('\n');
+  logEvent(relaunch ? 'restarted (Restart Docket)' : 'stopped (Restart Docket; nothing here starts the app again, so start it by hand)', detail);
+  setTimeout(() => process.exit(relaunch ? RESTART_CODE : 0), 300);
+}
+
 // ---------- updates from GitHub ----------
 // Every few minutes (state.updates.minutes, 0 = off) look for new git commits on master and, when there
 // are some, fast-forward this folder to them; takeChanges above then takes them in, as after a pull by hand.
@@ -5346,7 +5400,7 @@ scheduleUpdates(30000); // the first check soon after starting, then on the time
 // Check on it every few seconds: start it again when it is gone, and put back the sessions it was holding.
 let runnerCheck = false;
 setInterval(async () => {
-  if (runnerCheck || !runnerToken) return; // runnerToken: the runner has been reached at least once
+  if (runnerCheck || !runnerToken || docketRestarting) return; // runnerToken: the runner has been reached at least once
   runnerCheck = true;
   try {
     if (await runnerHealth()) return;
@@ -5582,6 +5636,7 @@ async function buildHistoryNow(client) {
     ownGroupId: state.sessions[r.sessionId]?.groupId ?? null,
     editFor: state.sessions[r.sessionId]?.editFor || null,
     midReply: !!state.sessions[r.sessionId]?.cutOff || (cutAtStart(r.sessionId) && !!state.sessions[r.sessionId]?.busy),
+    cutBy: state.sessions[r.sessionId]?.cutOff?.how || null,
     waiting: !!state.sessions[r.sessionId]?.waiting || desktopWaits(r.sessionId, files.get(r.sessionId)),
     unreadWhy: state.sessions[r.sessionId]?.waitingWhy?.why || null, // why it was waiting when it stopped (#671)
     unreadSaid: state.sessions[r.sessionId]?.waitingWhy?.said || null,
@@ -8137,6 +8192,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/update/check') { await checkForUpdate(); return json(res, 200, updateInfo()); }
     if (req.method === 'POST' && p === '/api/update/restart-now') { restartWait.now(); return json(res, 200, updateInfo()); } // skip the wait for a quiet moment
+    // ☰ > Restart Docket: GET says what it would cut off, for the warning; POST does it (the page then waits for the app).
+    if (req.method === 'GET' && p === '/api/restart-docket') return json(res, 200, restartRisk());
+    if (req.method === 'POST' && p === '/api/restart-docket') {
+      if (docketRestarting) return json(res, 409, { error: 'Docket is already restarting' });
+      restartDocket().catch((e) => { logEvent('Restart Docket failed', e?.stack || e); setTimeout(() => process.exit(RESTART_CODE), 300); });
+      return json(res, 200, { ok: true });
+    }
     if (req.method === 'POST' && p === '/api/update/now') { // pulls; the restart follows once it is quiet, or at once with { anyway: true }
       updateAnyway = !!(await readBody(req)).anyway;
       await checkForUpdate(true);
