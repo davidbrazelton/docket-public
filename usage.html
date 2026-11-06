@@ -16,6 +16,8 @@
   --accent: #c2410c; --accent-soft: #fde7d9; --ok: #15803d; --bad: #b91c1c;
   --s-hypo: #8a8983; --s-save: #15803d; --s-actual: var(--accent); --s-main: #2563eb; --s-agent: #9333ea; --s-compact: #d97706; --s-expiry: #dc2626;
   --lines-add: #14703a; --lines-del: #b91c1c; /* lines added / removed, 4.5:1 or better on --bg, --panel and --panel-2 */
+  /* what started each turn (the Cause column); the coordination causes are the warm ones */
+  --c-person: #2563eb; --c-brief: #0d9488; --c-send: #65a30d; --c-report: #dc2626; --c-report-quiet: #db2777; --c-notice-coord: #d97706; --c-notice: #8a8983; --c-task: #9333ea; --c-none: #c8c6bf; --s-coord: #dc2626;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -23,6 +25,7 @@
     --bg: #1b1b19; --panel: #232321; --panel-2: #2b2b28; --line: #373633; --text: #ecebe6; --muted: #a09f98;
     --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --bad: #f87171;
     --s-hypo: #a09f98; --s-save: #4ade80; --s-main: #60a5fa; --s-agent: #c084fc; --s-compact: #fbbf24; --s-expiry: #f87171; --lines-add: #4ade80; --lines-del: #fb8585;
+    --c-person: #60a5fa; --c-brief: #2dd4bf; --c-send: #a3e635; --c-report: #f87171; --c-report-quiet: #f472b6; --c-notice-coord: #fbbf24; --c-notice: #a09f98; --c-task: #c084fc; --c-none: #55544f; --s-coord: #f87171;
     color-scheme: dark;
   }
 }
@@ -30,6 +33,7 @@
   --bg: #1b1b19; --panel: #232321; --panel-2: #2b2b28; --line: #373633; --text: #ecebe6; --muted: #a09f98;
   --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --bad: #f87171;
   --s-hypo: #a09f98; --s-save: #4ade80; --s-main: #60a5fa; --s-agent: #c084fc; --s-compact: #fbbf24; --s-expiry: #f87171; --lines-add: #4ade80; --lines-del: #fb8585;
+  --c-person: #60a5fa; --c-brief: #2dd4bf; --c-send: #a3e635; --c-report: #f87171; --c-report-quiet: #f472b6; --c-notice-coord: #fbbf24; --c-notice: #a09f98; --c-task: #c084fc; --c-none: #55544f; --s-coord: #f87171;
   color-scheme: dark;
 }
 :root[data-accent] { --accent: var(--accent-light); }
@@ -138,7 +142,7 @@ details.help { margin: 6px 0; } details.help summary { cursor: pointer; font-wei
     <svg class="chart" id="cumChart" preserveAspectRatio="none"></svg>
   </div>
   <div class="box">
-    <h2>Spend by day <span class="legend" id="dayLegend"></span></h2>
+    <h2>Spend by day <span class="legend"><button data-split="source" title="Bars split into your sessions, helper agents and compaction">By source</button><button data-split="cause" title="Bars split by what started each turn: your messages, a session's brief or report, a Docket notice, a background task">By cause</button></span> <span class="legend" id="dayLegend"></span></h2>
     <svg class="chart" id="dayChart" preserveAspectRatio="none"></svg>
   </div>
   <div class="box">
@@ -148,6 +152,7 @@ details.help { margin: 6px 0; } details.help summary { cursor: pointer; font-wei
         <button data-view="title">By title</button>
         <button data-view="tree">By desk, group and family</button>
         <button data-view="conn" title="Desks billed to the same AWS account, sign-in, API key or gateway, added up">By connection</button>
+        <button data-view="cause" title="What started each turn: your messages, a session's brief or report, a Docket notice, a background task">By cause</button>
         <button data-view="raw">Raw rows</button>
       </span>
       <label class="muted" id="allWrap" style="font-size:12px;font-weight:400"><input type="checkbox" id="allFields"> Show all fields</label>
@@ -190,6 +195,7 @@ const F = {
   from: store.get('from', ''), to: store.get('to', ''),
   sessions: new Set(), // empty: all
   view: store.get('view', 'title'),
+  split: store.get('split', 'source'), // Spend by day: bars by source (sessions, agents, compaction) or by cause
   all: store.get('allFields', false),
 };
 const hidden = new Set(store.get('hidden', ['d:hypo']));
@@ -228,12 +234,24 @@ function filtered() {
   return baseRows().filter((r) => r.Date >= a && r.Date <= b && (!F.sessions.size || F.sessions.has(r.SessionId)));
 }
 
+// ---------- what started each turn (the rows' Cause) ----------
+// Rows from before causes were recorded, and Codex and Grok rows, have none ('', shown as "Not recorded").
+const CAUSES = [['person', 'Your messages', '--c-person'], ['brief', 'Start briefs', '--c-brief'], ['send', 'Sent by a session', '--c-send'],
+  ['report', 'Report wakes', '--c-report'], ['report-quiet', 'Report wakes, ended quiet', '--c-report-quiet'], ['notice-coord', 'Coordination notices', '--c-notice-coord'],
+  ['notice', 'Other Docket notices', '--c-notice'], ['task', 'Background tasks', '--c-task'], ['', 'Not recorded', '--c-none']];
+const COORD = new Set(['report', 'report-quiet', 'notice-coord']); // what parent and child sessions cost each other, beyond the work
+const causeName = Object.fromEntries(CAUSES.map(([k, l]) => [k, l]));
+const causeColor = Object.fromEntries(CAUSES.map(([k, , c]) => [k, c]));
+const causeKey = (r) => 'c-' + (r.Cause || 'none'); // a chart series
+
 // ---------- adding up ----------
 function totals(rows) {
-  const t = { cost: 0, main: 0, agent: 0, compact: 0, compactions: 0, grokCompactions: 0, hypo: 0, hypoAgent: 0, agentCost: 0, list: 0, input: 0, cacheRead: 0, cacheSaved: 0, expiries: 0, turns: 0, output: 0, agentSec: 0, waitSec: 0, userSec: 0, added: 0, removed: 0 };
+  const t = { byCause: {}, coord: 0, cost: 0, main: 0, agent: 0, compact: 0, compactions: 0, grokCompactions: 0, hypo: 0, hypoAgent: 0, agentCost: 0, list: 0, input: 0, cacheRead: 0, cacheSaved: 0, expiries: 0, turns: 0, output: 0, agentSec: 0, waitSec: 0, userSec: 0, added: 0, removed: 0 };
   for (const r of rows) {
     t.cost += r.Cost; t.list += r.PersonalCost ?? r.Cost; t.hypo += r.HypotheticalCost ?? r.Cost;
     t[r.Source] = (t[r.Source] || 0) + r.Cost;
+    t.byCause[r.Cause || ''] = (t.byCause[r.Cause || ''] || 0) + r.Cost;
+    if (COORD.has(r.Cause)) t.coord += r.Cost;
     if (r.Source === 'agent') { t.hypoAgent += r.HypotheticalCost ?? r.Cost; t.agentCost += r.Cost; }
     // Grok does not price its compactions apart from the turn they happen in, so they are counted on their own.
     if (r.Brand === 'grok') t.grokCompactions += r.Compacting || 0; else t.compactions += r.Compacting || 0;
@@ -258,6 +276,7 @@ function renderCards(rows) {
     card('Session cost', money(t.main || 0), 'your turns'),
     card('Agent cost', money(t.agent || 0), 'helper agents'),
     card('Compaction cost', money(t.compact || 0), (t.compactions ? `${t.compactions} compaction${t.compactions === 1 ? '' : 's'}, ${money((t.compact || 0) / t.compactions)} each` : 'no compactions') + (t.grokCompactions ? `; ${t.grokCompactions} in Grok, inside its turn cost` : '')),
+    coordCard(t, card),
     card('Hypothetical cost', money(t.hypo), `all on ${esc(R.baseline?.name || 'Opus')}, no routing`),
     card('Routing savings', money(t.savings), `agents ${money(t.saveAgent)} · sessions ${money(t.saveMain)}`, t.savings > 0 ? 'good' : ''),
     ...shiftCard(rows, card),
@@ -269,6 +288,16 @@ function renderCards(rows) {
     card('Lines changed', linesStr(t), 'added and removed by file edits'),
     ...(listDiffers ? [card('API list price', money(t.list), 'without Bedrock regional rates')] : []),
   ].join('');
+}
+
+// What sessions cost each other: turns woken by a report from a session they started (some ending in report_quiet),
+// and Docket's notes about their sessions. Briefs and sent work are the work itself, so they are not in it.
+function coordCard(t, card) {
+  const c = (k) => t.byCause[k] || 0, none = c('');
+  const title = 'Turns started by a <session-report> note (some ended in report_quiet), and Docket\'s notes about a session\'s sessions';
+  return card(`<span title="${esc(title)}">Coordination cost</span>`, money(t.coord),
+    `${pct(t.cost ? t.coord / t.cost : 0)} of spend · report wakes ${money(c('report') + c('report-quiet'))}, ${money(c('report-quiet'))} of them ended quiet · notices ${money(c('notice-coord'))}`
+    + (none >= 0.01 ? `<br>${money(none)} in rows with no cause recorded` : ''));
 }
 
 // What Shift mode saved: its sessions' spend against the same tokens on their brand's top gear.
@@ -284,17 +313,24 @@ function shiftCard(rows, card) {
 
 // ---------- charts (plain SVG) ----------
 const SERIES = {
-  cum: [['hypo', 'Hypothetical', '--s-hypo', true], ['save', 'Savings', '--s-save'], ['actual', 'Actual', '--s-actual'], ['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact']],
+  cum: [['hypo', 'Hypothetical', '--s-hypo', true], ['save', 'Savings', '--s-save'], ['actual', 'Actual', '--s-actual'], ['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['coord', 'Coordination', '--s-coord']],
   day: [['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['hypo', 'Hypothetical', '--s-hypo'], ['expiry', 'Cache expiries', '--s-expiry']],
 };
+// The daily bars' series: by source, or by cause (only the causes with spend in these rows), then the hypothetical and expiries.
+function daySeries(rows) {
+  if (F.split !== 'cause') return SERIES.day;
+  const has = new Set(rows.filter((r) => r.Cost).map(causeKey));
+  return [...CAUSES.map(([k, l, c]) => ['c-' + (k || 'none'), l, c]).filter(([k]) => has.has(k)), ...SERIES.day.filter(([k]) => ['hypo', 'expiry'].includes(k))];
+}
 function dailyData(rows) {
   const [a, b] = rangeDates();
   const days = [];
   for (let d = new Date(a); dayStr(d) <= dayStr(b); d = addDays(d, 1)) days.push(dayStr(d));
-  const by = new Map(days.map((d) => [d, { main: 0, agent: 0, compact: 0, hypo: 0, actual: 0, expiry: 0 }]));
+  const zero = () => ({ main: 0, agent: 0, compact: 0, hypo: 0, actual: 0, expiry: 0, coord: 0, ...Object.fromEntries(CAUSES.map(([k]) => ['c-' + (k || 'none'), 0])) });
+  const by = new Map(days.map((d) => [d, zero()]));
   for (const r of rows) {
     const x = by.get(r.Date); if (!x) continue;
-    x[r.Source] += r.Cost; x.actual += r.Cost; x.hypo += r.HypotheticalCost ?? r.Cost; x.expiry += r.CacheExpiry || 0;
+    x[r.Source] += r.Cost; x[causeKey(r)] += r.Cost; if (COORD.has(r.Cause)) x.coord += r.Cost; x.actual += r.Cost; x.hypo += r.HypotheticalCost ?? r.Cost; x.expiry += r.CacheExpiry || 0;
   }
   return days.map((d) => ({ day: d, ...by.get(d) }));
 }
@@ -314,8 +350,8 @@ function axes(max, days, right) {
 const xAt = (i, n) => PAD.l + (W - PAD.l - PAD.r) * (n === 1 ? 0.5 : (i + 0.5) / n);
 const yAt = (v, max) => PAD.t + (H - PAD.t - PAD.b) * (1 - v / max);
 const colorOf = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-function legend(el, kind) {
-  el.innerHTML = SERIES[kind].map(([k, label, c]) => `<button data-s="${kind[0]}:${k}" class="${hidden.has(kind[0] + ':' + k) ? 'off' : ''}" style="--c:var(${c})"><i></i>${label}</button>`).join('');
+function legend(el, kind, list = SERIES[kind]) {
+  el.innerHTML = list.map(([k, label, c]) => `<button data-s="${kind[0]}:${k}" class="${hidden.has(kind[0] + ':' + k) ? 'off' : ''}" style="--c:var(${c})"><i></i>${label}</button>`).join('');
 }
 // `note` adds a muted line of words after the date, such as what the numbers add up.
 function hoverZones(svg, data, lines, note) {
@@ -333,8 +369,8 @@ function hoverZones(svg, data, lines, note) {
 function renderCharts(rows) {
   const data = dailyData(rows);
   // added up day by day
-  let run = { hypo: 0, save: 0, actual: 0, main: 0, agent: 0, compact: 0 };
-  const cum = data.map((d) => { run = { hypo: run.hypo + d.hypo, actual: run.actual + d.actual, main: run.main + d.main, agent: run.agent + d.agent, compact: run.compact + d.compact }; run.save = run.hypo - run.actual; return { day: d.day, ...run, own: { ...d, save: d.hypo - d.actual } }; });
+  let run = { hypo: 0, save: 0, actual: 0, main: 0, agent: 0, compact: 0, coord: 0 };
+  const cum = data.map((d) => { run = { hypo: run.hypo + d.hypo, actual: run.actual + d.actual, main: run.main + d.main, agent: run.agent + d.agent, compact: run.compact + d.compact, coord: run.coord + d.coord }; run.save = run.hypo - run.actual; return { day: d.day, ...run, own: { ...d, save: d.hypo - d.actual } }; });
   const cumOn = SERIES.cum.filter(([k]) => !hidden.has('c:' + k));
   const cmax = niceMax(Math.max(0, ...cum.flatMap((d) => cumOn.map(([k]) => d[k]))));
   let s = axes(cmax, data.map((d) => d.day));
@@ -349,7 +385,8 @@ function renderCharts(rows) {
     () => `(total since ${shortDay(cum[0].day)})`);
   legend($('cumLegend'), 'cum');
   // each day: bars stacked, the hypothetical as a bar behind them, cache expiries as a line on the right axis
-  const stack = SERIES.day.filter(([k]) => ['main', 'agent', 'compact'].includes(k) && !hidden.has('d:' + k));
+  const series = daySeries(rows);
+  const stack = series.filter(([k]) => !['hypo', 'expiry'].includes(k) && !hidden.has('d:' + k));
   const showHypo = !hidden.has('d:hypo'), showExp = !hidden.has('d:expiry');
   const dmax = niceMax(Math.max(0, ...data.map((d) => Math.max(stack.reduce((a, [k]) => a + d[k], 0), showHypo ? d.hypo : 0))));
   const emax = Math.max(4, Math.ceil(Math.max(0, ...data.map((d) => d.expiry)) / 4) * 4);
@@ -367,10 +404,13 @@ function renderCharts(rows) {
   });
   if (showExp) s += `<polyline points="${data.map((d, i) => `${xAt(i, data.length)},${yAt(d.expiry, emax)}`).join(' ')}" fill="none" stroke="${colorOf('--s-expiry')}" stroke-width="1.5"/>`;
   const daySvg = $('dayChart'); daySvg.setAttribute('viewBox', `0 0 ${W} ${H}`); daySvg.innerHTML = s;
-  hoverZones(daySvg, data, (d) => SERIES.day.filter(([k]) => !hidden.has('d:' + k)).map(([k, label, c]) => [label, c, k === 'expiry' ? d[k] : money(d[k])]));
-  legend($('dayLegend'), 'day');
+  hoverZones(daySvg, data, (d) => series.filter(([k]) => !hidden.has('d:' + k)).map(([k, label, c]) => [label, c, k === 'expiry' ? d[k] : money(d[k])]));
+  legend($('dayLegend'), 'day', series);
+  document.querySelectorAll('[data-split]').forEach((b) => b.classList.toggle('on', b.dataset.split === F.split));
 }
 document.addEventListener('click', (e) => {
+  const sp = e.target.closest('[data-split]');
+  if (sp) { F.split = sp.dataset.split; store.set('split', F.split); renderCharts(filtered()); return; }
   const b = e.target.closest('[data-s]'); if (!b) return;
   const k = b.dataset.s; if (hidden.has(k)) hidden.delete(k); else hidden.add(k);
   store.set('hidden', [...hidden]); renderCharts(filtered());
@@ -393,7 +433,7 @@ function node(level, label, rows, inner) {
 function dayLines(rows, level) {
   return [...rows].sort((a, b) => (a.Date === b.Date ? b.Cost - a.Cost : a.Date < b.Date ? 1 : -1)).map((r) => {
     const t = sum([r]);
-    return `<tr class="sub" data-parent><td style="padding-left:${8 + level * 16 + 14}px">${shortDay(r.Date)} · ${sourceName[r.Source] || r.Source} · ${esc(R.models[r.Model] || r.Model)}</td>${cells(t)}</tr>`;
+    return `<tr class="sub" data-parent><td style="padding-left:${8 + level * 16 + 14}px">${shortDay(r.Date)} · ${sourceName[r.Source] || r.Source} · ${esc(R.models[r.Model] || r.Model)}${r.Cause ? ` · ${esc(causeName[r.Cause] || r.Cause)}` : ''}</td>${cells(t)}</tr>`;
   }).join('');
 }
 const byCost = (m) => [...m.entries()].sort((a, b) => sum(b[1]).cost - sum(a[1]).cost);
@@ -402,7 +442,7 @@ function sessionNodes(rows, level) {
 }
 function renderTable(rows) {
   nodeId = 0; lazy.clear();
-  const head = `<thead><tr><th>${F.view === 'tree' ? 'Desk › group › family › session' : F.view === 'conn' ? 'Connection › desk › group › session' : 'Title'}</th><th>Turns</th><th>Output</th><th>Cache eff</th><th>Cost</th><th title="Time working on your messages, waits on you taken out">Agent</th><th title="Time a turn stood waiting on you: a permission, a question, a plan">Wait</th><th title="Time you spent typing your messages">You</th><th title="Lines added and removed by the session's file edits">Lines</th></tr></thead>`;
+  const head = `<thead><tr><th>${F.view === 'tree' ? 'Desk › group › family › session' : F.view === 'conn' ? 'Connection › desk › group › session' : F.view === 'cause' ? 'What started the turn › session' : 'Title'}</th><th>Turns</th><th>Output</th><th>Cache eff</th><th>Cost</th><th title="Time working on your messages, waits on you taken out">Agent</th><th title="Time a turn stood waiting on you: a permission, a question, a plan">Wait</th><th title="Time you spent typing your messages">You</th><th title="Lines added and removed by the session's file edits">Lines</th></tr></thead>`;
   $('allWrap').style.display = F.view === 'raw' ? '' : 'none';
   document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === F.view));
   if (!rows.length) { $('table').innerHTML = '<div class="empty">No usage in this range.</div>'; return; }
@@ -411,6 +451,10 @@ function renderTable(rows) {
   if (F.view === 'title') {
     // as in the tracker: one line per title, opening to one line per day, source and model
     body = byCost(groupBy(rows, (r) => r.Title)).map(([title, rs]) => node(1, `${esc(title)}${goneTag(rs[0])}${new Set(rs.map((r) => r.SessionId)).size > 1 ? ` <span class="tag">${new Set(rs.map((r) => r.SessionId)).size} sessions</span>` : ''}`, rs, () => dayLines(rs, 1))).join('');
+  } else if (F.view === 'cause') {
+    // one line per cause, opening to the sessions it cost in
+    body = byCost(groupBy(rows, (r) => r.Cause || '')).map(([c, crs]) => node(1, `<span class="dot" style="--c:var(${causeColor[c] || '--c-none'})"></span>${esc(causeName[c] || c)}`
+      + (COORD.has(c) ? ' <span class="tag" title="Counted in the Coordination cost card">coordination</span>' : ''), crs, () => sessionNodes(crs, 2))).join('');
   } else if (F.view === 'conn') {
     // one line per billing connection, its cost the sum across its desks, opening to desk › group › session.
     const groupName = (r) => (r.GroupId ? R.companies.find((c) => c.id === r.Client)?.groups.find((g) => g.id === r.GroupId) : null);
@@ -451,7 +495,7 @@ $('table').addEventListener('click', (e) => {
     n?.remove();
   }
 });
-const RAW_COLS = ['Date', 'Brand', 'Client', 'Group', 'Title', 'Source', 'Model', 'Turns', 'OutputTokens', 'CacheRead', 'Cost', 'AgentSeconds', 'WaitSeconds', 'UserSeconds', 'LinesAdded', 'LinesRemoved'];
+const RAW_COLS = ['Date', 'Brand', 'Client', 'Group', 'Title', 'Source', 'Cause', 'Model', 'Turns', 'OutputTokens', 'CacheRead', 'Cost', 'AgentSeconds', 'WaitSeconds', 'UserSeconds', 'LinesAdded', 'LinesRemoved'];
 function renderRaw(rows) {
   const cols = F.all ? [...new Set(rows.flatMap((r) => Object.keys(r)))] : RAW_COLS;
   const fmt = (c, v) => (typeof v === 'number' ? (/Cost|Saved/.test(c) ? money(v) : /Seconds$/.test(c) ? span(v) : c === 'LinesAdded' ? `<span class="ln-add">${v.toLocaleString()}</span>` : c === 'LinesRemoved' ? `<span class="ln-del">${v.toLocaleString()}</span>` : v.toLocaleString()) : c === 'Client' ? esc(companyName(v)) : c === 'Model' ? esc(R.models[v] || v) : esc(v));
@@ -578,6 +622,9 @@ function renderHelp(rows) {
   <details class="help"><summary>Turns, tokens and compacting</summary>
     <p>A <b>turn</b> is one reply from the AI. Every turn reads the whole conversation so far and then writes its answer, and both are counted in <b>tokens</b> (a token is about three quarters of a word). That is why a long conversation costs more per turn than a new one: each turn reads everything before it again.</p>
     <p>When a conversation gets too long for Claude to hold, Claude Code <b>compacts</b> it: it writes a summary and carries on from that. The summary is not in the log, so Docket estimates each one from how long the conversation was${each ? `; in these dates they averaged ${each} each` : ''}. The turn right after a compaction rebuilds the cache from the summary, so it counts as compaction cost too.</p></details>
+  <details class="help"><summary>Coordination cost, and what started each turn</summary>
+    <p>A turn runs from one message into a session to the next, and each row says what that message was (its <b>cause</b>): one of your messages, the <b>brief</b> a session was started with, work another session <b>sent</b> it, a <b>report</b> from a session it started, a <b>notice</b> from Docket, or a <b>background task</b> reporting back. Helper agents count in the turn they ran in, and so does a compaction.</p>
+    <p>The <b>coordination cost</b> is what sessions cost each other beyond the work itself: turns woken by a report from a session they started (with whatever they then did in that turn, so a report that unblocked real work counts in full), including those that ended in report_quiet (news only), and Docket's notes about a session's sessions ("now reports to you", "started your proposal"). Briefs and sent work are the work, so they are left out. Rows kept from before causes were recorded (their logs are gone), and Codex and Grok rows, have no cause.</p></details>
   <details class="help"><summary>Routing savings</summary>
     <p>Your own turns usually run on ${name}. Helper agents and some steps run on cheaper models such as Sonnet or Haiku. The <b>hypothetical cost</b> prices all of that work as if it had run on ${name} instead (${per(b.input)} per million tokens read, ${per(b.output)} per million written). The <b>routing savings</b> are the difference: what sending work to cheaper models saved. Work already on an Opus model keeps its own price. Work on a dearer model than ${name}, such as Fable, counts against the savings, so they can go below zero.</p></details>
   <details class="help"><summary>Shift savings</summary>

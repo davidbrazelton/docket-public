@@ -150,7 +150,7 @@ test('no key, token or full fingerprint is in the usage index, the CSV, the repo
     }
   }
   const csv = kept[1].split('\r\n');
-  assert.equal(csv[0].split(',').at(-1), 'Connection');
+  assert.equal(csv[0].split(',').at(-2), 'Connection');
   assert.ok(csv.some((l) => l.includes('anthropic-key:api.anthropic.com:') && l.includes('Anthropic API key …3333')));
 });
 

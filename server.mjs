@@ -2176,12 +2176,13 @@ function saveUsageSoon() {
 }
 // A row's Group is the session's group now: a session's whole cost follows it to a new group.
 // A deleted session keeps the group it was in when it was deleted.
-// Rows kept from before PersonalCost and the billed account existed get them filled in here.
+// Rows kept from before PersonalCost and the billed account existed get them filled in here; rows kept from before
+// Cause (a session whose log is gone) have an empty one.
 function withGroup(r) {
   const client = clientById(r.Client);
   const u = usage[r.SessionId];
   const gid = client && (u?.deleted || outsideCodex(u) ? u.groupId : effectiveGroup(client, r.SessionId));
-  const row = fillRow({ ...r, Brand: r.Brand || 'claude', Group: gid ? groupById(client.id, gid)?.name || '' : '' }, loadPrices(PRICING_FILE));
+  const row = fillRow({ ...r, Brand: r.Brand || 'claude', Cause: r.Cause ?? '', Group: gid ? groupById(client.id, gid)?.name || '' : '' }, loadPrices(PRICING_FILE));
   if (row.BilledProfile === undefined) Object.assign(row, { BilledProfile: client ? billedLabels(client).subscription : '', ProfileInferred: 1 });
   // Rows kept from before connections get one from today's setup; a Bedrock row is known by its account's label.
   if (!row.Connection && client && row.BilledProfile) {

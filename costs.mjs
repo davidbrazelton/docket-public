@@ -10,7 +10,7 @@
 // Columns the tracker has and Docket adds: PersonalCost is the API list price (Cost without
 // Bedrock's regional uplift), BilledProfile the account that paid (the AWS profile for a Bedrock
 // reply, else the company's Claude sign-in, read from today's settings, so ProfileInferred is 1).
-// Connection (last) is the billing connection's key from connection.mjs; BilledProfile is then its label, and
+// Connection is the billing connection's key from connection.mjs; BilledProfile is then its label, and
 // ProfileInferred is 0 when the session recorded its connection when it started.
 // Two more feed the Usage page: HypotheticalCost, every reply on pricing.json's routingBaseline model
 // (an Opus; replies already on an Opus keep their own price), and CacheSaved, what the cache reads
@@ -39,6 +39,11 @@
 //    read of its preTokens plus pricing.json's compactionEstimate, on the session's
 //    model, and the reply after it (which rewrites the cache) counts as compaction;
 //  - workflow agents log one level down, under subagents/workflows/<run>/.
+//
+// Cause says what started the turn a reply is in (turnCause below): a turn runs from one message into the main log
+// (not a tool result, a compact summary or a meta or local command) to the next, and its cause is read from that
+// message's words. Helper agents' replies go to the main turn they ran in, by time. A report turn that called
+// report_quiet (not to cancel it) is report-quiet. Replies before the first message have no cause ('').
 //
 // Lines added and removed come from the tool results of file edits: a user line whose toolUseResult has a
 // structuredPatch (Edit, MultiEdit, a Write over a file) counts its hunks' + and - lines; a Write of a new file
@@ -118,6 +123,33 @@ export function editLines(result) {
   return added || removed ? { added, removed } : null;
 }
 
+// What started a turn, from the words of the message that began it: a report from a session this one started
+// (report), the brief a session was started with (brief), work another session sent (send), a note from Docket about
+// its sessions (notice-coord) or about something else (notice), a background task's result (task), else the person.
+export const CAUSES = ['person', 'brief', 'send', 'report', 'report-quiet', 'notice-coord', 'notice', 'task'];
+// The coordination causes: what parent and child sessions cost each other beyond the work itself.
+export const COORDINATION = ['report', 'report-quiet', 'notice-coord'];
+const COORD_NOTICE = /reports to you|handed its work off|started your proposal|under this one from the portal|now reports to the session|no longer reports|moved .* under/;
+export function turnCause(text) {
+  const t = String(text || '');
+  if (t.includes('<session-report>')) return 'report';
+  if (t.includes('This session was started by the session')) return 'brief';
+  if (t.includes('(Sent by the session')) return 'send';
+  if (/^\s*\(From Docket:/.test(t)) return COORD_NOTICE.test(t) ? 'notice-coord' : 'notice';
+  if (t.includes('<task-notification>')) return 'task';
+  return 'person';
+}
+const messageText = (content) => (typeof content === 'string' ? content
+  : Array.isArray(content) ? content.filter((b) => b.type === 'text').map((b) => b.text).join('\n') : '');
+// A local command (/clear, /model...) or an interruption marker: in the log as a user line, but no turn.
+const notATurn = (text) => /^<(command-|local-command)/.test(text.trim()) || text.startsWith('[Request interrupted');
+// The cause of a reply at time `at`: that of the last turn started at or before it.
+function causeAt(causes, at) {
+  let lo = 0, hi = causes.length - 1, hit = null;
+  while (lo <= hi) { const mid = (lo + hi) >> 1; if (causes[mid].start <= at) { hit = causes[mid]; lo = mid + 1; } else hi = mid - 1; }
+  return !hit ? '' : hit.cause === 'report' && hit.quiet ? 'report-quiet' : hit.cause;
+}
+
 // One record per Claude reply, plus the session's compactions, title, turns and waits on the person.
 // turns: each message sent (or task notification) to the last reply or tool result before the next one, from the
 // main log only, so a helper agent's work counts inside its parent's turn. waits: a question form or plan approval,
@@ -128,7 +160,8 @@ export function readSession(files) {
   const compactions = [];
   const turns = [], waits = [], asked = new Map(), userSeen = new Set();
   const edits = [], editSeen = new Set();
-  let title = '', turn = null;
+  const causes = []; // { start, cause, quiet }: each turn's cause
+  let title = '', turn = null, causeTurn = null;
   files.forEach((file, fileIndex) => {
     let text = '';
     try { text = fs.readFileSync(file, 'utf8'); } catch { return; }
@@ -149,7 +182,11 @@ export function readSession(files) {
         if (results.length) {
           if (turn) turn.end = Math.max(turn.end, at);
           for (const b of results) if (asked.has(b.tool_use_id)) { waits.push([asked.get(b.tool_use_id), at]); asked.delete(b.tool_use_id); }
-        } else if (!e.isCompactSummary) { turn = { start: at, end: at }; turns.push(turn); }
+        } else if (!e.isCompactSummary) {
+          turn = { start: at, end: at }; turns.push(turn);
+          const text = messageText(content);
+          if (!e.isMeta && !notATurn(text)) { causeTurn = { start: at, cause: turnCause(text), quiet: false }; causes.push(causeTurn); }
+        }
         continue;
       }
       if (fileIndex === 0 && (line.includes('"custom-title"') || line.includes('"compact_boundary"'))) {
@@ -164,7 +201,10 @@ export function readSession(files) {
       if (fileIndex === 0 && !e.isSidechain && !(e.uuid && seen.has(e.uuid))) {
         const at = Date.parse(e.timestamp) || 0;
         if (turn && at) turn.end = Math.max(turn.end, at);
-        for (const b of e.message.content || []) if (b.type === 'tool_use' && ASK_TOOLS.has(b.name) && at) asked.set(b.id, at);
+        for (const b of e.message.content || []) {
+          if (b.type === 'tool_use' && ASK_TOOLS.has(b.name) && at) asked.set(b.id, at);
+          if (b.type === 'tool_use' && /(^|__)report_quiet$/.test(b.name || '') && !b.input?.cancel && causeTurn) causeTurn.quiet = true;
+        }
       }
       const rawModel = e.message.model || '';
       if (!rawModel || rawModel.startsWith('<')) continue; // "<synthetic>" lines are not API calls
@@ -179,7 +219,10 @@ export function readSession(files) {
       replies.set(key, r);
     }
   });
-  return { replies: [...replies.values()].sort((a, b) => a.at - b.at), compactions, title, turns: turns.filter((t) => t.end > t.start), waits, edits };
+  const sorted = [...replies.values()].sort((a, b) => a.at - b.at);
+  causes.sort((a, b) => a.start - b.start);
+  for (const r of sorted) r.cause = causeAt(causes, r.at);
+  return { replies: sorted, compactions, title, turns: turns.filter((t) => t.end > t.start), waits, edits, causes };
 }
 
 // ---------- time ----------
@@ -219,7 +262,7 @@ export function timeByDay(turns, waits = []) {
 // A row with no use on it, for a day that only has time on it.
 export const emptyRow = (from, day) => ({ ...from, Date: day, Source: 'main', Turns: 0, Agents: 0, CacheExpiry: 0, Compacting: 0, ToolCalls: 0, FilesTouched: 0,
   AvgTokensPerTurn: 0, InputTokens: 0, OutputTokens: 0, CacheRead: 0, CacheCreate: 0, CacheCreate1h: 0, Cost: 0, PersonalCost: 0, HypotheticalCost: 0, CacheSaved: 0,
-  AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0 });
+  AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0, Cause: '' });
 // Each day's seconds (or lines) (key: AgentSeconds, WaitSeconds or UserSeconds) go on that day's first row, as Compacting does, so
 // adding up any set of rows counts them once. A day with time but no row gets an empty row of its own to carry it.
 export function addSeconds(rows, key, byDay) {
@@ -320,7 +363,7 @@ function addCompactions(replies, compactions, prices) {
     if (!before) continue;
     const after = main.find((r) => r.at > c.at);
     if (after) after.compaction = true;
-    out.push({ key: `compact:${c.at}`, model: before.model, at: c.at, subagent: false, tools: new Map(), bedrock: before.bedrock, global: before.global, compaction: true, estimate: true,
+    out.push({ key: `compact:${c.at}`, model: before.model, at: c.at, subagent: false, cause: (after || before).cause || '', tools: new Map(), bedrock: before.bedrock, global: before.global, compaction: true, estimate: true,
       usage: { input_tokens: est.input || 0, output_tokens: est.output || 0, cache_read_input_tokens: c.preTokens,
         cache_creation: { ephemeral_1h_input_tokens: est.cacheWrite1h || 0, ephemeral_5m_input_tokens: 0 } } });
   }
@@ -352,7 +395,7 @@ export function summarize(priced) {
 // ---------- per-day rows, in the tracker's columns ----------
 export const CSV_COLUMNS = ['Client', 'Group', 'SessionId', 'Date', 'Title', 'Source', 'Model', 'Turns', 'Agents', 'CacheExpiry', 'Compacting', 'ToolCalls', 'FilesTouched',
   'AvgTokensPerTurn', 'InputTokens', 'OutputTokens', 'CacheRead', 'CacheCreate', 'CacheCreate1h', 'Cost', 'PersonalCost', 'BilledProfile', 'ProfileInferred',
-  'HypotheticalCost', 'CacheSaved', 'Brand', 'AgentSeconds', 'WaitSeconds', 'UserSeconds', 'LinesAdded', 'LinesRemoved', 'Connection'];
+  'HypotheticalCost', 'CacheSaved', 'Brand', 'AgentSeconds', 'WaitSeconds', 'UserSeconds', 'LinesAdded', 'LinesRemoved', 'Connection', 'Cause'];
 // billed: { subscription, bedrock, bedrockKnown } names the account each kind of reply was paid by; with
 // connection / bedrockConnection (connection.mjs) the row gets its key in Connection and its label in BilledProfile.
 // A connection recorded on the session when it started (recorded: true) is not inferred; one read from today's setup is.
@@ -371,12 +414,12 @@ export function dayRows(client, sessionId, title, priced, compactions, agentCoun
   const toolsByDay = {}, filesByDay = {}, expiriesByDay = {};
   for (const r of priced) {
     const day = localDate(r.at), source = r.subagent ? 'agent' : r.compaction ? 'compact' : 'main';
-    const key = `${day}|${source}|${r.model}|${r.bedrock ? 'bedrock' : r.brand || 'claude'}`;
+    const key = `${day}|${source}|${r.model}|${r.bedrock ? 'bedrock' : r.brand || 'claude'}|${r.cause || ''}`;
     const g = groups.get(key) || { Client: client, SessionId: sessionId, Date: day, Title: (title || '(untitled)').slice(0, 60), Source: source, Model: r.model,
       Turns: 0, Agents: 0, CacheExpiry: 0, Compacting: 0, ToolCalls: 0, FilesTouched: 0, AvgTokensPerTurn: 0,
       InputTokens: 0, OutputTokens: 0, CacheRead: 0, CacheCreate: 0, CacheCreate1h: 0, Cost: 0, PersonalCost: 0,
       ...billedColumns(r.bedrock, billed),
-      HypotheticalCost: 0, CacheSaved: 0, Brand: r.brand || 'claude', AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0, _files: new Set() };
+      HypotheticalCost: 0, CacheSaved: 0, Brand: r.brand || 'claude', AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0, Cause: r.cause || '', _files: new Set() };
     if (!r.estimate) g.Turns++;
     g.InputTokens += r.tokens.input; g.OutputTokens += r.tokens.output; g.CacheRead += r.tokens.cacheRead;
     g.CacheCreate += r.tokens.cacheWrite5m + r.tokens.cacheWrite1h; g.CacheCreate1h += r.tokens.cacheWrite1h;
@@ -389,7 +432,7 @@ export function dayRows(client, sessionId, title, priced, compactions, agentCoun
     for (const t of r.tools.values()) if (t.file) g._files.add(t.file);
     groups.set(key, g);
   }
-  const rows = [...groups.values()].sort((a, b) => (a.Date + a.Source + a.Model < b.Date + b.Source + b.Model ? -1 : 1));
+  const rows = [...groups.values()].sort((a, b) => (a.Date + a.Source + a.Model + a.Cause < b.Date + b.Source + b.Model + b.Cause ? -1 : 1));
   // Per-day and per-session counts go on one row each, so adding up the CSV counts them once.
   const daysDone = new Set();
   for (const g of rows) {
@@ -426,7 +469,7 @@ function analyse(mainFile, sessionId, pricingFile, models = null) {
   return data;
 }
 // ROWS_VERSION changes when the rows gain columns, so every session that still has a log is read again once.
-const ROWS_VERSION = 4; // 3: agent and wait seconds; 4: lines added and removed
+const ROWS_VERSION = 5; // 3: agent and wait seconds; 4: lines added and removed; 5: cause
 export function sessionSignature(mainFile, sessionId, pricingFile) {
   loadPrices(pricingFile);
   return sessionLogFiles(mainFile, sessionId).map((f) => { try { return fs.statSync(f).size; } catch { return 0; } }).join(',') + '|' + priceCache.mtime + '|v' + ROWS_VERSION;
