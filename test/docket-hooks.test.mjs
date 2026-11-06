@@ -23,7 +23,7 @@ const globex = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'comma
 
 test('the plugin lists its hooks by their script names', () => {
   const list = pluginHooks(PLUGIN);
-  assert.deepEqual(list.map((h) => [h.name, h.event, h.matcher]), [['bash-cmdline-guard', 'PreToolUse', 'Bash'], ['shift-first-edit', 'PreToolUse', 'Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|search_replace|write|run_terminal_command'], ['artifact-new-guard', 'PreToolUse', 'Artifact']]);
+  assert.deepEqual(list.map((h) => [h.name, h.event, h.matcher]), [['bash-cmdline-guard', 'PreToolUse', 'Bash'], ['shift-first-edit', 'PreToolUse', 'Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|search_replace|write|run_terminal_command'], ['artifact-new-guard', 'PreToolUse', 'Artifact'], ['big-output', 'PostToolUse', 'Bash|Read|Grep|mcp__.*']]);
   assert.ok(fs.existsSync(path.join(PLUGIN, '.claude-plugin', 'plugin.json')));
 });
 

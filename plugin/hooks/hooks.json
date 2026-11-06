@@ -35,6 +35,19 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Read|Grep|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/big-output.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Keeping a big tool result on disk"
+          }
+        ]
+      }
     ]
   }
 }

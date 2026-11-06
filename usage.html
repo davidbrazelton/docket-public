@@ -614,6 +614,14 @@ $('fRange').onchange = () => { F.range = $('fRange').value; store.set('range', F
 $('fFrom').onchange = $('fTo').onchange = () => { F.from = $('fFrom').value; F.to = $('fTo').value; store.set('from', F.from); store.set('to', F.to); render(); };
 
 // ---------- help ----------
+// What the big-output hook did in these dates (and desk): R.bigOutput is per day and desk.
+function bigOutputLine() {
+  const [a, b] = rangeDates().map(dayStr);
+  const t = (R.bigOutput || []).filter((r) => r.date >= a && r.date <= b && (!F.company || r.client === F.company))
+    .reduce((s, r) => ({ cuts: s.cuts + r.cuts, out: s.out + r.chars - r.kept, rereads: s.rereads + r.rereads }), { cuts: 0, out: 0, rereads: 0 });
+  if (!t.cuts) return 'Nothing was cut in these dates.';
+  return `In these dates it cut <b>${t.cuts.toLocaleString()}</b> result${t.cuts === 1 ? '' : 's'}, keeping about <b>${Math.round(t.out * 0.45 / 1000).toLocaleString()}k tokens</b> out of the conversations, and the sessions read back what was cut <b>${t.rereads.toLocaleString()}</b> time${t.rereads === 1 ? '' : 's'}.`;
+}
 function renderHelp(rows) {
   const b = R.baseline || {}, name = esc(b.name || 'Opus');
   const t = totals(rows), each = t.compactions ? money((t.compact || 0) / t.compactions) : null;
@@ -632,6 +640,8 @@ function renderHelp(rows) {
   <details class="help"><summary>The cache</summary>
     <p>Claude keeps the start of a conversation in a <b>cache</b> for 5 minutes or 1 hour, so the next turn does not pay full price to read it again. On ${name}, reading from the cache costs ${per(b.cacheRead)} per million tokens instead of ${per(b.input)}${b.input ? `, ${Math.round((1 - b.cacheRead / b.input) * 100)}% less` : ''}; putting it there costs a little more than plain reading (${per(b.cacheWrite1h ?? b.cacheWrite5m)} per million for an hour). <b>Cache efficiency</b> is the share of what was read that came from the cache, and <b>saved</b> is what those reads would have cost at full price, by each reply's own model.</p>
     <p>A <b>cache expiry</b> is a gap between turns longer than the cache lasts. The next turn then puts the whole conversation back in the cache at full price, so a session left waiting for over an hour costs more when it picks up again.</p></details>
+  <details class="help"><summary>Big tool results kept on disk</summary>
+    <p>A command's output, a file read or a connected tool's result over about 8,000 tokens is not put in the conversation whole: Docket's big-output hook saves it to a file and the session gets its start, its end and where the rest is. ${bigOutputLine()} Many reads back for each cut would mean the cuts cost more calls than they save.</p></details>
   <details class="help"><summary>Agent, wait and your time</summary>
     <p><b>Agent time</b> runs from each message you send (or a background task reporting back) to the session's last reply to it. Time a session sits open with nothing running does not count, and helper agents count inside the turn that started them. <b>Waiting on you</b> is the part of a turn spent on a question for you: a permission, a question form or a plan to approve, from when it showed to when it was answered. It is taken out of agent time and shown on its own, since answering sooner shortens it. Both come from the session logs, so past sessions have them too (Claude and Codex; Grok's records do not say when a turn started, so its time stays empty).</p>
     <p><b>Your time</b> is time spent typing in a session's message box: it starts at the first keystroke, pauses when you pick another session, switch to another tab or window, or stop typing for a minute, picks up again when you come back while text is still in the box, and stops when you send. It is measured from when this was added, not before.</p>

@@ -76,6 +76,8 @@ import { REMOTE_HOURS, ASK_WAIT_MS, newSecret, checkCode, stepOf, otpUri, makeCe
   remoteRoute, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedTls, pinnedRequest, connectError } from './remote.mjs';
 import { z } from 'zod';
 import { deskCheck, deskCheckText } from './desk-check.mjs';
+import { KEEP_DAYS, OUTPUT_FOLDER } from './output-limits.mjs';
+import { outputUseRows, addRows, readLog, outputFolders, OUTPUT_LOG } from './big-output-use.mjs';
 import {
   query, listSessions, getSessionMessages, renameSession, tool, createSdkMcpServer,
 } from '@anthropic-ai/claude-agent-sdk';
@@ -2516,6 +2518,7 @@ function usageReport() {
     models,
     baseline: modelRates(prices, prices.routingBaseline || 'claude-opus'),
     compactionEstimate: prices.compactionEstimate?.note || '',
+    bigOutput: bigOutputUse(), // the big-output hook's cuts and reads back, per day and desk (#748)
     companies: CLIENTS.map((c) => ({ id: c.id, name: c.name, color: c.color || null, groups: groupsOf(c.id).map((g) => ({ id: g.id, name: g.name, color: g.color })) })),
   };
 }
@@ -4217,6 +4220,25 @@ async function ghForSession(s, client) {
 // undocumented variable turns it on, with no browser tab on publish. Artifacts need a claude.ai sign-in, so not on
 // Bedrock or a gateway. Set before the desk's own env, which can still turn it off.
 const artifactEnv = (client) => isBedrock(client) || gatewayFor(client, 'claude') ? {} : { CLAUDE_CODE_ARTIFACT: '1', CLAUDE_CODE_ARTIFACT_AUTO_OPEN: '0' };
+// ---------- big tool results kept on disk (plugin/hooks/big-output.mjs, #748) ----------
+// Each Claude session's saved outputs go in data/tool-output/<session>; the hook does nothing without the folder.
+const TOOL_OUTPUT = path.join(DATA_DIR, OUTPUT_FOLDER);
+const TOOL_OUTPUT_USE = path.join(DATA_DIR, 'tool-output-use.json'); // the counts of folders already removed
+const outputEnv = (id) => ({ DOCKET_TOOL_OUTPUT_DIR: path.resolve(TOOL_OUTPUT, id) }); // whole, as the hook runs in the session's folder
+const sessionClient = (id) => state.sessions[id]?.client || usage[id]?.client || '';
+const doneOutputUse = () => { try { return JSON.parse(fs.readFileSync(TOOL_OUTPUT_USE, 'utf8')); } catch { return []; } };
+// Per day and desk: results cut, their characters and what was kept, and reads back (big-output-use.mjs).
+const bigOutputUse = () => addRows(doneOutputUse(), ...outputFolders(TOOL_OUTPUT).map((f) => outputUseRows(readLog(path.join(f.dir, OUTPUT_LOG)), sessionClient(f.id))));
+// A session folder nothing was written to for KEEP_DAYS goes to the Recycle Bin, its counts kept first.
+async function pruneToolOutput() {
+  const old = outputFolders(TOOL_OUTPUT).filter((f) => f.newest && Date.now() - f.newest > KEEP_DAYS * 86400000 && !live.get(f.id)?.running);
+  if (!old.length) return;
+  const rows = addRows(doneOutputUse(), ...old.map((f) => outputUseRows(readLog(path.join(f.dir, OUTPUT_LOG)), sessionClient(f.id))));
+  fs.writeFileSync(TOOL_OUTPUT_USE + '.tmp', JSON.stringify(rows)); fs.renameSync(TOOL_OUTPUT_USE + '.tmp', TOOL_OUTPUT_USE);
+  await toTrash(old.map((f) => f.dir)).catch((e) => logEvent('old tool output left', e.message));
+}
+setTimeout(() => pruneToolOutput().catch(() => {}), 5 * 60_000).unref();
+setInterval(() => pruneToolOutput().catch(() => {}), 6 * 3600_000).unref();
 function startSession({ clientId, cwd, title, parentId, resumeId, settings = {}, engine, record, gear }) {
   const s = makeSession({ clientId, cwd, title, parentId, resumeId, settings, engine, record, gear });
   const client = clientById(s.client), id = s.id;
@@ -4233,7 +4255,7 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
   if (keepsChat(s.engine) && resumeId && !conversation) brandNote(s, newConversationNote(s.engine));
   const options = engineOptions[s.engine] ? engineOptions[s.engine](s, client, conversation) : {
     cwd: s.cwd,
-    env: { ...artifactEnv(client), ...envFor(client, 'claude', id), ...shiftHookEnv(id) },
+    env: { ...artifactEnv(client), ...envFor(client, 'claude', id), ...shiftHookEnv(id), ...outputEnv(id) },
     ...claudeSettings(client),
     // The settings layers the desk turned off on its profile page; left out, Claude Code loads all three.
     ...(client.settingSources ? { settingSources: client.settingSources } : {}),
