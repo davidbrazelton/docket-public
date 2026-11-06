@@ -246,6 +246,11 @@ select.draft-group { max-width: 220px; font: inherit; color: var(--text); backgr
 .dot.ended { background: var(--line); }
 .dot.stopped { background: var(--bad); }
 .dot.failed { background: var(--bad); box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px var(--bad); }
+/* 👁 > Reason tags > Icon as session dot (#720): the reason icon in the dot's place, in its color; the negative margin keeps
+   titles lined up with the 9 px dots. A prompt keeps the "?" badge above, an error draws a triangle in red. */
+.ric { flex: none; display: inline-grid; place-items: center; width: 15px; height: 15px; margin: -3px; color: var(--warn); }
+.ric svg, .ric .pr-ic { width: 15px; height: 15px; display: block; color: inherit; }
+.ric.need-problem { color: var(--bad); }
 .conn { background: var(--bad); color: var(--on-bad); font-size: 12px; padding: 2px 10px; border-radius: 999px; }
 @keyframes pulse { 50% { opacity: .35; } }
 
@@ -657,6 +662,23 @@ header.top #feedbackBtn { padding: 4px 8px; }
 #cacheOffer:not([hidden]) + #planOffer { display: none; }
 #updateOffer .x { position: absolute; top: 6px; right: 6px; padding: 2px 6px; border: 0; color: inherit; }
 #updateOffer .x:hover { background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
+/* The one-time offer of 👁 > Reason tags > Icon as session dot (#720): the same card, with an icon tile, a × and a
+   sample of rows on the panel color so the icons show in their real colors. */
+#reasonOffer .t { padding-right: 18px; }
+#reasonOffer .ic { grid-row: span 2; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--on-accent) 18%, transparent); display: grid; place-items: center; }
+#reasonOffer .ic svg { width: 22px; height: 22px; }
+#reasonOffer .x { position: absolute; top: 6px; right: 8px; border: none; padding: 0 6px; font-size: 16px; line-height: 1.4; opacity: .8; color: inherit; }
+#reasonOffer .x:hover { opacity: 1; background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
+#reasonOffer .x:focus-visible { outline: 2px solid var(--on-accent); outline-offset: 2px; }
+#reasonOffer .ro-sample { grid-column: 1 / -1; margin-top: 6px; background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px; font-size: 13px; }
+#reasonOffer .ro-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; }
+#reasonOffer .ro-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#reasonOffer .ro-t.asking { color: var(--warn); }
+#reasonOffer .ro-m { font-size: 11px; color: var(--muted); }
+#reasonOffer .ro-cap { font-size: 11px; color: var(--muted); padding: 2px 10px 0; }
+#reasonOffer .ro-opt { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 4px; cursor: pointer; }
+#reasonOffer .ro-opt input { accent-color: var(--on-accent); margin: 0; }
+#reasonOffer .ro-hint { grid-column: 1 / -1; font-size: 11px; opacity: .85; }
 #menuBtn.has-update { position: relative; }
 #menuBtn.has-update::after { content: ''; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .key h4 { margin: 8px 0 2px; font-size: 12px; color: var(--text); }
@@ -1321,6 +1343,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="install-offer" id="cacheOffer" role="dialog" aria-labelledby="cacheOfferTitle" hidden></div>
 <div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
 <div class="install-offer" id="updateOffer" role="dialog" aria-labelledby="updateOfferTitle" hidden></div>
+<div class="install-offer" id="reasonOffer" role="dialog" aria-labelledby="reasonOfferTitle" hidden></div>
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Larger view of the image" hidden><img id="lbImg" alt=""><button class="lb-close" id="lbClose" data-tip="lb-close" aria-label="Close">✕</button><button class="lb-prev" id="lbPrev" data-tip="lb-prev" aria-label="Previous image">‹</button><button class="lb-next" id="lbNext" data-tip="lb-next" aria-label="Next image">›</button><div class="lb-count" id="lbCount"></div></div>
 <div class="dlg-back" id="pfDlg" hidden><section class="dlg profile-page" id="profilePage" hidden role="dialog" aria-modal="true" aria-label="Desk Inspector"></section></div>
 <div class="dlg-back" id="dlg" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"><div class="dlg-title" id="dlgTitle"></div><div class="dlg-body" id="dlgBody"></div><div class="dlg-btns" id="dlgBtns"></div></div></div>
@@ -1425,7 +1448,8 @@ const HELP = [
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
     ['attn', '✦ Needs attention', 'Needs attention: show only sessions that\n• need you (a reply or an error you have not opened yet)\n• wait on your answer\n• are working\n• have a warm cache\nBelow them:\n• the ones you touched lately (sent a message or started; the Keep period on the right of ✦ sets how far back, Workday (the last workday) at first; picking one also turns ✦ on)\n• the ones you pinned (right-click a session)\nA family shows whole: a session started from another one sits under it, its parent shown too.\nThe orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then what you touched lately or pinned. Click to show everything.'],
     ['attn-window', '✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, below the others, by when you last touched them (sent a message or started them; opening one does not count):\n• Off: none\n• 12 hours\n• Yesterday: from the start of yesterday\n• Workday (the last workday): from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included\n• 7 days\n• Pins: only pinned ones\nPinned sessions show under every choice. Each desk keeps its own.'],
-    ['reasontags', '👁 > Reason tags', 'Reason tags: a session that needs you also shows why on its row, as a small word or an icon (question, merge, done or reply; hover an icon for its word). Only question has color. An error needs no tag: its dot has a red ring and its time says "error". Off: only the dot shows. Each desk keeps its own.'],
+    ['reasontags', '👁 > Reason tags', 'Reason tags: a session that needs you also shows why on its row, as a small word or an icon (question, merge, done or reply; hover an icon for its word) in a column on the right. Only question has color. An error needs no tag: its dot has a red ring and its time says "error". Off: no column. Icon as session dot, beside these, draws the reason icon in place of the dot. Each desk keeps its own.'],
+    ['reasondot', '👁 > Reason tags > Icon as session dot', 'Icon as session dot: a session that needs you draws its reason icon (question, merge, done, reply, or a red triangle for an error) in place of its yellow dot; hover it for the word. A session paused on a prompt keeps the "?" dot. Works with Words, Icons or Off, which set the column on the right.', 'The reason icon takes the place of the dot on rows that need you. Turn it off for the plain yellow dot.'],
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
     ['commentchips', '👁 > Comment chips', 'Comment chips: show a speech bubble on a session\'s row when one of its tickets or pull requests has a new comment', 'Each row shows a speech bubble when a comment is waiting. Turn it off to hide them; Details still shows them.'],
@@ -1733,6 +1757,9 @@ const HELP = [
     ['cache-ok', 'OK', 'Close this note'],
     ['cache-never', 'Never', 'Never ask about this desk\'s prompt cache again'],
     ['plan-yes', 'OK', 'Keep Docket\'s plans on for this desk. Change it later in the desk\'s Inspector, under Switches'],
+    ['ro-on', 'Turn it on', 'Draw the reason icon in place of the dot on rows that need you, on this desk. Ticked, the word stays on the right too; unticked, there is no column. Change it any time in 👁 > Reason tags'],
+    ['ro-words', 'Keep the word on the right too', 'Ticked: the reason word stays in its column on the right as well (Words). Unticked: only the icon at the dot, and no column (Off)'],
+    ['ro-no', 'Not now', 'Keep the plain dot. This card does not show again; 👁 > Reason tags has Icon as session dot whenever you want it'],
     ['plan-no', 'Turn them off', 'Turn plans off for this desk and don\'t ask again. Turn them on later in the desk\'s Inspector, under Switches'],
     ['ps-convert', 'Convert in a session', 'Start a session on this desk that carries the plans listed here over to the new plan system. The old files stay as they are, and the desk keeps its old plan system until you press Finish the switch'],
     ['ps-switch', 'Switch without converting', 'Switch the plan system now and leave what is listed here where it is, unconverted'],
@@ -2060,12 +2087,18 @@ const NEED_SVG = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-li
 const needIcon = (l) => l === 'merge' ? prIcon('merged') : `<svg viewBox="0 0 16 16" aria-hidden="true">${{
   question: `<circle cx="8" cy="8" r="6.6" ${NEED_SVG}/><path d="M6.1 6.2a2 2 0 1 1 2.9 1.8c-.6.3-1 .7-1 1.4v.3" ${NEED_SVG}/><circle cx="8" cy="11.7" r=".95" fill="currentColor"/>`,
   done: `<path d="M2.8 8.6 6.3 12 13.2 4.4" ${NEED_SVG} stroke-width="2"/>`,
-  reply: `<path d="M2.4 3.2h11.2v7.4H7.4l-3.2 2.6v-2.6H2.4Z" ${NEED_SVG}/>`
+  reply: `<path d="M2.4 3.2h11.2v7.4H7.4l-3.2 2.6v-2.6H2.4Z" ${NEED_SVG}/>`,
+  problem: `<path d="M8 1.9 14.6 13.4H1.4Z" ${NEED_SVG}/><path d="M8 6.2v3.3" ${NEED_SVG} stroke-width="1.9"/><circle cx="8" cy="11.5" r=".95" fill="currentColor"/>`
 }[l]}</svg>`;
 const needMark = (l, as = S.reasonTags) => as === 'icons' ? `<span class="nic need-${l}" title="${l}: ${esc(NEED_TIPS[l])}" aria-label="${l}">${needIcon(l)}</span>` : `<span class="tag need need-${l}" title="${esc(NEED_TIPS[l])}">${l}</span>`;
 const needTag = (s) => { if (S.reasonTags === 'off' || !needsYou(s)) return ''; const l = needLabel(s, openPR(s.id)); return l === 'problem' ? '' : needMark(l); };
 // The title a dot carries: the error for a red ring, what resting means for a hollow green one.
 const dotTip = (s, c = dotClass(s)) => c === 'failed' ? ` title="${esc(failedTip(s))}"` : c === 'asking' ? ' title="Waiting on your answer: the session is paused on a question or a permission prompt"' : c === 'resting' ? ` title="${RESTING_TIP}"` : c === 'childwait' || c === 'childnews' ? ` title="${esc(kidsText(s))}"` : '';
+// A row's dot. With 👁 > Reason tags > Icon as session dot (S.reasonDot, #720) a row that needs you draws its reason icon
+// there instead, problem (a triangle) in place of the red ring; paused on a prompt keeps the "?" badge.
+const reasonIcon = (l, title = ` title="${l}: ${esc(NEED_TIPS[l])}"`) => `<span class="ric need-${l}" role="img" aria-label="${l}"${title}>${needIcon(l)}</span>`;
+const rowDot = (s, c = dotClass(s)) => !S.reasonDot || (c !== 'needs' && c !== 'failed') ? `<span class="dot ${c}"${dotTip(s, c)}></span>`
+  : c === 'failed' ? reasonIcon('problem', dotTip(s, c)) : reasonIcon(needLabel(s, openPR(s.id)));
 const failedTip = (s) => `Last reply ended in an error: ${s.lastError.text.replace(/[.\s]+$/, '')}. Open it to read the error; send a message to try again.`;
 
 async function api(path, body) {
@@ -2216,6 +2249,7 @@ async function init() {
   }, 400);
   api('/api/startup').then(showStartupBanner).catch(() => {});
   showPlanOffer();
+  showReasonOffer();
   // The other companies (their counts on the tabs), and the sign-in checks, arrive behind it.
   Promise.all(shownDesks().filter((c) => c.id !== S.client).map((c) => Promise.all([loadSessions(c.id), loadGroups(c.id)]))).then(renderClients);
   api('/api/clients').then((full) => {
@@ -2277,6 +2311,7 @@ window.addEventListener('hashchange', () => { const id = location.hash.slice(1).
 function selectClient(id, openId) {
   S.client = id; store.set('client', id); history.replaceState(null, '', '#' + id);
   readDeskSettings(); if (viewOpen()) renderViewMenu(); // each desk shows its list its own way
+  showReasonOffer(); // its card is per desk
   showAccent();
   S.picked.clear(); S.pickAnchor = null; S.pickMsg = ''; renderPickBar();
   const c = S.clients.find((x) => x.id === id);
@@ -3934,13 +3969,14 @@ function readDeskSettings() {
   // ☰ > Settings > Reason tags (#682) keeps it: on starts on words, off on off.
   const oldTags = store.get('needTags', null);
   S.reasonTags = REASON_TAGS.find(([v]) => v === deskStore.get('reasonTags'))?.[0] || (oldTags === null ? 'icons' : oldTags ? 'words' : 'off');
+  S.reasonDot = deskStore.get('reasonDot', false); // Icon as session dot (#720): off until picked, so desks keep their look
 }
 const REASON_TAGS = [['words', 'Words'], ['icons', 'Icons'], ['off', 'Off']];
 readDeskSettings();
 const viewOpen = () => !$('viewMenu').hidden;
 function renderViewMenu() {
   // toggle chips, a filter (DESIGN.md): bordered, and when on a soft tint, main-color border and ✓
-  $('viewMenu').innerHTML = `<div class="vm-reason" role="group" aria-label="Reason tags"><span>Reason tags</span>${REASON_TAGS.map(([v, label]) => `<button class="chip-tgl${S.reasonTags === v ? ' on' : ''}" data-reason="${v}" aria-pressed="${S.reasonTags === v}"${tip('reasontags')}>${label}</button>`).join('')}</div>`
+  $('viewMenu').innerHTML = `<div class="vm-reason" role="group" aria-label="Reason tags"><span>Reason tags</span>${REASON_TAGS.map(([v, label]) => `<button class="chip-tgl${S.reasonTags === v ? ' on' : ''}" data-reason="${v}" aria-pressed="${S.reasonTags === v}"${tip('reasontags')}>${label}</button>`).join('')}<span aria-hidden="true"></span><button class="chip-tgl${S.reasonDot ? ' on' : ''}" data-reasondot aria-pressed="${S.reasonDot}"${tip('reasondot', S.reasonDot)}>Icon as session dot</button></div>`
     + VIEW_OPTS.filter(([k]) => (k !== 'brandLogos' || multiBrand()) && (k !== 'showEmptyGroups' || S.groupView))
     .map(([k, , label, key]) => `<button class="chip-tgl${S[k] ? ' on' : ''}" data-view="${k}" aria-pressed="${!!S[k]}"${tip(key, S[k])}>${label}</button>`).join('');
 }
@@ -3986,6 +4022,7 @@ function viewMenu(open) {
 }
 $('viewBtn').onclick = () => viewMenu(!viewOpen());
 $('viewMenu').addEventListener('click', (e) => {
+  if (e.target.closest('[data-reasondot]')) { S.reasonDot = !S.reasonDot; deskStore.set('reasonDot', S.reasonDot); renderViewMenu(); $('viewMenu').querySelector('[data-reasondot]')?.focus(); renderList(); renderHead(); return; }
   const r = e.target.closest('[data-reason]');
   if (r) { S.reasonTags = r.dataset.reason; deskStore.set('reasonTags', S.reasonTags); renderViewMenu(); $('viewMenu').querySelector(`[data-reason="${S.reasonTags}"]`)?.focus(); renderList(); return; }
   const b = e.target.closest('[data-view]'); if (!b) return;
@@ -4098,7 +4135,7 @@ function sessionRow(s, depth) {
   const snip = snippetFor(s);
   const pin = !s.archived && pinnedHere(s.id) ? `<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
   return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''}${S.hoverCard ? '' : ` title="${esc((run?.title || s.title) || 'Untitled')}"`}>
-      ${depth ? '<span class="arrow">↳</span>' : ''}<span class="dot ${dotClass(s)}"${dotTip(s)}></span><span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>
+      ${depth ? '<span class="arrow">↳</span>' : ''}${rowDot(s)}<span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>
       <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // ---------- the hover card (#691): a row's full title and every detail, while 👁 > Hover card is on ----------
@@ -5179,7 +5216,9 @@ async function showViewHistory() {
 function keyHtml() {
   const row = (sym, text, cls = '', sound = '') => `<div class="key-row"><span class="key-sym ${cls}">${sym}</span><span>${text}</span><span class="key-snd">${sound}</span></div>`;
   const dot = (c) => `<span class="dot ${c}"></span>`;
-  const needSample = (l) => needMark(l, S.reasonTags === 'icons' ? 'icons' : 'words') + (S.reasonTags === 'icons' ? ` ${l}` : '');
+  // as this desk draws it: the icon at the dot when Icon as session dot is on, then the column's word or icon
+  const needSample = (l) => (S.reasonDot ? reasonIcon(l) + ' ' : '') + (S.reasonDot && S.reasonTags !== 'words' ? l
+    : needMark(l, S.reasonTags === 'icons' ? 'icons' : 'words') + (S.reasonTags === 'icons' ? ` ${l}` : ''));
   const chips = (tk, pr) => `<span class="tkb tk-${tk}">12</span><span class="prb pr-${pr}">${prIcon(pr)}</span>`;
   // ▶ plays the real sound function, so the Key never drifts from what Docket plays.
   const play = (k) => `<div class="snd"><button class="snd-play" data-play="${k}" title="Play this sound" aria-label="Play: ${esc(SOUND_WORDS[k])}">▶</button><span>${esc(SOUND_WORDS[k])}</span></div>`;
@@ -5203,8 +5242,9 @@ function keyHtml() {
     ${row('8m left', 'A one hour session cache has 10 minutes or less left. Reply soon to keep the saving.', 'warn', play('cache'))}
     ${row('3h ago', 'Grey: the session cache expired, so the next message costs more.', 'cold')}
     ${row('working', '<b>working</b>, <b>background</b>, <b>interrupted</b>, <b>compacting…</b> and a red <b>error</b> take the place of the time and match the dot. A session that needs you keeps showing its minutes of session cache left, and the time since its last reply once that has run out.')}
-    ${head('Why a yellow row needs you (👁 > Reason tags: words, icons or off)')}
-    ${row(needSample('question'), 'It asked you something: a question in its reply, a question form, an "Allow this?" prompt, or a card such as a session offer. Work waits on your answer. While it is paused on a question form or a prompt (the "?" dot), its title is yellow too. A last turn that ended in an error has no tag: its dot has a red ring and its time says "error".')}
+    ${head('Why a yellow row needs you (👁 > Reason tags: words, icons or off, and the icon as the session dot)')}
+    ${row(needSample('question'), 'It asked you something: a question in its reply, a question form, an "Allow this?" prompt, or a card such as a session offer. Work waits on your answer. While it is paused on a question form or a prompt (the "?" dot), its title is yellow too. A last turn that ended in an error has no tag: its dot has a red ring and its time says "error".' + (S.reasonDot ? ' With Icon as session dot, a prompt keeps the "?" dot, so it still looks different from a reply that ends in a question.' : ''))}
+    ${S.reasonDot ? row(reasonIcon('problem') + ' problem', 'With Icon as session dot: the last turn ended in an error. The red triangle takes the place of the red-ringed dot; hover it for the error.') : ''}
     ${row(needSample('merge'), 'Its pull request is open and waiting on you to say merge.')}
     ${row(needSample('done'), 'It says its work is complete and ready to close.')}
     ${row(needSample('reply'), 'A finished reply to read when you like.')}
@@ -6954,7 +6994,7 @@ function renderHead() {
   const s = current(); if (!s) return;
   if (POPOUT) renderClients(); // the window's title is the session's
   const st = !s.live && s.archived ? ['', 'archived'] : !s.live ? (s.midReply ? ['needs', 'interrupted'] : s.elsewhere ? ['running', 'may be running in another app'] : ['', 'saved']) : s.compactingSince ? ['running', 'compacting the conversation'] : needsYou(s) ? ['needs', s.status === 'requires_action' ? 'needs your answer' : `needs you: ${needLabel(s, openPR(s.id))}`] : inBackground(s) ? ['running', s.runningTasks ? `working in background (${s.runningTasks})` : 'working in background'] : waitsOnKids(s) ? ['', kidsText(s)] : [s.status, s.status];
-  $('head').innerHTML = `<span class="dot ${dotClass(s)}"${dotTip(s)}></span><h1 id="title" title="Click to rename">${esc(s.title || 'Untitled')}</h1>
+  $('head').innerHTML = `${rowDot(s)}<h1 id="title" title="Click to rename">${esc(s.title || 'Untitled')}</h1>
     ${multiBrand() ? `<span class="brand-pill"${tip('brand-pill')}>${brandLogo(s.engine || 'claude')}${esc(brand(s))}</span>` : ''}
     <span class="status-pill ${st[0]}" id="pill">${esc(st[1])}</span>
     <button class="ghost hd-more" id="sessMenuBtn" aria-haspopup="menu" aria-expanded="${document.getElementById('ctx')?.dataset.session === s.id}" aria-label="Session menu"${tip('sess-menu')}>⋯</button>`;
@@ -9401,6 +9441,47 @@ api('/api/cache-offers').then(showCacheOffer).catch(() => {});
 // chosen yet (planSystem ''), the desk on view first. Plans are on for such a desk (#605), so it says so: OK saves
 // that, Turn them off saves none, and either way it never comes back; a desk made in the setup wizard chose already.
 // Closing the page without a choice shows it again next time.
+// The one-time card that offers Icon as session dot (#720): once per desk, after the update that brings it or on a new
+// install. Never on a desk that has it on, and never on top of another corner card, the setup wizard, the tour or a dialog: it waits
+// until they close. Not now, × and Turn it on all mark it seen (reasonDotOffer), so it does not come back.
+function reasonOfferSample(words) { // declared, not const: the page's start may call showReasonOffer before this line runs
+  const rows = [['running', '', 'Build the reason-icon dots', 'now'], ['asking', 'question', 'Deploy the runner fix', '1m'],
+  ['needs', 'merge', 'Bump version and open PR', '12m'], ['failed', 'problem', 'Nightly cost report', 'error'],
+  ['needs', 'done', 'Mock the offer card', '20m'], ['needs', 'reply', 'Summarize the open issues', '35m']];
+  return `<div class="ro-sample" aria-hidden="true">${rows.map(([c, l, t, m]) => `<div class="ro-row">${
+  !l || c === 'asking' ? `<span class="dot ${c}"></span>` : reasonIcon(l)}<span class="ro-t${c === 'asking' ? ' asking' : ''}">${t}</span>${
+  words && l && l !== 'problem' ? needMark(l, 'words') : ''}<span class="ro-m">${m}</span></div>`).join('')}<div class="ro-cap">question · merge · problem · done · reply</div></div>`;
+}
+function showReasonOffer() {
+  const el = $('reasonOffer');
+  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['cacheOffer', 'planOffer', 'updateOffer'].some((id) => !$(id).hidden);
+  if (busy || S.reasonDot || deskStore.get('reasonDotOffer', false)) { el.hidden = true; return; }
+  if (!el.hidden && el.dataset.client === S.client) return; // already showing it: keep the keyboard where it is
+  el.dataset.client = S.client;
+  el.innerHTML = `<button class="x" data-ro="no" aria-label="Close"${tip('ro-no')}>×</button><span class="ic" aria-hidden="true">${needIcon('question')}</span>
+    <div class="t" id="reasonOfferTitle">New: see why a session needs you, at its dot</div>
+    <div class="d">A session waiting on you can show why with an icon right where its dot is.</div>
+    ${reasonOfferSample(false)}
+    <label class="ro-opt"><input type="checkbox" data-ro="words"${tip('ro-words')}> Keep the word on the right too</label>
+    <div class="ro-hint">Change it any time in 👁 &gt; Reason tags.</div>
+    <div class="b"><button data-ro="no"${tip('ro-no')}>Not now</button><button class="primary" data-ro="on"${tip('ro-on')}>Turn it on</button></div>`;
+  el.hidden = false;
+}
+$('reasonOffer').onchange = (e) => { if (e.target.dataset.ro === 'words') $('reasonOffer').querySelector('.ro-sample').outerHTML = reasonOfferSample(e.target.checked); };
+$('reasonOffer').onclick = (e) => {
+  const b = e.target.closest('button[data-ro]'), el = $('reasonOffer'); if (!b) return;
+  if (el.dataset.client !== S.client) return showReasonOffer(); // the desk changed under it
+  deskStore.set('reasonDotOffer', true);
+  if (b.dataset.ro === 'on') {
+    S.reasonDot = true; deskStore.set('reasonDot', true);
+    S.reasonTags = el.querySelector('[data-ro="words"]').checked ? 'words' : 'off'; deskStore.set('reasonTags', S.reasonTags);
+    if (viewOpen()) renderViewMenu();
+    renderList(); renderHead();
+  }
+  el.hidden = true;
+};
+// It waits for the others: each one closing (or the wizard, the tour or a dialog) looks again.
+for (const id of ['cacheOffer', 'planOffer', 'updateOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 function showPlanOffer() {
   const el = $('planOffer');
   // A switch of plan system waiting on its conversion session (#700) comes first: it ends only with Finish or Cancel.
