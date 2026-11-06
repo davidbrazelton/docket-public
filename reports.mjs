@@ -80,11 +80,13 @@ export function awaitingAnswer(msgs) {
 
 // Why a parent may not close and archive a session with close_session, or '' when it may.
 // `rec` is the session's saved record, `live` its running session (if any), `reply` its latest reply.
-// Only the session that started it may, never while it works, and never while it waits on the user:
+// Only the session that started it (or that it was moved under) may, or the nearest open session above it when
+// its own parent is archived (under, #717); never while it works, and never while it waits on the user:
 // an open ask, a question, or a next-steps list, since those are left for the user to act on.
-export function closeRefusal({ callerId, rec, live, reply, busy }) {
-  if (!rec || rec.reportsTo !== callerId) return 'it is not a session you started (only your own child sessions can be closed this way)';
-  if (rec.archived) return 'it is already archived';
+// A session still running is open in the list whatever its saved record says, so it can always be closed (#717).
+export function closeRefusal({ callerId, rec, live, reply, busy, under = false }) {
+  if (!rec || (rec.reportsTo !== callerId && !under)) return 'it is not a session you started (only your own child sessions can be closed this way)';
+  if (rec.archived && (!live || live.status === 'ended')) return 'it is already archived';
   if (busy) return 'it is still working; wait for its report';
   if (live?.pendingAsks?.size || endsWaiting(reply)) return 'its last reply is waiting on the user; leave it for them';
   return '';

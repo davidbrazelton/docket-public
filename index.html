@@ -2026,7 +2026,7 @@ const moveDrag = () => !S.showArchived;
 const GROUP_DOT_ORDER = ['running', 'background', 'childwait', 'childnews', 'idle', 'resting', 'asking', 'needs', 'failed', 'stopped', 'ended'];
 // A turn that ended in an error (failed) shows over orange, so it does not look like a normal finish. A session paused on a prompt
 // (requires_action) shows the "?" badge (asking), apart from the plain yellow dot of an unread reply.
-const dotClass = (s) => !s.live ? (s.midReply ? 'stopped' : s.lastError ? 'failed' : s.waiting ? 'needs' : 'ended')
+const dotClass = (s) => !s.live ? (s.archived ? 'ended' : s.midReply ? 'stopped' : s.lastError ? 'failed' : s.waiting ? 'needs' : 'ended') // archived: never blue, even the one kept open on screen (#717)
   : s.compactingSince ? 'running' : ['running', 'starting'].includes(s.status) ? s.status : s.lastError ? 'failed' : s.status === 'requires_action' ? 'asking' : needsYou(s) ? 'needs' : inBackground(s) ? 'background' : waitsOnKids(s) ? (s.kidNews ? 'childnews' : 'childwait') : s.resting && s.status === 'idle' ? 'resting' : s.status;
 const RESTING_TIP = 'Resting: released from memory, wakes on your next message';
 // A parent waiting on child sessions it started that still work, or wait on the person (#645): the still blue ring.
@@ -3453,6 +3453,17 @@ async function renameGroup(g) {
   const name = v && document.getElementById('dlgName').value.trim();
   if (name) await groupAct(g, 'rename', { name });
 }
+// ---------- nesting rows
+// The row a session sits under in the list: its parent, or, for an open session whose parent is archived, the
+// nearest open session above it, the same one list_sessions and close_session count it under (#717). shown: the
+// rows on view (a Map or Set by id); byId: every row. null when it sits at the top.
+function nestParent(s, shown, byId) {
+  const seen = new Set([s.id]);
+  let p = s.parentId;
+  while (p && !seen.has(p) && !s.archived && byId.get(p)?.archived) { seen.add(p); p = byId.get(p).parentId; }
+  return p && !seen.has(p) && shown.has(p) ? p : null;
+}
+// end of nesting rows
 function allSessionRows() {
   const liveRows = Object.values(S.live).filter((s) => s.client === S.client && !s.editFor);
   const liveIds = new Set(liveRows.map((s) => s.id));
@@ -3496,15 +3507,16 @@ function renderGroupView(q = '') {
     : oneRowPerSchedule(rows.filter((s) => archiveMode ? (s.archived || !!groupOf(s.groupId)?.archived) : keptOpen(s) || !s.archived).filter(match));
   const sectionOf = (s) => (s.groupId && shownGroupIds.has(s.groupId)) ? s.groupId : '';
   if (!archiveMode) openGroupsOnArrival(rows, sectionOf);
+  const rowsById = new Map(rows.map((s) => [s.id, s]));
   const familyHtml = (list) => {
     const ids = new Map(list.map((s) => [s.id, s]));
-    const kids = {};
-    for (const s of list) if (s.parentId && s.parentId !== s.id && ids.has(s.parentId)) (kids[s.parentId] ||= []).push(s);
+    const kids = {}, up = new Map(list.map((s) => [s.id, nestParent(s, ids, rowsById)]));
+    for (const s of list) if (up.get(s.id)) (kids[up.get(s.id)] ||= []).push(s);
     const members = (s, d = 0, seen = new Set()) => (seen.has(s.id) ? [] : (seen.add(s.id), [[s, d], ...(kids[s.id] || []).flatMap((c) => members(c, d + 1, seen))]));
     for (const k of Object.values(kids)) k.sort(placeSort());
     // Families waiting on you first, then working ones, then read ones, then closed ones (see familyTier).
     // With ✦ on, families that are only there for being recent or pinned (every row kept only) go below the live ones.
-    const tops = sortTops(list.filter((s) => !(s.parentId && ids.has(s.parentId) && s.parentId !== s.id)), kids);
+    const tops = sortTops(list.filter((s) => !up.get(s.id)), kids);
     const lit = (top) => members(top).some(([s]) => !S.keptOnly.has(s.id));
     return (S.keptOnly.size ? [...tops.filter(lit), ...tops.filter((t) => !lit(t))] : tops)
       .map((top) => members(top).map(([s, d]) => sessionRow(s, familyDepth(d))).join('')).join('');
@@ -3988,11 +4000,12 @@ function renderAttnList(q) {
   // Each family sits whole in the section of its most pressing member, in this order; one with no live member goes in the last.
   const sections = [['needs', 'Needs you'], ['waiting', 'Waiting on your answer'], ['ending', 'Cache running out'], ['cut', 'Cut off mid-reply'], ['working', 'Working'], ['warm', 'Cache still warm'],
     [null, ['off', 'pins'].includes(S.attnWindow) ? 'Pinned' : 'Recent and pinned']];
-  const shown = new Map(list.map((s) => [s.id, s])), kids = {};
-  for (const s of list) if (s.parentId && s.parentId !== s.id && shown.has(s.parentId)) (kids[s.parentId] ||= []).push(s);
+  const shown = new Map(list.map((s) => [s.id, s])), kids = {}, rowsById = new Map(allSessionRows().map((s) => [s.id, s]));
+  const up = new Map(list.map((s) => [s.id, nestParent(s, shown, rowsById)]));
+  for (const s of list) if (up.get(s.id)) (kids[up.get(s.id)] ||= []).push(s);
   for (const k of Object.values(kids)) k.sort(placeSort());
   const members = (s, d = 0, seen = new Set()) => (seen.has(s.id) ? [] : (seen.add(s.id), [[s, d], ...(kids[s.id] || []).flatMap((c) => members(c, d + 1, seen))]));
-  const fams = list.filter((s) => !(s.parentId && shown.has(s.parentId) && s.parentId !== s.id)).map((top) => {
+  const fams = list.filter((s) => !up.get(s.id)).map((top) => {
     const m = members(top).map(([s]) => s), kinds = m.map((s) => a.live.has(s.id) ? kind(s) : null);
     return { top, m, k: sections.find(([k]) => kinds.includes(k))[0] };
   });
@@ -4340,11 +4353,12 @@ function renderList() {
     // top group if any member is running. Inside each group: families waiting on you, then working ones,
     // then read ones (see familyTier).
     const shown = new Map(all.map((s) => [s.id, s]));
-    const kids = {};
-    for (const s of all) if (s.parentId && s.parentId !== s.id && shown.has(s.parentId)) (kids[s.parentId] ||= []).push(s);
+    const kids = {}, rowsById = new Map([...liveRows, ...allHist].map((s) => [s.id, s]));
+    const up = new Map(all.map((s) => [s.id, nestParent(s, shown, rowsById)]));
+    for (const s of all) if (up.get(s.id)) (kids[up.get(s.id)] ||= []).push(s);
     const members = (s, d = 0, seen = new Set()) => (seen.has(s.id) ? [] : (seen.add(s.id), [[s, d], ...(kids[s.id] || []).flatMap((c) => members(c, d + 1, seen))]));
     const rank = { run: 0, cut: 1, hist: 2 };
-    const families = sortTops(all.filter((s) => !(s.parentId && shown.has(s.parentId) && s.parentId !== s.id)).map((top) => {
+    const families = sortTops(all.filter((s) => !up.get(s.id)).map((top) => {
       const m = members(top).map(([s]) => s);
       return { top, group: m.map(kind).sort((a, b) => rank[a] - rank[b])[0] };
     }), kids, (f) => f.top);

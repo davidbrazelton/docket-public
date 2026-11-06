@@ -18,6 +18,7 @@ import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
 import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText } from './reports.mjs';
+import { openParent, openFamily, closedNote } from './family.mjs';
 import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
@@ -533,15 +534,28 @@ class InputQueue {
 const runningTasks = (s) => [...s.tasks.values()].filter((t) => t.status === 'running' && !t.ambient).length;
 // The session a session's finished turns report to (reportRoute): who sent it work, else its parent.
 const reportsHere = (rec) => rec?.replyTo && rec.replyTo !== rec.reportsTo ? rec.replyTo : rec?.reportsTo || null;
+// Where a live child stands for its parent: 'working', 'waiting' (on the person) or 'done' (childState).
+function liveChildState(c) {
+  const reply = c.events.findLast((e) => e.k === 'text')?.text || '';
+  return childState({ status: c.status, compacting: !!c.compacting, jobs: runningTasks(c) + (c.heldTurn ? 1 : 0), asks: c.pendingAsks?.size || 0, reply });
+}
+// The session a live session's finished turns go to, for its parent's count: its report route, or, when that
+// session is archived (or it has none), the nearest open session above it, where the list shows it (#717).
+function waitedOnBy(c) {
+  const client = clientById(c.client);
+  const to = reportsHere(state.sessions[c.id]);
+  if (!client) return to;
+  const view = familyView(client);
+  return to && view.open(to) ? to : view.openParent(c.id);
+}
 // The live sessions a parent waits on (#645): ones reporting to it that are still working, or waiting on the person.
 // list names each one, with the jobs it still runs and whether its finished turn is held for them, so the
 // parent's row can say what it waits on and offer Mark done for a job left running (#713).
 function kidsOf(p) {
   const kids = { working: 0, waiting: 0, list: [] };
   for (const c of live.values()) {
-    if (c === p || reportsHere(state.sessions[c.id]) !== p.id) continue;
-    const reply = c.events.findLast((e) => e.k === 'text')?.text || '';
-    const st = childState({ status: c.status, compacting: !!c.compacting, jobs: runningTasks(c) + (c.heldTurn ? 1 : 0), asks: c.pendingAsks?.size || 0, reply });
+    if (c === p || c.client !== p.client || waitedOnBy(c) !== p.id) continue;
+    const st = liveChildState(c);
     if (st === 'done') continue;
     kids[st]++;
     const jobs = [...c.tasks.values()].filter((t) => t.status === 'running' && !t.ambient).map((t) => ({ id: t.id, label: t.label || t.tool || 'Background job', start: t.start || null }));
@@ -553,7 +567,8 @@ function kidsOf(p) {
 const closedLastKid = (s) => { if (!s.closedKid) return false; const k = kidsOf(s); return !k.working && !k.waiting; };
 // A child changed: its parent's row is sent again when the count it waits on changed.
 function pushParentOf(id) {
-  const p = live.get(reportsHere(state.sessions[id]));
+  const c = live.get(id);
+  const p = live.get(c ? waitedOnBy(c) : reportsHere(state.sessions[id]));
   if (p && p.id !== id && JSON.stringify(kidsOf(p)) !== p.kidsSent) pushSession(p);
 }
 
@@ -1858,8 +1873,9 @@ function portalToolDefs(parent) {
           }
           const raising = raise?.gear && !raise.same;
           try {
-            const { reportsTo } = await deliverToSession(parent.client, id, message, parent, raising ? (t) => raiseChild(t, raise, parent) : null);
-            const sent = raise?.ignored ? `Sent, but ${raise.ignored}.` : raising ? `Sent, after raising it to ${raise.gear.name}.` : raise?.same ? `Sent; it was already on ${raise.gear.name}.` : 'Sent.';
+            const { reportsTo, restored } = await deliverToSession(parent.client, id, message, parent, raising ? (t) => raiseChild(t, raise, parent) : null);
+            const sent = (raise?.ignored ? `Sent, but ${raise.ignored}.` : raising ? `Sent, after raising it to ${raise.gear.name}.` : raise?.same ? `Sent; it was already on ${raise.gear.name}.` : 'Sent.')
+              + (restored ? ' It was archived, so it is back in the session list as an open session; once it is done, close it again (close_session) or leave it for the user.' : '');
             // A session that is not yours: say where it reports, and that this one piece of work comes back here.
             const route = id === parent.id || reportsTo === parent.id ? ''
               : reportsTo ? ` It reports to the session "${sessionTitle(clientById(parent.client), reportsTo)}" (id ${reportsTo}), not you; its next finished turn will come to you as a session report. It is not your child: close_session is not yours to use on it, and moving it for good is a set_parent decision for the user.`
@@ -1876,12 +1892,15 @@ function portalToolDefs(parent) {
           const s = live.get(id);
           const report = rec?.client === parent.client ? await sessionReport(parent.client, id) : null;
           const busy = !!s && (['starting', 'running', 'requires_action'].includes(s.status) || runningTasks(s) > 0 || !!s.heldTurn);
-          const why = closeRefusal({ callerId: parent.id, rec, live: s, reply: report?.reply || '', busy });
+          // The same family the session list shows: under the caller directly, by set_parent, or below an archived child (#717).
+          const view = report ? familyView(client, await history(client)) : null;
+          const why = closeRefusal({ callerId: parent.id, rec, live: s, reply: report?.reply || '', busy, under: !!view && view.openParent(id) === parent.id });
           if (!report || why) return { content: [{ type: 'text', text: 'Not closed: ' + (why || 'no session with that id for this client') + '.' }], isError: true };
           archiveSession(client, id, true);
           addEvent(parent, { k: 'note', text: `Closed and archived "${report.title}": ${said}` });
           parent.closedKid = true;
-          const last = closedLastKid(parent) ? ' That was your last open session: if your own job is now complete, end this turn with mark_turn "done" (not report_quiet), and make your reply the closing message; if something is still left for the user, say what.' : '';
+          const left = view.family(parent.id).map((k) => ({ id: k.id, title: sessionTitle(client, k.id), state: live.has(k.id) ? liveChildState(live.get(k.id)) : 'done' }));
+          const last = closedNote(left);
           return { content: [{ type: 'text', text: `Closed and archived "${report.title}". Say in your reply what it did and where the result is, linking it as [${report.title}](#session:${id}).${last}` }] };
         }),
       tool('report_quiet',
@@ -2053,12 +2072,24 @@ function portalToolDefs(parent) {
           return text ? { content: [{ type: 'text', text }] } : { content: [{ type: 'text', text: whole_desk ? 'No past session with that id in this desk.' : "No session with that id in this session's group (whole_desk true reaches the rest of this desk)." }], isError: true };
         }),
       tool('list_sessions',
-        'List the sessions currently running in the portal for this client, with their status. Only this desk: for another desk, use ask_desk or propose_to_desk.',
-        {},
-        async () => {
-          const rows = [...live.values()].filter((x) => x.client === parent.client)
-            .map((x) => `${x.id}  [${x.status}]  ${x.title || '(untitled)'}${x.parentId ? `  (spun off from ${x.parentId})` : ''}`);
-          return { content: [{ type: 'text', text: rows.join('\n') || 'No running sessions.' }] };
+        "List this desk's open sessions, the ones the portal's session list shows (running or not; archived ones are left out), each with its status and the session it is under now (set_parent moves included; a session whose parent is archived is under the nearest open one above). mine: true lists only the sessions under you, children and grandchildren, indented by depth. Only this desk: for another desk, use ask_desk or propose_to_desk.",
+        { mine: z.boolean().optional().describe('Only the sessions under this one: children, grandchildren and further down') },
+        async ({ mine }) => {
+          const client = clientById(parent.client), rows = await history(client), view = familyView(client, rows);
+          const at = new Map(rows.map((r) => [r.id, r.lastModified || 0]));
+          const name = (id) => id === parent.id ? 'you' : id;
+          const line = (id, indent = '') => {
+            const s = live.get(id), own = parentOf(client, id), up = view.openParent(id);
+            const where = up ? `  (under ${name(up)}${own && own !== up ? `; its own parent ${own} is archived` : ''})` : own ? `  (top level; its parent ${own} is archived)` : '';
+            return `${indent}${id}  [${s ? s.status : 'not running'}]  ${sessionTitle(client, id) || '(untitled)'}${where}`;
+          };
+          if (mine) {
+            const fam = view.family(parent.id);
+            return { content: [{ type: 'text', text: fam.length ? `${fam.length} open session${fam.length === 1 ? '' : 's'} under you:\n` + fam.map((k) => line(k.id, '  '.repeat(k.depth - 1))).join('\n') : 'No open sessions under you.' }] };
+          }
+          const when = (id) => live.get(id)?.lastActivity || at.get(id) || 0;
+          const open = [...view.ids].filter(view.open).sort((a, b) => when(b) - when(a));
+          return { content: [{ type: 'text', text: open.map((id) => line(id)).join('\n') || 'No open sessions.' }] };
         }),
       ...(plansOnIn(clientById(parent.client), parent.id) ? planToolDefs(parent) : []),
   ];
@@ -2497,6 +2528,24 @@ const groupFolder = (b) => { const f = String(b.folder || '').trim(); return f ?
 // A session's parent: the portal's own record, then the desktop app's. '' means "none" (its parent
 // was deleted), which also hides any desktop app link.
 const parentOf = (client, id) => { const own = state.sessions[id]?.parentId; return own === '' ? null : own || desktopParents(client).get(id) || null; };
+// The desk's sessions the list can show: rows (its saved conversations, history), the running ones, and stopped
+// sessions of another brand that only Docket's own record knows (as savedRow finds them).
+function deskIds(client, rows) {
+  const ids = new Set(rows.filter((r) => !r.editFor).map((r) => r.id));
+  for (const s of live.values()) if (s.client === client.id && !state.sessions[s.id]?.editFor) ids.add(s.id);
+  for (const [id, rec] of Object.entries(state.sessions)) if (rec.client === client.id && rec.engine && rec.engine !== 'claude' && !rec.editFor) ids.add(id);
+  for (const id of ids) if (wasDeleted(id)) ids.delete(id);
+  return ids;
+}
+// A desk's family links as the session list nests them (#717): open = shown in the list (running, or not archived);
+// openParent = the nearest open session above one; family(root) = every open session below root. With rows (history),
+// only sessions the desk has count; without, any id not archived or deleted does (kidsOf, which runs on every push).
+function familyView(client, rows) {
+  const ids = rows ? deskIds(client, rows) : null;
+  const open = (id) => (!ids || ids.has(id)) && !wasDeleted(id) && (live.has(id) || !isArchived(client, id));
+  const up = (id) => parentOf(client, id);
+  return { ids, open, openParent: (id) => openParent(id, up, open), family: (root) => openFamily(root, ids || [], up, open) };
+}
 function effectiveGroup(client, id) {
   const seen = new Set();
   for (let cur = id; cur && !seen.has(cur); cur = parentOf(client, cur)) {
@@ -3168,6 +3217,10 @@ async function savedRow(client, id) {
 // to the sender rather than waking a parent that did not ask for the work. Returns the parent's id.
 async function deliverToSession(clientId, id, message, from, before) {
   const target = await sessionToMessage(clientId, id);
+  // Work sent to an archived session brings it back to the list for good, so it shows open and close_session works
+  // on it again (#717); left archived, it ran and showed as open but could not be closed.
+  const restored = isArchived(clientById(clientId), id);
+  if (restored) setArchived(clientId, id, false);
   if (before) await before(target);
   const rec = (state.sessions[id] ||= { client: clientId });
   const reportsTo = rec.reportsTo || null;
@@ -3176,7 +3229,7 @@ async function deliverToSession(clientId, id, message, from, before) {
   saveState();
   const back = from && rec.replyTo ? ' When you finish this work, that session gets a short report of your reply.' : '';
   sendToSession(target, { text: message, attachments: [], from: 'session', context: from ?`(Sent by the session "${from.title || from.id}" in the portal, id ${from.id}.${back})` : '' });
-  return { reportsTo };
+  return { reportsTo, restored };
 }
 // A notice from Docket itself: a line in the chat, and the same words to Claude (not shown as the person's message).
 // byPerson: the notice comes from a button the person pressed, so it counts as the person acting (wake limit).
@@ -3272,9 +3325,15 @@ async function reportToParent(child, leftover = []) {
   const route = reportRoute({ reportsTo: rec?.reportsTo, replyTo: rec?.replyTo, waiting: waitingOnUser(child, reply) });
   if (!route.to) return;
   if (route.clearReplyTo) { delete rec.replyTo; saveState(); }
+  const client = clientById(child.client);
+  // A report for a session that was closed goes to the nearest open session above the child, where the list now
+  // shows it (#717): waking the closed one would run it again while its record says archived. With none, it stays here.
+  const view = client && familyView(client);
+  const to = view && !view.open(route.to) ? view.openParent(child.id) : route.to;
+  if (!to) return;
   const report = { childId: child.id, title: child.title || 'Session', text: reply.slice(0, 400), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}), ...(leftover.length ? { jobs: leftover } : {}) };
   if (route.waiting) {
-    const parent = live.get(route.to);
+    const parent = live.get(to);
     if (parent && parent.status !== 'ended') {
       addEvent(parent, { k: 'child-report', ...report, waiting: true });
       (parent.waitingChildren ||= new Map()).set(child.id, report.title); // named, without its question, in the next wake-up
@@ -3282,10 +3341,9 @@ async function reportToParent(child, leftover = []) {
     }
     return;
   }
-  const client = clientById(child.client);
-  if (!await wakeWith(client, route.to, report)) return;
-  const own = route.noteTo && live.get(route.noteTo);
-  if (own && own.status !== 'ended') addEvent(own, { k: 'note', text: `"${report.title}" finished work sent by the session "${sessionTitle(client, route.to)}"; its report went there.` });
+  if (!await wakeWith(client, to, report)) return;
+  const own = route.noteTo !== to && route.noteTo && live.get(route.noteTo);
+  if (own && own.status !== 'ended') addEvent(own, { k: 'note', text: `"${report.title}" finished work sent by the session "${sessionTitle(client, to)}"; its report went there.` });
 }
 // Queue a report (a child's finished turn, or freed plan tasks) for a session and wake it, resuming it when it
 // is not running. `note` is shown in its chat instead of the child-report card. False when there is no such session.
@@ -3936,6 +3994,8 @@ const artifactEnv = (client) => isBedrock(client) || gatewayFor(client, 'claude'
 function startSession({ clientId, cwd, title, parentId, resumeId, settings = {}, engine, record, gear }) {
   const s = makeSession({ clientId, cwd, title, parentId, resumeId, settings, engine, record, gear });
   const client = clientById(s.client), id = s.id;
+  // A session running again is open: an archived one leaves the archive, so the list and its record agree (#717).
+  if (resumeId && client && isArchived(client, id)) setArchived(client.id, id, false);
   if (resumeId && s.cwd && !fs.existsSync(s.cwd) && !protectedFolder(s.cwd)) {
     // Its conversation is filed under that folder, so it has to exist; Docket removes it again afterwards.
     fs.mkdirSync(s.cwd, { recursive: true });
@@ -4277,7 +4337,7 @@ function remoteSession(s) {
     setPermissionMode: (m) => ctl('setPermissionMode', m),
     interrupt: () => ctl('interrupt'),
     mcpServerStatus: () => ctl('mcpServerStatus'),
-    close: () => { s.closing = true; s.ready.then(() => runnerCall(`/sessions/${id}/end`, {})).catch(() => {}); },
+    close: () => { s.closing = true; s.ready.then(() => runnerCall(`/sessions/${id}/end`, {})).catch((e) => logEvent(`could not end ${sessionTag(s)} in the runner`, e.message)); },
     async *[Symbol.asyncIterator]() {
       await s.ready;
       const res = await fetch(`${RUNNER}/sessions/${id}/stream?since=${s.runnerSeq || 0}`, { headers: { 'x-docket-token': runnerToken } });
@@ -4351,6 +4411,9 @@ async function reattachSessions() {
   for (const r of list.filter((x) => !x.ended && !live.has(x.id))) {
     const client = clientById(state.sessions[r.id]?.client);
     if (!client) continue;
+    // Closed in Docket (close_session, Archive) but the runner still has it: its end did not get there. End it now,
+    // rather than show an archived session as open (#717).
+    if (state.sessions[r.id]?.archived === true) { runnerCall(`/sessions/${r.id}/end`, {}).catch(() => {}); continue; }
     const wasWaiting = !!state.sessions[r.id]?.waiting; // makeSession starts it as seen; read this first
     const s = makeSession({ clientId: client.id, resumeId: r.id });
     s.events = await loadTranscript(client, r.id).catch(() => []);
