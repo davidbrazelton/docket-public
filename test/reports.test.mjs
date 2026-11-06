@@ -1,7 +1,7 @@
 // Tests for reports.mjs: whether a child's finished turn wakes its parent. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { endsAsking, endsWithNextSteps, endsWaiting, awaitingAnswer, waitingOnUser, closeRefusal, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal } from '../reports.mjs';
+import { endsAsking, endsWithNextSteps, endsWaiting, awaitingAnswer, waitingOnUser, closeRefusal, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText } from '../reports.mjs';
 
 test('a reply ending in a question is waiting on the user', () => {
   assert.equal(endsAsking('I read the file.\n\nShould I delete the old copy?'), true);
@@ -170,4 +170,24 @@ test('quietRefusal: a turn woken by session reports may end quietly', () => {
 test('quietRefusal: relaying a child\'s news is quiet with no child still working (#671)', () => {
   // The last child finished, or the only one waits on the person: the old rule (#645) refused these.
   assert.equal(quietRefusal({ turnBy: 'docket', report: true, kids: 0 }), '');
+});
+
+test('a held turn waits for its jobs, unless the session marked it done (#713)', () => {
+  assert.equal(heldTurnReport({ jobs: 0 }), 'now', 'no jobs: reports as always');
+  assert.equal(heldTurnReport({ jobs: 1, said: '' }), 'hold', 'a turn ended on purpose to wait for a build or a test run');
+  assert.equal(heldTurnReport({ jobs: 1, said: 'reply' }), 'hold');
+  assert.equal(heldTurnReport({ jobs: 1, said: 'question' }), 'hold');
+  assert.equal(heldTurnReport({ jobs: 1, said: 'done' }), 'now', 'done with a job left running: the parent hears now');
+  assert.equal(heldTurnReport({ jobs: 1, said: 'done', quiet: true }), 'none', "Docket's own quiet turn never reports");
+  assert.equal(heldTurnReport({ jobs: 0, quiet: true }), 'none');
+});
+
+test('mark_turn "done" with jobs running names them and asks the session to settle them (#713)', () => {
+  const text = doneWithJobsReply([{ id: 'toolu_g', taskId: 'bgrep', label: 'grep -r over every repo', minutes: 22 }]);
+  assert.match(text, /a background job you started is still running/);
+  assert.match(text, /grep -r over every repo \(task id bgrep, running 22 min\)/);
+  assert.match(text, /TaskStop/); assert.match(text, /KillShell/); assert.match(text, /why you still need it/);
+  assert.match(doneWithJobsReply([{ taskId: 'a', label: 'A', minutes: 1 }, { taskId: 'b', label: 'B', minutes: null }]), /2 background jobs you started are still running:\n- A \(task id a, running 1 min\)\n- B \(task id b\)/);
+  assert.equal(leftoverJobsText([]), '');
+  assert.equal(leftoverJobsText(['grep -r over every repo, 22 min']), 'It marked its turn done with 1 background job still running: grep -r over every repo, 22 min.');
 });

@@ -71,7 +71,7 @@ export function taskChanges(tasks, m, now = Date.now()) {
 //   <id>/subagents/agent-<agentId>.jsonl     the subagent's own conversation (its last write shows it is alive)
 // The conversation is read once and then only from where the last read stopped, so a repair every minute
 // costs a few new lines.
-export function newScan() { return { offset: 0, rest: '', ended: new Map(), commands: new Map(), agentCalls: new Set() }; }
+export function newScan() { return { offset: 0, rest: '', ended: new Map(), commands: new Map(), agentCalls: new Set(), monitors: new Set() }; }
 
 const NOTICE = /<task-notification>\s*<task-id>([^<]+)<\/task-id>\s*(?:<tool-use-id>([^<]+)<\/tool-use-id>)?[\s\S]*?<status>(\w+)<\/status>(?:\s*<summary>([^<]*)<\/summary>)?/g;
 
@@ -97,8 +97,9 @@ function readLine(line, scan) {
   const notice = line.includes('<task-notification>'), command = line.includes('"run_in_background":true');
   const stop = line.includes('"name":"TaskStop"') || line.includes('"name":"Kill');
   const agent = line.includes('"name":"Agent"') || line.includes('"name":"Task"');
+  const monitor = line.includes('"name":"Monitor"');
   const answer = line.includes('"tool_result"') && [...scan.commands.keys(), ...scan.agentCalls].some((id) => line.includes(id));
-  if (!notice && !command && !stop && !agent && !answer) return;
+  if (!notice && !command && !stop && !agent && !monitor && !answer) return;
   let j; try { j = JSON.parse(line); } catch { return; }
   if (j.isSidechain) return;
   const at = Date.parse(j.timestamp) || 0;
@@ -111,10 +112,11 @@ function readLine(line, scan) {
       if (!prev || prev.at <= at) { scan.ended.set(taskId, e); if (toolUseId) scan.ended.set(toolUseId, e); }
     }
   }
-  if ((command || stop || agent) && j.type === 'assistant') {
+  if ((command || stop || agent || monitor) && j.type === 'assistant') {
     for (const b of j.message?.content || []) {
       if (b.type !== 'tool_use') continue;
       if (b.name === 'Agent' || b.name === 'Task') scan.agentCalls.add(b.id);
+      if (b.name === 'Monitor') scan.monitors?.add(b.id); // its job reports as local_bash; only the call says it is a Monitor
       if (b.input?.run_in_background === true) {
         scan.commands.set(b.id, { tool: b.name, label: String(b.input.description || b.input.command || b.name).slice(0, 200), start: at });
       }
@@ -234,25 +236,44 @@ export function repairChanges(tasks, { transcript, scan, since = 0, alive = true
       out.push([id, e ? { ...base, ...ending(e) } : { ...base, status: 'running', progress: 'recovered, progress unknown' }]);
     } else if (t.status === 'running' && e && (!t.start || e.at >= t.start)) out.push([key, ending(e)]);
   }
-  if (held) out.push(...stuckChanges(tasks, { life, transcript, settled: new Set(out.filter(([, p]) => p.status).map(([k]) => k)), now }));
+  if (held) out.push(...stuckChanges(tasks, { life, transcript, monitors: scan.monitors, settled: new Set(out.filter(([, p]) => p.status).map(([k]) => k)), now }));
   return out;
 }
 
 // Jobs that hold the turn with no sign of life for STUCK_MINUTES: not started, heard from (task_progress),
-// or written to (its own file, or the session's conversation, where a Monitor's events land) since then.
+// or written to (its own file) since then. Each job's sign of life is its own (#713): the session's
+// conversation changes whenever the session itself replies, so counting it for every job let a silent
+// command (a grep -r moved to the background, writing nothing) hold the turn for as long as the session
+// kept talking. The conversation only counts for jobs whose output lands there (talksInTranscript).
 // Without this a job whose ending was never heard holds the turn for as long as the process lives.
-export function stuckChanges(tasks, { life = new Map(), transcript, settled = new Set(), now = Date.now() }) {
+//   monitors: the tool_use ids of the session's Monitor calls (from the scan)
+export function stuckChanges(tasks, { life = new Map(), transcript, monitors, settled = new Set(), now = Date.now() }) {
   const talked = transcript ? mtime(transcript) : 0;
   const out = [];
   for (const t of tasks.values()) {
     if (t.status !== 'running' || t.ambient || settled.has(t.id)) continue;
-    const last = Math.max(t.start || 0, t.seen || 0, life.get(t.id) || 0, talked);
+    const last = Math.max(t.start || 0, t.seen || 0, life.get(t.id) || 0, talksInTranscript(t, monitors) ? talked : 0);
     if (!last || now - last < STUCK_MINUTES * 60000) continue;
     const quiet = Math.floor((now - last) / 60000);
     out.push([t.id, { status: 'unknown', end: now, progress: `no sign of life for ${quiet} min (last at ${clock(last)}), so the session stopped waiting for it` }]);
   }
   return out;
 }
+// The jobs whose output lands in the session's own conversation, so a change to it is their sign of life:
+// a Monitor (each event it sees arrives there as a message). Claude Code starts a Monitor tool's job as
+// task_type local_bash, so it is known by the Monitor call it came from; its MCP and websocket monitors
+// (task_type monitor_mcp, monitor_ws) work the same way. Everything else has its own file or nothing:
+// background commands write their .output file, subagents their own log, and the rest only task_progress.
+const MONITOR_TYPES = new Set(['Monitor', 'monitor_mcp', 'monitor_ws']);
+export const talksInTranscript = (t, monitors) => MONITOR_TYPES.has(t.tool) || !!monitors?.has(t.id);
+
+// The jobs still running, oldest first, as "label, N min" for a person or a session to read.
+export function runningJobs(tasks, now = Date.now()) {
+  return [...tasks.values()].filter((t) => t.status === 'running' && !t.ambient)
+    .sort((a, b) => (a.start || now) - (b.start || now))
+    .map((t) => ({ id: t.id, taskId: t.taskId || t.id, label: t.label || t.tool || 'Background job', minutes: t.start ? Math.max(0, Math.floor((now - t.start) / 60000)) : null }));
+}
+export const jobText = (j) => `${j.label}${j.minutes === null ? '' : `, ${j.minutes} min`}`;
 
 // Marked done by hand from the Details panel: the person says it is over, whatever Docket last heard.
 export const markedDone = (now = Date.now()) => ({ status: 'unknown', end: now, progress: 'marked done by hand, so the session stopped waiting for it' });

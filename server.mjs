@@ -16,8 +16,8 @@ import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs'
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from './needs-you.mjs';
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
-import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal } from './reports.mjs';
+import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText } from './reports.mjs';
 import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
@@ -527,13 +527,18 @@ const runningTasks = (s) => [...s.tasks.values()].filter((t) => t.status === 'ru
 // The session a session's finished turns report to (reportRoute): who sent it work, else its parent.
 const reportsHere = (rec) => rec?.replyTo && rec.replyTo !== rec.reportsTo ? rec.replyTo : rec?.reportsTo || null;
 // The live sessions a parent waits on (#645): ones reporting to it that are still working, or waiting on the person.
+// list names each one, with the jobs it still runs and whether its finished turn is held for them, so the
+// parent's row can say what it waits on and offer Mark done for a job left running (#713).
 function kidsOf(p) {
-  const kids = { working: 0, waiting: 0 };
+  const kids = { working: 0, waiting: 0, list: [] };
   for (const c of live.values()) {
     if (c === p || reportsHere(state.sessions[c.id]) !== p.id) continue;
     const reply = c.events.findLast((e) => e.k === 'text')?.text || '';
     const st = childState({ status: c.status, compacting: !!c.compacting, jobs: runningTasks(c) + (c.heldTurn ? 1 : 0), asks: c.pendingAsks?.size || 0, reply });
-    if (st !== 'done') kids[st]++;
+    if (st === 'done') continue;
+    kids[st]++;
+    const jobs = [...c.tasks.values()].filter((t) => t.status === 'running' && !t.ambient).map((t) => ({ id: t.id, label: t.label || t.tool || 'Background job', start: t.start || null }));
+    kids.list.push({ id: c.id, title: c.title || 'Session', state: st, held: !!c.heldTurn && c.status === 'idle', jobs });
   }
   return kids;
 }
@@ -780,12 +785,14 @@ function upsertTask(s, key, patch) {
   return t;
 }
 
-// The held turn is over: the session shows it needs the person, and its parent hears.
+// The held turn is over: the session shows it needs the person, and its parent hears, unless it already
+// heard when the turn ended (a turn marked done reports at once, see heldTurnReport in reports.mjs).
 function releaseHold(s) {
   if (!s.heldTurn || s.status !== 'idle' || runningTasks(s)) return;
   s.heldTurn = false;
   updateBusy(s);
-  reportToParent(s).catch((e) => console.log('[report]', e.message));
+  if (!s.heldReported) reportToParent(s).catch((e) => console.log('[report]', e.message));
+  s.heldReported = false;
   pushSession(s);
 }
 
@@ -1163,12 +1170,16 @@ function handleSdkMessage(s, m) {
       }
       // Docket's own save-before-compact turn is not news: no report to the parent and no unread mark.
       const quiet = s.quietTurn; s.quietTurn = false;
+      const said = s.turnSaid; // endTurnMark takes it; a turn marked done reports even with jobs running (#713)
       const endedQuietly = !quiet && endTurnMark(s, err); // its Done line says so, and the chat folds the turn (#672)
       addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err, ...(endedQuietly ? { quiet: true } : {}) });
       s.stats = statsFor(clientById(s.client), sessionFile(clientById(s.client), s.id)) || s.stats;
       setTimeout(() => refreshUsage(clientById(s.client), s.id), s.engine === 'grok' ? 3000 : 1000); // Grok writes usage.json just after the turn
       s.heldTurn = runningTasks(s) > 0;
-      if (!s.heldTurn && !quiet) reportToParent(s).catch((e) => console.log('[report]', e.message));
+      const how = heldTurnReport({ jobs: runningTasks(s), said, quiet });
+      s.heldReported = s.heldTurn && how === 'now'; // so releaseHold does not report this turn a second time
+      if (s.heldReported) logEvent(`done with jobs running: ${sessionTag(s)}`, `reported now; still running: ${runningJobs(s.tasks).map(jobText).join('; ')}`);
+      if (how === 'now') reportToParent(s, s.heldTurn ? runningJobs(s.tasks).map(jobText) : []).catch((e) => console.log('[report]', e.message));
       setTimeout(() => flushReports(s), 500);
       setTimeout(() => flushWaitingOn(s), 600); // after setStatus below: freed plan tasks that waited for this turn
       setTimeout(() => saveBeforeCompact(s), 1500); // after any reports, which go first
@@ -1881,6 +1892,8 @@ function portalToolDefs(parent) {
         { label: z.enum(['done', 'question', 'reply']).describe('What this turn needs from the user') },
         async ({ label }) => {
           parent.turnSaid = label;
+          // Done while its own jobs still run: settle them in this turn, or the turn would be held for them (#713).
+          if (label === 'done' && runningTasks(parent)) return { content: [{ type: 'text', text: doneWithJobsReply(runningJobs(parent.tasks)) }] };
           return { content: [{ type: 'text', text: `Your row will say "${label}" unless Docket knows a stronger reason.` }] };
         }),
       tool('set_parent',
@@ -3245,13 +3258,14 @@ async function sessionReport(clientId, id) {
 const WAKE_LIMIT = 8;
 // Work sent with send_to_session by a session that is not the parent reports to that sender
 // instead (reportRoute): the sender is woken as a parent would be, and the parent gets only a note.
-async function reportToParent(child) {
+// leftover: the jobs still running when a turn marked done reported anyway ("label, N min"), named in the report.
+async function reportToParent(child, leftover = []) {
   const rec = state.sessions[child.id];
   const reply = [...child.events].reverse().find((e) => e.k === 'text')?.text || '';
   const route = reportRoute({ reportsTo: rec?.reportsTo, replyTo: rec?.replyTo, waiting: waitingOnUser(child, reply) });
   if (!route.to) return;
   if (route.clearReplyTo) { delete rec.replyTo; saveState(); }
-  const report = { childId: child.id, title: child.title || 'Session', text: reply.slice(0, 400), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}) };
+  const report = { childId: child.id, title: child.title || 'Session', text: reply.slice(0, 400), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}), ...(leftover.length ? { jobs: leftover } : {}) };
   if (route.waiting) {
     const parent = live.get(route.to);
     if (parent && parent.status !== 'ended') {
@@ -3306,7 +3320,7 @@ function flushReports(parent) {
   parent.waitingChildren?.clear();
   const line = (r) => r.kind === 'plan'
     ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'them'} as the plan's rules say, unless the user said to wait${r.tasks.some((t) => t.title.endsWith(userTag({ forUser: true }))) ? "; for the user's step, tell the user in a line or two what to do now" : ''}.`
-    : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}. Its latest reply begins: ${r.text}`;
+    : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}.${r.jobs ? ' ' + leftoverJobsText(r.jobs) : ''} Its latest reply begins: ${r.text}`;
   const body = [...reports.map(line), ...waiting].join('\n');
   sendToSession(parent, { text: '', system: true, report: true, context: `<session-report>
 ${body}

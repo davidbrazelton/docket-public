@@ -171,3 +171,25 @@ export function quietRefusal({ turnBy, report = false, error = false, said = '',
   if (closedLast) return 'you closed your last open session this turn, so your own job is done: call mark_turn with "done"';
   return '';
 }
+
+// ---------- a turn that ends with background jobs still running (#713) ----------
+// The turn is held: it reports when its jobs end, since a session often ends a turn on purpose to wait for a
+// build, a test run, a CI Monitor, a subagent or a test server. But a turn the session marked done (mark_turn
+// "done") says the work is over: it reports now, naming the jobs still running, rather than leave the parent
+// waiting on a job nobody needs. If one of them later starts a turn of its own, that turn reports as usual.
+// 'now': report this turn; 'hold': wait for the jobs; 'none': not reported at all (Docket's own quiet turn).
+export function heldTurnReport({ jobs = 0, said = '', quiet = false }) {
+  if (quiet) return 'none';
+  return !jobs || said === 'done' ? 'now' : 'hold';
+}
+// What mark_turn "done" answers while jobs still run, so the session settles them inside the same turn.
+// jobs: runningJobs() from tasks.mjs.
+export function doneWithJobsReply(jobs) {
+  const list = jobs.map((j) => `- ${j.label} (task id ${j.taskId}${j.minutes === null ? '' : `, running ${j.minutes} min`})`).join('\n');
+  return `Your row will say "done", but ${jobs.length === 1 ? 'a background job you started is' : `${jobs.length} background jobs you started are`} still running:\n${list}\n`
+    + 'Stop each one you no longer need now (TaskStop with its task id, or KillShell for a shell), or say in your reply why you still need it. '
+    + 'A job left running holds this session: if this turn still ends with one running, the session that started you is told you are done and which jobs are left.';
+}
+// The line a parent's report adds for jobs a child left running when it marked its turn done.
+export const leftoverJobsText = (jobs) => !jobs?.length ? ''
+  : `It marked its turn done with ${jobs.length === 1 ? '1 background job' : `${jobs.length} background jobs`} still running: ${jobs.join('; ')}.`;

@@ -2034,7 +2034,17 @@ const RESTING_TIP = 'Resting: released from memory, wakes on your next message';
 const waitsOnKids = (s) => s.live && s.status === 'idle' && !!(s.kids?.working || s.kids?.waiting || s.kidNews);
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const kidsText = (s) => ([s.kids?.working && `${plural(s.kids.working, 'child session')} working`, s.kids?.waiting && `${s.kids.working ? s.kids.waiting : plural(s.kids.waiting, 'child session')} waiting on you`].filter(Boolean).join(', ')
-  || (s.kidNews ? 'No child session still working' : '')) + (s.kidNews ? '. A report came in; nothing is needed from you here' : '');
+  || (s.kidNews ? 'No child session still working' : '')) + (s.kidNews ? '. A report came in; nothing is needed from you here' : '') + kidsNamed(s);
+// What the parent waits on, by name (#713): each child, and the jobs it still runs with their age. A finished turn
+// held for its jobs says so, and where to let it go: Mark done in this row's menu (right-click, or ⋯).
+const jobAge = (j) => j.start ? `, ${Math.max(0, Math.floor((Date.now() - j.start) / 60000))} min` : '';
+const kidsNamed = (s) => {
+  const list = s.kids?.list || [];
+  if (!list.length) return '';
+  const lines = list.map((k) => `\n• "${k.title}" ${k.held ? 'finished its turn, held for its background job' + (k.jobs.length === 1 ? '' : 's') : k.state === 'waiting' ? 'is waiting on you' : 'is working'}`
+    + k.jobs.map((j) => `\n   ↳ ${j.label}${jobAge(j)}`).join(''));
+  return ':' + lines.join('') + (list.some((k) => k.held && k.jobs.length) ? '\nRight-click this row (or ⋯) and Mark done to stop waiting for a held job.' : '');
+};
 // The label on a row that needs you, and its tooltip (#671).
 const NEED_TIPS = { question: 'It asked you something: a question, a permission prompt or a card waits on you', problem: 'Its last turn ended in an error', merge: 'Its pull request is open and waiting on you', done: 'It says its work is complete and ready to close', reply: 'A finished reply to read' };
 const openPR = (id) => (S.prs[id] || []).some((p) => ['open', 'conflict'].includes(prState(p)));
@@ -4627,6 +4637,9 @@ const viewMenuItems = (f) => {
 // session (sessionMenuFacts). Each item is [key, label, { checked, disabled }]; ['hr'] is a separator.
 function sessionMenuItems(f) {
   const items = [];
+  // A child's turn held for a job it left running (#713): Mark done lets it go, as in that child's Details panel.
+  for (const j of f.heldJobs || []) items.push([j.act, j.label, { tip: j.why }]);
+  if (f.heldJobs?.length) items.push(['hr']);
   if (!f.archived) items.push(['newunder', 'New session under this one'], ['hr']);
   if (f.archived) items.push(['restore', 'Restore from archive']);
   else {
@@ -4652,14 +4665,14 @@ function sessionMenuItems(f) {
   items.push(['rename', 'Rename'], ['hr']);
   if (f.live) items.push(['end', 'End']);
   items.push(['delete', 'Delete…']);
-  return items.map(([k, label, o]) => (k === 'hr' ? ['hr'] : [k, label, { checked: o?.checked, disabled: !!o?.disabled, ...(o?.stated && { stated: true }), ...(o?.sub && { sub: o.sub }) }]));
+  return items.map(([k, label, o]) => (k === 'hr' ? ['hr'] : [k, label, { checked: o?.checked, disabled: !!o?.disabled, ...(o?.stated && { stated: true }), ...(o?.sub && { sub: o.sub }), ...(o?.tip && { tip: o.tip }) }]));
 }
 // A toggle shows ✓ while on, unless its label already says on or off (stated); every item keeps a column for it so the labels line up.
 // A group (o.sub) opens beside the menu, drawn the way ☰ draws its groups.
 const sessionMenuHtml = (items) => items.map(([k, label, o]) => k === 'hr' ? '<hr>' : k === 'head' || k === 'foot' ? `<div class="sub-${k[0]}">${esc(label)}</div>`
   : k === 'presets' ? presetsHtml(label, o)
   : o.sub ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${k}" aria-haspopup="menu" aria-expanded="false"${tip('ctx-' + k)}><span><span class="ck"></span>${esc(label)}</span><span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(label)}" hidden>${sessionMenuHtml(o.sub)}</div></div>`
-  : `<button role="${o.checked === undefined ? 'menuitem' : o.radio ? 'menuitemradio' : 'menuitemcheckbox'}" data-act="${k}"${o.indent ? ' class="ind"' : ''}${o.checked === undefined ? '' : ` aria-checked="${!!o.checked}"`}${o.disabled ? ` disabled title="${esc(o.why || SOUND_OFF)}"` : tip('ctx-' + k)}><span class="ck">${o.checked && !o.stated ? '✓' : ''}</span>${esc(label)}</button>`).join('');
+  : `<button role="${o.checked === undefined ? 'menuitem' : o.radio ? 'menuitemradio' : 'menuitemcheckbox'}" data-act="${k}"${o.indent ? ' class="ind"' : ''}${o.checked === undefined ? '' : ` aria-checked="${!!o.checked}"`}${o.disabled ? ` disabled title="${esc(o.why || SOUND_OFF)}"` : o.tip ? ` title="${esc(o.tip)}"` : tip('ctx-' + k)}><span class="ck">${o.checked && !o.stated ? '✓' : ''}</span>${esc(label)}</button>`).join('');
 // end of session menu
 // Docket's own plans are on for a desk unless it chose a plan folder or none (#605).
 const plansOnDesk = (id) => { const c = S.clients.find((x) => x.id === id); return !!c && !c.remote && !['none', 'folder'].includes(c.planSystem); };
@@ -4674,7 +4687,10 @@ function sessionMenuFacts(s) {
   const run = S.runInfo.get(s.id);
   const otherRuns = run ? run.runs.filter((x) => x !== s.id).map(sessionById).filter((x) => x && !x.archived) : [];
   const unreadRuns = run ? run.runs.map(sessionById).filter((x) => x && isUnread(x)) : isUnread(s) ? [s] : [];
-  return { kids, otherRuns, unreadRuns, f: { archived: !!s.archived, live: !!s.live, midReply: !!s.midReply, cwd: s.cwd || '', parentId: s.parentId || null,
+  const heldJobs = (s.kids?.list || []).filter((k) => k.held).flatMap((k) => k.jobs.map((j) => ({ act: `jobdone:${k.id}:${j.id}`,
+    label: `Mark done: ${j.label.slice(0, 50)}${j.label.length > 50 ? '…' : ''}${jobAge(j)}`,
+    why: `"${k.title}" finished its turn, but this background job still runs, so the session waits for it and this one waits on that session. Mark done if the job is stuck or no longer needed: it stops holding the turn, and this session hears. Docket does this by itself after 15 minutes with no sign of life from the job.` })));
+  return { kids, otherRuns, unreadRuns, f: { heldJobs, archived: !!s.archived, live: !!s.live, midReply: !!s.midReply, cwd: s.cwd || '', parentId: s.parentId || null,
     noGroup: hasNoGroup(s), needsYou: needsYou(s), working: !!(s.live && ['running', 'starting'].includes(s.status)),
     pinned: pinnedHere(s.id), muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), chat: chatView(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
 }
@@ -4745,6 +4761,7 @@ function openSessionMenu(id, at) {
     closeMenu();
     const open = async () => { if (id !== S.selected) await openSession(id); };
     if (act === 'newunder') newDraft(null, id);
+    if (act.startsWith('jobdone:')) { const [, child, task] = act.split(':'); await api(`/api/sessions/${child}/task-done`, { task }).catch((err) => alert(err.message)); }
     if (act === 'popout') popOut(id, S.client);
     if (act === 'archive') await archive(id, true, otherRuns.map((k) => k.id));
     if (act === 'archive-all') await archive(id, true, [...otherRuns, ...kids].map((k) => k.id));
@@ -7039,7 +7056,7 @@ function eventHtml(ev) {
       return `<div class="scard ${ev.state === 'open' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Suggested title${earlier(ev)}</div><div class="st">${esc(ev.title)}</div>${ev.reason ? `<div class="sb">${esc(ev.reason)}</div>` : ''}${tail}</div>`;
     }
     case 'child-report':
-      return `<div class="child-report${ev.waiting ? ' waiting' : ''}"><a href="#session:${esc(ev.childId)}"${tip('open-session')}>${esc(ev.title)}</a> ${ev.waiting ? 'is waiting on you' : 'finished a turn'}<div class="ct">${esc(ev.text)}${ev.text.length >= 400 ? '…' : ''}</div></div>`;
+      return `<div class="child-report${ev.waiting ? ' waiting' : ''}"><a href="#session:${esc(ev.childId)}"${tip('open-session')}>${esc(ev.title)}</a> ${ev.waiting ? 'is waiting on you' : 'finished a turn'}<div class="ct">${esc(ev.text)}${ev.text.length >= 400 ? '…' : ''}</div>${ev.jobs?.length ? `<div class="ct">Still running: ${esc(ev.jobs.join('; '))}</div>` : ''}</div>`;
     case 'permission': {
       if (ev.tool === 'AskUserQuestion' && Array.isArray(ev.input?.questions)) return questionFormHtml(ev);
       const done = ev.state !== 'pending';

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { taskChanges, mergeTask, newScan, repairChanges, markedDone, STUCK_MINUTES, stalledSteps, stallLimit, endedDuring } from '../tasks.mjs';
+import { taskChanges, mergeTask, newScan, repairChanges, markedDone, STUCK_MINUTES, stalledSteps, stallLimit, endedDuring, stuckChanges, talksInTranscript, runningJobs, jobText } from '../tasks.mjs';
 
 const running = (tasks) => [...tasks.values()].filter((t) => t.status === 'running' && !t.ambient).length;
 const apply = (tasks, changes) => { for (const [k, p] of changes) mergeTask(tasks, k, p); };
@@ -323,4 +323,52 @@ test('the background commands that ended while a step was stuck are listed for t
   const lines = endedDuring(tasks, since, now);
   assert.equal(lines.length, 1);
   assert.match(lines[0], /^Test Docket on port 4401: stopped after 30m 0s, at /);
+});
+
+// ---------- each job's sign of life is its own (#713) ----------
+test('a silent job is let go even while the session keeps talking', () => {
+  // A grep -r moved to the background that never writes a byte, beside a session that just replied: the
+  // conversation changed a moment ago, but that is the session's life, not the job's.
+  const { transcript, output, tasks } = stuckCommand();
+  age(output, 20 * MIN); age(transcript, 0);
+  apply(tasks, repairChanges(tasks, { transcript, scan: newScan(), since: Date.now() - 60 * MIN, held: true }));
+  assert.equal(running(tasks), 0, 'the session talking does not keep a silent job alive');
+  assert.match(tasks.get('toolu_w').progress, /^no sign of life for 20 min/);
+});
+
+test('a Monitor counts the conversation as its sign of life, since its events land there', () => {
+  const at = new Date(Date.now() - 20 * MIN).toISOString();
+  const { transcript } = project({ lines: [
+    { type: 'assistant', timestamp: at, message: { content: [{ type: 'tool_use', id: 'toolu_m', name: 'Monitor', input: { command: 'gh run watch', description: 'Watch CI' } }] } },
+  ] });
+  const tasks = new Map();
+  mergeTask(tasks, 'toolu_m', { taskId: 'bmon', tool: 'local_bash', label: 'Watch CI', background: true }, Date.now() - 20 * MIN);
+  age(transcript, 1 * MIN); // an event arrived a minute ago
+  apply(tasks, repairChanges(tasks, { transcript, scan: newScan(), since: Date.now() - 60 * MIN, held: true }));
+  assert.equal(running(tasks), 1, 'a Monitor heard from a minute ago keeps the hold');
+  age(transcript, 20 * MIN);
+  apply(tasks, repairChanges(tasks, { transcript, scan: newScan(), since: Date.now() - 60 * MIN, held: true }));
+  assert.equal(running(tasks), 0, 'and is let go once its events stop too');
+});
+
+test('which jobs count the conversation: Monitor calls and the monitor task types, nothing else', () => {
+  for (const tool of ['Monitor', 'monitor_mcp', 'monitor_ws']) assert.equal(talksInTranscript({ id: 'x', tool }), true, tool);
+  for (const tool of ['local_bash', 'local_agent', 'agent', 'Bash', 'task']) assert.equal(talksInTranscript({ id: 'x', tool }), false, tool);
+  assert.equal(talksInTranscript({ id: 'toolu_m', tool: 'local_bash' }, new Set(['toolu_m'])), true, 'a local_bash job started by a Monitor call');
+  // stuckChanges on its own: the same fresh conversation keeps a Monitor and lets a command go.
+  const { transcript } = project({});
+  const tasks = new Map();
+  mergeTask(tasks, 'cmd', { tool: 'local_bash', label: 'grep -r' }, Date.now() - 20 * MIN);
+  mergeTask(tasks, 'mon', { tool: 'monitor_mcp', label: 'Watch' }, Date.now() - 20 * MIN);
+  assert.deepEqual(stuckChanges(tasks, { transcript }).map(([k]) => k), ['cmd']);
+});
+
+test('the running jobs, named with their age, for mark_turn and the parent report', () => {
+  const tasks = new Map(), now = Date.now();
+  mergeTask(tasks, 'toolu_g', { taskId: 'bgrep', tool: 'local_bash', label: 'grep -r over every repo' }, now - 22 * MIN);
+  mergeTask(tasks, 'toolu_a', { taskId: 'amb', label: 'ambient', ambient: true }, now);
+  mergeTask(tasks, 'toolu_d', { label: 'finished', status: 'completed' }, now);
+  const jobs = runningJobs(tasks, now);
+  assert.deepEqual(jobs, [{ id: 'toolu_g', taskId: 'bgrep', label: 'grep -r over every repo', minutes: 22 }]);
+  assert.equal(jobText(jobs[0]), 'grep -r over every repo, 22 min');
 });
