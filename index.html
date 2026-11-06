@@ -336,6 +336,18 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .mf-notes > summary, .msg-docket summary { cursor: pointer; }
 .mf-notes > summary:hover, .msg-docket summary:hover { color: var(--text); }
 .mf-notes > div, .msg-docket details > div { white-space: pre-wrap; margin-top: 4px; }
+/* A long one folds to one line (#723): who sent it and the start of the text; a click opens it, another folds it. A link
+   (DESIGN.md): flat, its text brighter when pointed at. */
+.mf-fold > summary { display: flex; gap: 6px; align-items: baseline; cursor: pointer; list-style: none; margin-bottom: 0; }
+.mf-fold > summary::-webkit-details-marker { display: none; }
+.mf-fold > summary:hover, .mf-fold > summary:hover .mf-peek { color: var(--text); }
+.mf-fold > summary > span:first-child { flex: none; }
+.mf-fold .mf-peek { flex: 1; min-width: 0; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mf-fold .qf-arrow { flex: none; transition: transform .15s; }
+.mf-fold[open] > summary { margin-bottom: 4px; }
+.mf-fold[open] .mf-peek { visibility: hidden; }
+.mf-fold[open] .qf-arrow { transform: rotate(90deg); }
+.msg-user.msg-from:has(> .mf-fold) { width: 85%; }
 /* A message Docket sent by itself (#708): a muted note on the left */
 .msg-user.msg-docket { align-self: flex-start; max-width: 100%; background: none; border-radius: 0; border-left: 3px solid var(--line); padding: 4px 10px; font-size: 13px; color: var(--muted); white-space: normal; }
 .msg-docket summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -7050,13 +7062,26 @@ function sentParts(ev) {
 }
 const msgWhen = (ev, cls = '') => ev.at ? `<div class="msg-when${cls}">${stamp(ev.at)}</div>` : '';
 const noteList = (notes) => notes.map((n) => `<div>${esc(n)}</div>`).join('');
+// One longer than a line, or with images or files, folds to who sent it and its first words (#723); one the person
+// opened stays open when the chat is drawn again.
+S.openSent = new Set(); // messages from another session the person opened, by session and time
 function sentHtml(ev) {
   const { body, notes, sender } = sentParts(ev);
   const who = sender ? `<a href="#session:${esc(sender.id)}"${tip('open-session')}>${esc(sender.title)}</a>` : 'another session';
-  const head = `<div class="mf-head">${sender?.handoff ? 'Handed off from' : 'From'} ${who}</div>`;
+  const from = `${sender?.handoff ? 'Handed off from' : 'From'} ${who}`;
   const more = notes.length ? `<details class="mf-notes"><summary>${notes.length} note${notes.length > 1 ? 's' : ''} from Docket</summary>${noteList(notes)}</details>` : '';
-  return `<div class="msg-user msg-from" data-ev data-from="session">${head}<div class="mf-body">${esc(body)}</div>${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}${more}</div>${msgWhen(ev, ' left')}`;
+  const inner = `<div class="mf-body">${esc(body)}</div>${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}${more}`;
+  if (!body.includes('\n') && body.length <= 120 && !ev.images?.length && !ev.files?.length)
+    return `<div class="msg-user msg-from" data-ev data-from="session"><div class="mf-head">${from}</div>${inner}</div>${msgWhen(ev, ' left')}`;
+  const key = `${S.selected}:${ev.at || body.slice(0, 200)}`, peek = body.replace(/\s+/g, ' ').slice(0, 300);
+  return `<div class="msg-user msg-from" data-ev data-from="session"><details class="mf-fold" data-sent="${esc(key)}"${S.openSent.has(key) ? ' open' : ''}><summary class="mf-head" title="Click to show the whole message, and again to fold it"><span>${from}</span><span class="mf-peek">${esc(peek)}</span><span class="qf-arrow" aria-hidden="true">▸</span></summary>${inner}</details></div>${msgWhen(ev, ' left')}`;
 }
+document.addEventListener('toggle', (e) => {
+  const d = e.target;
+  if (!d.classList?.contains('mf-fold')) return;
+  if (d.open) S.openSent.add(d.dataset.sent); else S.openSent.delete(d.dataset.sent);
+  checkJump();
+}, true);
 // A message Docket sent by itself (a stopped step, a notice read back from a saved chat): a muted note, folded to its
 // first line when there is more.
 function docketHtml(ev) {
