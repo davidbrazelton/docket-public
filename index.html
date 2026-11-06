@@ -465,6 +465,23 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 select option { background: var(--panel); color: var(--text); }
 select option:disabled { color: var(--muted); }
 .compose-bar .plus { width: 28px; height: 28px; padding: 0; font-size: 18px; line-height: 1; border-radius: 50%; }
+/* Summary | ▾ (#724): an action, so a thin grey border; one box with a divider, each half its own button. The ▾ half
+   only shows with sessions under this one; the whole control greys while a turn runs. */
+.sum-ctl { position: relative; flex: none; display: inline-flex; align-items: stretch; height: 28px; border: 1px solid var(--line); border-radius: 8px; }
+.sum-ctl[hidden] { display: none; }
+.sum-ctl > button { border: none; font-size: 12px; color: var(--text); white-space: nowrap; }
+.sum-ctl #sumBtn { border-radius: 7px 0 0 7px; padding: 0 9px; }
+.sum-ctl.solo #sumBtn { border-radius: 7px; }
+.sum-ctl #sumModeBtn { border-radius: 0 7px 7px 0; border-left: 1px solid var(--line); padding: 0 7px; min-width: 26px; }
+.sum-ctl #sumModeBtn[hidden] { display: none; }
+.sum-ctl #sumModeBtn[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+.sum-ctl.off { opacity: .45; }
+.sum-ctl.off > button { cursor: default; background: none; }
+.tl-menu.sum-pop { top: auto; bottom: calc(100% + 6px); min-width: 250px; color: var(--text); }
+.sum-pop .mh { padding: 2px 8px; font-size: 11px; color: var(--muted); }
+.sum-pop button { display: flex; gap: 8px; width: 100%; text-align: left; border: none; border-radius: 6px; padding: 5px 8px; font-size: 13px; line-height: 1.3; }
+.sum-pop small { color: var(--muted); font-size: 11px; }
+.sum-pop .tick { width: 14px; flex: none; color: var(--accent); }
 .compose-bar .cbit { white-space: nowrap; }
 .compose-bar .cold { color: var(--bad); }
 .perm { border: 1px solid var(--warn); border-radius: 10px; padding: 10px 12px; background: var(--panel); }
@@ -1337,6 +1354,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
         </div>
         <div class="compose-bar">
           <button id="attachBtn" class="plus" data-tip="attach" aria-label="Add files">+</button>
+          <span class="sum-ctl" id="sumCtl" hidden><button id="sumBtn" data-tip="summary">Summary</button><button id="sumModeBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Summary mode" data-tip="summary-mode">▾</button><div id="sumMenu" class="tl-menu sum-pop" role="menu" aria-label="Summary of" hidden></div></span>
           <select id="cPerm" aria-label="Permission mode" data-tip="perm-mode">
             <option value="bypassPermissions">Bypass permissions</option><option value="auto">Auto</option><option value="acceptEdits">Accept edits</option><option value="default">Ask before acting</option><option value="plan">Plan mode</option>
           </select>
@@ -1596,6 +1614,8 @@ const HELP = [
   ['Send box (bottom)', [
     ['message', 'The message box', 'Type your message. Enter sends, Shift+Enter makes a new line. Paste pictures or drop files here. Type / for skills.'],
     ['attach', '+ Add files', 'Add files to your message'],
+    ['summary', 'Summary', 'Ask the session where its work stands: an outline, the questions for you, and the next steps. It does no new work. Deep summary also reads the sessions under this one, without waking them.'],
+    ['summary-mode', 'Summary ▾', 'Pick what Summary covers: this session only (Top), or this session and the sessions under it (Deep)'],
     ['chip-remove', '✕ on a file', 'Take this file off the message'],
     ['perm-mode', 'Permission mode', 'How much the AI may do without asking you first'],
     ['cache', 'Minutes left', 'How long the conversation stays in Claude\'s short-term memory (the prompt cache), which makes the next message cheaper'],
@@ -3271,7 +3291,50 @@ function renderComposerBar() {
   $('cCtx').textContent = !stats ? '' : pct !== null ? `${pct}% context` : `${kTok(stats.tokens)} context`;
   $('cCtx').className = 'cbit' + (nearCompact(row) ? ' near-full' : '');
   $('cCtx').title = stats ? ctxText(stats) : '';
+  renderSummaryCtl();
 }
+// Summary | ▾ (#724): one click sends Docket's Summary prompt as a turn. ▾ picks Top (this session) or Deep (it and
+// the open sessions under it), remembered; with none under it, only a plain Summary button shows.
+const summaryMode = () => store.get('summaryMode') === 'deep' ? 'deep' : 'top';
+const summaryKids = (s) => s && !s.archived ? descendants(s.id).filter((x) => !x.archived).length : 0;
+function renderSummaryCtl() {
+  const s = S.selected && S.selected !== 'draft' && !S.schedOpen ? current() : null;
+  $('sumCtl').hidden = !s;
+  if (!s) return sumMenu(false);
+  const n = summaryKids(s), deep = n > 0 && summaryMode() === 'deep';
+  const busy = !!s.live && (['running', 'starting'].includes(s.status) || !!s.compactingSince);
+  $('sumModeBtn').hidden = !n;
+  $('sumCtl').classList.toggle('solo', !n);
+  $('sumCtl').classList.toggle('off', busy);
+  $('sumBtn').textContent = deep ? 'Deep summary' : 'Summary';
+  $('sumBtn').disabled = $('sumModeBtn').disabled = busy;
+  if (busy || !n) sumMenu(false);
+}
+const sumMenuOpen = () => !$('sumMenu').hidden;
+function sumMenu(open) {
+  $('sumMenu').hidden = !open; $('sumModeBtn').setAttribute('aria-expanded', String(open));
+  if (!open) return;
+  const n = summaryKids(current()), mode = summaryMode();
+  const item = (k, label, sub) => `<button role="menuitemradio" aria-checked="${mode === k}" data-sum="${k}" title="Summary of ${label}: ${sub.toLowerCase()}"><span class="tick">${mode === k ? '✓' : ''}</span><span><b>${label}</b><br><small>${sub}</small></span></button>`;
+  $('sumMenu').innerHTML = '<div class="mh">Summary of</div>' + item('top', 'Top', 'This session only')
+    + item('deep', 'Deep', `This session and the ${n} session${n === 1 ? '' : 's'} under it, read without waking them`);
+  $('sumMenu').querySelector('[aria-checked="true"]')?.focus();
+}
+$('sumModeBtn').onclick = () => sumMenu(!sumMenuOpen());
+$('sumMenu').onclick = (e) => {
+  const b = e.target.closest('[data-sum]'); if (!b) return;
+  store.set('summaryMode', b.dataset.sum);
+  sumMenu(false); $('sumModeBtn').focus(); renderSummaryCtl();
+};
+document.addEventListener('mousedown', (e) => { if (sumMenuOpen() && !e.target.closest('.sum-ctl')) sumMenu(false); });
+document.addEventListener('keydown', (e) => { if (sumMenuOpen() && e.key === 'Escape') { e.stopPropagation(); sumMenu(false); $('sumModeBtn').focus(); } }, true);
+$('sumBtn').onclick = async () => {
+  const s = current(); if (!s || $('sumBtn').disabled) return;
+  const mode = summaryKids(s) ? summaryMode() : 'top';
+  $('sumBtn').disabled = true;
+  try { await api(`/api/sessions/${s.id}/summary?client=${S.client}`, { mode }); }
+  catch (err) { alert(err.message); renderSummaryCtl(); } // on success, the session's status turning to running greys it
+};
 async function changeSetting(key, value) {
   const d = clientDefaults(); d[key] = value; // becomes the default for new sessions
   const id = S.selected;

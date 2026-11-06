@@ -3260,6 +3260,109 @@ async function noticeToSession(clientId, id, text, { byPerson = false } = {}) {
   addEvent(target, { k: 'note', text });
   sendToSession(target, { text: '', system: true, byPerson, context: `(From Docket: ${text})` });
 }
+// The Summary button in the send box (#724): the session says where its work stands, as an outline. Top is this
+// session only; Deep also reads the open sessions under it (children, their children, and so on), read only: it
+// reads what they already wrote and never wakes, messages or resumes them. The chat shows it as Docket's message.
+const SUMMARY_RULES = `Answer where things stand. **Do no new work** - no edits, commits, builds, or writes to outside services.
+Read-only calls only to check a fact you are about to state; prefer "unconfirmed" over a sweep.
+
+**Outline, not prose.** Bullets throughout. One line each, under about 15 words. No paragraphs, no
+lead-ins, no closing recap. Nested bullets only where a point genuinely has sub-points. If a bullet
+needs a second sentence, it is two bullets or it is detail that can be dropped.
+
+**Every bullet leads with a bold subject, then a colon, then the point.** The subject is the thing
+being talked about - a file, a component, a decision, a person, a state. Two or three words, not a
+sentence, never a restatement of the point that follows.
+
+\`\`\`
+- **Recipient mapping:** all 14 PII fields asserted, was 8.
+- **Integration tests:** 47 still failing at the socket, needs a live API.
+- **Release date:** assumed Friday, confirm at next stop.
+\`\`\`
+
+Four sections, these headings, this order:
+
+## What this is
+
+Written for the person coming back days later with none of this in their head. Enough to pick
+the thread back up without rereading the session.
+
+- **Job:** what this session set out to do, and why, in one line.
+- **Asked by:** who started it and what prompted it - an issue, a review comment, a bug seen.
+- **Where:** issue, pull request, plan, worktree and branch, each only if one exists.
+- **Background:** the two to four facts a cold reader needs - the constraint, the earlier
+  decision, the thing that turned out not to be true. One bullet each.
+- **Shape of the work:** how far it went - read only, edited, built, pushed, merged.
+
+No history of the session. What a stranger needs to know before reading the next section.
+
+## Where it stands
+
+- Done, in bullets. What is now true, not the story of getting there.
+- Anything broken, failing, skipped or assumed gets its own bullet, marked.
+- Something shared broken goes first, before this heading, as one line.
+
+## Questions for you
+
+Only questions whose answer changes what happens next. Each as:
+
+- **The question in one sentence.**
+  - the two or three facts needed to answer it, one bullet each
+  - options, one marked recommended
+  - what happens once answered
+
+Assume anything assumable, say so under Where it stands, and drop the question. Nothing left means
+\`None.\` - never manufacture one to fill the section.
+
+## Next steps
+
+- Numbered, in order, each startable without further input.
+- Mark blocked ones with the question they wait on.
+- Finished work says \`Nothing outstanding.\` rather than inventing steps.
+
+---
+
+Standing rules apply: no em dashes, hyphens instead. Issue and pull request mentions are links whose text is
+the number, the title and the status. No number that looks measured without measuring it. Another
+session's claim is a lead - keep the "unconfirmed" wording.
+
+No substantial work to wrap means one sentence saying so. Three empty headings are worse than
+nothing.`;
+function summaryText(kids) {
+  if (!kids) return `Summary: the user pressed Summary. Say where this session's work stands.
+
+Source is this conversation, plus your Docket plan's open items if they are already in context. Do
+not go looking for one.
+
+${SUMMARY_RULES}`;
+  const list = kids.map((k) => `${'  '.repeat(k.depth - 1)}- "${k.title}" (id ${k.id}, ${k.status})`).join('\n');
+  return `Deep summary: the user pressed Deep summary. Say where the work of this session and the ${kids.length} session${kids.length === 1 ? '' : 's'} under it stands, in one outline.
+
+The sessions under this one, indented by depth:
+${list}
+
+Source is this conversation plus what those sessions have already written. Read each one with
+mcp__portal__get_session_report (its status and latest reply), and where that is not enough, with
+mcp__portal__read_group_session and whole_desk true (its messages and replies). **Read only:** never
+wake, message, resume, start or close any of them - no send_to_session, start_session, close_session
+or set_parent. What a session says is its report, not proof: keep its claims "unconfirmed" unless you
+checked them. Fold it all into the one outline below, and say which session each point came from,
+linking it as [title](#session:<id>).
+
+${SUMMARY_RULES}`;
+}
+// The open sessions under id, as the session list shows them: [{ id, title, status, depth }].
+async function summaryKids(client, id) {
+  return familyView(client, await history(client)).family(id)
+    .map((k) => ({ id: k.id, depth: k.depth, title: sessionTitle(client, k.id) || 'Untitled', status: live.get(k.id)?.status || 'not running' }));
+}
+async function sendSummary(client, id, mode) {
+  const kids = mode === 'deep' ? await summaryKids(client, id) : [];
+  const now = live.get(id);
+  if (now && (['running', 'starting'].includes(now.status) || now.compactingSince)) throw new Error('This session is working. Ask for a summary once its turn ends.');
+  const target = await sessionToMessage(client.id, id);
+  sendToSession(target, { text: '', from: 'docket', byPerson: true, context: `(From Docket: ${summaryText(kids.length ? kids : null)})` });
+}
 const sessionTitle = (client, id) => live.get(id)?.title || state.sessions[id]?.title || (historyCache.get(client.id)?.rows || []).find((r) => r.id === id)?.title || 'Untitled';
 // Change a session's parent: under another session of the same company, or to the top level
 // (parent null). The parent link (parentId) nests it in the list and counts its cost in that family;
@@ -8131,7 +8234,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, summary(s));
     }
     if (await profileRoutes(req, res, url, p) !== false) return;
-    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|moveto|auto-group|title-suggestion|unread|delete|task-done|reload|use-plan|plan-offer|looked)$/);
+    const m = p.match(/^\/api\/sessions\/([\w-]+)\/(events|send|rename|interrupt|seen|end|archive|settings|permission|offer|cross|group|parent|moveto|auto-group|title-suggestion|unread|delete|task-done|reload|use-plan|summary|plan-offer|looked)$/);
     if (m) {
       const [, id, action] = m;
       if (!reattachDone && !live.has(id) && state.sessions[id]?.running) await settledOr(reattached, 20000); // it may be on its way back
@@ -8179,6 +8282,11 @@ const server = http.createServer(async (req, res) => {
       if (action === 'use-plan' && req.method === 'POST') { // { card }: Use a plan for this work (the session menu, or the card's button)
         if (!client) return json(res, 404, { error: 'Unknown session' });
         try { await usePlan(client, id, b.card || ''); return json(res, 200, { ok: true }); }
+        catch (e) { return json(res, 400, { error: e.message }); }
+      }
+      if (action === 'summary' && req.method === 'POST') { // { mode: 'top' | 'deep' }: the Summary button in the send box
+        if (!client) return json(res, 404, { error: 'Unknown session' });
+        try { await sendSummary(client, id, b.mode === 'deep' ? 'deep' : 'top'); return json(res, 200, { ok: true }); }
         catch (e) { return json(res, 400, { error: e.message }); }
       }
       if (action === 'plan-offer' && req.method === 'POST') { // { card }: Not now on the card that offers a plan
