@@ -460,6 +460,11 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .compose-row textarea { flex: 1; resize: none; min-height: 44px; max-height: 260px; }
 .compose-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .compose-bar .spacer { flex: 1; }
+/* the state fills the gap and shortens with … rather than pushing the model and effort to a second line */
+.compose-bar .cstatus { flex: 1 1 0; min-width: 56px; overflow: hidden; text-overflow: ellipsis; }
+.compose-bar .cstatus:not([hidden]) + .spacer { display: none; }
+.compose-bar .cstatus.running { color: var(--run); }
+.compose-bar .cstatus.needs { color: var(--warn); font-weight: 600; }
 .compose-bar select { font: inherit; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 2px 4px; cursor: pointer; }
 .compose-bar select:hover, .compose-bar select:focus { border-color: var(--line); color: var(--text); }
 select option { background: var(--panel); color: var(--text); }
@@ -1358,6 +1363,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
           <select id="cPerm" aria-label="Permission mode" data-tip="perm-mode">
             <option value="bypassPermissions">Bypass permissions</option><option value="auto">Auto</option><option value="acceptEdits">Accept edits</option><option value="default">Ask before acting</option><option value="plan">Plan mode</option>
           </select>
+          <span id="cStatus" class="cbit cstatus" hidden></span>
           <span class="spacer"></span>
           <span id="cCache" class="cbit"></span><span id="cCtx" class="cbit"></span>
           <select id="cBrand" aria-label="Brand" data-tip="brand" hidden></select>
@@ -7067,6 +7073,15 @@ function showReloads(r) { $('reloadAllBtn').hidden = !r?.count; $('reloadAllN').
 $('reloadAllBtn').onclick = async () => {
   try { const r = await api('/api/reload-all', {}); if (r.later) alert(`${r.now} reloading now; ${r.later} will reload once their turn and background commands end.`); } catch (err) { alert(err.message); }
 };
+// The session's state, in the line under the message box (#728): where the person looks while it works.
+function renderStatusBit(s) {
+  const el = $('cStatus');
+  el.hidden = !s; if (!s) return;
+  const st = !s.live && s.archived ? ['', 'archived'] : !s.live ? (s.midReply ? ['needs', 'interrupted'] : s.elsewhere ? ['running', 'may be running in another app'] : ['', 'saved']) : s.compactingSince ? ['running', 'compacting the conversation'] : needsYou(s) ? ['needs', s.status === 'requires_action' ? 'needs your answer' : `needs you: ${needLabel(s, openPR(s.id))}`] : inBackground(s) ? ['running', s.runningTasks ? `working in background (${s.runningTasks})` : 'working in background'] : waitsOnKids(s) ? ['', kidsText(s)] : [s.status, s.status];
+  el.className = 'cbit cstatus ' + st[0];
+  el.textContent = el.title = st[1];
+  tick();
+}
 function renderHead() {
   renderSigninNeed();
   if (menuHold(renderHead)) return; // waits while a menu is open (menu hold)
@@ -7074,13 +7089,13 @@ function renderHead() {
   if ($('tlBar').hidden !== !tlSession()) renderTlBar();
   $('cutBanner').hidden = S.schedOpen || !cutOffShown(current());
   renderCfgBanner();
+  const s = S.schedOpen ? null : current();
+  renderStatusBit(s);
   if (S.schedOpen) return renderScheduleHead();
-  const s = current(); if (!s) return;
+  if (!s) return;
   if (POPOUT) renderClients(); // the window's title is the session's
-  const st = !s.live && s.archived ? ['', 'archived'] : !s.live ? (s.midReply ? ['needs', 'interrupted'] : s.elsewhere ? ['running', 'may be running in another app'] : ['', 'saved']) : s.compactingSince ? ['running', 'compacting the conversation'] : needsYou(s) ? ['needs', s.status === 'requires_action' ? 'needs your answer' : `needs you: ${needLabel(s, openPR(s.id))}`] : inBackground(s) ? ['running', s.runningTasks ? `working in background (${s.runningTasks})` : 'working in background'] : waitsOnKids(s) ? ['', kidsText(s)] : [s.status, s.status];
   $('head').innerHTML = `${rowDot(s)}<h1 id="title" title="Click to rename">${esc(s.title || 'Untitled')}</h1>
     ${multiBrand() ? `<span class="brand-pill"${tip('brand-pill')}>${brandLogo(s.engine || 'claude')}${esc(brand(s))}</span>` : ''}
-    <span class="status-pill ${st[0]}" id="pill">${esc(st[1])}</span>
     <button class="ghost hd-more" id="sessMenuBtn" aria-haspopup="menu" aria-expanded="${document.getElementById('ctx')?.dataset.session === s.id}" aria-label="Session menu"${tip('sess-menu')}>⋯</button>`;
   if (!S.suggestion) setSuggestion('');
   $('stopBtn').hidden = !(s.live && (s.status === 'running' || s.status === 'starting'));
@@ -8260,9 +8275,9 @@ document.addEventListener('keydown', (e) => {
 setInterval(renderComposerBar, 30000);
 function tick() {
   const s = S.live[S.selected];
-  if (s && s.status === 'running' && !s.compactingSince && $('pill')) {
+  if (s && s.status === 'running' && !s.compactingSince && !$('cStatus').hidden) {
     const quiet = Date.now() - (s.lastModified || 0);
-    $('pill').textContent = quiet > 120000 ? `running · quiet ${dur(quiet)}` : 'running';
+    $('cStatus').textContent = $('cStatus').title = quiet > 120000 ? `running · quiet ${dur(quiet)}` : 'running';
   }
   for (const el of document.querySelectorAll('.dur[data-live]')) el.textContent = dur(Date.now() - Number(el.dataset.start));
   markLatestStep();
