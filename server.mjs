@@ -57,6 +57,7 @@ import { createFolderReader, readMarkers, markerPlan, cleanPlanFolder, planFolde
 import { scanPlanSystem, switchWarning, conversionBrief, systemName } from './plan-switch.mjs';
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
+import { SETUP_OFFER, scanFile, measureUse, measureFiles, assess, quickStart, costPerToken, checkDue, setupOfferKind, headlines, setupBrief, itemTable, kTokens, dollars } from './setup-size.mjs';
 import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport } from './feedback.mjs';
 import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
 import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE, COMPACT_AT_BREAK, BREAK_COMPACT, breakCompactDue } from './recall.mjs';
@@ -2136,6 +2137,17 @@ function portalToolDefs(parent) {
           if (!client) return { content: [{ type: 'text', text: 'This session has no desk.' }], isError: true };
           return { content: [{ type: 'text', text: deskCheckText(await runDeskCheck(client)) }] };
         }),
+      // Only in the session started from the setup check card (#758).
+      ...(state.sessions[parent.id]?.setupSlim ? [tool('setup_size',
+        "Measure again what this desk's Claude sessions load at start (CLAUDE.md files, memory index, skill and command listings, output style, MCP tool names and failing MCP servers) and what of it went unused in the last 60 days, with tokens and the cost a month. The same check as the card that started this session. It only reads; run it before and after changes for the before and after table.",
+        {},
+        async () => {
+          const client = clientById(parent.client);
+          if (!client) return { content: [{ type: 'text', text: 'This session has no desk.' }], isError: true };
+          const r = await measureSetup(client);
+          const head = `${r.sessions} sessions in the last ${SETUP_OFFER.usedDays} days. Start of session: about ${r.start} tokens (${dollars(r.monthly)} a month). Unused or oversized: about ${r.slim} tokens (${dollars(r.slimMonthly)} a month).`;
+          return { content: [{ type: 'text', text: `${head}\n\n${itemTable(r, 200)}` }] };
+        })] : []),
       tool('list_schedules',
         "List this client's scheduled tasks in the portal with their next and last runs.",
         {},
@@ -2401,6 +2413,87 @@ async function checkCacheOffers() {
 }
 setTimeout(() => checkCacheOffers().catch(() => {}), 20000);
 setInterval(() => checkCacheOffers().catch(() => {}), CACHE_CHECK_MINUTES * 60000);
+
+// ---------- the setup check: what each desk's sessions load at start, and the offer to slim it (#758, setup-size.mjs) ----------
+// Every hour each Claude desk's start size is measured from its files alone; weekly, or when that jumped, the full
+// check reads the last 60 days of transcripts too. state.setupCheck: id -> { last: the latest full check's numbers and
+// folders, answer: { answer: 'later'|'started', at, slim, start, session } }. The full list of the latest check is
+// kept here only (setupReports), and measured again when a session needs it after a restart.
+state.setupCheck ||= {};
+const SETUP_CHECK_MINUTES = 60;
+const OWN_MCP = ['portal', 'playwright']; // Docket's own servers, in every session: not the desk's to slim
+const setupReports = new Map();
+let setupOffers = [], setupBusy = false;
+const accountFile = (client) => (isDefaultHome(client) ? path.join(os.homedir(), '.claude.json') : path.join(client.home, '.claude.json'));
+const setupDesks = () => CLIENTS.filter((c) => !c.remote && brandsOf(c).includes('claude'));
+// Dollars a month per token in every session's start, from the desk's own calls of the last 30 days.
+function setupCost(client, now = Date.now()) {
+  const from = new Date(now - SETUP_OFFER.costDays * 864e5).toLocaleDateString('en-CA'), prices = loadPrices(PRICING_FILE);
+  const rows = Object.entries(usage).filter(([, u]) => u.client === client.id).flatMap(([id, u]) => rowsOf(id, u)).filter((r) => r.Date >= from);
+  return costPerToken(rows, (m) => modelRates(prices, m));
+}
+async function measureSetup(client, now = Date.now()) {
+  const from = now - SETUP_OFFER.usedDays * 864e5, sessions = [];
+  for (const [, f] of transcriptFiles(client)) {
+    try { if (fs.statSync(f).mtimeMs < from) continue; } catch { continue; }
+    sessions.push({ project: path.basename(path.dirname(f)), scan: await scanFile(f) });
+    await new Promise((r) => setImmediate(r));
+  }
+  const use = measureUse(sessions, from, now);
+  const folders = use.folders.length ? use.folders : [{ dir: client.folder, sessions: 1 }];
+  const files = measureFiles({ home: client.home, config: accountFile(client), folders });
+  const cost = setupCost(client, now);
+  const report = { ...assess(files, use, { perToken: cost.perToken, own: OWN_MCP, now }), quick: quickStart(files), perToken: cost.perToken };
+  setupReports.set(client.id, report);
+  state.setupCheck[client.id] = { ...state.setupCheck[client.id], last: { at: now, start: report.start, slim: report.slim, monthly: report.monthly, slimMonthly: report.slimMonthly,
+    sessions: report.sessions, quick: report.quick, heads: headlines(report), folders: folders.map((f) => ({ dir: f.dir, sessions: f.sessions, project: f.project })) } };
+  saveState();
+  logEvent('setup check', `${client.name}: start ${kTokens(report.start)} tokens, ${kTokens(report.slim)} could go (${dollars(report.slimMonthly)} a month), ${report.sessions} sessions`);
+  return report;
+}
+// force: a desk id to check in full now, whatever the schedule says.
+async function checkSetup({ force = '' } = {}) {
+  if (setupBusy && !force) return setupOffers;
+  while (setupBusy) await new Promise((r) => setTimeout(r, 500));
+  setupBusy = true;
+  try {
+    for (const c of setupDesks()) {
+      const rec = state.setupCheck[c.id] || {};
+      let quick = 0;
+      try { quick = quickStart(measureFiles({ home: c.home, config: accountFile(c), folders: rec.last?.folders?.length ? rec.last.folders : [{ dir: c.folder, sessions: 1 }] })); } catch {}
+      if (force === c.id || checkDue({ last: rec.last, quick })) await measureSetup(c).catch((e) => console.log(`[setup check] ${c.id}: ${e.message}`));
+      await new Promise((r) => setImmediate(r));
+    }
+  } finally { setupBusy = false; }
+  const out = [];
+  for (const c of setupDesks()) {
+    const rec = state.setupCheck[c.id] || {};
+    const kind = setupOfferKind({ report: rec.last, answer: rec.answer });
+    if (kind) out.push({ client: c.id, name: c.name, kind, start: rec.last.start, slim: rec.last.slim, monthly: rec.last.monthly, slimMonthly: rec.last.slimMonthly, sessions: rec.last.sessions, heads: rec.last.heads || [] });
+  }
+  if (JSON.stringify(out) !== JSON.stringify(setupOffers)) { setupOffers = out; broadcast({ t: 'setup-offers', offers: out }); }
+  return out;
+}
+// The session the card starts: on the desk, in its folder, with the shipped prompt and this check's numbers.
+async function startSetupSession(client) {
+  const report = setupReports.get(client.id) || await measureSetup(client);
+  const template = optionalPrompt('setup-slim.md');
+  if (!template) throw new Error('Docket is missing prompts/optional/setup-slim.md');
+  const backup = path.join(client.home, 'setup-backup', new Date().toLocaleDateString('en-CA'));
+  const brief = setupBrief(template, { desk: client.name, home: client.home, config: accountFile(client), folder: client.folder, backup, report, perToken: report.perToken });
+  const s = startSession({ clientId: client.id, cwd: client.folder, title: `Slim ${client.name}'s session setup`.slice(0, 60) });
+  // Set before the session's tools are listed, so it has setup_size.
+  state.sessions[s.id].setupSlim = true;
+  state.sessions[s.id].titleBy = 'you';
+  state.setupCheck[client.id] = { ...state.setupCheck[client.id], answer: { answer: 'started', at: Date.now(), slim: report.slim, start: report.start, session: s.id } };
+  saveState();
+  sendToSession(s, { text: brief, attachments: [], context: "(From Docket: the user started this session from Docket's setup check card for this desk.)" });
+  touchSession(client.id, s.id);
+  logEvent('setup check', `${client.name}: slimming session ${sessionTag(s)}`);
+  return s;
+}
+setTimeout(() => checkSetup().catch(() => {}), 90000);
+setInterval(() => checkSetup().catch(() => {}), SETUP_CHECK_MINUTES * 60000);
 
 // A company's Grok sessions, by the id their usage is filed under: the Docket session that ran them (state.sessions[id].grokIds),
 // else Grok's own id for a session run outside Docket. Each holds its Grok folders and Grok's title for it.
@@ -7077,7 +7170,7 @@ function docketTexts() {
   return [
     { name: 'Docket\'s own instructions', note: 'written in server.mjs', text: APPEND_PROMPT },
     ...md(dir).map((n) => ({ name: `prompts/${n}`, path: path.join(dir, n), note: 'every session', text: fs.readFileSync(path.join(dir, n), 'utf8').trim() })),
-    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'split-work.md' ? 'only desks that split work into sessions (Switches)' : n === 'plans.md' ? "only sessions that use a plan, on desks with Docket's own plans" : 'only some sessions',
+    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'split-work.md' ? 'only desks that split work into sessions (Switches)' : n === 'plans.md' ? "only sessions that use a plan, on desks with Docket's own plans" : n === 'setup-slim.md' ? "the first message of a session started from the setup check card, with the desk's numbers in it" : 'only some sessions',
       text: optionalPrompt(n) })),
   ];
 }
@@ -7908,6 +8001,30 @@ const server = http.createServer(async (req, res) => {
       cacheOffers = cacheOffers.filter((o) => o.client !== client.id);
       broadcast({ t: 'cache-offers', offers: cacheOffers });
       return json(res, 200, { ok: true });
+    }
+    // The setup check's card: the open offers, an answer to one ({ client, answer: later|start }), and a check now.
+    if (req.method === 'GET' && p === '/api/setup-offers') return json(res, 200, setupOffers);
+    if (req.method === 'POST' && p === '/api/setup-offers/answer') {
+      const b = await readBody(req);
+      const client = clientById(b.client);
+      if (!client) return json(res, 404, { error: 'Unknown desk' });
+      if (!['later', 'start'].includes(b.answer)) return json(res, 400, { error: 'The answer is later or start' });
+      let session = null;
+      if (b.answer === 'start') { try { session = (await startSetupSession(client)).id; } catch (e) { return json(res, 500, { error: e.message }); } }
+      else {
+        const last = state.setupCheck[client.id]?.last || {};
+        state.setupCheck[client.id] = { ...state.setupCheck[client.id], answer: { answer: 'later', at: Date.now(), slim: last.slim || 0, start: last.start || 0 } };
+        saveState();
+      }
+      setupOffers = setupOffers.filter((o) => o.client !== client.id);
+      broadcast({ t: 'setup-offers', offers: setupOffers });
+      return json(res, 200, { ok: true, session });
+    }
+    if (req.method === 'POST' && p === '/api/setup-check') { // ?client=: check that desk in full now
+      const client = clientById(url.searchParams.get('client'));
+      if (!client) return json(res, 404, { error: 'Unknown desk' });
+      await checkSetup({ force: client.id });
+      return json(res, 200, { ...(state.setupCheck[client.id] || {}), offers: setupOffers });
     }
     // Bring in past sessions: what is found, the copy, the report, and its undo.
     if (p.startsWith('/api/bring-in')) {

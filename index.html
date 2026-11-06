@@ -699,7 +699,11 @@ header.top #feedbackBtn { padding: 4px 8px; }
 /* The update card is the same card again; when another offer holds the corner it sits at the top right. */
 #updateOffer .b { flex-wrap: wrap; }
 #updateOffer .b button { white-space: nowrap; }
-#cacheOffer:not([hidden]) ~ #updateOffer, #planOffer:not([hidden]) + #updateOffer { bottom: auto; top: 64px; }
+#cacheOffer:not([hidden]) ~ #updateOffer, #planOffer:not([hidden]) ~ #updateOffer, #setupOffer:not([hidden]) + #updateOffer { bottom: auto; top: 64px; }
+/* The setup check card (#758) is the same card again, with its biggest parts as a short list. */
+#setupOffer .b button { white-space: nowrap; }
+#setupOffer ul, #setupOffer .d, #setupOffer .b { grid-column: 2; }
+#setupOffer ul { margin: 2px 0 0; padding-left: 18px; font-size: 13px; overflow-wrap: anywhere; }
 /* The plan system card (#180) waits while the cache offer holds the corner. */
 #planOffer .b button { white-space: nowrap; }
 #cacheOffer:not([hidden]) + #planOffer { display: none; }
@@ -1387,6 +1391,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="cache-toast" id="cacheToast" role="status" aria-live="polite" hidden><div class="ct-head"><span id="cacheToastTitle"></span><button class="ghost" id="cacheToastClose" data-tip="cache-toast-close" aria-label="Close">✕</button></div><div class="ct-d">10 minutes or less left on the 1 hour session cache. Send a message before it expires to keep it.</div><div id="cacheToastList"></div></div>
 <div class="install-offer" id="cacheOffer" role="dialog" aria-labelledby="cacheOfferTitle" hidden></div>
 <div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
+<div class="install-offer" id="setupOffer" role="dialog" aria-labelledby="setupOfferTitle" hidden></div>
 <div class="install-offer" id="updateOffer" role="dialog" aria-labelledby="updateOfferTitle" hidden></div>
 <div class="install-offer" id="reasonOffer" role="dialog" aria-labelledby="reasonOfferTitle" hidden></div>
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Larger view of the image" hidden><img id="lbImg" alt=""><button class="lb-close" id="lbClose" data-tip="lb-close" aria-label="Close">✕</button><button class="lb-prev" id="lbPrev" data-tip="lb-prev" aria-label="Previous image">‹</button><button class="lb-next" id="lbNext" data-tip="lb-next" aria-label="Next image">›</button><div class="lb-count" id="lbCount"></div></div>
@@ -1803,6 +1808,8 @@ const HELP = [
     ['cache-later', 'Not now', 'Ask again in 30 days at the earliest, and only if pauses of 5 to 60 minutes keep costing a re-read'],
     ['cache-ok', 'OK', 'Close this note'],
     ['cache-never', 'Never', 'Never ask about this desk\'s prompt cache again'],
+    ['setup-start', 'Start a session', 'Start a session on this desk that backs up its setup, proposes each cut with the tokens it saves, asks you about each one and changes only what you approve'],
+    ['setup-later', 'Not now', 'Ask again in 30 days, or sooner if the setup grows noticeably'],
     ['plan-yes', 'OK', 'Keep Docket\'s plans on for this desk. Change it later in the desk\'s Inspector, under Switches'],
     ['ro-on', 'Turn it on', 'Draw the reason icon in place of the dot on rows that need you, on this desk. Ticked, the word stays on the right too; unticked, there is no column. Change it any time in 👁 > Reason tags'],
     ['ro-words', 'Keep the word on the right too', 'Ticked: the reason word stays in its column on the right as well (Words). Unticked: only the icon at the dot, and no column (Off)'],
@@ -9003,6 +9010,8 @@ function connect() {
       reloadClients(); refreshSpend(); // a budget may have changed
     } else if (m.t === 'cache-offers') {
       showCacheOffer(m.offers);
+    } else if (m.t === 'setup-offers') {
+      showSetupOffer(m.offers);
     } else if (m.t === 'update') {
       if (updateBusy && (m.update.restartWaiting || !m.update.checking && m.update.result !== 'updated')) updateBusy = ''; // it did not go through, or it waits for a quiet moment: show the card again
       showUpdate(m.update);
@@ -9599,6 +9608,40 @@ $('cacheOffer').onclick = async (e) => {
 };
 api('/api/cache-offers').then(showCacheOffer).catch(() => {});
 
+// The setup check's offer (#758): the server measures what each desk's sessions load at start and lists the desks
+// where enough of it went unused; the card asks about one desk at a time (the one on view first), and waits while
+// the cache or plan card holds the corner. Start a session opens the slimming session it starts.
+let setupOfferList = [];
+const setupK = (n) => (n >= 9950 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(Math.round(n)));
+const usd = (n) => (n >= 10 ? `$${Math.round(n)}` : `$${(n || 0).toFixed(2)}`);
+function showSetupOffer(list) {
+  if (list) setupOfferList = list;
+  const el = $('setupOffer');
+  const o = setupOfferList.find((x) => x.client === S.client) || setupOfferList[0];
+  if (!o || POPOUT || !$('cacheOffer').hidden || !$('planOffer').hidden) { el.hidden = true; return; }
+  const name = esc(o.name);
+  el.dataset.client = o.client;
+  el.innerHTML = `<span class="ico" aria-hidden="true">✂</span><div class="t" id="setupOfferTitle">${name}'s sessions start with ${setupK(o.start)} tokens of setup</div>
+    <div class="d">About ${setupK(o.slim)} of it ${o.slimMonthly >= 0.01 ? `(${usd(o.slimMonthly)} a month) ` : ''}went unused in the last 60 days or is oversized:</div>
+    <ul>${o.heads.map((h) => `<li>${esc(h.text)}${h.tokens ? ` (${setupK(h.tokens)})` : ''}</li>`).join('')}</ul>
+    <div class="d">A session can slim it with you: it backs up first, proposes each cut with what it saves, and changes only what you approve.</div>
+    <div class="b"><button data-setup="later"${tip('setup-later')}>Not now</button><button class="primary" data-setup="start"${tip('setup-start')}>Start a session</button></div>`;
+  el.hidden = false;
+}
+$('setupOffer').onclick = async (e) => {
+  const b = e.target.closest('[data-setup]'), el = $('setupOffer');
+  if (!b) return;
+  const client = el.dataset.client, answer = b.dataset.setup;
+  for (const x of el.querySelectorAll('button')) x.disabled = true;
+  let r; try { r = await api('/api/setup-offers/answer', { client, answer }); }
+  catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return alert(err.message); }
+  setupOfferList = setupOfferList.filter((o) => o.client !== client);
+  showSetupOffer();
+  if (r.session) { if (S.client === client) openSession(r.session); else selectClient(client, r.session); }
+};
+for (const id of ['cacheOffer', 'planOffer']) new MutationObserver(() => showSetupOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+api('/api/setup-offers').then(showSetupOffer).catch(() => {});
+
 // The card after the update that brought Docket's plans (#180): once for each desk on this computer with no plan system
 // chosen yet (planSystem ''), the desk on view first. Plans are on for such a desk (#605), so it says so: OK saves
 // that, Turn them off saves none, and either way it never comes back; a desk made in the setup wizard chose already.
@@ -9616,7 +9659,7 @@ function reasonOfferSample(words) { // declared, not const: the page's start may
 }
 function showReasonOffer() {
   const el = $('reasonOffer');
-  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['cacheOffer', 'planOffer', 'updateOffer'].some((id) => !$(id).hidden);
+  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['cacheOffer', 'planOffer', 'setupOffer', 'updateOffer'].some((id) => !$(id).hidden);
   if (busy || S.reasonDot || deskStore.get('reasonDotOffer', false)) { el.hidden = true; return; }
   if (!el.hidden && el.dataset.client === S.client) return; // already showing it: keep the keyboard where it is
   el.dataset.client = S.client;
@@ -9643,7 +9686,7 @@ $('reasonOffer').onclick = (e) => {
   el.hidden = true;
 };
 // It waits for the others: each one closing (or the wizard, the tour or a dialog) looks again.
-for (const id of ['cacheOffer', 'planOffer', 'updateOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['cacheOffer', 'planOffer', 'setupOffer', 'updateOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 function showPlanOffer() {
   const el = $('planOffer');
   // A switch of plan system waiting on its conversion session (#700) comes first: it ends only with Finish or Cancel.
