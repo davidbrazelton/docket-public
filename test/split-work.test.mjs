@@ -27,3 +27,11 @@ test('every session keeps starting, reporting back and closing', () => {
 test('a copied desk keeps its split-work setting', () => {
   assert.ok(DOCKET_KEYS.includes('splitWork'));
 });
+
+test('the session-report note points at sections that exist in sessions.md', () => {
+  const always = read('prompts/sessions.md'), server = read('server.mjs');
+  const note = server.slice(server.indexOf('These are reports from sessions you started'), server.indexOf('</session-report>`'));
+  const named = [...note.matchAll(/"(When [^"]+)"/g)].map((m) => m[1]);
+  assert.ok(named.length >= 2, 'the note names the sections it points at');
+  for (const h of named) assert.ok(always.includes(h + ' ') || always.includes(h + ':') || always.includes(h + ' ('), `sessions.md has: ${h}`);
+});
