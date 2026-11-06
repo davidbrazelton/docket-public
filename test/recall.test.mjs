@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, cleanSaveShare, saveShare } from '../recall.mjs';
+import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, cleanSaveShare, saveShare, breakCompactDue, COMPACT_AT_BREAK } from '../recall.mjs';
 
 const docketBlock = /^(\(From Docket:|\(From the session portal:|<session-report>|\(Sent by the session|<task-notification>)/;
 const sessionBlock = /^(\(Sent by the session|\(From Docket: This session was started by the session|\(From Docket: this session continues the work)/;
@@ -78,4 +78,25 @@ test('a company\'s share: empty is the default, 0 or off turns it off, 50 to 99 
   assert.equal(saveShare({}), 85);
   assert.equal(saveShare({ saveBeforeCompact: 0 }), 0);
   assert.equal(saveShare({ saveBeforeCompact: 92 }), 92);
+});
+
+test('compact at a break, when turned on: above the share, idle a few minutes, cache still warm, once per compact cycle, after the save turn (#747)', () => {
+  const MIN = 60000, now = 1e12;
+  const cfg = { ...COMPACT_AT_BREAK, share: 80 }; // off by default; the logic as it runs when turned on
+  const b = { tokens: 140000, compactAt: 167000, lastReplyAt: now - 5 * MIN, cacheTtl: 3600, now, cfg };
+  assert.equal(COMPACT_AT_BREAK.share, 0);
+  assert.equal(breakCompactDue({ ...b, cfg: COMPACT_AT_BREAK }), false);
+  assert.equal(breakCompactDue(b), true);
+  assert.equal(breakCompactDue({ ...b, tokens: 120000 }), false); // under 80%
+  assert.equal(breakCompactDue({ ...b, lastReplyAt: now - 2 * MIN }), false); // not idle long enough
+  assert.equal(breakCompactDue({ ...b, lastReplyAt: now - 61 * MIN }), false); // cache gone: auto-compact will do
+  assert.equal(breakCompactDue({ ...b, saved: false }), false); // the save turn goes first
+  assert.equal(breakCompactDue({ ...b, sentAt: now - 3 * MIN }), false); // sent this cycle
+  assert.equal(breakCompactDue({ ...b, sentAt: now - 90 * MIN, compactedAt: now - 80 * MIN }), true); // a new cycle
+  assert.equal(breakCompactDue({ ...b, compactedAt: now - MIN }), false); // its last reply is from before the compact
+  assert.equal(breakCompactDue({ ...b, compactAt: null }), false);
+    // a 5-minute cache: after half of it, and before it runs out
+  assert.equal(breakCompactDue({ ...b, cacheTtl: 300, lastReplyAt: now - 3 * MIN }), true);
+  assert.equal(breakCompactDue({ ...b, cacheTtl: 300, lastReplyAt: now - 2 * MIN }), false);
+  assert.equal(breakCompactDue({ ...b, cacheTtl: 300, lastReplyAt: now - 5 * MIN }), false);
 });

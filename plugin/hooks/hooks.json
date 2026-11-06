@@ -48,6 +48,18 @@
           }
         ]
       }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/compact-summary.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Adding Docket's summary template to the compact"
+          }
+        ]
+      }
     ]
   }
 }

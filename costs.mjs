@@ -35,9 +35,10 @@
 //  - a Bedrock reply has a msg_bdrk_ message id, whatever model name it carries. A
 //    regional inference profile (us., eu., ...) bills at bedrockRegionalMultiplier
 //    times the list price; a global. one bills at list;
-//  - the compaction call is not in the log. Each compact_boundary is charged a cache
-//    read of its preTokens plus pricing.json's compactionEstimate, on the session's
-//    model, and the reply after it (which rewrites the cache) counts as compaction;
+//  - the compaction call is not in the log. Each compact_boundary is priced from what is (compactCall below): its
+//    preTokens read from the cache, or written again when the cache had run out before it started (a cold
+//    compaction), and output worked out from how long it took; on the session's model. The reply after it (which
+//    rewrites the cache) counts as compaction;
 //  - workflow agents log one level down, under subagents/workflows/<run>/.
 //
 // Cause says what started the turn a reply is in (turnCause below): a turn runs from one message into the main log
@@ -182,7 +183,10 @@ export function readSession(files) {
         if (results.length) {
           if (turn) turn.end = Math.max(turn.end, at);
           for (const b of results) if (asked.has(b.tool_use_id)) { waits.push([asked.get(b.tool_use_id), at]); asked.delete(b.tool_use_id); }
-        } else if (!e.isCompactSummary) {
+        } else if (e.isCompactSummary) {
+          const c = compactions[compactions.length - 1]; // the summary follows its boundary
+          if (c && !c.summary) c.summary = messageText(content).length;
+        } else {
           turn = { start: at, end: at }; turns.push(turn);
           const text = messageText(content);
           if (!e.isMeta && !notATurn(text)) { causeTurn = { start: at, cause: turnCause(text), quiet: false }; causes.push(causeTurn); }
@@ -192,7 +196,7 @@ export function readSession(files) {
       if (fileIndex === 0 && (line.includes('"custom-title"') || line.includes('"compact_boundary"'))) {
         let e; try { e = JSON.parse(line); } catch { continue; }
         if (e.type === 'custom-title' && e.customTitle) title = e.customTitle;
-        if (e.subtype === 'compact_boundary' && e.timestamp) compactions.push({ at: Date.parse(e.timestamp), preTokens: e.compactMetadata?.preTokens || 0 });
+        if (e.subtype === 'compact_boundary' && e.timestamp) compactions.push({ at: Date.parse(e.timestamp), preTokens: e.compactMetadata?.preTokens || 0, ms: e.compactMetadata?.durationMs || 0, summary: 0 });
         continue;
       }
       if (!line.includes('"assistant"') || !line.includes('"usage"')) continue;
@@ -351,23 +355,62 @@ function markCacheExpiries(priced) {
 }
 
 // ---------- compactions ----------
-// The compaction call itself is not logged: add an estimated reply for each one, on the model of the last
-// main reply before it, and count the reply after it (the cache rebuilt from the summary) as compaction too.
+// The compaction call itself is not logged: add a reply for each one, on the model of the last main reply before it,
+// and count the reply after it (the cache rebuilt from the summary) as compaction too.
 function addCompactions(replies, compactions, prices) {
   const est = prices.compactionEstimate;
   if (!est || !compactions.length) return replies;
   const main = replies.filter((r) => !r.subagent);
   const out = [...replies];
   for (const c of compactions) {
-    const before = [...main].reverse().find((r) => r.at <= c.at) || main.find((r) => r.at > c.at);
-    if (!before) continue;
+    const call = compactCall(c, main, est);
+    if (!call) continue;
     const after = main.find((r) => r.at > c.at);
     if (after) after.compaction = true;
-    out.push({ key: `compact:${c.at}`, model: before.model, at: c.at, subagent: false, cause: (after || before).cause || '', tools: new Map(), bedrock: before.bedrock, global: before.global, compaction: true, estimate: true,
-      usage: { input_tokens: est.input || 0, output_tokens: est.output || 0, cache_read_input_tokens: c.preTokens,
-        cache_creation: { ephemeral_1h_input_tokens: est.cacheWrite1h || 0, ephemeral_5m_input_tokens: 0 } } });
+    out.push({ key: `compact:${c.at}`, model: call.before.model, at: c.at, subagent: false, cause: (after || call.before).cause || '', tools: new Map(), bedrock: call.before.bedrock, global: call.before.global, compaction: true, estimate: true, cold: call.cold, usage: call.usage });
   }
   return out.sort((a, b) => a.at - b.at);
+}
+// One compaction's call, from the log around its compact_boundary. It sends the whole conversation (preTokens), which
+// it reads from the cache while that is warm and writes again when the last reply before it is older than the cache
+// (cold). Its output is the summary plus the notes it makes first, which are not kept: worked out from how long it
+// took (durationMs) at Opus's output speed, and never less than the summary. Measured on 324 compactions in
+// Oct-Nov 2026 (median 55 s, 8.6k output tokens). est: pricing.json's compactionEstimate.
+export function compactCall(c, main, est) {
+  const start = c.at - (c.ms || 0);
+  const upTo = main.filter((r) => r.at <= start + 1000);
+  const before = upTo[upTo.length - 1] || main.find((r) => r.at > c.at);
+  if (!before) return null;
+  const ttl = upTo.slice(-30).some((r) => r.usage?.cache_creation?.ephemeral_1h_input_tokens > 0) ? 3600 : 300;
+  const cold = upTo.length > 0 && start - before.at > ttl * 1000;
+  const fromTime = c.ms ? Math.round(Math.max(0, c.ms / 1000 - (est.startSec || 0)) * (est.outputPerSec || 0)) : 0;
+  const output = Math.max(fromTime, Math.round((c.summary || 0) * (est.summaryTokensPerChar || 0))) || est.output || 0;
+  const write = cold ? c.preTokens : Math.min(c.preTokens, est.cacheWrite || 0);
+  return { before, cold, ttl, usage: { input_tokens: est.input || 0, output_tokens: output, cache_read_input_tokens: c.preTokens - write,
+    cache_creation: ttl === 3600 ? { ephemeral_1h_input_tokens: write, ephemeral_5m_input_tokens: 0 } : { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: write } } };
+}
+
+// What a compaction Docket watched live cost (#747): the SDK's modelUsage (the process's running totals per model,
+// the compaction call included) from one turn's result to the next, less the replies the turn streamed (calls:
+// [{ model, usage }], helper agents' too). What is left on the session's model is the compaction call. Returns its
+// usage, as a reply's, or null when nothing is left. A process that started again counts from zero.
+export function usageLeft(seen, now, calls, model, ttl = 3600) {
+  const key = modelKey(model);
+  const pick = (u) => Object.entries(u || {}).filter(([m]) => modelKey(m) === key).map(([, v]) => v);
+  const sum = (u, f) => pick(u).reduce((a, v) => a + (v[f] || 0), 0);
+  const f = ['inputTokens', 'outputTokens', 'cacheReadInputTokens', 'cacheCreationInputTokens'];
+  const restarted = f.some((k) => sum(now, k) < sum(seen, k));
+  const left = Object.fromEntries(f.map((k) => [k, sum(now, k) - (restarted ? 0 : sum(seen, k))]));
+  for (const c of calls) {
+    if (modelKey(c.model) !== key) continue;
+    const u = c.usage || {};
+    left.inputTokens -= u.input_tokens || 0; left.outputTokens -= u.output_tokens || 0;
+    left.cacheReadInputTokens -= u.cache_read_input_tokens || 0; left.cacheCreationInputTokens -= u.cache_creation_input_tokens || 0;
+  }
+  if (left.outputTokens <= 0) return null;
+  const w = Math.max(0, left.cacheCreationInputTokens);
+  return { input_tokens: Math.max(0, left.inputTokens), output_tokens: left.outputTokens, cache_read_input_tokens: Math.max(0, left.cacheReadInputTokens), cache_creation_input_tokens: w,
+    cache_creation: ttl === 3600 ? { ephemeral_1h_input_tokens: w, ephemeral_5m_input_tokens: 0 } : { ephemeral_1h_input_tokens: 0, ephemeral_5m_input_tokens: w } };
 }
 
 // ---------- one session's total ----------
@@ -478,7 +521,7 @@ export function sessionSignature(mainFile, sessionId, pricingFile) {
 export function sessionCost(mainFile, sessionId, pricingFile) {
   const d = analyse(mainFile, sessionId, pricingFile);
   const s = summarize(d.priced);
-  return { ...s, subagentFiles: d.agentCount, cacheExpiries: d.priced.filter((r) => r.cacheExpired).length, compactions: d.compactions.length, pricesAsOf: loadPrices(pricingFile).about,
+  return { ...s, subagentFiles: d.agentCount, cacheExpiries: d.priced.filter((r) => r.cacheExpired).length, compactions: d.compactions.length, coldCompactions: d.priced.filter((r) => r.estimate && r.cold).length, pricesAsOf: loadPrices(pricingFile).about,
     lines: editTotals(d.edits, d.priced.length > 0) };
 }
 // The session's lines added and removed, counted as its rows count them (dayRows): edits with a time, and only

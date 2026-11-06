@@ -7,7 +7,7 @@
   "bedrockNote": "A Bedrock reply (msg_bdrk_ id) on a regional inference profile (us., eu., ...) bills at this multiple of list. A global. profile bills at list.",
   "routingBaseline": "claude-opus-5-5",
   "routingBaselineNote": "The Usage page's hypothetical cost prices every reply not already on an Opus at this model, to show what routing work to cheaper models saved. Before this model's period it falls back to the Opus family rate.",
-  "compactionEstimate": { "input": 2900, "output": 6700, "cacheWrite1h": 6400, "note": "Added to each compaction, which is not in the log, along with a cache read of its preTokens. Measured against an AWS bill; about $0.65 each on Opus." },
+  "compactionEstimate": { "input": 3000, "cacheWrite": 2000, "outputPerSec": 167, "startSec": 4, "summaryTokensPerChar": 0.4, "output": 6700, "note": "The compaction call is not in the log. Each one is priced from its compact_boundary: its preTokens read from the cache (written again when the cache had run out: a cold compaction), cacheWrite new tokens, input uncached, and output from its durationMs at outputPerSec after startSec, at least its summary (summaryTokensPerChar) or output when neither is known. Fitted on 324 compactions, 2026-10-08 to 2026-11-06: about $0.29 each on Opus 5.5, 2% cold." },
   "pricing_periods": [
     {
       "start_date": "2024-01-01",

@@ -18,7 +18,7 @@ import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
 import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from './reports.mjs';
-import { KEEP_WARM, PING_TEXT, keepWarmDue, isPing } from './keep-warm.mjs';
+import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from './keep-warm.mjs';
 import { WAITS, CONDITIONS, parseWait, waitWhat, prVerdict, sessionVerdict, portVerdict, portAnswers, timeoutLine, nextLook, waitInline, kindOf, checksOf, stateLine, branchPr } from './waits.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
 import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from './handoff.mjs';
@@ -28,7 +28,7 @@ import { transcriptTimes, asyncHookEvents, covered, turnSplit } from './chat-tim
 import { DOCKET_BLOCK, SESSION_BLOCK, messageFrom, lastTyped, mergeTouches } from './touches.mjs';
 import { GEARS, gearsOf, findGear, topGearOf, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear } from './gears.mjs';
 import { shiftUpFor, coordinatorHold } from './shift-up.mjs';
-import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines } from './costs.mjs';
+import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines, priceReply, usageLeft } from './costs.mjs';
 import { topGearCost, sessionShiftFacts, shiftEntry, withShift } from './shift-savings.mjs';
 import { defaultCodexHome, codexSessions, codexRows } from './codex-usage.mjs';
 import { connectionOf, parseAwsConfig, kindOfKey } from './connection.mjs';
@@ -59,7 +59,7 @@ import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
 import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport } from './feedback.mjs';
 import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
-import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE } from './recall.mjs';
+import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE, COMPACT_AT_BREAK, BREAK_COMPACT, breakCompactDue } from './recall.mjs';
 import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPrUrl, adoPRsForBranch, adoPRById, adoWorkItemIds, adoItemKey, isAdoItemKey, adoItemKeyFrom, adoPRWorkItemIds, adoWorkItems, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, linkTtl, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
   parseIssueUrl, branchIssue, githubTicket, CLOSES, CHECKS, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, sessionBranches,
   prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe, ticketFinished } from './links.mjs';
@@ -1176,6 +1176,7 @@ function handleSdkMessage(s, m) {
   if (keepsChat(s.engine) && m.session_id && state.sessions[s.id] && !(state.sessions[s.id][idsKey] || []).includes(m.session_id)) {
     state.sessions[s.id][idsKey] = [...(state.sessions[s.id][idsKey] || []), m.session_id]; saveState();
   }
+  if (m.type === 'assistant' && m.message?.id && m.message.usage) (s.turnCalls ||= new Map()).set(m.message.id, { model: m.message.model, usage: m.message.usage }); // for compactCost
   if (m.parent_tool_use_id) return; // subagent chatter: tracked through task events only
   switch (m.type) {
     case 'stream_event': {
@@ -1221,7 +1222,9 @@ function handleSdkMessage(s, m) {
     }
     case 'result': {
       s.curText = null;
+      compactCost(s, m);
       if (s.pingTurn && endPing(s, m)) return;
+      s.realReplyAt = Date.now(); // a real reply, for keep-warm's idle window
       if (state.sessions[s.id]?.unsent) { delete state.sessions[s.id].unsent; saveState(); } // it answered, so the message got there
       const err = m.is_error || m.subtype !== 'success';
       const text = typeof m.result === 'string' ? m.result : '';
@@ -1268,7 +1271,7 @@ function handleSdkMessage(s, m) {
     }
     case 'system': {
       switch (m.subtype) {
-        case 'init': s.model = m.model; s.mcpAtStart = { at: Date.now(), servers: m.mcp_servers || [] }; noteCommands(s, m.slash_commands, m.skills, m.terminal_slash_commands); if (!s.pingTurn) addEvent(s, { k: 'note', text: `Started in ${m.cwd} · ${m.model}` });
+        case 'init': s.model = m.model; s.usageSeen ||= {}; s.mcpAtStart = { at: Date.now(), servers: m.mcp_servers || [] }; noteCommands(s, m.slash_commands, m.skills, m.terminal_slash_commands); if (!s.pingTurn) addEvent(s, { k: 'note', text: `Started in ${m.cwd} · ${m.model}` });
           if (keepsChat(s.engine)) {
             // The brand's own id for this conversation, so a pickup after End or a restart continues it.
             const rec = state.sessions[s.id], key = conversationKey(s.engine);
@@ -1298,6 +1301,7 @@ function handleSdkMessage(s, m) {
           // A new compact cycle: its next message says the recall tool exists, and a save turn may come again.
           // Until a reply after the compact, the file's last reply still counts the tokens from before it.
           if (state.sessions[s.id]) { delete state.sessions[s.id].savePrompted; state.sessions[s.id].compactedAt = Date.now(); state.sessions[s.id].recallNote = true; saveState(); }
+          (s.turnCompacts ||= []).push({ ev: last || s.events.findLast((x) => x.k === 'compact'), preTokens: md.pre_tokens || 0 }); // priced when the turn ends
           return;
         }
         // When each synchronous hook started and ended, for the step times (#743). An event whose hooks are all async
@@ -3715,6 +3719,7 @@ const keepWarmCfg = (() => { try { return { ...KEEP_WARM, ...JSON.parse(process.
 function pingSession(s) {
   s.pingTurn = true; s.quietTurn = true;
   s.turnBy = 'docket'; s.reportTurn = false; s.turnNews = '';
+  if (state.sessions[s.id]) { state.sessions[s.id].pingAt = Date.now(); saveState(); } // so a restarted app knows its last reply was a ping
   logEvent(`keep-warm ping: ${sessionTag(s)}`, `last reply ${Math.round((Date.now() - s.stats.at) / 60000)} min ago, ${s.stats.tokens} tokens, ${kidsOf(s).working} working`);
   setStatus(s, 'running');
   s.input.push({ type: 'user', message: { role: 'user', content: [{ type: 'text', text: PING_TEXT }] }, parent_tool_use_id: null });
@@ -3738,12 +3743,50 @@ function keepWarmTick() {
   for (const s of live.values()) {
     if (s.status !== 'idle' || !state.sessions[s.id]) continue;
     const busy = !!(s.pendingAsks?.size || s.pendingReports?.length || s.heldTurn || s.compacting || s.reloading || s.waking || runningTasks(s));
-    const d = keepWarmDue({ engine: s.engine, status: s.status, resting: !!s.resting, paused: !!state.paused, busy, cacheTtl: s.stats?.cacheTtl, tokens: s.stats?.tokens, lastReplyAt: s.stats?.at, working: kidsOf(s).working, warmSince: s.warmSince || null, now, cfg: keepWarmCfg });
+    const realReplyAt = s.realReplyAt || realReplyFrom({ lastReplyAt: s.stats?.at, pingAt: state.sessions[s.id].pingAt, cfg: keepWarmCfg });
+    const d = keepWarmDue({ engine: s.engine, status: s.status, resting: !!s.resting, paused: !!state.paused, busy, cacheTtl: s.stats?.cacheTtl, tokens: s.stats?.tokens, lastReplyAt: s.stats?.at, realReplyAt, working: kidsOf(s).working, warmSince: s.warmSince || null, now, cfg: keepWarmCfg });
     s.warmSince = d.warmSince;
     if (d.ping) { try { pingSession(s); } catch (e) { s.pingTurn = false; s.quietTurn = false; logEvent(`keep-warm ping failed: ${sessionTag(s)}`, e.message); } }
+    else if (!busy) breakCompact(s, now);
   }
 }
 setInterval(keepWarmTick, keepWarmCfg.checkSec * 1000);
+// ---------- compacting at a break, while the cache is warm (recall.mjs, #747) ----------
+// PORTAL_COMPACT_BREAK (JSON, e.g. {"share":10,"idleMin":1}) changes the thresholds, for trying it on the test copy.
+const breakCfg = (() => { try { return { ...COMPACT_AT_BREAK, ...JSON.parse(process.env.PORTAL_COMPACT_BREAK || '{}') }; } catch { return COMPACT_AT_BREAK; } })();
+function breakCompact(s, now = Date.now()) {
+  if (live.get(s.id) !== s || (s.engine && s.engine !== 'claude') || s.status !== 'idle' || s.resting || state.paused || s.pendingAsks?.size || s.compacting) return;
+  const rec = state.sessions[s.id];
+  if (!rec) return;
+  const due = breakCompactDue({ tokens: s.stats?.tokens, compactAt: s.stats?.compactAt, lastReplyAt: s.stats?.at, cacheTtl: s.stats?.cacheTtl, compactedAt: rec.compactedAt, sentAt: rec.breakCompactAt,
+    saved: !saveShare(clientById(s.client)) || !!rec.savePrompted, now, cfg: breakCfg });
+  if (!due) return;
+  rec.breakCompactAt = now; saveState();
+  const pct = Math.round((s.stats.tokens / s.stats.compactAt) * 100);
+  const unread = s.unread, why = s.unreadWhy, said = s.unreadSaid; // the person's unread reply stays unread
+  addEvent(s, { k: 'note', text: `Docket compacted this session at a break, at ${pct}% of the point where it compacts, while its cache was still warm.` });
+  s.quietTurn = true; s.turnBy = 'docket'; s.reportTurn = false; s.turnNews = '';
+  setStatus(s, 'running');
+  s.input.push({ type: 'user', message: { role: 'user', content: BREAK_COMPACT }, parent_tool_use_id: null });
+  if (unread) { s.unread = true; s.unreadWhy = why; s.unreadSaid = said; }
+  logEvent('compact at a break', `${sessionTag(s)} at ${pct}%, ${Math.round((now - s.stats.at) / 60000)} min after its last reply`);
+  pushSession(s);
+}
+// A turn that compacted: what the compaction cost, from the SDK's running totals (costs.mjs usageLeft), kept on its
+// chat line and in the log. Only a turn with one compaction can be split this way; the totals are kept for the next.
+function compactCost(s, m) {
+  const calls = [...(s.turnCalls?.values() || [])], comps = s.turnCompacts || [];
+  const seen = s.usageSeen; s.usageSeen = m.modelUsage || s.usageSeen; s.turnCalls = null; s.turnCompacts = null;
+  if (comps.length !== 1 || !seen || !m.modelUsage || !s.model) return;
+  const ttl = s.stats?.cacheTtl || 300, usage = usageLeft(seen, m.modelUsage, calls, s.model, ttl);
+  if (!usage) return;
+  let cost = null;
+  try { cost = priceReply({ model: s.model, at: Date.now(), usage }, loadPrices(PRICING_FILE)).cost; } catch {}
+  const { ev, preTokens } = comps[0];
+  const cold = !usage.cache_read_input_tokens && usage.cache_creation_input_tokens > preTokens / 2;
+  if (ev && cost != null) { ev.cost = Math.round(cost * 1000) / 1000; ev.cold = cold || undefined; broadcast({ t: 'compact', id: s.id, ev }); }
+  logEvent(`compaction cost: ${sessionTag(s)}`, `$${cost?.toFixed(4)}${cold ? ' (cold cache)' : ''}; before ${preTokens}, cache read ${usage.cache_read_input_tokens}, cache write ${usage.cache_creation_input_tokens}, input ${usage.input_tokens}, output ${usage.output_tokens}`);
+}
 // Save before compact: once a session passes its company's share of the auto-compact point, it is asked once,
 // between turns, to write down what a compact summary would lose. One per compact cycle; a session mid-turn gets it
 // when the turn ends. savePrompted is kept in the state file so an app restart does not ask again.
@@ -3751,7 +3794,7 @@ function saveBeforeCompact(s) {
   if (live.get(s.id) !== s || (s.engine && s.engine !== 'claude')) return;
   const rec = state.sessions[s.id];
   if (!rec || (rec.compactedAt && !(s.stats?.at > rec.compactedAt))) return;
-  const share = saveShare(clientById(s.client));
+  const own = saveShare(clientById(s.client)), share = own && breakCfg.share ? Math.min(own, breakCfg.share) : own; // the save goes before Docket's compact at a break
   const due = saveDue({ tokens: s.stats?.tokens, compactAt: s.stats?.compactAt, share, prompted: rec.savePrompted });
   if (due === 'rearm') { delete rec.savePrompted; saveState(); return; }
   if (due !== 'send' || s.status !== 'idle' || s.pendingAsks?.size || s.compacting) return;

@@ -1,7 +1,7 @@
 // Tests for keep-warm.mjs: when Docket pings a waiting parent so its prompt cache stays warm (#734). Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KEEP_WARM, PING_TEXT, keepWarmDue, isPing } from '../keep-warm.mjs';
+import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from '../keep-warm.mjs';
 
 const MIN = 60000, now = 1e12;
 const base = { engine: 'claude', status: 'idle', cacheTtl: 3600, tokens: 90000, lastReplyAt: now - (KEEP_WARM.afterMin + 1) * MIN, working: 1, now };
@@ -30,8 +30,24 @@ test('only big contexts on the 1-hour cache, Claude sessions, idle and not resti
   assert.equal(keepWarmDue({ ...base, busy: true }).ping, false);
 });
 
-test('no child working: no ping, and the wait is over', () => {
-  assert.deepEqual(keepWarmDue({ ...base, working: 0, warmSince: now - MIN }), { ping: false, warmSince: null });
+test('no child working: the wait is over, and an idle session gets one ping inside idleHours of its last real reply (#747)', () => {
+  assert.deepEqual(keepWarmDue({ ...base, working: 0, warmSince: now - MIN }), { ping: true, warmSince: null });
+  // the ping's own reply is the last reply; the next ping would come idleHours after the real one, so none goes
+  const second = { ...base, working: 0, lastReplyAt: now - (KEEP_WARM.afterMin + 1) * MIN, realReplyAt: now - (2 * KEEP_WARM.afterMin + 2) * MIN };
+  assert.equal(keepWarmDue(second).ping, false);
+  assert.equal(keepWarmDue({ ...second, cfg: { ...KEEP_WARM, idleHours: 2 } }).ping, true);
+  assert.equal(keepWarmDue({ ...base, working: 0, cfg: { ...KEEP_WARM, idleHours: 0 } }).ping, false);
+  // the same limits as a waiting parent's
+  assert.equal(keepWarmDue({ ...base, working: 0, tokens: 30000 }).ping, false);
+  assert.equal(keepWarmDue({ ...base, working: 0, cacheTtl: 300 }).ping, false);
+  assert.equal(keepWarmDue({ ...base, working: 0, lastReplyAt: now - 30 * MIN }).ping, false);
+});
+
+test('after an app restart, a last reply that was a ping does not count as a real one', () => {
+  const pingAt = now - 10 * MIN;
+  assert.equal(realReplyFrom({ lastReplyAt: pingAt + 5000, pingAt }), pingAt - KEEP_WARM.afterMin * MIN);
+  assert.equal(realReplyFrom({ lastReplyAt: pingAt + 5000, pingAt: 0 }), pingAt + 5000);
+  assert.equal(realReplyFrom({ lastReplyAt: pingAt - 5000, pingAt }), pingAt - 5000); // a real reply after the ping
 });
 
 test('pings stop after maxHours in one wait; a later wait starts its own count', () => {

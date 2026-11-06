@@ -10,6 +10,7 @@ import { pluginHooks, ownCopies, cleanDocketHooks, hooksFor, hooksOffFor } from 
 import { check } from '../plugin/hooks/bash-cmdline-guard.mjs';
 import { isOff } from '../plugin/hooks/off.mjs';
 import { check as artifactCheck } from '../plugin/hooks/artifact-new-guard.mjs';
+import { TEMPLATE } from '../plugin/hooks/compact-summary.mjs';
 
 const PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugin');
 const GUARD = path.join(PLUGIN, 'hooks', 'bash-cmdline-guard.mjs');
@@ -23,7 +24,7 @@ const globex = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'comma
 
 test('the plugin lists its hooks by their script names', () => {
   const list = pluginHooks(PLUGIN);
-  assert.deepEqual(list.map((h) => [h.name, h.event, h.matcher]), [['bash-cmdline-guard', 'PreToolUse', 'Bash'], ['shift-first-edit', 'PreToolUse', 'Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|search_replace|write|run_terminal_command'], ['artifact-new-guard', 'PreToolUse', 'Artifact'], ['big-output', 'PostToolUse', 'Bash|Read|Grep|mcp__.*']]);
+  assert.deepEqual(list.map((h) => [h.name, h.event, h.matcher]), [['bash-cmdline-guard', 'PreToolUse', 'Bash'], ['shift-first-edit', 'PreToolUse', 'Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|search_replace|write|run_terminal_command'], ['artifact-new-guard', 'PreToolUse', 'Artifact'], ['big-output', 'PostToolUse', 'Bash|Read|Grep|mcp__.*'], ['compact-summary', 'PreCompact', '']]);
   assert.ok(fs.existsSync(path.join(PLUGIN, '.claude-plugin', 'plugin.json')));
 });
 
@@ -93,4 +94,20 @@ test('artifact guard: a session may update an existing artifact but not make a n
   assert.equal(artifactCheck({ action: 'publish', file_path: 'C:/r/new.html' }).permissionDecision, 'deny');
   assert.equal(artifactCheck({ file_path: 'C:/r/new.html', url: '  ' }).permissionDecision, 'deny');
   assert.match(artifactCheck({ action: 'quickstart', intent: 'deck' }).permissionDecisionReason, /Publish as artifact/);
+});
+
+test('compact-summary prints the summary template, short, and nothing when turned off (#747)', () => {
+  assert.ok(TEMPLATE.length < 10000);
+  for (const h of ['Objective', 'Requirements', 'Decisions', 'Work State', 'Next Move', 'Relevant Files', 'Important Context']) assert.match(TEMPLATE, new RegExp('## ' + h));
+  assert.match(TEMPLATE, /At most 15 paths/);
+  assert.match(TEMPLATE, /SHAs/);
+  assert.match(TEMPLATE, /merged/);
+  assert.match(TEMPLATE, /Leave out CLAUDE\.md/);
+  const script = path.join(PLUGIN, 'hooks', 'compact-summary.mjs');
+  const input = JSON.stringify({ hook_event_name: 'PreCompact', trigger: 'auto' });
+  const on = spawnSync(process.execPath, [script], { input, encoding: 'utf8', env: { ...process.env, DOCKET_ENGINE: 'claude', DOCKET_HOOKS_OFF: '' } });
+  assert.equal(on.status, 0);
+  assert.equal(on.stdout.trim(), TEMPLATE);
+  const off = spawnSync(process.execPath, [script], { input, encoding: 'utf8', env: { ...process.env, DOCKET_ENGINE: 'claude', DOCKET_HOOKS_OFF: 'compact-summary' } });
+  assert.equal(off.stdout, '');
 });

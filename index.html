@@ -7244,7 +7244,7 @@ function eventHtml(ev) {
     case 'note': return `<div class="note">${esc(ev.text)}</div>`;
     case 'compact': return ev.state === 'running'
       ? `<div class="note compacting" data-compact="${esc(ev.id)}"><span class="spin"></span>Compacting the conversation… <span class="dur" data-start="${ev.start}" data-live>${dur(Date.now() - ev.start)}</span></div>`
-      : `<div class="note" data-compact="${esc(ev.id)}">${ev.state === 'failed' ? `Compacting failed${ev.error && ev.error !== 'failed' ? ': ' + esc(ev.error) : ''}` : 'Conversation compacted'}${ev.ms ? ' in ' + dur(ev.ms) : ''}</div>`;
+      : `<div class="note" data-compact="${esc(ev.id)}">${ev.state === 'failed' ? `Compacting failed${ev.error && ev.error !== 'failed' ? ': ' + esc(ev.error) : ''}` : 'Conversation compacted'}${ev.ms ? ' in ' + dur(ev.ms) : ''}${ev.cost != null ? ` · $${ev.cost.toFixed(2)}${ev.cold ? ' (its cache had run out)' : ''}` : ''}</div>`;
     case 'error': return `<div class="err">${esc(ev.text)}${ev.login ? '\n\nThis client is not signed in. Use the Sign in button in the left column, then send your message again.' : ''}</div>`;
     // Signed in again after a turn failed on its sign-in: offer to send that message again; nothing resends on its own.
     case 'retry': return `<div class="note retry" data-retry="${esc(ev.id)}">Signed in again. <button class="primary" data-retry-send${tip('send-again')}>Send again</button><div class="retry-text">${esc(ev.text.length > 200 ? ev.text.slice(0, 200) + '…' : ev.text)}</div></div>`;

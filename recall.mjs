@@ -30,6 +30,33 @@ export function saveDue({ tokens, compactAt, share, prompted }) {
   return tokens >= line ? 'send' : null;
 }
 
+// Compact at a break (#747): a session that ended its turn above share% of its compact point, and has been idle
+// idleMin minutes since, is compacted by Docket while its cache is still warm, after its save-before-compact turn.
+// Auto-compact would fire on its next turn anyway, mostly mid-task, and on a cold cache when that turn comes after
+// the cache ran out (5 of 324 in Oct-Nov 2026). Compacting at a break puts the summary at a natural stopping point,
+// and a session that then sits idle past its cache is rewritten from the summary (about 30k) rather than from 140k+.
+// Where it compacts barely changes the cost while it keeps working: the compaction's fixed cost (about $0.50 with the
+// rebuild) is traded for cheaper reads, and the two balance between about 80% and 100%.
+// Off (share 0) until Claude Code changes: a /compact sent to a session is a manual compact, which keeps the last reply
+// before it, and Claude Code renders that reply differently on each later turn. Every turn after it then writes the
+// whole context again instead of reading it (8 of 8 turn starts after manual compacts, Oct-Nov 2026, against 36 of
+// 1,669 after auto-compacts), about $0.15-1 a turn for a saving of about $0.10 a compact. PORTAL_COMPACT_BREAK
+// ({"share":80}) turns it on to try a newer Claude Code.
+export const COMPACT_AT_BREAK = { share: 0, idleMin: 4 };
+export const BREAK_COMPACT = '/compact';
+
+// Whether Docket compacts a session now. lastReplyAt: its last reply; compactedAt: its last compact (0 before one);
+// sentAt: when Docket last sent its own /compact (one per compact cycle); saved: its save-before-compact turn went
+// this cycle, or it has none.
+export function breakCompactDue({ tokens = 0, compactAt = 0, lastReplyAt = 0, cacheTtl = 300, compactedAt = 0, sentAt = 0, saved = true, now = Date.now(), cfg = COMPACT_AT_BREAK }) {
+  if (!cfg.share || !tokens || !compactAt || !lastReplyAt || !saved) return false;
+  if (tokens < compactAt * cfg.share / 100) return false;
+  if (sentAt && sentAt > (compactedAt || 0)) return false;
+  if (compactedAt && !(lastReplyAt > compactedAt)) return false; // the file's last reply is still from before the compact
+  const age = now - lastReplyAt, ttl = (cacheTtl || 300) * 1000;
+  return age >= Math.min(cfg.idleMin * 60000, ttl / 2) && age < ttl - 30000; // on a 5-minute cache, after half of it
+}
+
 export const SAVE_PROMPT = (pct) => `(From Docket: this conversation is at about ${pct}% of the point where it compacts automatically. A compact keeps the gist and drops exact facts. Now, before it happens, bring your plan or notes file up to date with what a summary would lose: open items and the next step, IDs (commits, branches, pull requests, tickets, session ids), conditions the user set ("merge when the review is clean"), background tasks or servers still running, and decisions made. If you keep no such file, write the same as a short "State before compact" list in your reply. Do only that, and start no new work. If your last reply asked the user something, end by asking it again in one line. After a compact, mcp__portal__recall reads back this conversation word for word.)`;
 export const RECALL_NOTE = '(From Docket: this conversation was just compacted. Its summary keeps the gist, not the exact words. When you need something from before the compact word for word (a commit SHA, a pull request or ticket number, which tasks were running, or exactly what the user said), call mcp__portal__recall: search it with words, or ask for the last user messages, before acting on a memory of it.)';
 
