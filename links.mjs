@@ -325,6 +325,9 @@ export function ghPick({ owner, accounts, groupLast, companyDefault }) {
   if ((login = has(ghDerivedDefault(accounts)))) return { login, why: "the desk's default account (worked out: its only other sign-in)" };
   return { login: '', why: 'no match, so the active account' };
 }
+// The chat note naming that account, only when the folder's origin is on GitHub (an owner from githubRepo): in a
+// folder that is not a git repo, or one on Azure DevOps, gh still runs as the pick but the chat says nothing.
+export const ghNote = ({ owner, login, why }) => owner && login ? `GitHub account for gh: ${login} (${why}).` : '';
 
 // ---------- Azure DevOps ----------
 // The organization as typed (a name, https://dev.azure.com/<name> or https://<name>.visualstudio.com), as a base URL.

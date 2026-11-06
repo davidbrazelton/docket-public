@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { newLinkScan, scanLinkText, branchesInCommand, ticketKeys, adoBase, parseAdoPrUrl, adoPR, adoPRsForBranch, adoWorkItemIds, adoItemKeyFrom, adoCategory, adoPRWorkItemIds, adoWorkItems, jiraTicket, jiraTickets, ticketFinished, jiraMe, ticketUnread, jiraFromClaudeJson, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
-  filesIssue, parseIssueUrl, branchIssue, githubTicket, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghDerivedDefault, foldersInCommand, sessionBranches } from '../links.mjs';
+  filesIssue, parseIssueUrl, branchIssue, githubTicket, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, ghDerivedDefault, foldersInCommand, sessionBranches } from '../links.mjs';
 
 const fixture = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'session-links.jsonl'), 'utf8');
 
@@ -384,6 +384,14 @@ test('the gh account a session runs as: repo owner, then group memory, then comp
   assert.equal(ghPick({ ...all, owner: 'elsewhere', groupLast: 'gone' }).login, 'workacct'); // remembered but no longer signed in
   assert.equal(ghPick({ owner: 'x', accounts, groupLast: 'gone', companyDefault: 'gone' }).login, ''); // nothing: active account stays
   assert.equal(ghPick({ owner: 'x', accounts: [] }).login, '');
+});
+
+test('the gh account note shows only in a folder whose origin is on GitHub', () => {
+  const pick = { login: 'groupacct', why: 'the account this group used last' };
+  assert.equal(ghNote({ owner: 'owner', ...pick }), 'GitHub account for gh: groupacct (the account this group used last).');
+  assert.equal(ghNote({ owner: '', ...pick }), ''); // not a git repo, or origin on Azure DevOps
+  assert.equal(ghNote({ owner: githubRepo('https://dev.azure.com/org/proj/_git/repo').split('/')[0], ...pick }), '');
+  assert.equal(ghNote({ owner: 'owner', login: '', why: 'no match, so the active account' }), ''); // no pick
 });
 
 test('the company default is worked out from its sign-ins when ghDefault is not set', () => {

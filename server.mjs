@@ -59,7 +59,7 @@ import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport
 import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
 import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE } from './recall.mjs';
 import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPrUrl, adoPRsForBranch, adoPRById, adoWorkItemIds, adoItemKey, isAdoItemKey, adoItemKeyFrom, adoPRWorkItemIds, adoWorkItems, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, linkTtl, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
-  parseIssueUrl, branchIssue, githubTicket, CLOSES, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, sessionBranches,
+  parseIssueUrl, branchIssue, githubTicket, CLOSES, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, sessionBranches,
   prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe, ticketFinished } from './links.mjs';
 import { currentBranch } from './git-head.mjs';
 import { restDue, restMinutes } from './rest.mjs';
@@ -4004,7 +4004,8 @@ async function ghForSession(s, client) {
     if (pick.why.startsWith('repo owner') && last[gid] !== pick.login) { last[gid] = pick.login; saveState(); }
     if (state.sessions[s.id]) { state.sessions[s.id].ghAccount = { login: pick.login, why: pick.why }; saveState(); }
     logEvent('gh account', `${s.id}: ${pick.login} (${pick.why})`);
-    addEvent(s, { k: 'note', text: `GitHub account for gh: ${pick.login} (${pick.why}).` });
+    const note = ghNote({ owner, ...pick });
+    if (note) addEvent(s, { k: 'note', text: note });
     return token;
   } catch (e) { logEvent('gh account failed', e.message); return ''; }
 }
