@@ -661,6 +661,14 @@ aside.tasks.hidden { display: none; }
 .dlg-body { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
 .dlg-body label { display: flex; align-items: center; gap: 8px; color: var(--text); }
 .dlg.wide { width: min(720px, 100%); }
+/* ask(): a yes-or-no question over whatever is open, the main dialog included */
+#askDlg { z-index: 60; }
+#askBody { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* tell(): a message in the corner, in place of the browser's own alert box */
+.toasts { position: fixed; right: 16px; bottom: 16px; z-index: 70; display: flex; flex-direction: column; gap: 8px; width: min(380px, calc(100vw - 32px)); pointer-events: none; }
+.toast { pointer-events: auto; display: flex; gap: 8px; align-items: flex-start; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-left: 4px solid var(--bad); border-radius: 10px; box-shadow: var(--card-shadow); padding: 10px 10px 10px 12px; font-size: 13px; }
+.toast .t-msg { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.toast button { flex: none; }
 /* the Suggest a feature panel, and its speech bubble button in the top bar */
 header.top #feedbackBtn { padding: 4px 8px; display: inline-flex; align-items: center; }
 header.top #feedbackBtn svg { width: 18px; height: 18px; }
@@ -1406,6 +1414,8 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Larger view of the image" hidden><img id="lbImg" alt=""><button class="lb-close" id="lbClose" data-tip="lb-close" aria-label="Close">✕</button><button class="lb-prev" id="lbPrev" data-tip="lb-prev" aria-label="Previous image">‹</button><button class="lb-next" id="lbNext" data-tip="lb-next" aria-label="Next image">›</button><div class="lb-count" id="lbCount"></div></div>
 <div class="dlg-back" id="pfDlg" hidden><section class="dlg profile-page" id="profilePage" hidden role="dialog" aria-modal="true" aria-label="Desk Inspector"></section></div>
 <div class="dlg-back" id="dlg" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"><div class="dlg-title" id="dlgTitle"></div><div class="dlg-body" id="dlgBody"></div><div class="dlg-btns" id="dlgBtns"></div></div></div>
+<div class="dlg-back" id="askDlg" hidden><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="askTitle" aria-describedby="askBody"><div class="dlg-title" id="askTitle"></div><div class="dlg-body" id="askBody"></div><div class="dlg-btns"><button id="askNo" title="No: leave things as they are (Esc)"></button><button class="primary" id="askYes" title="Yes: go ahead (Enter)"></button></div></div></div>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
 <div class="dlg-back" id="fbDlg" hidden><div class="dlg fb" role="dialog" aria-modal="true" aria-labelledby="fbTitle"><div class="dlg-title" id="fbTitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fb-title-ic" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>Suggest a feature</div><div class="dlg-body">
   <textarea id="fbText" placeholder="What would make Docket better? (required)" aria-label="Your message (required)" aria-required="true" data-tip="fb-text"></textarea>
   <input type="text" id="fbName" placeholder="Your name (optional)" aria-label="Your name (optional)" maxlength="80" data-tip="fb-name">
@@ -2670,8 +2680,8 @@ function closePreview() { $('preview').hidden = true; pv = null; $('pvBody').inn
 document.querySelector('.pv-modes').onclick = (e) => { const b = e.target.closest('[data-pv-mode]'); if (b && pv) previewFile(pv.sessionId, pv.path, b.dataset.pvMode); };
 $('pvReload').onclick = () => pv && previewFile(pv.sessionId, pv.path);
 $('pvClose').onclick = closePreview;
-$('pvOpen').onclick = () => pv && api('/api/files/open', { ...pv, how: 'open' }).catch((err) => alert(err.message));
-$('pvFolder').onclick = () => pv && api('/api/files/open', { ...pv, how: 'folder' }).catch((err) => alert(err.message));
+$('pvOpen').onclick = () => pv && api('/api/files/open', { ...pv, how: 'open' }).catch((err) => tell(err.message));
+$('pvFolder').onclick = () => pv && api('/api/files/open', { ...pv, how: 'folder' }).catch((err) => tell(err.message));
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('preview').hidden && $('preview').classList.contains('as-window')) closePreview(); });
 $('preview').addEventListener('click', (e) => { if (e.target === $('preview') && $('preview').classList.contains('as-window')) closePreview(); });
 
@@ -2680,7 +2690,7 @@ document.addEventListener('click', async (e) => {
   if (b.dataset.fileOpen && TAB_VIEW.test(b.dataset.fileOpen)) { previewFile(b.dataset.session, b.dataset.fileOpen); return; }
   const how = b.dataset.fileFolder ? 'folder' : 'open';
   try { await api('/api/files/open', { client: S.client, sessionId: b.dataset.session, path: b.dataset.fileOpen || b.dataset.fileFolder, how }); }
-  catch (err) { alert(err.message); }
+  catch (err) { tell(err.message); }
 });
 
 // Publish as artifact: Docket publishes the file in a short run of its own (a minute or so), then the row shows
@@ -2691,8 +2701,8 @@ async function publishFile(sessionId, p, row) {
   try {
     const r = await api('/api/files/publish', { client: S.client, sessionId, path: p });
     refreshFiles(sessionId);
-    if (confirm(`${name} is published (private until you share it):\n${r.url}\n\nOpen its page now?`)) window.open(r.url, '_blank', 'noopener');
-  } catch (err) { alert(`${name} was not published: ${err.message}`); }
+    if (await ask(`${name} is published`, `It is private until you share it:\n${r.url}`, { yes: 'Open its page', no: 'Not now' })) window.open(r.url, '_blank', 'noopener');
+  } catch (err) { tell(`${name} was not published: ${err.message}`); }
   finally { row.classList.remove('publishing'); }
 }
 // The menu for one file, pull request or ticket row, at x, y; kept inside the window.
@@ -2705,7 +2715,7 @@ function rowMenu(row, x, y) {
     const task = row.dataset.rowTask, sessionId = row.dataset.session;
     const why = 'Use this when the job is stuck and the session should stop waiting for it: the session then shows it needs you, and the session that started it hears. Docket does this by itself after 15 minutes with no sign of life.';
     items = item('done', 'done', 'Mark done', why) + `<div class="ver">${esc(why)}</div>`;
-    run = () => api(`/api/sessions/${sessionId}/task-done`, { task }).catch((err) => alert(err.message));
+    run = () => api(`/api/sessions/${sessionId}/task-done`, { task }).catch((err) => tell(err.message));
   } else if (row.dataset.rowFile) {
     // A file card in the chat is drawn before the details panel's list arrives, so that list has the last word.
     const p = row.dataset.rowFile, sessionId = row.dataset.session, known = (S.files[sessionId] || []).find((f) => f.path === p);
@@ -2731,12 +2741,12 @@ function rowMenu(row, x, y) {
       : act === 'image' ? copiedImage(sessionId, p, row)
       : act === 'address' ? copied(new URL(view, location.href).href, row)
       : act === 'copy' ? copied(p, row)
-      : api('/api/files/open', { client: S.client, sessionId, path: p, how: act }).catch((err) => alert(err.message));
+      : api('/api/files/open', { client: S.client, sessionId, path: p, how: act }).catch((err) => tell(err.message));
   } else if (row.dataset.rowFolder) { // a session's working folder or its worktree
     const p = row.dataset.rowFolder, sessionId = row.dataset.session;
     items = item('folder', 'folder', `Open in ${FILE_MANAGER}`) + '<hr>' + item('copy', 'copy', 'Copy path');
     run = (act) => act === 'copy' ? copied(p, row)
-      : api(`/api/sessions/${sessionId}/folder/open`, { client: S.client, path: p }).catch((err) => alert(err.message));
+      : api(`/api/sessions/${sessionId}/folder/open`, { client: S.client, path: p }).catch((err) => tell(err.message));
   } else {
     const url = row.dataset.rowLink, clean = cleanLink(url);
     items = item('tab', 'tab', 'Open link in new tab') + item('window', 'window', 'Open link in new window') + '<hr>'
@@ -2937,19 +2947,21 @@ $('dlgBody').addEventListener('click', (e) => {
   if (!e.target.closest('.sites-view')) return;
   const c = S.clients.find((x) => x.id === S.client); if (!c) return;
   const t = e.target.closest('button'); if (!t) return;
-  const fail = (err) => { alert(err.message); renderBrowser(); };
+  const fail = (err) => { tell(err.message); renderBrowser(); };
   if (t.id === 'svDone') browserPost(c, 'done').catch(fail);
   else if (t.id === 'svAdd') {
     let url = $('svUrl').value.trim(); if (url && !/^https?:\/\//.test(url)) url = 'https://' + url;
     t.disabled = true; t.textContent = 'Opening…';
     browserPost(c, 'open', { url }).catch(fail);
   } else if (t.id === 'svForget') {
-    if (confirm(`Forget every sign-in saved for ${c.name}? Sessions will have to be signed in again.`)) browserPost(c, 'forget').catch(fail);
+    ask(`Forget every sign-in saved for ${c.name}?`, 'Sessions will have to be signed in again.', { yes: 'Forget all' }).then((ok) => ok && browserPost(c, 'forget').catch(fail));
   } else if (t.dataset.forgetSite) {
     const site = t.dataset.forgetSite;
-    if (!confirm(`Delete the saved sign-in for ${site}? ${c.name} sessions will have to sign in to it again.`)) return;
-    t.disabled = true; t.textContent = 'Deleting…';
-    browserPost(c, 'forget-site', { site }).catch(fail);
+    ask(`Delete the saved sign-in for ${site}?`, `${c.name} sessions will have to sign in to it again.`, { yes: 'Delete' }).then((ok) => {
+      if (!ok) return;
+      t.disabled = true; t.textContent = 'Deleting…';
+      browserPost(c, 'forget-site', { site }).catch(fail);
+    });
   }
 });
 $('dlgBody').addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.id === 'svUrl') $('svAdd')?.click(); });
@@ -2991,8 +3003,8 @@ function runRows(runs, viewing) {
 S.mode = 'sessions';
 S.sched = [];
 function setMode(mode, openId) {
-  if (S.mode === 'schedules' && mode !== 'schedules' && schedDirty) {
-    if (!confirm('You have unsaved changes to this schedule. Leave without saving?')) return;
+  if (S.mode === 'schedules' && mode !== 'schedules') {
+    if (!leaveOk(() => setMode(mode, openId))) return;
     schedDirty = false;
   }
   S.mode = mode;
@@ -3050,11 +3062,11 @@ $('list').addEventListener('contextmenu', (e) => {
 async function scheduleAction(s, act) {
   if (act === 'run') {
     const r = await api(`/api/schedules/${s.id}/run`, {});
-    if (!r.sessionId) return alert('Its last run is still working, so it was not started again.');
+    if (!r.sessionId) return tell('Its last run is still working, so it was not started again.');
     await loadSchedules(); if (S.schedOpen === s.id) refreshScheduleDetail();
   }
   if (act === 'toggle') { await api(`/api/schedules/${s.id}/${s.enabled ? 'disable' : 'enable'}`, {}); await loadSchedules(); if (S.schedOpen === s.id) refreshScheduleDetail(); }
-  if (act === 'delete' && confirm(`Delete the schedule "${s.title}"? It stops running. Its instructions file is kept.`)) {
+  if (act === 'delete' && await ask(`Delete the schedule "${s.title}"?`, 'It stops running. Its instructions file is kept.', { yes: 'Delete' })) {
     await api(`/api/schedules/${s.id}/delete`, {}); await loadSchedules();
     if (S.schedOpen === s.id) { schedDirty = false; if (S.sched[0]) openSchedule(S.sched[0].id); else openSchedule(null); }
   }
@@ -3098,13 +3110,19 @@ function showWhenFields() {
 let schedDirty = false;
 S.schedOpen = null;   // id of the schedule open in the middle and right panels, 'new', or null
 S.schedDetail = null;
-const leaveOk = () => !schedDirty || confirm('You have unsaved changes to this schedule. Leave without saving?');
+// True when nothing is unsaved. Otherwise it asks and returns false; on Leave the changes are let go and again() runs.
+function leaveOk(again) {
+  if (!schedDirty) return true;
+  ask('Leave without saving?', 'You have unsaved changes to this schedule.', { yes: 'Leave', no: 'Stay' })
+    .then((ok) => { if (ok) { schedDirty = false; again(); } });
+  return false;
+}
 
 // A schedule opens as a chat (middle) about the schedule (right). The chat is a
 // normal Claude session kept for this schedule, with tools to read and save it.
 async function openSchedule(id) {
   closePreview();
-  if (!leaveOk()) return;
+  if (!leaveOk(() => openSchedule(id))) return;
   schedDirty = false;
   S.schedOpen = id || 'new';
   renderSectionToggles();
@@ -3205,7 +3223,7 @@ async function refreshScheduleDetail() {
 }
 // Opening a run's session switches the left column back to sessions.
 function setModeKeepSelection(sessionId) {
-  if (!leaveOk()) return;
+  if (!leaveOk(() => setModeKeepSelection(sessionId))) return;
   schedDirty = false; S.schedOpen = null; $('tasks').classList.remove('wide');
   S.mode = 'sessions';
   for (const b of document.querySelectorAll('#side [data-mode]')) b.classList.toggle('on', b.dataset.mode === 'sessions');
@@ -3363,7 +3381,7 @@ $('sumBtn').onclick = async () => {
   const mode = summaryKids(s) ? summaryMode() : 'top';
   $('sumBtn').disabled = true;
   try { await api(`/api/sessions/${s.id}/summary?client=${S.client}`, { mode }); }
-  catch (err) { alert(err.message); renderSummaryCtl(); } // on success, the session's status turning to running greys it
+  catch (err) { tell(err.message); renderSummaryCtl(); } // on success, the session's status turning to running greys it
 };
 async function changeSetting(key, value) {
   const d = clientDefaults(); d[key] = value; // becomes the default for new sessions
@@ -3374,7 +3392,7 @@ async function changeSetting(key, value) {
     try {
       const r = await api(`/api/sessions/${id}/settings?client=${S.client}`, { [key]: value });
       if (S.live[id]) S.live[id].settings = r.settings;
-    } catch (err) { alert('Could not change it: ' + err.message); }
+    } catch (err) { tell('Could not change it: ' + err.message); }
   }
   renderComposerBar();
 }
@@ -3466,7 +3484,7 @@ const pinnedHere = (id) => !!S.keep[S.client]?.pins?.includes(id);
 async function setPin(id, pinned) {
   const k = S.keep[S.client] ||= { touched: {}, pins: [] };
   k.pins = pinned ? [...k.pins.filter((x) => x !== id), id] : k.pins.filter((x) => x !== id); renderList();
-  try { S.keep[S.client] = await api('/api/keep', { client: S.client, id, pinned }); } catch (err) { alert(err.message); await loadKeep(S.client); }
+  try { S.keep[S.client] = await api('/api/keep', { client: S.client, id, pinned }); } catch (err) { tell(err.message); await loadKeep(S.client); }
   renderList();
 }
 const groupOf = (gid, clientId = S.client) => (S.groups[clientId] || []).find((g) => g.id === gid) || null;
@@ -3488,17 +3506,54 @@ function dialog({ title, body = '', buttons, stack = false }) {
     ($('dlgBody').querySelector('input[type=text]') || $('dlgBtns').querySelector('.primary'))?.focus();
   });
 }
+// Docket never shows the browser's own alert, confirm or prompt boxes (test/no-native-dialogs.test.mjs):
+// tell() puts a message in the corner, and ask() is a yes-or-no question that resolves true for yes.
+// ask() has its own dialog, so it can ask over the main one without closing it.
+function tell(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = `<div class="t-msg">${esc(String(msg ?? ''))}</div><button class="ghost" aria-label="Close" title="Close this message">✕</button>`;
+  const close = () => t.remove();
+  t.querySelector('button').onclick = close;
+  $('toasts').append(t);
+  while ($('toasts').children.length > 4) $('toasts').firstElementChild.remove();
+  setTimeout(close, Math.min(20000, 6000 + String(msg ?? '').length * 60)); // long enough to read
+}
+let askOpen = null;
+function ask(title, body = '', { yes = 'OK', no = 'Cancel' } = {}) {
+  askOpen?.(false); // one question at a time: a new one answers the old one with no
+  return new Promise((resolve) => {
+    $('askTitle').textContent = title;
+    $('askBody').textContent = body;
+    $('askBody').style.display = body ? '' : 'none';
+    $('askYes').textContent = yes; $('askNo').textContent = no;
+    $('askDlg').hidden = false;
+    const done = askOpen = (v) => { askOpen = null; $('askDlg').hidden = true; window.removeEventListener('keydown', onKey, true); resolve(v); };
+    // On window, so it hears a key before the main dialog's own listener on document does.
+    const onKey = (e) => {
+      if (e.key !== 'Escape' && e.key !== 'Enter') return;
+      e.stopImmediatePropagation(); e.preventDefault();
+      done(e.key === 'Enter' && document.activeElement?.id !== 'askNo');
+    };
+    window.addEventListener('keydown', onKey, true);
+    $('askYes').onclick = () => done(true);
+    $('askNo').onclick = () => done(false);
+    $('askDlg').onclick = (e) => { if (e.target === $('askDlg')) done(false); };
+    $('askYes').focus();
+  });
+}
 const companyFolder = () => S.clients.find((x) => x.id === S.client)?.folder || '';
 const folderHint = () => `<div class="meta" style="margin-top:6px">Sessions started in this group work in this folder and read its CLAUDE.md. Leave it blank to use the desk's folder (${esc(companyFolder())}).</div>`;
 async function newGroup() {
+  const remote = !!S.clients.find((c) => c.id === S.client)?.remote; // a start folder is the other computer's to set
   const v = await dialog({ title: 'New group', body: `<input type="text" id="dlgName" placeholder="Group name" aria-label="Group name"${tip('dlg-name')}>`
-      + `<input type="text" id="dlgFolder" data-pick="desk" placeholder="Start folder (optional)" aria-label="Start folder" style="margin-top:8px"${tip('dlg-folder')}>` + folderHint(),
+      + (remote ? '' : `<input type="text" id="dlgFolder" data-pick="desk" placeholder="Start folder (optional)" aria-label="Start folder" style="margin-top:8px"${tip('dlg-folder')}>` + folderHint()),
     buttons: [{ label: 'Cancel', value: null }, { label: 'Create', value: 'ok', primary: true }] });
   const name = v && document.getElementById('dlgName').value.trim();
   if (!name) return null;
-  const folder = document.getElementById('dlgFolder').value.trim();
+  const folder = document.getElementById('dlgFolder')?.value.trim() || '';
   let g;
-  try { g = await api('/api/groups', { client: S.client, name, folder }); } catch (err) { alert(err.message); return null; }
+  try { g = await api('/api/groups', { client: S.client, name, folder }); } catch (err) { tell(err.message); return null; }
   await loadGroups(S.client);
   return g;
 }
@@ -3546,16 +3601,16 @@ async function autoGroup(id) {
     buttons: choices, stack: true });
   if (!v) return;
   let gid = v.groupId;
-  if (v.name) { try { gid = (await api('/api/groups', { client: S.client, name: v.name })).id; await loadGroups(S.client); } catch (err) { return alert(err.message); } }
+  if (v.name) { try { gid = (await api('/api/groups', { client: S.client, name: v.name })).id; await loadGroups(S.client); } catch (err) { return tell(err.message); } }
   await setSessionGroup(answer.id, gid);
 }
 async function setSessionGroup(id, groupId) {
-  try { await api(`/api/sessions/${id}/group?client=${S.client}`, { groupId }); } catch (err) { alert(err.message); }
+  try { await api(`/api/sessions/${id}/group?client=${S.client}`, { groupId }); } catch (err) { tell(err.message); }
 }
 // Move a session under another one, or to the top level. The parent gets its finished turns
 // and counts its cost; its group stays as it was showing. Sessions started from it can't be picked.
 async function setSessionParent(id, parentId) {
-  try { await api(`/api/sessions/${id}/parent?client=${S.client}`, { parentId }); } catch (err) { alert(err.message); }
+  try { await api(`/api/sessions/${id}/parent?client=${S.client}`, { parentId }); } catch (err) { tell(err.message); }
 }
 async function pickParent(id) {
   const all = [...Object.values(S.live).filter((x) => x.client === S.client), ...(S.history[S.client] || [])];
@@ -3591,7 +3646,7 @@ async function archiveGroup(g) {
 // One group action on the server; a refusal is shown, not dropped. True when it went through.
 async function groupAct(g, act, body = {}) {
   try { await api(`/api/groups/${g.id}/${act}`, { client: S.client, ...body }); return true; }
-  catch (err) { alert(err.message); return false; }
+  catch (err) { tell(err.message); return false; }
 }
 async function deleteGroup(g) {
   const v = await dialog({ title: `Delete the group "${g.name}"?`, body: 'Its sessions stay as they are and become ungrouped. Their costs stay too.', buttons: [{ label: 'Cancel', value: null }, { label: 'Delete group', value: 'ok', primary: true }] });
@@ -3821,7 +3876,7 @@ async function confirmDrop(id, plan) {
     + (plan.parentId ? '<div style="margin-top:8px">Its finished turns will go to the new parent, and its cost will count in that family.</div>'
       : s?.parentId ? '<div style="margin-top:8px">It will no longer report to the session that started it.</div>' : '');
   if (!await dialog({ title: 'Move session?', body, buttons: [{ label: 'Cancel', value: null }, { label: 'Move', value: 'ok', primary: true }] })) return;
-  try { await api(`/api/sessions/${id}/moveto?client=${S.client}`, { parentId: plan.parentId, groupId: plan.groupId }); } catch (err) { alert(err.message); }
+  try { await api(`/api/sessions/${id}/moveto?client=${S.client}`, { parentId: plan.parentId, groupId: plan.groupId }); } catch (err) { tell(err.message); }
 }
 $('list').addEventListener('dragstart', (e) => {
   const row = e.target.closest?.('.row[draggable][data-id]'); dragRow = row ? row.dataset.id : null; if (!row) return;
@@ -4467,13 +4522,13 @@ document.addEventListener('click', async (e) => {
     const r = await api(`/api/inbox/${b.dataset.inbox}/${b.dataset.act}?client=${S.client}`, {});
     await loadSessions(S.client); renderList(); renderClients();
     if (b.dataset.act === 'start' && r?.id) openSession(r.id);
-  } catch (err) { alert(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
+  } catch (err) { tell(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
 });
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-cross]'); if (!b) return;
   const card = b.closest('[data-card]'); for (const x of card.querySelectorAll('button')) x.disabled = true;
   try { await api(`/api/sessions/${S.selected}/cross?client=${S.client}`, { crossId: b.dataset.cross, send: b.dataset.send === '1' }); }
-  catch (err) { alert(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
+  catch (err) { tell(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
 });
 function renderList() {
   if (menuHold(renderList)) return; // waits while a menu is open (menu hold)
@@ -4558,7 +4613,7 @@ $('list').addEventListener('click', async (e) => {
       S.keepUnread = id;
       await api(`/api/sessions/${id}/unread?client=${S.client}`, unreadSpot(id));
     }
-  } catch (err) { alert(err.message); }
+  } catch (err) { tell(err.message); }
 }, true);
 // Releasing Alt after an Alt+Click must not move focus to the browser's menu.
 document.addEventListener('keyup', (e) => { if (e.key === 'Alt' && altClicked) { e.preventDefault(); altClicked = false; } });
@@ -4743,7 +4798,7 @@ function pickedMenu(e) {
         if (unread.some((s) => s.id === S.selected)) S.keepUnread = S.selected;
         await eachPicked(unread, (s) => api(`/api/sessions/${s.id}/unread?client=${S.client}`, unreadSpot(s.id)), 'mark unread');
       }
-    } catch (err) { alert(err.message); }
+    } catch (err) { tell(err.message); }
   };
   m.querySelector('button')?.focus();
 }
@@ -4851,7 +4906,7 @@ const plansOnDesk = (id) => { const c = S.clients.find((x) => x.id === id); retu
 // Use a plan for this work: the session menu item, and Use a plan on the card that offers one. Docket tells the session.
 async function usePlan(id, card = '') {
   try { await api(`/api/sessions/${id}/use-plan?client=${S.client}`, card ? { card } : {}); }
-  catch (err) { alert(err.message); }
+  catch (err) { tell(err.message); }
 }
 function sessionMenuFacts(s) {
   const kids = s.archived ? [] : descendants(s.id).filter((x) => !x.archived);
@@ -4933,7 +4988,7 @@ function openSessionMenu(id, at) {
     closeMenu();
     const open = async () => { if (id !== S.selected) await openSession(id); };
     if (act === 'newunder') newDraft(null, id);
-    if (act.startsWith('jobdone:')) { const [, child, task] = act.split(':'); await api(`/api/sessions/${child}/task-done`, { task }).catch((err) => alert(err.message)); }
+    if (act.startsWith('jobdone:')) { const [, child, task] = act.split(':'); await api(`/api/sessions/${child}/task-done`, { task }).catch((err) => tell(err.message)); }
     if (act === 'popout') popOut(id, S.client);
     if (act === 'archive') await archive(id, true, otherRuns.map((k) => k.id));
     if (act === 'archive-all') await archive(id, true, [...otherRuns, ...kids].map((k) => k.id));
@@ -4941,7 +4996,7 @@ function openSessionMenu(id, at) {
     if (act === 'terminal') terminalButton({ stopPropagation() {}, currentTarget: { getBoundingClientRect: () => where } }, s?.cwd, id); // its shells, AI programs and Choose folder…
     const ed = act.startsWith('editor-') && S.editors.find((x) => 'editor-' + x.id === act);
     if (ed) await openInEditor(id, ed);
-    if (act === 'end') { try { await api(`/api/sessions/${id}/end`, {}); } catch (err) { alert(err.message); } }
+    if (act === 'end') { try { await api(`/api/sessions/${id}/end`, {}); } catch (err) { tell(err.message); } }
     if (act === 'delete') await deleteSession(id);
     if (act === 'rename') { await open(); renameInline(); }
     if (act === 'read') for (const x of unreadRuns) await markRead(x);
@@ -4953,7 +5008,7 @@ function openSessionMenu(id, at) {
     if (act === 'pin' || act === 'unpin') await setPin(id, act === 'pin');
     if (act === 'unread') {
       S.keepUnread = id;
-      try { await api(`/api/sessions/${id}/unread?client=${S.client}`, unreadSpot(id)); } catch (err) { alert(err.message); }
+      try { await api(`/api/sessions/${id}/unread?client=${S.client}`, unreadSpot(id)); } catch (err) { tell(err.message); }
     }
   };
   m.querySelector('button:not([disabled])')?.focus();
@@ -5037,7 +5092,7 @@ async function setFeedbackDestination() {
     buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: 'ok', primary: true }] });
   if (!v) return;
   const repo = document.getElementById('fbDestRepo').value.trim(), token = document.getElementById('fbDestToken').value.trim();
-  try { await api('/api/feedback/destination', { repo, token }); } catch (err) { alert(err.message); }
+  try { await api('/api/feedback/destination', { repo, token }); } catch (err) { tell(err.message); }
 }
 const stallLabel = () => `Stop stuck steps: ${S.stallStop === false ? 'off' : 'on'}`;
 const autoContinueLabel = () => `Continue after a crash: ${S.autoContinue === false ? 'off' : 'on'}`;
@@ -5050,7 +5105,7 @@ async function setRestMinutes() {
     <input type="number" id="restMin" min="0" step="1" aria-label="Minutes" value="${cur}" style="margin-top:6px;width:8em"${tip('rest-min')}> minutes`,
     buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: 'ok', primary: true }] });
   if (!v) return;
-  try { S.restMinutes = (await api('/api/rest-minutes', { minutes: document.getElementById('restMin').value })).minutes; } catch (err) { alert(err.message); }
+  try { S.restMinutes = (await api('/api/rest-minutes', { minutes: document.getElementById('restMin').value })).minutes; } catch (err) { tell(err.message); }
 }
 const autoPauseLabel = () => `Pause on sleep: ${S.autoPause === false ? 'off' : 'on'}`;
 // The ☰ menu: Desks (Manage, and every desk's settings), a few things you open often, then groups that open to the side
@@ -5123,7 +5178,7 @@ $('menuBtn').onclick = (e) => {
     const sb = ev.target.closest('.sub-btn');
     if (sb?.dataset.sub === 'about' && ev.altKey) { // Alt+click shows or hides Remote Desks, with no AI needed
       closeMenu();
-      api('/api/remote-features', { on: !S.remoteOn }).then((r) => setRemoteOn(r.on)).catch((err) => alert(err.message));
+      api('/api/remote-features', { on: !S.remoteOn }).then((r) => setRemoteOn(r.on)).catch((err) => tell(err.message));
       return;
     }
     if (sb) { // a click opens the group (and closes it again where hovering does not open it); Enter also moves into it
@@ -5139,19 +5194,19 @@ $('menuBtn').onclick = (e) => {
     }
     if (act === 'stall') { // stays open and shows the new state
       const b = ev.target.closest('button');
-      try { S.stallStop = (await api('/api/stall-stop', { on: S.stallStop === false })).on; } catch (err) { alert(err.message); }
+      try { S.stallStop = (await api('/api/stall-stop', { on: S.stallStop === false })).on; } catch (err) { tell(err.message); }
       b.textContent = stallLabel();
       return;
     }
     if (act === 'autocontinue') { // stays open and shows the new state
       const b = ev.target.closest('button');
-      try { S.autoContinue = (await api('/api/auto-continue', { on: S.autoContinue === false })).on; } catch (err) { alert(err.message); }
+      try { S.autoContinue = (await api('/api/auto-continue', { on: S.autoContinue === false })).on; } catch (err) { tell(err.message); }
       b.textContent = autoContinueLabel();
       return;
     }
     if (act === 'updmode') { // stays open and shows the new state
       const b = ev.target.closest('button');
-      try { showUpdate(await api('/api/update/mode', { mode: S.update?.mode === 'auto' ? 'manual' : 'auto' })); } catch (err) { alert(err.message); }
+      try { showUpdate(await api('/api/update/mode', { mode: S.update?.mode === 'auto' ? 'manual' : 'auto' })); } catch (err) { tell(err.message); }
       b.textContent = updModeLabel();
       return;
     }
@@ -5160,7 +5215,7 @@ $('menuBtn').onclick = (e) => {
     if (act === 'restartdocket') { closeMenu(); restartDocketAsk(); return; }
     if (act === 'autopause') { // stays open and shows the new state
       const b = ev.target.closest('button');
-      try { S.autoPause = (await api('/api/auto-pause', { on: S.autoPause === false })).on; } catch (err) { alert(err.message); }
+      try { S.autoPause = (await api('/api/auto-pause', { on: S.autoPause === false })).on; } catch (err) { tell(err.message); }
       b.textContent = autoPauseLabel();
       return;
     }
@@ -5248,7 +5303,7 @@ function goView(dir) { goViewTo(viewStep(dir)); }
 // Jumps to step p of the chain, the same as pressing Back or Forward until it is reached: nothing is dropped.
 function goViewTo(p) {
   if (p < 0) return;
-  if (!leaveOk()) return;
+  if (!leaveOk(() => goViewTo(p))) return;
   schedDirty = false;
   const ch = viewChain(); ch.pos = p; store.set('viewChain', ch);
   viewNav = true;
@@ -5562,7 +5617,7 @@ async function showRemoteDesks(focus) {
       } catch (e2) { msg[id] = e2.message; }
       return draw();
     }
-    if (b.dataset.rdRm && !confirm('Remove this remote desk from this computer? Its sessions stay on the other computer.')) return;
+    if (b.dataset.rdRm && !await ask('Remove this remote desk from this computer?', 'Its sessions stay on the other computer.', { yes: 'Remove' })) return;
     return act(() => api(`/api/remote-desks/${id}/${b.dataset.rdOff ? 'disconnect' : 'remove'}`, {}).then(reloadClients));
   };
   draw();
@@ -5653,7 +5708,7 @@ $('rcMenu').onclick = async (e) => {
     if (b.dataset.rcDrop) { const r = await api('/api/remote-control/disconnect', { id: b.dataset.rcDrop }); S.remoteHere = { desk: r.desk, connections: r.connections || [] }; renderClients(); }
     else { await api(`/api/remote-desks/${b.dataset.rcOff}/disconnect`, {}); await reloadClients(); }
     if (!$('rcMenu').hidden) rcMenu(true); // the redraws wait while it is open, so it shows what is left itself
-  } catch (err) { b.disabled = false; alert(err.message); }
+  } catch (err) { b.disabled = false; tell(err.message); }
 };
 document.addEventListener('mousedown', (e) => { if (!$('rcMenu').hidden && !e.target.closest('.rc-wrap')) rcMenu(false); });
 document.addEventListener('keydown', (e) => { if (!$('rcMenu').hidden && e.key === 'Escape') { e.stopPropagation(); rcMenu(false); $('rcBtn').focus(); } }, true);
@@ -5674,7 +5729,7 @@ async function chooseStartup(body) {
   const btns = $('startBanner').querySelectorAll('button');
   btns.forEach((b) => { b.disabled = true; });
   try { showStartupBanner(await api('/api/startup', body)); }
-  catch (err) { alert(`Docket could not set this up: ${err.message}`); return; }
+  catch (err) { tell(`Docket could not set this up: ${err.message}`); return; }
   finally { btns.forEach((b) => { b.disabled = false; }); }
   if (body.to) await dialog({ title: 'Starting Docket', body: startupHtml(S.startup), buttons: [{ label: 'OK', value: null, primary: true }] });
 }
@@ -5694,7 +5749,7 @@ function startupHtml(v) {
 // ☰ > Settings > Starting Docket: the state, and buttons to switch to each of the others.
 async function showStartupSettings() {
   for (;;) {
-    let v; try { v = await api('/api/startup?fresh=1'); } catch (err) { alert(err.message); return; }
+    let v; try { v = await api('/api/startup?fresh=1'); } catch (err) { tell(err.message); return; }
     showStartupBanner(v);
     const mode = v.now?.mode;
     const to = !v.supported || !mode || v.testCopy ? [] : [
@@ -5704,7 +5759,7 @@ async function showStartupSettings() {
     ].filter((b) => b.value !== (mode === 'neither' ? 'off' : mode));
     const pick = await dialog({ title: 'Starting Docket', body: startupHtml(v), buttons: [...to, { label: 'Close', value: null, primary: true }] });
     if (!pick) return;
-    try { showStartupBanner(await api('/api/startup', { to: pick })); } catch (err) { alert(`Docket could not set this up: ${err.message}`); }
+    try { showStartupBanner(await api('/api/startup', { to: pick })); } catch (err) { tell(`Docket could not set this up: ${err.message}`); }
   }
 }
 
@@ -5799,7 +5854,7 @@ async function showBringIn({ offer = false } = {}) {
 // Undo one run: the unchanged copies are ticked, the ones continued since are not (ticking one sends what was added
 // to it as well), and one open now cannot be.
 async function undoBringIn(client, run) {
-  let c; try { c = await api('/api/bring-in/check?' + new URLSearchParams({ client, run })); } catch (err) { alert(err.message); return; }
+  let c; try { c = await api('/api/bring-in/check?' + new URLSearchParams({ client, run })); } catch (err) { tell(err.message); return; }
   const rows = c.copies.filter((x) => x.state !== 'none');
   const word = (x) => x.open ? 'open in Docket now: close it first' : x.state === 'gone' ? 'already gone' : x.state === 'changed' ? 'continued since the copy: tick to send it anyway, with what was added' : 'unchanged since the copy';
   const body = `<p>Send these copies to ${BIN}? Only the copies go; the originals they came from are not touched.</p>`
@@ -5820,7 +5875,7 @@ async function undoBringIn(client, run) {
     const failed = x.skipped.filter((s) => s.why === 'failed'), left = x.skipped.length - failed.length;
     await dialog({ title: 'Undo bringing in', body: `<p>${biN(x.done.length, 'copy', 'copies')} sent to ${BIN}.${left ? ` ${left} left as ${left === 1 ? 'it is' : 'they are'}.` : ''}</p>`
       + (failed.length ? `<p class="bi-err">${failed.map((f) => esc(`${f.title}: ${f.error}`)).join('<br>')}</p>` : ''), buttons: [{ label: 'Close', value: null, primary: true }] });
-  } catch (err) { alert(err.message); }
+  } catch (err) { tell(err.message); }
 }
 // Once per company, after the setup wizard made it: when Docket finds sessions from before, it offers to bring them in.
 async function offerBringIn(client) {
@@ -5948,7 +6003,7 @@ function drawMenuVer(u) {
     ${u.restartWaiting ? `<div class="res">${u.restartWaiting.restarting ? 'Restarting to take in the update' : 'Restart waiting for sessions to finish'}</div>${u.restartWaiting.why ? `<div class="why">Right now: ${esc(u.restartWaiting.why)}</div>` : ''}` : ''}
     ${u.toDelete?.length ? `<div class="res"${tip('menu-waiting')}>Waiting to delete: ${u.toDelete.length}</div><div class="why">${u.toDelete.map((w) => `${esc(w.path)}${w.recycle ? ' (to the Recycle Bin)' : ''}`).join('\n')}</div>` : ''}
     <div>Check <select id="updEvery" aria-label="How often to check for updates"${tip('upd-every')}>${every.sort((a, b) => a - b).map((n) => `<option value="${n}" ${n === u.minutes ? 'selected' : ''}>${n ? `every ${n} min` : 'never'}</option>`).join('')}</select></div>`;
-  $('updEvery').onchange = async (e) => { try { showUpdate(await api('/api/update/settings', { minutes: Number(e.target.value) })); } catch (err) { alert(err.message); } };
+  $('updEvery').onchange = async (e) => { try { showUpdate(await api('/api/update/settings', { minutes: Number(e.target.value) })); } catch (err) { tell(err.message); } };
 }
 
 // ---------- Terminal: a terminal window on this computer, in a folder you can change first ----------
@@ -6266,7 +6321,7 @@ async function editCompanies(rows, error = '', start, scrollTo) {
       const id = rows[+b.dataset.checkAct].id, a = coChecks[id]?.findings?.[+b.dataset.n]?.action;
       if (a?.kind !== 'group-folder') return;
       b.disabled = true;
-      return api(`/api/groups/${a.group}/folder`, { client: id, folder: a.folder }).then(() => { if (S.groups?.[id]) loadGroups(id); delete coChecks[id]; drawCheck(id); return runCheck(id, true); }, (err) => { b.disabled = false; alert(err.message); });
+      return api(`/api/groups/${a.group}/folder`, { client: id, folder: a.folder }).then(() => { if (S.groups?.[id]) loadGroups(id); delete coChecks[id]; drawCheck(id); return runCheck(id, true); }, (err) => { b.disabled = false; tell(err.message); });
     }
     if (b.dataset.checkRun) { const id = rows[+b.dataset.checkRun].id; delete coChecks[id]; drawCheck(id); return runCheck(id, true); }
     read();
@@ -6686,7 +6741,7 @@ function companyWizard({ first = false } = {}) {
           w.busy = false; return enterSignin();
         }
         if (w.step === SIGNIN) { w.step = DONE; return render(); }
-        if (w.planAnswer === 'convert' && allSigned()) api(`/api/clients/${w.id}/plan-switch`, { to: 'docket', action: 'convert' }).catch((err) => alert(err.message));
+        if (w.planAnswer === 'convert' && allSigned()) api(`/api/clients/${w.id}/plan-switch`, { to: 'docket', action: 'convert' }).catch((err) => tell(err.message));
         return close(w.id);
       }
       if (a === 'keep') { claudeIn(); return render(); }
@@ -6931,7 +6986,7 @@ const current = () => S.live[S.selected] || (S.history[S.client] || []).find((r)
 function newDraft(groupId = null, parentId = null) {
   if (POPOUT && S.selected) return; // a pop-out stays on its session (it only shows a draft once that session is deleted)
   closePreview();
-  if (!leaveOk()) return;
+  if (!leaveOk(() => newDraft(groupId, parentId))) return;
   recordView(S.client, 'draft');
   schedDirty = false; S.schedOpen = null; $('tasks').classList.remove('wide'); $('composer').hidden = false;
   S.draftEngine = null;
@@ -6982,7 +7037,7 @@ async function openSession(id, auto = '') {
   if (POPOUT && id !== POPOUT.id) return; // a pop-out stays on its session
   S.autoOpen = auto ? id : null;
   if (pv && pv.sessionId !== id) closePreview();
-  if (!leaveOk()) return;
+  if (!leaveOk(() => openSession(id, auto))) return;
   const row = S.live[id] || (S.history[S.client] || []).find((r) => r.id === id);
   const wasUnread = !!row && (isUnread(row) || needsYou(row)); // read before opening it marks it read
   if (S.hold?.id !== id) S.hold = takeHold(row, HOLD_MEASURES) || { id };
@@ -7097,12 +7152,12 @@ function renderCfgBanner() {
 $('cfgReload').onclick = async () => {
   const s = current(); if (!s?.live) return;
   $('cfgReload').disabled = true;
-  try { await api(`/api/sessions/${s.id}/reload`, {}); } catch (err) { alert(err.message); } finally { $('cfgReload').disabled = false; }
+  try { await api(`/api/sessions/${s.id}/reload`, {}); } catch (err) { tell(err.message); } finally { $('cfgReload').disabled = false; }
 };
 // ⟳ in the top bar, shown while any session's config changed.
 function showReloads(r) { $('reloadAllBtn').hidden = !r?.count; $('reloadAllN').textContent = r?.count > 1 ? ' ' + r.count : ''; }
 $('reloadAllBtn').onclick = async () => {
-  try { const r = await api('/api/reload-all', {}); if (r.later) alert(`${r.now} reloading now; ${r.later} will reload once their turn and background commands end.`); } catch (err) { alert(err.message); }
+  try { const r = await api('/api/reload-all', {}); if (r.later) tell(`${r.now} reloading now; ${r.later} will reload once their turn and background commands end.`); } catch (err) { tell(err.message); }
 };
 // The session's state, in the line under the message box (#728): where the person looks while it works.
 function renderStatusBit(s) {
@@ -7902,7 +7957,7 @@ $('events').addEventListener('click', async (e) => {
   setTimeout(() => { b.textContent = b.dataset.copy === 'pre' ? 'Copy' : 'Copy reply'; }, 1500);
 });
 
-document.addEventListener('click', (e) => { if (e.target.id === 'usageCsv') api('/api/usage/show', {}).catch((err) => alert(err.message)); });
+document.addEventListener('click', (e) => { if (e.target.id === 'usageCsv') api('/api/usage/show', {}).catch((err) => tell(err.message)); });
 document.addEventListener('click', (e) => { if (e.target.id === 'usagePage') window.open('/usage?' + new URLSearchParams({ client: S.client }), 'docket-usage'); });
 // Today's spend opens Usage on the same figure: this company, today, every group, brand and account.
 $('todaySpend').onclick = () => window.open('/usage?' + new URLSearchParams({ client: S.client, range: 'today', group: '', brand: '', billed: '' }), 'docket-usage');
@@ -7918,7 +7973,7 @@ document.addEventListener('click', async (e) => {
   const id = S.selected;
   if (t.dataset.act === 'use') return usePlan(id, t.dataset.poffer);
   try { await api(`/api/sessions/${id}/plan-offer?client=${S.client}`, { card: t.dataset.poffer }); }
-  catch (err) { alert(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
+  catch (err) { tell(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
 });
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('[data-tsug]'); if (!t) return;
@@ -7927,7 +7982,7 @@ document.addEventListener('click', async (e) => {
   try {
     if (t.dataset.act === 'apply') await api(`/api/sessions/${S.selected}/rename?client=${S.client}`, { title: ev.title, suggestion: ev.id });
     else await api(`/api/sessions/${S.selected}/title-suggestion?client=${S.client}`, { suggestion: ev.id });
-  } catch (err) { alert(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
+  } catch (err) { tell(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
 });
 document.addEventListener('click', async (e) => {
   const h = e.target.closest('[data-hoff]'); if (!h) return;
@@ -7935,7 +7990,7 @@ document.addEventListener('click', async (e) => {
   try {
     const r = await api(`/api/handoffs/${h.dataset.hoff}/${h.dataset.act}`, {});
     if (h.dataset.act === 'continue' && r?.id) await loadSessions(S.client).then(renderList);
-  } catch (err) { alert(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
+  } catch (err) { tell(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
 });
 document.addEventListener('click', async (e) => {
   const p = e.target.closest('[data-prop]'), o = e.target.closest('[data-offer]');
@@ -7944,7 +7999,7 @@ document.addEventListener('click', async (e) => {
   try {
     if (p) await api(`/api/proposals/${p.dataset.prop}/${p.dataset.act}`, {});
     else await api(`/api/sessions/${S.selected}/offer?client=${S.client}`, { offerId: o.dataset.offer, choice: o.dataset.choice });
-  } catch (err) { alert(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
+  } catch (err) { tell(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
 });
 // AskUserQuestion: a form with every question in full, its options as radio buttons (or checkboxes for
 // multiSelect), an Other box each, and Submit / Answer in the chat instead of Allow / Deny.
@@ -8030,7 +8085,7 @@ $('events').addEventListener('click', async (e) => {
   }
   for (const x of card.querySelectorAll('button')) x.disabled = true;
   try { await api(`/api/sessions/${S.selected}/permission`, body); }
-  catch (err) { alert(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
+  catch (err) { tell(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
 });
 $('events').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-answer]'); if (!b) return;
@@ -8038,7 +8093,7 @@ $('events').addEventListener('click', async (e) => {
   for (const x of card.querySelectorAll('button')) x.disabled = true;
   const a = b.dataset.answer;
   try { await api(`/api/sessions/${S.selected}/permission`, { reqId: card.dataset.perm, allow: a !== 'deny', always: a === 'always' }); }
-  catch (err) { alert(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
+  catch (err) { tell(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
 });
 
 $('events').addEventListener('click', (e) => {
@@ -8235,7 +8290,7 @@ $('tasksBody').addEventListener('click', (e) => {
       if (ticket) S.tickets[id] = (S.tickets[id] || []).filter((t) => (t.ref || t.key) !== ticket);
       if (pr) S.prs[id] = (S.prs[id] || []).filter((p) => p.url !== pr);
       renderList(); renderTasks();
-    }).catch((err) => { u.disabled = false; alert(err.message); });
+    }).catch((err) => { u.disabled = false; tell(err.message); });
     return;
   }
   const tk = e.target.closest('a[data-ticket]');
@@ -8409,7 +8464,7 @@ function readFile(file) {
 }
 async function addFiles(files) {
   for (const f of files) {
-    if (f.size > 30e6) { alert(`${f.name} is over 30 MB and was not attached.`); continue; }
+    if (f.size > 30e6) { tell(`${f.name} is over 30 MB and was not attached.`); continue; }
     const url = await readFile(f);
     S.attachments.push({ name: f.name || 'pasted-image.png', type: f.type || 'application/octet-stream', data: url.split(',')[1], preview: IMG.test(f.type) ? url : null });
   }
@@ -8969,13 +9024,13 @@ function showPaused(p) {
 }
 $('resumeAllBtn').onclick = async () => {
   $('resumeAllBtn').disabled = true;
-  try { await api('/api/resume', { reason: 'user' }); showPaused(null); } catch (err) { $('resumeAllBtn').disabled = false; alert(err.message); }
+  try { await api('/api/resume', { reason: 'user' }); showPaused(null); } catch (err) { $('resumeAllBtn').disabled = false; tell(err.message); }
 };
 const loadPaused = () => api('/api/pause').then((r) => showPaused(r.paused)).catch(() => {});
 // ⏸ at the right end of the top bar.
 $('pauseBtn').onclick = async () => {
-  if (!confirm('Pause all sessions? Every session working now, in every desk, is stopped until you press Resume all. Scheduled runs wait too.')) return;
-  try { showPaused((await api('/api/pause', { reason: 'user' })).paused); } catch (err) { alert(err.message); }
+  if (!await ask('Pause all sessions?', 'Every session working now, in every desk, is stopped until you press Resume all. Scheduled runs wait too.', { yes: 'Pause all' })) return;
+  try { showPaused((await api('/api/pause', { reason: 'user' })).paused); } catch (err) { tell(err.message); }
 };
 
 // ---------- live updates ----------
@@ -9498,7 +9553,7 @@ async function pfSource(id, what, body, busy, clear) {
   try {
     const r = await api(`/api/clients/${id}/profile/${what}`, body);
     pf.srcMsg = r.message; if (clear) pf.srcAddr = pf.srcSub = '';
-  } catch (err) { pf.srcMsg = err.message; alert(err.message); }
+  } catch (err) { pf.srcMsg = err.message; tell(err.message); }
   if (pf.id === id) loadProfile(true);
 }
 // The Inspector's section list: one line per section with its count and the size of its text (on is the one shown),
@@ -9555,7 +9610,7 @@ $('profilePage').addEventListener('change', async (e) => { // an on/off checkbox
     const it = pf.texts[typed.dataset.pfInput], id = pf.data.client.id;
     typed.disabled = true;
     try { await api(`/api/clients/${id}/profile/switch`, { kind: it.input.kind, key: it.input.key, value: typed.value }); }
-    catch (err) { typed.value = it.input.value; alert(err.message); }
+    catch (err) { typed.value = it.input.value; tell(err.message); }
     if (S.client === id) { loadProfile(true); loadPlans(); }
     return;
   }
@@ -9569,7 +9624,7 @@ $('profilePage').addEventListener('change', async (e) => { // an on/off checkbox
     return;
   }
   try { await api(`/api/clients/${id}/profile/switch`, { kind: it.toggle.kind, key: it.toggle.key, ...(it.toggle.options ? { value: box.value } : { on: box.checked }) }); }
-  catch (err) { if (it.toggle.options) box.value = it.toggle.value; else box.checked = !box.checked; alert(err.message); }
+  catch (err) { if (it.toggle.options) box.value = it.toggle.value; else box.checked = !box.checked; tell(err.message); }
   if (S.client === id) { loadProfile(true); if (it.toggle.kind === 'plans') loadPlans(); }
 });
 $('profilePage').addEventListener('toggle', (e) => { const el = e.target; if (el.dataset?.pf && el.open) pfFill(el, pf.texts[el.dataset.pf]); }, true);
@@ -9578,14 +9633,14 @@ $('profilePage').addEventListener('click', async (e) => {
   if (act) { // inside a row's summary: the button only, not opening the row
     e.preventDefault(); e.stopPropagation();
     const a = pf.texts[act.dataset.pfAct];
-    if (a.confirm && !confirm(a.confirm)) return;
+    if (a.confirm) { const [q, ...more] = a.confirm.split(/(?<=\?)\s+/); if (!await ask(q, more.join(' '), { yes: a.label })) return; }
     const busy = { install: `Installing ${a.key.split('@')[0]}…`, 'source-update': `Updating ${a.key}…`, 'source-remove': `Removing ${a.key}…` }[a.kind];
     act.textContent = busy;
     return pfSource(pf.data.client.id, 'source-action', { kind: a.kind, key: a.key }, busy);
   }
   const go = e.target.closest('[data-pf-go]'), show = e.target.closest('[data-pf-show]'), link = e.target.closest('[data-pf-link]');
   if (go) { e.preventDefault(); pfGo(go.dataset.pfGo); }
-  if (show) { e.preventDefault(); api(`/api/clients/${pf.data.client.id}/profile/show`, { path: show.dataset.pfShow }).catch((err) => alert(err.message)); }
+  if (show) { e.preventDefault(); api(`/api/clients/${pf.data.client.id}/profile/show`, { path: show.dataset.pfShow }).catch((err) => tell(err.message)); }
   if (link) { // a hook's script: open it under the hook
     e.preventDefault();
     const it = pf.texts[link.dataset.pfLink], host = link.closest('.pf-item');
@@ -9658,7 +9713,7 @@ async function takeUpdate(anyway) {
   updateBusyNote('Updating Docket');
   let u; try { u = await api('/api/update/now', { anyway }); } catch (err) { u = { result: 'failed', detail: err.message }; }
   updateBusy = '';
-  if (u.result !== 'updated' && !u.restartWaiting) { showUpdate(u); return alert(`The update did not go through: ${u.detail || u.result}`); }
+  if (u.result !== 'updated' && !u.restartWaiting) { showUpdate(u); return tell(`The update did not go through: ${u.detail || u.result}`); }
   if (anyway || !u.busyNow) updateBusyNote('Updated: Docket is restarting');
   else updateBusyNote('Updated: waiting for sessions to finish'); // the waiting card follows once the app says so
   showUpdate(u);
@@ -9667,7 +9722,7 @@ async function takeUpdate(anyway) {
 // counted, since they start again cleanly), with Cancel the main choice; with nothing at risk a plain confirm. Then
 // the page is covered until the app answers again, and reloads.
 async function restartDocketAsk() {
-  let r; try { r = await api('/api/restart-docket'); } catch (err) { return alert(err.message); }
+  let r; try { r = await api('/api/restart-docket'); } catch (err) { return tell(err.message); }
   const at = [...r.working.map((x) => ({ ...x, how: 'working' })), ...r.waiting.map((x) => ({ ...x, how: 'waiting on you' }))];
   const what = '<div>Docket stops every session program, connected service and private browser, and the session runner, then starts again. Nothing continues by itself afterwards.</div>';
   const idle = r.idle ? `<div class="meta" style="margin-top:8px">${r.idle} idle session${r.idle === 1 ? '' : 's'} will start again on ${r.idle === 1 ? 'its' : 'their'} next message.</div>` : '';
@@ -9678,7 +9733,7 @@ async function restartDocketAsk() {
     : await dialog({ title: 'Restart Docket?', body: what + idle, buttons: [{ label: 'Cancel', value: null }, { label: 'Restart', value: 'go', primary: true, tip: tipText('rd-go') }] });
   if (v !== 'go') return;
   showRestartCover(true);
-  try { await api('/api/restart-docket', {}); } catch (err) { $('restartCover')?.remove(); alert(err.message); }
+  try { await api('/api/restart-docket', {}); } catch (err) { $('restartCover')?.remove(); tell(err.message); }
 }
 // Covers the page while Docket restarts (any open page: the app tells them all); the page reloads once the app is
 // back (connect). relaunch false: nothing starts the app again by itself (it was started by hand), so the page says how.
@@ -9693,7 +9748,7 @@ function showRestartCover(relaunch) {
     : `Docket has stopped. It was not started by its launcher, so it cannot start itself again: start it ${OS.mac ? 'from Docket in Applications' : 'from the Docket shortcut'}. This page reloads by itself once it is back.`;
 }
 async function restartAnyway() {
-  try { showUpdate(await api('/api/update/restart-now', {})); } catch (err) { alert(err.message); }
+  try { showUpdate(await api('/api/update/restart-now', {})); } catch (err) { tell(err.message); }
 }
 $('updateOffer').onclick = async (e) => {
   const b = e.target.closest('[data-upd]'); if (!b) return;
@@ -9708,7 +9763,7 @@ $('updateOffer').onclick = async (e) => {
   try { // auto takes the waiting update at once
     if (a === 'auto') updateBusyNote('Auto-update is on: updating Docket');
     showUpdate(await api('/api/update/mode', { mode: a }));
-  } catch (err) { updateBusy = ''; showUpdateOffer(); alert(err.message); }
+  } catch (err) { updateBusy = ''; showUpdateOffer(); tell(err.message); }
 };
 api('/api/update').then(showUpdate).catch(() => {});
 
@@ -9734,7 +9789,7 @@ $('cacheOffer').onclick = async (e) => {
   if (!b) return;
   if (b.dataset.cache === 'ok') { cacheOfferDone = false; return showCacheOffer(cacheOfferList); }
   const client = el.dataset.client, answer = b.dataset.cache, name = cacheOfferList.find((o) => o.client === client)?.name || '';
-  try { await api('/api/cache-offers/answer', { client, answer }); } catch (err) { return alert(err.message); }
+  try { await api('/api/cache-offers/answer', { client, answer }); } catch (err) { return tell(err.message); }
   cacheOfferList = cacheOfferList.filter((o) => o.client !== client);
   if (answer !== 'yes') return showCacheOffer(cacheOfferList);
   // Running sessions keep the length they started with, so say when it takes effect.
@@ -9772,7 +9827,7 @@ $('setupOffer').onclick = async (e) => {
   const client = el.dataset.client, answer = b.dataset.setup;
   for (const x of el.querySelectorAll('button')) x.disabled = true;
   let r; try { r = await api('/api/setup-offers/answer', { client, answer }); }
-  catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return alert(err.message); }
+  catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return tell(err.message); }
   setupOfferList = setupOfferList.filter((o) => o.client !== client);
   showSetupOffer();
   if (r.session) { if (S.client === client) openSession(r.session); else selectClient(client, r.session); }
@@ -9861,7 +9916,7 @@ $('planOffer').onclick = async (e) => {
     if (ps.dataset.ps === 'open') { if (sid) { if (S.client === id) openSession(sid); else selectClient(id, sid); } return; }
     for (const x of el.querySelectorAll('button')) x.disabled = true;
     let r; try { r = await api(`/api/clients/${id}/plan-switch`, { action: ps.dataset.ps }); }
-    catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return alert(err.message); }
+    catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return tell(err.message); }
     if (c) { c.planSystem = r.planSystem; delete c.planSwitch; } // the server's own message about the desk list follows
     el.hidden = true; delete el.dataset.client;
     showPlanOffer();
@@ -9883,7 +9938,7 @@ $('planOffer').onclick = async (e) => {
 const PLAN_NAMES = { docket: 'Docket\'s plans', folder: 'a plan folder', none: 'no plans', '': 'Docket\'s plans' };
 async function switchPlans(id, to) {
   const c = S.clients.find((x) => x.id === id), name = c?.name || 'This desk';
-  let w; try { w = await api(`/api/clients/${id}/plan-switch?to=${encodeURIComponent(to)}`); } catch (err) { alert(err.message); return null; }
+  let w; try { w = await api(`/api/clients/${id}/plan-switch?to=${encodeURIComponent(to)}`); } catch (err) { tell(err.message); return null; }
   let action = 'switch';
   if (w.warn) {
     const into = w.way === 'in';
@@ -9893,7 +9948,7 @@ async function switchPlans(id, to) {
       buttons: [{ label: 'Cancel', value: null, tip: tipText('ps-cancel') }, { label: 'Switch without converting', value: 'switch', tip: tipText('ps-switch') }, { label: 'Convert in a session', value: 'convert', primary: true, tip: tipText('ps-convert') }] });
     if (!action) return null;
   }
-  let r; try { r = await api(`/api/clients/${id}/plan-switch`, { to, action }); } catch (err) { alert(err.message); return null; }
+  let r; try { r = await api(`/api/clients/${id}/plan-switch`, { to, action }); } catch (err) { tell(err.message); return null; }
   if (c) { c.planSystem = r.planSystem; if (r.session) c.planSwitch = { to, from: w.from, session: r.session }; else delete c.planSwitch; }
   if (r.session && S.client === id) openSession(r.session);
   showPlanOffer();

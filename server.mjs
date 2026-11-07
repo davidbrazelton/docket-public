@@ -7855,7 +7855,8 @@ async function remoteHostRequest(req, res) {
     const asked = url.searchParams.get('client') || body?.client;
     if (asked && asked !== desk.id) return json(res, 403, { error: 'Only the linked desk can be used from another computer' });
     url.searchParams.set('client', desk.id);
-    if (body && p === '/api/sessions') body = { ...body, client: desk.id };
+    if (body && (p === '/api/sessions' || p === '/api/keep' || p.startsWith('/api/groups'))) body = { ...body, client: desk.id };
+    if (body && p === '/api/groups') delete body.folder; // a start folder is this computer's to choose
   }
   if (route.kind === 'session' && !(await sessionOnDesk(route.id, desk.id))) return json(res, 403, { error: 'That session is not on the linked desk' });
   // A message from the other computer reaches the session with a note saying where it came from.
@@ -8003,7 +8004,8 @@ async function remoteDeskFor(req, url, p) {
   if (q && remoteDeskById(q)) return remoteDeskById(q);
   const sm = p.match(/^\/api\/sessions\/([\w-]+)\//);
   if (sm) for (const [id, c] of remoteConns) if (c.sessions.has(sm[1])) return remoteDeskById(id);
-  if (req.method === 'POST' && (p === '/api/sessions' || sm)) {
+  // Requests that name their desk in the body rather than in ?client=.
+  if (req.method === 'POST' && (p === '/api/sessions' || p === '/api/keep' || p.startsWith('/api/groups') || sm)) {
     req.preBody = await readBody(req);
     if (req.preBody?.client && remoteDeskById(req.preBody.client)) return remoteDeskById(req.preBody.client);
   }

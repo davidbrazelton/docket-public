@@ -118,12 +118,14 @@ export function officeAddresses(interfaces) {
 // Returns { kind, id } or null: kind 'clients' (the desk list, cut to the one desk), 'desk' (a request
 // about the desk, its client must be the linked desk), or 'session' (about session id, which must be the desk's).
 const SESSION_GET = /^\/api\/sessions\/([\w-]+)\/(events|timeline|skills|cost)$/;
-const SESSION_POST = /^\/api\/sessions\/([\w-]+)\/(send|permission|interrupt|seen|unread|rename)$/;
+const SESSION_POST = /^\/api\/sessions\/([\w-]+)\/(send|permission|interrupt|seen|unread|rename|group)$/;
 export function remoteRoute(method, p) {
   if (method === 'GET' && p === '/api/clients') return { kind: 'clients' };
   if (method === 'GET' && p === '/api/gears') return { kind: 'open' };
   if (method === 'GET' && ['/api/sessions', '/api/groups', '/api/places', '/api/keep', '/api/schedules'].includes(p)) return { kind: 'desk' };
   if (method === 'POST' && (p === '/api/sessions' || p === '/api/keep')) return { kind: 'desk' }; // starting a session; pinning one
+  // Making a group, naming it and putting sessions in it; never its start folder, which is a folder on this computer.
+  if (method === 'POST' && (p === '/api/groups' || p === '/api/groups/order' || /^\/api\/groups\/[\w-]+\/rename$/.test(p))) return { kind: 'desk' };
   const m = (method === 'GET' ? SESSION_GET : method === 'POST' ? SESSION_POST : null)?.exec(p);
   return m ? { kind: 'session', id: m[1] } : null;
 }

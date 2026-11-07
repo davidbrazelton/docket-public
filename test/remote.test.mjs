@@ -70,7 +70,10 @@ test('a remote may read the desk\'s sessions, start one, send, and answer; nothi
   assert.deepEqual(remoteRoute('POST', '/api/sessions'), { kind: 'desk' });
   assert.deepEqual(remoteRoute('POST', '/api/keep'), { kind: 'desk' }); // pinning a session for the ✦ list
   for (const a of ['events', 'timeline', 'skills', 'cost']) assert.deepEqual(remoteRoute('GET', `/api/sessions/abc-1/${a}`), { kind: 'session', id: 'abc-1' });
-  for (const a of ['send', 'permission', 'interrupt', 'seen', 'unread', 'rename']) assert.deepEqual(remoteRoute('POST', `/api/sessions/abc-1/${a}`), { kind: 'session', id: 'abc-1' });
+  for (const a of ['send', 'permission', 'interrupt', 'seen', 'unread', 'rename', 'group']) assert.deepEqual(remoteRoute('POST', `/api/sessions/abc-1/${a}`), { kind: 'session', id: 'abc-1' });
+  // New group, naming and ordering groups; never a group's start folder, archiving or deleting
+  for (const p of ['/api/groups', '/api/groups/order', '/api/groups/g_1a2b3c4d/rename']) assert.deepEqual(remoteRoute('POST', p), { kind: 'desk' }, p);
+  for (const a of ['folder', 'archive', 'restore', 'delete']) assert.equal(remoteRoute('POST', `/api/groups/g_1a2b3c4d/${a}`), null, a);
   const refused = [['POST', '/api/files/open'], ['GET', '/api/files/raw'], ['GET', '/api/files/content'], ['POST', '/api/terminal'], ['POST', '/api/editor'], ['POST', '/api/pick-folder'],
     ['POST', '/api/clients/edit'], ['GET', '/api/clients/edit'], ['POST', '/api/clients/acme/login'], ['POST', '/api/clients/acme/profile/show'],
     ['POST', '/api/sessions/abc/end'], ['POST', '/api/sessions/abc/delete'], ['POST', '/api/sessions/abc/archive'], ['POST', '/api/sessions/abc/move'],

@@ -29,6 +29,7 @@ a { color: var(--accent); }
 img { max-width: 100%; }
 .plain { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
 .err { color: #b91c1c; }
+header .err { font-size: 12px; }
 body.framed main { max-width: none; padding: 0; }
 .frame { display: block; width: 100%; height: calc(100vh - 50px); border: 0; background: #fff; }
 .pager { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -41,7 +42,7 @@ body.framed main { max-width: none; padding: 0; }
 <body>
 <header>
   <span class="pager" id="pager" hidden><button id="prev" aria-label="Previous file" title="Previous file (←)">‹</button><span id="pos"></span><button id="next" aria-label="Next file" title="Next file (→)">›</button></span>
-  <span class="name" id="name">Loading…</span><span class="when" id="when"></span>
+  <span class="name" id="name">Loading…</span><span class="when" id="when"></span><span class="err" id="actErr" role="status"></span>
   <button id="reload">Reload</button><button id="open">Open in default program</button><button id="folder" title="Show in File Explorer">📂</button>
 </header>
 <main id="body"></main>
@@ -90,7 +91,7 @@ async function load() {
   } catch (e) { document.getElementById('body').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
 const act = (how) => fetch('/api/files/open', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...ask, how }) })
-  .then(async (r) => { if (!r.ok) alert((await r.json()).error); });
+  .then(async (r) => { document.getElementById('actErr').textContent = r.ok ? '' : (await r.json()).error; }); // said in the header, never in an alert box
 // ‹ and › step through the session's files this page can show, in the order of Docket's Files list.
 const SHOWS = /\.(md|markdown|txt|json|csv|tsv|png|jpe?g|gif|webp|svg|pdf|html?)$/i; // TAB_VIEW in index.html
 let files = [];
