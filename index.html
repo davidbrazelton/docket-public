@@ -9118,7 +9118,7 @@ function connect() {
       if (updateBusy) { updateBusy = ''; api('/api/update').then(showUpdate).catch(() => {}); } // back after the restart
     } else if (m.t === 'waiting') {
       const row = (S.history[m.client] || []).find((r) => r.id === m.id);
-      if (row) row.waiting = m.waiting;
+      if (row) { row.waiting = m.waiting; if ('why' in m) { row.unreadWhy = m.why; row.unreadSaid = m.said; } } // Mark unread's tag (#771)
       if (m.client === S.client) { renderList(); if (mine) renderHead(); }
       renderClients();
     } else if (m.t === 'links') {

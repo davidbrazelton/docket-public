@@ -14,7 +14,7 @@ import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, wokeByItself, noteWoke, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
 import { netError, refused, netText, withRetries, noConversation, startMode, continueNudge, firstMessage, reportText, firstStore } from './first-start.mjs';
-import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from './needs-you.mjs';
+import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting, keptReason, markUnreadReason } from './needs-you.mjs';
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
@@ -660,7 +660,7 @@ function logSeen(id, s, b = {}) {
 }
 // Turning a session unread records which path did it, so the log can say why a dot went orange.
 function setUnread(s, why) {
-  if (!s.unread) { s.unreadWhy = why; s.unreadSaid = ''; }
+  if (!s.unread) { s.unreadWhy = why; s.unreadSaid = ''; s.unreadBy = why; } // unreadBy stays for the log when the reason is put back (#771)
   s.unread = true;
   s.kidNews = false; // orange says more than the halo
 }
@@ -720,7 +720,7 @@ const pushSession = (s) => {
   // work inside a session never moves its row. Mark unread puts the dot back without moving it.
   if (waiting && !s.wasWaiting && !s.keepPlace) { s.readyAt = Date.now(); if (state.sessions[s.id]) state.sessions[s.id].readyAt = s.readyAt; }
   if (!!s.unread !== !!s.loggedUnread) {
-    if (s.unread) logEvent(`unread on: ${sessionTag(s)}`, `by ${s.unreadWhy || 'unknown'}${s.unreadSaid ? `, said ${s.unreadSaid}` : ''}, status ${s.status}, background jobs ${!!s.heldTurn}, waiting ${waiting}`);
+    if (s.unread) logEvent(`unread on: ${sessionTag(s)}`, `by ${s.unreadBy || s.unreadWhy || 'unknown'}${s.unreadBy && s.unreadWhy !== s.unreadBy ? `, reason ${s.unreadWhy}` : ''}${s.unreadSaid ? `, said ${s.unreadSaid}` : ''}, status ${s.status}, background jobs ${!!s.heldTurn}, waiting ${waiting}`);
     s.loggedUnread = !!s.unread;
   }
   if (waiting !== !!s.wasWaiting) logEvent(`waiting ${!!s.wasWaiting} -> ${waiting}: ${sessionTag(s)}`);
@@ -4818,6 +4818,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
     s.kidNews = false; // the person is in this session: the report it took in quietly is seen
   }
   s.unread = false;
+  if (state.sessions[s.id]?.readWhy) { delete state.sessions[s.id].readWhy; saveState(); } // a new turn: the reason read before no longer fits (#771)
   s.suggestion = '';
   setLastError(s, null);
   setStatus(s, 'running');
@@ -9096,16 +9097,26 @@ const server = http.createServer(async (req, res) => {
         if (!client) return json(res, 404, { error: 'Unknown session' });
         // Marked from the open chat: the next open draws the New line at the message it was scrolled to (#672)
         if (Number.isFinite(b.at)) { const rec = state.sessions[id] ||= { client: client.id }; rec.seenAt = b.at - 1; delete rec.lineAt; saveState(); }
-        if (s) { if (['running', 'starting'].includes(s.status)) return json(res, 400, { error: 'It is working right now' }); setUnread(s, 'mark-unread'); s.keepPlace = true; pushSession(s); }
-        else {
-          state.sessions[id] ||= { client: client.id };
+        // It shows the reason it had before it was read (#771); the log still says Mark unread did it.
+        const back = markUnreadReason(state.sessions[id]?.readWhy);
+        if (s) {
+          if (['running', 'starting'].includes(s.status)) return json(res, 400, { error: 'It is working right now' });
+          if (!s.unread) { setUnread(s, 'mark-unread'); s.unreadWhy = back.why; s.unreadSaid = back.said; }
+          s.keepPlace = true; pushSession(s);
+        } else {
+          const rec = state.sessions[id] ||= { client: client.id };
+          if (!rec.waiting) { rec.waitingWhy = back; saveState(); }
           setSavedWaiting(id, true, 'mark unread'); historyCache.delete(client.id);
-          broadcast({ t: 'waiting', id, client: client.id, waiting: true });
+          broadcast({ t: 'waiting', id, client: client.id, waiting: true, why: rec.waitingWhy?.why || null, said: rec.waitingWhy?.said || null });
         }
         return json(res, 200, { ok: true });
       }
       if (action === 'seen' && !s) {
-        if (state.sessions[id]?.waiting) logSeen(id, null, b);
+        if (state.sessions[id]?.waiting) {
+          logSeen(id, null, b);
+          const rec = state.sessions[id], kept = keptReason(rec.waitingWhy?.why, rec.waitingWhy?.said);
+          if (kept) rec.readWhy = kept; // Mark unread brings this tag back (#771); setSavedWaiting saves it
+        }
         if (setSavedWaiting(id, false, `seen: why ${b.why || 'not given'}`)) historyCache.delete(client?.id);
         // A session Claude Desktop ran: remember when it was opened, so only a newer Desktop reply turns it orange again.
         const file = client && transcriptFiles(client).get(id);
@@ -9164,7 +9175,13 @@ const server = http.createServer(async (req, res) => {
       // Reload: start its process again to load changed config, now if it is idle, else when its turn ends.
       if (action === 'reload') { if (!s) return json(res, 404, { error: 'That session is not running' }); s.reloadWanted = true; return json(res, 200, { decision: checkConfig(s) }); }
       if (action === 'interrupt') { await s.query.interrupt().catch(() => {}); return json(res, 200, { ok: true }); }
-      if (action === 'seen') { if (s.unread) logSeen(id, s, b); s.unread = false; s.kidNews = false; pushSession(s); return json(res, 200, { ok: true }); }
+      if (action === 'seen') {
+        if (s.unread) { // Mark unread brings this tag back (#771)
+          logSeen(id, s, b);
+          const kept = keptReason(s.unreadWhy, s.unreadSaid), rec = state.sessions[id];
+          if (kept && rec) { rec.readWhy = kept; saveState(); }
+        }
+        s.unread = false; s.kidNews = false; pushSession(s); return json(res, 200, { ok: true }); }
       if (action === 'end') {
         s.input.close(); s.query.close(); live.delete(id); markRunning(id, false);
         historyCache.delete(s.client);

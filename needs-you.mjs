@@ -10,6 +10,12 @@ export const savedWaiting = ({ unread, status, heldTurn, lastError }) =>
 // the restart and is not working now, or may not have had its message.
 export const unreadAfterRestart = ({ asks, wasWaiting, busy, unsent }) => !!(asks || (wasWaiting && !busy) || unsent);
 
+// Reading a session keeps the reason its row showed (state.sessions[id].readWhy), so Mark unread brings the same tag
+// back (#771). keptReason: what to keep from { why, said } when it is read. markUnreadReason: the reason Mark unread
+// gives it, the kept one or, with none kept, mark-unread itself.
+export const keptReason = (why, said) => why ? { why, said: said || '' } : undefined;
+export const markUnreadReason = (kept) => kept?.why ? { why: kept.why, said: kept.said || '' } : { why: 'mark-unread', said: '' };
+
 // ---------- sessions Claude Desktop ran ----------
 // Docket saves `waiting` only for sessions its own runner ran. A session Claude Desktop ran is judged from its
 // conversation file instead: where its last turn ended, and whether that came after the person last opened it in

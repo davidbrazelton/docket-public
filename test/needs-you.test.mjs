@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { savedWaiting, unreadAfterRestart } from '../needs-you.mjs';
+import { savedWaiting, unreadAfterRestart, keptReason, markUnreadReason } from '../needs-you.mjs';
 
 const page = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const start = page.indexOf('// ---------- needs you');
@@ -74,4 +74,18 @@ test('the page keeps its other needs you cases', () => {
   assert.equal(needsYou({ live: true, status: 'running', unread: true }), false);
   assert.equal(needsYou({ live: false, waiting: true }), true);
   assert.equal(needsYou({ live: false, waiting: false, lastError: stopped.lastError }), false);
+});
+
+test('Mark unread brings back the tag the row had before it was read (#771)', () => {
+  const row = (r) => ({ live: true, unread: true, status: 'idle', unreadWhy: r.why, unreadSaid: r.said });
+  for (const [why, said, label] of [['result', 'done', 'done'], ['result', 'question', 'question'], ['error', '', 'problem'], ['offer', '', 'question'], ['result', '', 'reply']]) {
+    const kept = keptReason(why, said); // saved as readWhy when it is read, so it survives a restart
+    assert.equal(needLabel(row(markUnreadReason(JSON.parse(JSON.stringify(kept))))), label, `${why} ${said}`);
+  }
+  assert.deepEqual(markUnreadReason(undefined), { why: 'mark-unread', said: '' }, 'nothing kept: Mark unread is the reason');
+  assert.equal(keptReason(null, 'done'), undefined, 'no reason, nothing to keep');
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
+  assert.match(server, /setUnread\(s, 'mark-unread'\); s\.unreadWhy = back\.why/, 'the live session takes the kept reason back');
+  assert.match(server, /rec\.waitingWhy = back/, 'and so does a saved one');
+  assert.match(server, /by \$\{s\.unreadBy/, 'the log still says Mark unread turned it orange');
 });
