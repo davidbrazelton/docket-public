@@ -633,7 +633,7 @@ function summary(s) {
     unreadWhy: s.unread ? s.unreadWhy || null : null, // which path turned it orange: the row's reason (#671)
     asksYou: !!s.pendingAsks?.size || liveAsks(s), // a question form open, or its latest reply ends by asking: "question"
     unreadSaid: s.unread ? s.unreadSaid || null : null, // the label the session declared for that turn
-    needsSignin: s.needsSignin || null, // { site, url } while it waits on a private browser sign-in: the 🌐 blinks (#678)
+    needsSignin: state.sessions[s.id]?.needsSignin || null, // { site, url } while it waits on a private browser sign-in: the 🌐 blinks (#678)
     said: liveSaid(s), // the start of its last reply: the hover card (#691)
   };
 }
@@ -2119,12 +2119,12 @@ function portalToolDefs(parent) {
           connected: z.boolean().optional().describe('True when you no longer need it: you are signed in, or gave up on that site'),
         },
         async ({ site, url, connected }) => {
-          if (connected) { setSigninNeed(parent, null, 'the session said it is connected'); return { content: [{ type: 'text', text: 'Done: the globe no longer asks for a sign-in.' }] }; }
+          if (connected) { setSigninNeed(parent.id, parent.client, null, 'the session said it is connected'); return { content: [{ type: 'text', text: 'Done: the globe no longer asks for a sign-in.' }] }; }
           const address = /^https?:\/\//.test(url || '') ? String(url).slice(0, 500) : '';
           let name = String(site || '').trim().slice(0, 120);
           if (!name && address) name = new URL(address).hostname;
           if (!name) return { content: [{ type: 'text', text: 'Give the site or its address.' }], isError: true };
-          setSigninNeed(parent, { site: name, url: address });
+          setSigninNeed(parent.id, parent.client, { site: name, url: address });
           return { content: [{ type: 'text', text: `The user's globe button now blinks for ${name}. Say in your reply what to sign in to; a note appears here when the sign-ins are saved. A private browser you opened before then started without them, so close it (browser_close) and open it again.` }] };
         }),
       tool('get_schedule',
@@ -3052,18 +3052,25 @@ async function openSignInWindow(client, url) {
 
 // A session waiting on a private browser sign-in (needs_signin, #678). The page blinks the 🌐 while that session is
 // the one open; it stops when the session says it is connected, or when the sign-in window closes (Done or its X),
-// since that is when the sign-ins are saved.
-function setSigninNeed(s, need, why) {
-  if (!s.needsSignin && !need) return;
-  s.needsSignin = need;
-  logEvent(`sign-in need ${need ? 'on' : 'off'}: ${sessionTag(s)}`, need ? `${need.site}${need.url ? ' ' + need.url : ''}` : why);
-  pushSession(s);
+// since that is when the sign-ins are saved. The need is kept in the session's saved record, not on the live session,
+// so it lasts through an app restart, rest and reloads, and a saved session still blinks when opened (#775).
+const signinNeeds = (clientId) => Object.fromEntries(Object.entries(state.sessions)
+  .filter(([, r]) => r.client === clientId && r.needsSignin).map(([id, r]) => [id, r.needsSignin]));
+function setSigninNeed(id, clientId, need, why) {
+  const rec = state.sessions[id];
+  if (!rec?.needsSignin && !need) return;
+  if (need) (state.sessions[id] ||= { client: clientId }).needsSignin = need; else delete rec.needsSignin;
+  saveState();
+  const s = live.get(id);
+  logEvent(`sign-in need ${need ? 'on' : 'off'}: ${sessionTag(s || { id, title: rec?.title })}`, need ? `${need.site}${need.url ? ' ' + need.url : ''}` : why);
+  broadcast({ t: 'signin-needs', client: clientId, needs: signinNeeds(clientId) });
+  if (s) pushSession(s);
 }
 function signInsSaved(client) {
-  for (const s of live.values()) {
-    if (s.client !== client.id || !s.needsSignin) continue;
-    addEvent(s, { k: 'note', text: `Private browser sign-ins saved (this session asked for ${s.needsSignin.site}).` });
-    setSigninNeed(s, null, 'the sign-in window closed and its sign-ins were saved');
+  for (const [id, need] of Object.entries(signinNeeds(client.id))) {
+    const s = live.get(id);
+    if (s) addEvent(s, { k: 'note', text: `Private browser sign-ins saved (this session asked for ${need.site}).` });
+    setSigninNeed(id, client.id, null, 'the sign-in window closed and its sign-ins were saved');
   }
 }
 
@@ -8936,7 +8943,7 @@ const server = http.createServer(async (req, res) => {
       const hist = allHist.filter((r) => !ids.has(r.id));
       // The session list shows all runs of a schedule as one row under the schedule's name.
       const schedules = scheduler.list(client.id).map(({ id, title }) => ({ id, title }));
-      return json(res, 200, { live: liveRows, history: hist, schedules, inbox: openInbox(state.inbox?.[client.id]) });
+      return json(res, 200, { live: liveRows, history: hist, schedules, inbox: openInbox(state.inbox?.[client.id]), signinNeeds: signinNeeds(client.id) });
     }
     if (req.method === 'POST' && p === '/api/sessions') {
       const b = await readBody(req);

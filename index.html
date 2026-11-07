@@ -1979,6 +1979,7 @@ const S = {
   live: {},        // id -> live session summary (all clients)
   history: {},     // clientId -> rows
   inbox: {},       // clientId -> work another desk handed over, waiting for Start
+  signinNeeds: {}, // clientId -> { sessionId: { site, url } }: sessions waiting on a private browser sign-in (#775)
   picked: new Set(), pickAnchor: null, pickMsg: '', // sessions picked with Ctrl/Shift+click, for the bar above the list
   selected: null,  // session id, or 'draft'
   suggestion: '',  // Claude's guess at your next message for the open session
@@ -2419,6 +2420,7 @@ async function loadSessions(clientId, refresh) {
     takeLive(S.live, r.live, livePushedAt, asked);
     S.history[clientId] = r.history;
     S.inbox[clientId] = r.inbox || [];
+    S.signinNeeds[clientId] = r.signinNeeds || {};
     for (const x of r.schedules || []) S.schedTitles[x.id] = x.title;
     return;
   }
@@ -2891,9 +2893,10 @@ setInterval(refreshPRs, 120000);
 // any sign-in is saved. The box at the bottom of the left column only shows while the sign-in window is open and the
 // dialog is not, so Done is always in reach.
 // While the session open now waits on a sign-in (it called needs_signin, #678), the 🌐 blinks yellow and says which
-// site; moving to another session stops it, and coming back while the need is open starts it again.
+// site; moving to another session stops it, and coming back while the need is open starts it again. The needs are
+// kept per desk by the app, live or saved sessions alike, so an app restart or a session resting does not lose them (#775).
 const sitesOpen = () => !$('dlg').hidden && !!$('dlgBody').querySelector('.sites-view');
-const signinNeed = () => { const s = S.live[S.selected]; return s?.client === S.client ? s.needsSignin || null : null; };
+const signinNeed = () => S.signinNeeds[S.client]?.[S.selected] || null;
 function renderSigninNeed() {
   const need = signinNeed(), b = $('sitesBtn');
   b.classList.toggle('need', !!need);
@@ -9077,6 +9080,9 @@ function connect() {
       S.events = S.events.filter((x) => !((x.k === 'text' || x.k === 'retry') && x.id === m.evId));
       document.querySelector(`[data-retry="${CSS.escape(m.evId)}"]`)?.remove();
       document.querySelector(`[data-text="${CSS.escape(m.evId)}"]`)?.closest('.reply')?.remove();
+    } else if (m.t === 'signin-needs') {
+      S.signinNeeds[m.client] = m.needs || {};
+      if (m.client === S.client) renderSigninNeed();
     } else if (m.t === 'plans' && m.client === S.client) {
       loadPlans();
     } else if (m.t === 'files' && mine) {
