@@ -18,7 +18,7 @@ import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting } from '.
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from './reports.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from './reports.mjs';
 import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from './keep-warm.mjs';
 import { WAITS, CONDITIONS, parseWait, waitWhat, prVerdict, sessionVerdict, portVerdict, portAnswers, timeoutLine, nextLook, waitInline, kindOf, checksOf, stateLine, branchPr } from './waits.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
@@ -667,8 +667,10 @@ const sessionTag = (s) => `"${s.title || 'Untitled'}" (${s.id})`;
 // (#645, #671): then its row gains the halo instead, and the log says why. The label the session declared for the
 // turn (mark_turn) goes with the orange dot, so its row can say why it needs the person.
 // A turn that closed its last open child finished the parent's own job (#694): never quiet, and its row says done.
+// A turn whose only outcome was starting children (#777) is not marked unread at all: its row shows their ring.
 function endTurnMark(s, err) {
   const reason = s.quietReason; s.quietReason = '';
+  const started = s.startedKids || 0; s.startedKids = 0;
   let said = s.turnSaid; s.turnSaid = '';
   const closedLast = closedLastKid(s); s.closedKid = false;
   if (closedLast && !said && !liveAsks(s)) said = 'done';
@@ -683,6 +685,13 @@ function endTurnMark(s, err) {
       return true;
     }
     logEvent(`quiet turn refused: ${sessionTag(s)}`, `${why}; asked for: ${reason}`);
+  }
+  if (started) {
+    const k = kidsOf(s), rec = state.sessions[s.id];
+    const cards = (rec?.cards || []).filter((c) => isOpenCard(c.ev)).length + (rec?.handoffs || []).filter((h) => isOpenCard(h.ev)).length;
+    const why = kidStartRefusal({ started, error: err, said, asks: !!s.pendingAsks?.size || liveAsks(s), cards, working: k.working });
+    if (!why) { logEvent(`not unread: ${sessionTag(s)}`, `the turn only started ${started} child session${started === 1 ? '' : 's'} (${k.working} working)`); return false; }
+    logEvent(`started a child, still unread: ${sessionTag(s)}`, why);
   }
   const fresh = !s.unread;
   setUnread(s, 'result');
@@ -1850,6 +1859,7 @@ function portalToolDefs(parent) {
             return { content: [{ type: 'text', text: `The user chose to do it here. Do the work in this session. (Card ${choice.id})` }] };
           }
           const child = startChild(parent, { title, prompt, cwd, engine: brand, startGear });
+          parent.startedKids = (parent.startedKids || 0) + 1; // the turn may end without orange: its ring shows the child (#777)
           const gear = findGear(child.engine, child.gear);
           const planNote = planStartNote({ on: plansOn(client), own: !!sessionPlans(client, parent.id).own, childStarts: state.sessions[parent.id]?.childStarts || 0 });
           return { content: [{ type: 'text', text: `Started session "${title}" (id ${child.id})${brand ? ` on ${BRANDS[brand].name}` : ''}${gear ? `, in Shift on ${gear.name}` : ''}. It appears in the portal list under this session.${planNote ? `\n\n${planNote}` : ''}` }] };
@@ -4777,6 +4787,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   s.turnNews = news; // its report is only news for the parent (#734)
   if (state.sessions[s.id]?.lastDone) { delete state.sessions[s.id].lastDone; saveState(); } // a turn runs: done again only if it says so (#755)
   s.turnSaid = '';
+  s.startedKids = 0; // start_session (user_asked) this turn: see endTurnMark (#777)
   s.closedKid = false; // close_session this turn: with no other child open, the job is done (#694)
   if (byPerson) s.autoWakes = 0; // a button the person pressed: wake-ups may continue
   if (state.sessions[s.id]?.reloadNote) { blocks.push({ type: 'text', text: state.sessions[s.id].reloadNote }); delete state.sessions[s.id].reloadNote; saveState(); }

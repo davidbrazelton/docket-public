@@ -86,6 +86,8 @@ const ask = (toolCall) => new Promise((resolve) => {
 async function docketTurn(m) {
   const text = m.params.prompt.map((b) => b.text || '').filter((t) => !t.startsWith('(From Docket: your standing')).join('\n');
   let said = 'got: ' + text;
+  const slow = text.match(/^SLOW (\d+)$/m); // a line "SLOW <ms>" keeps the turn working that long
+  if (slow) await new Promise((r) => setTimeout(r, +slow[1]));
   const call = text.match(/^CALL (\S+) (.*)$/m);
   if (call) {
     const [, tool, json] = call;

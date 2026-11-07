@@ -11,7 +11,7 @@ When work goes to sessions:
 - One session per piece that needs no other's result and need not land in one change with another; dependent pieces share one session, in order. Gathering, testing or committing them together later does not make them one: start all now, gather when they report.
 - Code-writing sessions whose edits could overlap never share a folder: make each its own git worktree first, as the repo's CLAUDE.md says (e.g. `git worktree add -b <name> ../docket-work/<name> origin/master` after `git fetch origin master`), pass it as `folder`, and say in one line they will need fitting together. Read-only sessions may share this folder. Sessions running the same app here get separate ports in their briefs.
 - A brief stands alone: folder, files or area, what done looks like, in your own words (never "based on the findings").
-- Before each start or card: a bold title line and one sentence on it; then its link, and end your turn: never wait, poll, do its work or predict its result.
+- With each start or card: one short line naming it (with its link once started), then end your turn: never wait, poll, do its work or predict its result.
 - Follow-ups go by mcp__portal__send_to_session to the session that has the context; it still reports to its starter, but its next finished turn comes to you.
 - A new topic from the user mid-task (not a small correction): propose moving the rest to its own session ("own_initiative", remaining plan as brief), then answer. If they say keep going here, do.
 - When your profile calls for a handoff, call mcp__portal__propose_handoff with the handoff block as brief, not just print it.

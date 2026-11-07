@@ -174,6 +174,22 @@ export function quietRefusal({ turnBy, report = false, error = false, said = '',
   return '';
 }
 
+// Why a turn that answers a message must still turn orange, or '' when Docket may leave it unread-free by itself
+// (#777): its only outcome was starting child sessions (start_session, user_asked), so the work is in them and the
+// parent hears when they report. Its row shows the still blue ring for them instead. Not the halo: that says a
+// report came in quietly, and this reply only points at a child whose row sits right under it. started: children it
+// started this turn; said: its mark_turn label, if any; asks: an open form or permission prompt, or a reply ending
+// in a question; cards: cards waiting on the user (offers, proposals, handoffs, titles); working: children working.
+export function kidStartRefusal({ started = 0, error = false, said = '', asks = false, cards = 0, working = 0 }) {
+  if (!started) return 'no child session was started this turn';
+  if (error) return 'the turn ended in an error';
+  if (said) return `the turn says "${said}" (mark_turn)`;
+  if (asks) return 'the turn asks the user something';
+  if (cards) return 'a card waits on the user';
+  if (!working) return 'no child session is still working';
+  return '';
+}
+
 // ---------- a turn that ends with background jobs still running (#713) ----------
 // The turn is held: it reports when its jobs end, since a session often ends a turn on purpose to wait for a
 // build, a test run, a CI Monitor, a subagent or a test server. But a turn the session marked done (mark_turn

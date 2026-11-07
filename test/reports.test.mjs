@@ -1,7 +1,7 @@
 // Tests for reports.mjs: whether a child's finished turn wakes its parent. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { endsAsking, endsWithNextSteps, endsWaiting, awaitingAnswer, waitingOnUser, closeRefusal, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText } from '../reports.mjs';
+import { endsAsking, endsWithNextSteps, endsWaiting, awaitingAnswer, waitingOnUser, closeRefusal, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText } from '../reports.mjs';
 
 test('a reply ending in a question is waiting on the user', () => {
   assert.equal(endsAsking('I read the file.\n\nShould I delete the old copy?'), true);
@@ -170,6 +170,20 @@ test('quietRefusal: a turn woken by session reports may end quietly', () => {
 test('quietRefusal: relaying a child\'s news is quiet with no child still working (#671)', () => {
   // The last child finished, or the only one waits on the person: the old rule (#645) refused these.
   assert.equal(quietRefusal({ turnBy: 'docket', report: true, kids: 0 }), '');
+});
+
+test('kidStartRefusal: a turn that only started a working child is not marked unread (#777)', () => {
+  const ok = { started: 1, working: 1 };
+  assert.equal(kidStartRefusal(ok), '');
+  assert.equal(kidStartRefusal({ started: 2, working: 1 }), '', 'one of two still working is enough');
+  assert.match(kidStartRefusal({ ...ok, started: 0 }), /no child session was started/, 'a plain reply turns orange as before');
+  assert.match(kidStartRefusal({ ...ok, error: true }), /error/);
+  assert.match(kidStartRefusal({ ...ok, said: 'question' }), /question/);
+  assert.match(kidStartRefusal({ ...ok, said: 'reply' }), /reply/, 'a turn that says it left something to read');
+  assert.match(kidStartRefusal({ ...ok, said: 'done' }), /done/);
+  assert.match(kidStartRefusal({ ...ok, asks: true }), /asks the user/, 'a form, permission prompt or reply ending in a question');
+  assert.match(kidStartRefusal({ ...ok, cards: 1 }), /card/, 'an offer, proposal, handoff or title card waiting');
+  assert.match(kidStartRefusal({ ...ok, working: 0 }), /no child session is still working/, 'the child already finished or waits on the user: nothing to show the ring for');
 });
 
 test('a held turn waits for its jobs, unless the session marked it done (#713)', () => {
