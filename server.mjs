@@ -1888,12 +1888,12 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: `Shifted to ${gear.name}. It applies from your next step.` }] };
         }),
       tool('remote_desks',
-        'Show or hide Docket\'s Remote Desks options on this computer (☰ > Remote Desks: using a desk here from another computer on the office network, or a desk on another computer from here). They are hidden until someone asks (or Alt+clicks ☰ > About in Docket, which needs no AI). Call it with on: true when the user asks to "show Docket remote desk options" (or to show, turn on or set up Remote Desks), and on: false when they ask to hide them. They stay shown until Docket restarts; each start hides them again, and the user asks again to show them. Hiding them also stops remote control and ends every remote connection; the remote setup itself is kept either way.',
+        'Show or hide Docket\'s Remote Desks options on this computer (☰ > Remote Desks: using a desk here from another computer on the office network, or a desk on another computer from here). They are hidden until someone asks (or Alt+clicks ☰ > About in Docket, which needs no AI). Call it with on: true when the user asks to "show Docket remote desk options" (or to show, turn on or set up Remote Desks), and on: false when they ask to hide them. They stay shown until Docket is started again (its own restarts, to take in an update or from ☰ > Restart Docket, keep them shown); each new start hides them again, and the user asks again to show them. Hiding them also stops remote control and ends every remote connection; the remote setup itself is kept either way.',
         { on: z.boolean().describe('true shows the Remote Desks options; false hides them') },
         async ({ on }) => {
           setRemoteFeatures(on);
           return { content: [{ type: 'text', text: on
-            ? 'Remote Desks options are shown on this computer now: ☰ > Remote Desks in Docket. Open pages show them without a reload. They stay shown until Docket restarts, which hides them again; the remote setup is kept.'
+            ? 'Remote Desks options are shown on this computer now: ☰ > Remote Desks in Docket. Open pages show them without a reload. They stay shown until Docket is started again (its own restarts for an update keep them), which hides them again; the remote setup is kept.'
             : 'Remote Desks options are hidden on this computer now. Remote control has stopped and every remote connection has ended; the remote setup is kept for when they are shown again.' }] };
         }),
       tool('rename_session',
@@ -5398,6 +5398,7 @@ async function restartAfterWait(p, how) {
   }
   logEvent(`restarting: ${why.short}`, `${how}\n${whyDetail}`);
   exiting = true;
+  keepRemoteShownOverRestart();
   setTimeout(() => process.exit(RESTART_CODE), 200);
 }
 
@@ -5448,6 +5449,7 @@ async function restartDocket() {
   const detail = [`stopped the runner${runnerPid ? ` (pid ${runnerPid})` : ' (not running)'} and ${stopped.size - (runnerPid ? 1 : 0)} program(s) below it and the app${again ? `, ${again} on a second look` : ''}${left.length ? `; still there after three looks: pid ${left.join(', ')}` : ''}`,
     cut.length ? `cut off, left for Continue: ${cut.map((x) => `"${x.title}" (${x.id})`).join(', ')}` : 'nothing was working or waiting', `${risk.idle} idle session(s) start again on their next message`].join('\n');
   logEvent(relaunch ? 'restarted (Restart Docket)' : 'stopped (Restart Docket; nothing here starts the app again, so start it by hand)', detail);
+  if (relaunch) keepRemoteShownOverRestart();
   setTimeout(() => process.exit(relaunch ? RESTART_CODE : 0), 300);
 }
 
@@ -7936,7 +7938,7 @@ function dropRemoteConn(id, why) {
 }
 function openRemoteSocket(d, conn) {
   const u = new URL(d.address);
-  const ws = new WebSocket(`wss://${u.host}/remote/ws`, { ...pinnedTls(d.pin, d.cert), headers: { authorization: `Bearer ${conn.token}` } });
+  const ws = new WebSocket(`wss://${u.host}/remote/ws`, { ...pinnedTls(d.pin, d.cert), handshakeTimeout: 15000, headers: { authorization: `Bearer ${conn.token}` } });
   conn.ws = ws;
   ws.on('message', (data) => {
     let m; try { m = renameClient(JSON.parse(data), conn.desk, d.id); } catch { return; }
@@ -8031,7 +8033,12 @@ async function remoteDeskRoutes(req, res, p) {
   const conn = remoteConns.get(d.id);
   if (m[2] === 'connect') {
     if (conn) return json(res, 200, remoteDeskView(d));
+    // A quick look first, so the long wait below is only ever for someone clicking Allow there. A Docket that has
+    // just started there has Remote Desks hidden and answers nothing; its firewall often drops the request silently.
     let r;
+    try { r = await remoteCall(d, null, 'GET', '/remote/hello', undefined, 10000); }
+    catch (e) { return json(res, 502, { error: connectError(e, d.name) + (e?.code === 'PIN_MISMATCH' ? '' : ` If Docket on ${d.name} has just started or restarted, Remote Desks may be hidden there: ask a session there to show the remote desk options, then connect again.`) }); }
+    if (r.status === 503) return json(res, 400, { error: `${r.json?.error || 'Remote control is off on that computer'}. Turn it on there (☰ > Remote Desks), then connect again.` });
     try { r = await remoteCall(d, null, 'POST', '/remote/hello', { code: String(b.code || ''), name: os.hostname() }, ASK_WAIT_MS + 20e3); }
     catch (e) { return json(res, 502, { error: connectError(e, d.name) }); }
     if (r.status !== 200 || !r.json?.token) return json(res, 400, { error: r.json?.error || `${d.name} refused the connection` });
@@ -8053,6 +8060,19 @@ async function remoteDeskRoutes(req, res, p) {
 // Shows or hides every part of Remote Desks on this computer, from the remote_desks tool or an Alt+click on
 // ☰ > About, until Docket next starts. Showing it starts remote control again if it was left on; hiding it stops
 // remote control and ends every connection, both ways. Neither changes the saved setup (authenticator, desk, on or off, remote desks added).
+// Docket's own restarts (an update taken in, ☰ > Restart Docket) are not a new start: it stays shown across them, so
+// a computer that was connected here finds remote control running and can connect again. A note in the data folder
+// carries it over, read once at the next start.
+const remoteShownFile = () => path.join(DATA_DIR, 'remote-shown');
+function keepRemoteShownOverRestart() {
+  if (!remoteShown) return;
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(remoteShownFile(), String(Date.now())); } catch {}
+}
+function remoteShownAfterRestart() {
+  let at = 0;
+  try { at = Number(fs.readFileSync(remoteShownFile(), 'utf8')); fs.rmSync(remoteShownFile()); } catch {}
+  if (at > Date.now() - 10 * 60e3) setRemoteFeatures(true);
+}
 function setRemoteFeatures(on) {
   const was = remoteOn();
   remoteShown = !!on;
@@ -8392,7 +8412,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && p === '/api/restart-docket') return json(res, 200, restartRisk());
     if (req.method === 'POST' && p === '/api/restart-docket') {
       if (docketRestarting) return json(res, 409, { error: 'Docket is already restarting' });
-      restartDocket().catch((e) => { logEvent('Restart Docket failed', e?.stack || e); setTimeout(() => process.exit(RESTART_CODE), 300); });
+      restartDocket().catch((e) => { logEvent('Restart Docket failed', e?.stack || e); keepRemoteShownOverRestart(); setTimeout(() => process.exit(RESTART_CODE), 300); });
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/update/now') { // pulls; the restart follows once it is quiet, or at once with { anyway: true }
@@ -9155,6 +9175,7 @@ server.on('error', (err) => {
 server.requestTimeout = 0;
 server.listen(PORT, '127.0.0.1', () => {
   logEvent(`started: http://localhost:${PORT}`);
+  remoteShownAfterRestart();
   startupAtStart().catch(() => {});
   reattached = reattachUntilDone();
   // The restart check: paused automatically before a shutdown, so carry on now that Docket is back.

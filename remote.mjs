@@ -193,7 +193,7 @@ export function pinnedRequest(address, { pin, cert, method = 'GET', path = '/', 
   const u = new URL(address);
   return new Promise((resolve, reject) => {
     const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
-    const req = https.request({ host: u.hostname, port: Number(u.port || 443), method, path, agent: false, ...pinnedTls(pin, cert),
+    const req = https.request({ host: u.hostname, port: Number(u.port || 443), method, path, agent: false, timeout, ...pinnedTls(pin, cert), // timeout here counts while connecting too
       headers: { ...(data ? { 'content-type': 'application/json', 'content-length': data.length } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) } }, (res) => {
       const chunks = [];
       res.on('data', (c) => chunks.push(c));

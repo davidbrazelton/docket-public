@@ -156,3 +156,33 @@ test('Alt+click on ☰ > About shows and hides it with no AI, and a restart hide
   await refused();
   setupKept();
 });
+
+test('Docket\'s own restarts keep it shown (#772): the note left for the next start shows it, once; an old note does not', async () => {
+  const note = path.join(tmp, 'data', 'remote-shown');
+  await stopDocket();
+  fs.mkdirSync(path.dirname(note), { recursive: true });
+  fs.writeFileSync(note, String(Date.now()));
+  await startDocket();
+  await waitFor('Remote Desks shown after the restart', async () => (await api('/api/remote-control')).status === 200);
+  await waitFor('remote control to run after the restart', hostListening);
+  assert.equal(fs.existsSync(note), false, 'the note is read once');
+  await stopDocket(); // a plain stop, as when the computer restarts: hidden at the next start
+  await startDocket();
+  await refused();
+  fs.writeFileSync(note, String(Date.now() - 60 * 60e3));
+  await stopDocket();
+  await startDocket();
+  await refused();
+  assert.equal(fs.existsSync(note), false);
+  setupKept();
+});
+
+test('connecting to a computer that does not answer says so within seconds, not after the 2-minute wait for Allow (#772)', async () => {
+  await api('/api/remote-features', { on: true });
+  const t0 = Date.now();
+  const r = await api('/api/remote-desks/rabc123/connect', { code: '123456' });
+  assert.equal(r.status, 502);
+  assert.match(r.json.error, /Remote Desks may be hidden there/);
+  assert.ok(Date.now() - t0 < 15000, `answered in ${Date.now() - t0} ms`);
+  await api('/api/remote-features', { on: false });
+});
