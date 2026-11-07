@@ -686,12 +686,19 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 .rd .rd-form { display: grid; gap: 6px; max-width: 360px; }
 .rd .rd-qr svg { width: 200px; height: 200px; background: #fff; padding: 6px; border-radius: 6px; }
 .rd hr { margin: 14px 0; }
-#remoteAsk { position: fixed; right: 16px; bottom: 16px; z-index: 2000; display: grid; gap: 8px; max-width: 380px; }
+/* The lower-right corner stack: every card that sits in that corner goes in #cornerStack, so any number of them
+   stack upward with a gap instead of covering each other. A new lower-right card joins the stack; it never gets its own
+   position: fixed. The last child sits nearest the corner. The padding leaves room for the cards' shadows, and clicks
+   pass through the empty edges. While an Allow prompt shows, the whole stack stays above anything else that is open. */
+#cornerStack { position: fixed; right: 0; bottom: 0; z-index: 30; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; padding: 40px 16px 16px 40px; box-sizing: border-box; max-height: 100vh; max-height: 100dvh; overflow: hidden auto; overscroll-behavior: contain; pointer-events: none; }
+#cornerStack > * { pointer-events: auto; flex-shrink: 0; }
+#cornerStack:has(#remoteAsk) { z-index: 2000; }
+#remoteAsk { order: 1; display: grid; gap: 8px; max-width: min(380px, calc(100vw - 32px)); }
 #remoteAsk .ra { background: var(--panel, #fff); color: var(--text, #000); border: 2px solid var(--accent, #c60); border-radius: 8px; padding: 12px; box-shadow: 0 6px 24px #0005; }
 #remoteAsk .ra-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; }
 /* The small card in the bottom corner, used by the cache offer and the update card (it began as the
    install offer, since removed). In the main color so it stands out on a dark page too; its main button is the reverse. */
-.install-offer { position: fixed; right: 16px; bottom: 16px; z-index: 30; width: min(340px, calc(100vw - 32px)); background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.45); padding: 12px 14px; display: grid; grid-template-columns: 36px 1fr; gap: 4px 12px; }
+.install-offer { position: relative; width: min(340px, calc(100vw - 32px)); background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.45); padding: 12px 14px; display: grid; grid-template-columns: 36px 1fr; gap: 4px 12px; }
 .install-offer[hidden] { display: none; }
 .install-offer img { width: 36px; height: 36px; grid-row: span 2; }
 .install-offer .t { font-weight: 600; }
@@ -708,10 +715,9 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 .install-offer .ico { font-size: 28px; line-height: 36px; text-align: center; grid-row: span 2; }
 .install-offer .d + .d { grid-column: 2; }
 #cacheOffer .b button { white-space: nowrap; }
-/* The update card is the same card again; when another offer holds the corner it sits at the top right. */
+/* The update card is the same card again; it is last in the stack, so it sits just above an Allow prompt. */
 #updateOffer .b { flex-wrap: wrap; }
 #updateOffer .b button { white-space: nowrap; }
-#cacheOffer:not([hidden]) ~ #updateOffer, #planOffer:not([hidden]) ~ #updateOffer, #setupOffer:not([hidden]) + #updateOffer { bottom: auto; top: 64px; }
 /* The setup check card (#758) is the same card again, with its biggest parts as a short list. */
 #setupOffer .b button { white-space: nowrap; }
 #setupOffer ul, #setupOffer .d, #setupOffer .b { grid-column: 2; }
@@ -1406,11 +1412,13 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   </aside>
 </div>
 <div class="wiz-back" id="wiz" hidden><div class="wiz" role="dialog" aria-modal="true" aria-labelledby="wizTitle" id="wizCard"></div></div>
+<div id="cornerStack">
+<div class="install-offer" id="reasonOffer" role="dialog" aria-labelledby="reasonOfferTitle" hidden></div>
 <div class="install-offer" id="cacheOffer" role="dialog" aria-labelledby="cacheOfferTitle" hidden></div>
 <div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
 <div class="install-offer" id="setupOffer" role="dialog" aria-labelledby="setupOfferTitle" hidden></div>
 <div class="install-offer" id="updateOffer" role="dialog" aria-labelledby="updateOfferTitle" hidden></div>
-<div class="install-offer" id="reasonOffer" role="dialog" aria-labelledby="reasonOfferTitle" hidden></div>
+</div>
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Larger view of the image" hidden><img id="lbImg" alt=""><button class="lb-close" id="lbClose" data-tip="lb-close" aria-label="Close">✕</button><button class="lb-prev" id="lbPrev" data-tip="lb-prev" aria-label="Previous image">‹</button><button class="lb-next" id="lbNext" data-tip="lb-next" aria-label="Next image">›</button><div class="lb-count" id="lbCount"></div></div>
 <div class="dlg-back" id="pfDlg" hidden><section class="dlg profile-page" id="profilePage" hidden role="dialog" aria-modal="true" aria-label="Desk Inspector"></section></div>
 <div class="dlg-back" id="dlg" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"><div class="dlg-title" id="dlgTitle"></div><div class="dlg-body" id="dlgBody"></div><div class="dlg-btns" id="dlgBtns"></div></div></div>
@@ -5648,7 +5656,7 @@ function drawRemoteAsks() {
   const asks = Object.values(S.remoteAsks);
   if (!asks.length) { box?.remove(); return; }
   if (!box) {
-    box = document.createElement('div'); box.id = 'remoteAsk'; box.setAttribute('role', 'alertdialog'); document.body.appendChild(box);
+    box = document.createElement('div'); box.id = 'remoteAsk'; box.setAttribute('role', 'alertdialog'); $('cornerStack').appendChild(box);
     box.onclick = (e) => {
       const b = e.target.closest('[data-ra]'); if (!b) return;
       api('/api/remote-control/answer', { id: b.dataset.ra, allow: b.dataset.allow === '1' }).catch(() => {});
@@ -5657,6 +5665,7 @@ function drawRemoteAsks() {
   }
   box.innerHTML = asks.map((a) => `<div class="ra"><b>${esc(a.name)}</b> (${esc(a.ip)}) wants to use the desk <b>${esc(a.desk || '')}</b> from another computer, with a correct authenticator code.
     <div class="ra-btns"><button data-ra="${a.id}" data-allow="0"${tip('ra-no')}>Don't allow</button><button class="primary" data-ra="${a.id}" data-allow="1"${tip('ra-yes')}>Allow</button></div></div>`).join('');
+  $('cornerStack').scrollTop = $('cornerStack').scrollHeight; // a tall stack scrolls; the Allow prompt is at its foot
   try { chime(true); } catch {}
 }
 async function loadRemoteAsks() {
