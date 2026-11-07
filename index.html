@@ -6966,7 +6966,9 @@ async function openSession(id, auto = '') {
   S.autoOpen = auto ? id : null;
   if (pv && pv.sessionId !== id) closePreview();
   if (!leaveOk()) return;
-  if (S.hold?.id !== id) S.hold = takeHold(S.live[id] || (S.history[S.client] || []).find((r) => r.id === id), HOLD_MEASURES) || { id };
+  const row = S.live[id] || (S.history[S.client] || []).find((r) => r.id === id);
+  const wasUnread = !!row && (isUnread(row) || needsYou(row)); // read before opening it marks it read
+  if (S.hold?.id !== id) S.hold = takeHold(row, HOLD_MEASURES) || { id };
   recordView(S.client, id);
   schedDirty = false; S.schedOpen = null; $('tasks').classList.remove('wide'); $('composer').hidden = false;
   S.selected = id; if (!POPOUT) store.set('sel:' + S.client, id);
@@ -6979,7 +6981,8 @@ async function openSession(id, auto = '') {
   if (S.selected !== id) return;
   S.events = r.events; for (const t of r.tasks) S.tasks[t.id] = t;
   // The line goes after the last visit; a reload partway through a visit keeps the line where it was.
-  S.lineAt = { id, at: (['reload', 'reconnect'].includes(auto) && r.look?.lineAt) || r.look?.seenAt || null };
+  // Never looked since seenAt was first saved (#680): above the unread reply, when there is one.
+  S.lineAt = { id, at: (['reload', 'reconnect'].includes(auto) && r.look?.lineAt) || r.look?.seenAt || (wasUnread && r.look && !r.look.lineAt ? unreadLineAt(r.events) : null) };
   setSuggestion(r.session?.suggestion);
   if (!r.session) {
     const row = current();
@@ -7304,6 +7307,22 @@ function chatRuns(events) {
 }
 // Where the New line goes: the first message written after lineAt (when the person last looked), or -1 for none.
 const newIndex = (events, lineAt) => lineAt ? events.findIndex((e) => e.k !== 'result' && e.at > lineAt) : -1;
+// A session not opened since Docket began saving seenAt (#680), but unread: the line goes above the reply that turned
+// it orange, the last turn that did not end quietly, after the person's own message that started it. Returned as a
+// time, so it works as lineAt; null when there is no such reply.
+function unreadLineAt(events) {
+  let end = -1;
+  for (let i = events.length - 1; i >= 0 && end < 0; i--) if (events[i].k === 'result' && !events[i].quiet) end = i;
+  if (end < 0) end = events.length;
+  let from = end - 1;
+  while (from >= 0 && events[from].k !== 'result') from--;
+  for (let i = from + 1; i < end; i++) {
+    const e = events[i];
+    if (e.k === 'user' && !e.from) continue;
+    if (e.at) return e.at - 1;
+  }
+  return null;
+}
 // end of new since you last looked
 // The message's time on its first element, so Mark unread can tell which message the chat is scrolled to.
 const atHtml = (ev) => { const h = eventHtml(ev); return ev.at && h ? h.replace(/^(\s*<[\w-]+)/, `$1 data-at="${ev.at}"`) : h; };

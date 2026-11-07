@@ -10,7 +10,7 @@ const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8'
 const start = page.indexOf('// ---------- new since you last looked, and folded quiet turns');
 const end = page.indexOf('// end of new since you last looked');
 assert.ok(start > 0 && end > start, 'the new-since-you-last-looked part of index.html has moved or lost its markers');
-const { chatRuns, newIndex } = new Function(page.slice(start, end) + '\nreturn { chatRuns, newIndex };')();
+const { chatRuns, newIndex, unreadLineAt } = new Function(page.slice(start, end) + '\nreturn { chatRuns, newIndex, unreadLineAt };')();
 
 const report = (at) => ({ k: 'child-report', childId: 'c', title: 'Child', text: 'done', at });
 const reply = (id, at) => ({ k: 'text', id: `${id}:0`, text: 'ok', at });
@@ -48,6 +48,20 @@ test('the line goes above the first message after the last look, and nowhere wit
   assert.equal(newIndex([{ k: 'note', text: 'no time' }, reply('m', 5)], 1), 1, 'a message without a time is skipped');
 });
 
+test('never looked since seenAt was saved, but unread: the line goes above the reply that turned it orange (#680)', () => {
+  const ev = [{ k: 'user', text: 'a', at: 10 }, reply('m', 20), done(30), { k: 'user', text: 'b', at: 40 }, reply('n', 50), { k: 'tool', id: 't', at: 55 }, done(60)];
+  assert.equal(newIndex(ev, unreadLineAt(ev)), 4, "after the person's own message that started the turn");
+  const woke = [...ev, report(70), reply('o', 80), done(90)];
+  assert.equal(newIndex(woke, unreadLineAt(woke)), 7, 'a turn a child report started: the line goes above the report');
+  const quiet = [...woke, report(100), reply('p', 110), done(120, true)];
+  assert.equal(newIndex(quiet, unreadLineAt(quiet)), 7, 'a quiet turn after it did not turn it orange');
+  const docket = [{ k: 'user', text: '', from: 'docket', at: 5 }, reply('m', 6), done(7)];
+  assert.equal(newIndex(docket, unreadLineAt(docket)), 0, 'a message from Docket is new too');
+  assert.equal(unreadLineAt([{ k: 'user', text: 'a', at: 1 }, done(2)]), null, 'no reply: no line');
+  const open = [{ k: 'user', text: 'a', at: 10 }, { k: 'permission', id: 'p', state: 'pending', at: 20 }];
+  assert.equal(newIndex(open, unreadLineAt(open)), 1, 'a turn still waiting on the person, with no Done line yet');
+});
+
 test('a turn is named by its last reply or step, the same in the live chat and the transcript', () => {
   assert.equal(turnKey([done(1), reply('abc', 2), { k: 'tool', id: 'toolu_1', at: 3 }]), 'u:toolu_1');
   assert.equal(turnKey([{ k: 'tool', id: 'toolu_1' }, { k: 'text', id: 'abc:2' }]), 't:abc');
@@ -72,7 +86,8 @@ test('the server flags a quiet Done line, keeps it, and reads it back with the t
 test('Mark unread from the open chat sends where it was scrolled to, and opening reads when the person last looked', () => {
   assert.equal([...page.matchAll(/\/unread\?client=\$\{S\.client\}`, unreadSpot\((id|s\.id)\)\)/g)].length, 3, 'every Mark unread');
   assert.match(server, /if \(Number\.isFinite\(b\.at\)\) \{ const rec = state\.sessions\[id\] \|\|= \{ client: client\.id \}; rec\.seenAt = b\.at - 1;/);
-  assert.match(page, /S\.lineAt = \{ id, at: \(\['reload', 'reconnect'\]\.includes\(auto\) && r\.look\?\.lineAt\) \|\| r\.look\?\.seenAt \|\| null \};/);
+  assert.match(page, /S\.lineAt = \{ id, at: \(\['reload', 'reconnect'\]\.includes\(auto\) && r\.look\?\.lineAt\) \|\| r\.look\?\.seenAt \|\| \(wasUnread && r\.look && !r\.look\.lineAt \? unreadLineAt\(r\.events\) : null\) \};/);
+  assert.match(page, /const wasUnread = !!row && \(isUnread\(row\) \|\| needsYou\(row\)\);[^\n]*\n[^\n]*\n\s*recordView\(S\.client, id\);/, 'read before the open marks it read');
   const markSeen = page.slice(page.indexOf('function markSeen('), page.indexOf('\n}\n', page.indexOf('function markSeen(')));
   assert.match(markSeen, /if \(!looking\(\) \|\| !present\(\)\) return;\n\s*noteLooked\(\);/, 'only while the person is there');
 });
