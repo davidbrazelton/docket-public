@@ -175,7 +175,9 @@ aside.side { position: relative; border-right: 1px solid var(--divider); backgro
 /* Time left is in the text color; once the cache has run out it goes grey, not red; an error stays red (#686). */
 .row .meta.left { color: var(--text); }
 .row .meta.err { color: var(--bad); }
-.row .meta.warn { color: var(--warn); font-weight: 600; }
+/* 10 minutes or less of a 1 hour session cache left: a solid pill, accent in the last 2 minutes (an indicator, #789) */
+.tpill { display: inline-block; background: var(--warn); color: var(--on-warn); border-radius: 999px; padding: 0 6px; font-weight: 600; }
+.tpill.end { background: var(--accent); color: var(--on-accent); }
 /* ✦ Needs attention and its Keep period are one filter control (#684, DESIGN.md): ✦ and its count on the left turn it
    on and off; the period on the right opens the Keep menu. On: soft tint on ✦, main-color border round the whole of it. */
 .view-menu { position: relative; flex: none; display: flex; }
@@ -683,17 +685,6 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
    install offer, since removed). In the main color so it stands out on a dark page too; its main button is the reverse. */
 .install-offer { position: fixed; right: 16px; bottom: 16px; z-index: 30; width: min(340px, calc(100vw - 32px)); background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.45); padding: 12px 14px; display: grid; grid-template-columns: 36px 1fr; gap: 4px 12px; }
 .install-offer[hidden] { display: none; }
-.cache-toast { position: fixed; left: 16px; bottom: 16px; z-index: 31; width: min(360px, calc(100vw - 32px)); background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.45); padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; }
-.cache-toast[hidden] { display: none; }
-.cache-toast .ct-head { display: flex; align-items: center; justify-content: space-between; font-weight: 600; }
-.cache-toast .ct-d { font-size: 12px; opacity: .85; }
-.cache-toast .ct-item { display: flex; gap: 8px; align-items: baseline; width: 100%; text-align: left; margin-top: 4px; }
-.cache-toast .ct-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cache-toast .ct-co, .cache-toast .ct-m { font-size: 12px; opacity: .85; white-space: nowrap; }
-.cache-toast button { color: inherit; }
-.cache-toast .ct-item { border-color: color-mix(in srgb, var(--on-accent) 40%, transparent); }
-.cache-toast button:hover { background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
-.cache-toast button:focus-visible { outline: 2px solid var(--on-accent); outline-offset: 2px; }
 .install-offer img { width: 36px; height: 36px; grid-row: span 2; }
 .install-offer .t { font-weight: 600; }
 .install-offer .d { font-size: 13px; }
@@ -752,7 +743,7 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 @media (max-width: 640px) { .key-row { grid-template-columns: 96px 1fr; } .key-snd { grid-column: 2; } .key-snd:empty, .key-head .key-snd { display: none; } }
 .key-sym { display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 11px; white-space: nowrap; color: var(--muted); }
 .key-sym .dot { align-self: center; }
-.key-sym.warn { color: var(--warn); font-weight: 600; } .key-sym.left { color: var(--text); }
+.key-sym.left { color: var(--text); }
 .key-sym .n { min-width: 15px; height: 15px; padding: 0 3px; border-radius: 999px; background: var(--warn); color: var(--on-warn); font-size: 10px; font-weight: 700; display: inline-grid; place-items: center; }
 .key-sym .conn { font-size: 10px; padding: 1px 6px; }
 .key-sym .gdots { display: inline-flex; gap: 3px; } .key-sym .gdots .dot { width: 7px; height: 7px; animation: none; }
@@ -1407,7 +1398,6 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   </aside>
 </div>
 <div class="wiz-back" id="wiz" hidden><div class="wiz" role="dialog" aria-modal="true" aria-labelledby="wizTitle" id="wizCard"></div></div>
-<div class="cache-toast" id="cacheToast" role="status" aria-live="polite" hidden><div class="ct-head"><span id="cacheToastTitle"></span><button class="ghost" id="cacheToastClose" data-tip="cache-toast-close" aria-label="Close">✕</button></div><div class="ct-d">10 minutes or less left on the 1 hour session cache. Send a message before it expires to keep it.</div><div id="cacheToastList"></div></div>
 <div class="install-offer" id="cacheOffer" role="dialog" aria-labelledby="cacheOfferTitle" hidden></div>
 <div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
 <div class="install-offer" id="setupOffer" role="dialog" aria-labelledby="setupOfferTitle" hidden></div>
@@ -1826,8 +1816,6 @@ const HELP = [
     ['term-shell', 'Open a terminal', 'Open this kind of terminal in the folder shown, signed in as this desk. The ticked one is the last used'],
     ['term-cli', 'Start an AI program', 'Open the ticked terminal in the folder shown, signed in as this desk, and start this AI program in it. The terminal stays open when the program exits'],
     ['term-choose', 'Choose folder…', 'Pick another folder, and the kind of terminal, before it opens'],
-    ['cache-toast-open', 'A session whose cache is expiring', 'Open this session. Sending it a message before the time runs out keeps its 1 hour session cache'],
-    ['cache-toast-close', 'Close', 'Hide this list of sessions whose cache is expiring'],
     ['cache-yes', 'Make it 1 hour', 'Start this desk\'s new Claude sessions with the 1-hour prompt cache. Sessions already running keep theirs. Change it back in ☰ > Desks'],
     ['cache-later', 'Not now', 'Ask again in 30 days at the earliest, and only if pauses of 5 to 60 minutes keep costing a re-read'],
     ['cache-ok', 'OK', 'Close this note'],
@@ -3253,13 +3241,15 @@ function ctxText(st) {
   return st.compactAt ? `${st.tokens.toLocaleString()} of ${st.compactAt.toLocaleString()} tokens before auto-compact (${(st.compactAt - st.tokens).toLocaleString()} left)` : `${st.tokens.toLocaleString()} tokens in the conversation`;
 }
 // The time column: minutes of cache left while warm (gray), time since the last reply once it expired (red).
+// A 1 hour cache with 10 minutes or less left is 'warn' (a solid pill), and 'warn end' in its last 2 minutes (#789).
+const cacheCls = (s) => !cacheEnding(s) ? 'left' : s.stats.cacheExpiresAt - Date.now() <= 2 * 60000 ? 'warn end' : 'warn';
 function timeBit(s) {
   if (dotClass(s) === 'failed') return ['err', 'error', failedTip(s)];
   // The orange dot and its label (needTag) say it needs you and why, so the time column keeps the minutes of cache
   // left while warm, and the time since the last reply, grey, once it has expired, like other expired rows (#686).
   if (needsYou(s)) {
     const left = cacheLeft(s.stats);
-    if (left !== null && left > 0) return [cacheEnding(s) ? 'warn' : 'left', `${left}m left`, `Needs you. Prompt cache warm for ${left} more minute${left === 1 ? '' : 's'}`];
+    if (left !== null && left > 0) return [cacheCls(s), `${left}m left`, `Needs you. Prompt cache warm for ${left} more minute${left === 1 ? '' : 's'}`];
     return s.stats ? ['cold', ago(s.stats.at), `Needs you. Prompt cache expired; last reply ${new Date(s.stats.at).toLocaleString()}`] : ['', ago(s.lastModified || s.createdAt), 'Needs you'];
   }
   if (s.midReply) return ['', 'interrupted', ''];
@@ -3268,7 +3258,7 @@ function timeBit(s) {
   if (inBackground(s)) return ['', 'background', s.runningTasks ? `${s.runningTasks} background job${s.runningTasks === 1 ? '' : 's'} still running` : `Background jobs finished; ${brand(s)} is about to take in their results`];
   if (waitsOnKids(s) && (s.kids?.working || s.kids?.waiting)) return ['', `waiting on ${s.kids.working + s.kids.waiting}`, kidsText(s)];
   const left = cacheLeft(s.stats);
-  if (left !== null && left > 0) return [cacheEnding(s) ? 'warn' : 'left', `${left}m left`, `Prompt cache warm for ${left} more minute${left === 1 ? '' : 's'} (${s.stats.cacheTtl >= 3600 ? '1 hour' : '5 minute'} cache)`];
+  if (left !== null && left > 0) return [cacheCls(s), `${left}m left`, `Prompt cache warm for ${left} more minute${left === 1 ? '' : 's'} (${s.stats.cacheTtl >= 3600 ? '1 hour' : '5 minute'} cache)`];
   if (s.stats) return ['cold', ago(s.stats.at), `Prompt cache expired; last reply ${new Date(s.stats.at).toLocaleString()}`];
   return ['', ago(s.lastModified || s.createdAt), ''];
 }
@@ -4257,10 +4247,11 @@ function sessionRow(s, depth) {
   // The badge appears once a run other than the newest one is unread, so an older reply is never hidden.
   const more = run && run.unread > (run.topUnread ? 1 : 0) ? `<span class="tag unread-n" title="Runs of this schedule with a reply you have not read. The Details panel lists every run.">${run.unread} unread</span>` : '';
   const snip = snippetFor(s);
-  const pin = !s.archived && pinnedHere(s.id) ? `<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
+  const tb = timeBit(s);
+  const pin = !s.archived && pinnedHere(s.id) ?`<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
   return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''}${S.hoverCard ? '' : ` title="${esc((run?.title || s.title) || 'Untitled')}"`}>
       ${depth ? '<span class="arrow">↳</span>' : ''}${rowDot(s)}<span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>
-      <span class="meta ${timeBit(s)[0]}" title="${esc(timeBit(s)[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${timeBit(s)[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
+      <span class="meta ${tb[0]}" title="${esc(tb[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${tb[0].startsWith('warn') ? `<span class="tpill${tb[0].endsWith('end') ? ' end' : ''}">${tb[1]}</span>` : tb[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // ---------- the hover card (#691): a row's full title and every detail, while 👁 > Hover card is on ----------
 // Each line shows only when it applies. Read from the same data the row itself draws from.
@@ -5365,7 +5356,8 @@ function keyHtml() {
     ${row(`<span class="gdots">${dot('running')}${dot('idle')}${dot('needs')}</span>`, 'In group view, each group header shows one small dot for each kind of status inside it (not one per session), without blinking. They sit at the right edge in a fixed order, showing only the kinds present: blue (working), hollow blue (background jobs), still hollow blue (waiting on child sessions, with a halo when there is news), green, hollow green (resting), yellow "?" (waiting on your answer), yellow (needs you), ringed red (error), red, grey.')}
     ${head('Time text on the right of each row', true)}
     ${row('12m left', 'In the text color: the conversation is still held in Claude’s short-term memory (the prompt cache), so the next message is cheaper and faster.', 'left')}
-    ${row('8m left', 'A one hour session cache has 10 minutes or less left. Reply soon to keep the saving.', 'warn', play('cache'))}
+    ${row('<span class="tpill">8m left</span>', 'A one hour session cache has 10 minutes or less left. Reply soon to keep the saving.', '', play('cache'))}
+    ${row('<span class="tpill end">2m left</span>', 'The last 2 minutes of that session cache: reply now to keep it.')}
     ${row('3h ago', 'Grey: the session cache expired, so the next message costs more.', 'cold')}
     ${row('working', '<b>working</b>, <b>background</b>, <b>interrupted</b>, <b>compacting…</b> and a red <b>error</b> take the place of the time and match the dot. A session that needs you keeps showing its minutes of session cache left, and the time since its last reply once that has run out.')}
     ${head('Why a yellow row needs you (👁 > Reason tags: words, icons or off, and the icon as the session dot)')}
@@ -8739,7 +8731,7 @@ document.addEventListener('pointerdown', unlockAudio, { capture: true });
 const SOUND_WORDS = {
   ready: 'Reply finished: two bright notes going up, quick.',
   question: 'Question or permission: three bright notes, high, low, high.',
-  cache: 'Session cache expiring: two lower, softer notes going down, a little slower. A box at the bottom left names each session it was for, with its desk when that is not the one on screen; click one to open it.',
+  cache: 'Session cache expiring: two lower, softer notes going down, a little slower. The time on the right of each session it was for turns into a solid pill, accent colored in the last 2 minutes.',
   rules: 'The chime plays only after a dot has stayed orange for 2 seconds, and not for the session you are looking at. Chimes within 4 seconds of each other merge into one. A session and the sessions it started (and theirs) share one chime: after any of them chimes, the rest stay quiet for 60 seconds, though their dots still turn orange. After any chime there is no other for 30 seconds; a session that turned orange in that time and still needs you gets one catch-up chime when it ends. Questions and permission asks skip both waits. With several Docket pages open only one of them plays each chime. Session caches that expire within 2 minutes of each other share one tone, and with several Docket pages open only one of them plays it. Sound in the ☰ menu turns all sound off, and each conversation can be muted on its own.',
 };
 // force: the Key's ▶ buttons play it even with the bell off, and outside the waits (see the beep rules below).
@@ -8781,12 +8773,10 @@ function cacheTone(force = false) {
 // browser's pages share: one page reads, marks and saves the "already warned" record while
 // the others wait, so a cache is only ever claimed once and only that page plays the tone. Every
 // session at the mark in one check, plus any that will reach it within CACHE_MERGE_MS, shares one
-// tone, and a toast (shown on every open page) names each one and opens it on click. Other
-// companies and sessions the list is hiding still sound: their session cache costs the same.
+// tone; the time pill in each row says which ones (#789). Other companies and sessions the list
+// is hiding still sound: their session cache costs the same.
 const CACHE_MERGE_MS = 2 * 60000;
 let lastCacheTone = 0;
-const cacheChan = 'BroadcastChannel' in window ? new BroadcastChannel('docket-cache-tone') : null;
-if (cacheChan) cacheChan.onmessage = (e) => { if (e.data?.items) showCacheToast(e.data.items); };
 const withCacheLock = (fn) => (navigator.locks ? navigator.locks.request('docket-cache-warn', fn) : Promise.resolve(fn()));
 function cacheDue(warned, now) {
   const due = [];
@@ -8815,45 +8805,11 @@ function checkCacheWarnings() {
     }
     for (const [id, at] of Object.entries(warned)) if (at < now) delete warned[id]; // forget expired caches
     store.set('cacheWarned', warned);
-    const heard = due.filter((d) => !isMuted(d.s.id));
-    if (!heard.length || !soundOn()) return;
-    const items = heard.sort((a, b) => a.left - b.left).map(({ s, c }) => ({ id: s.id, client: c.id, company: c.name || c.id, title: s.title || 'Untitled', expiresAt: s.stats.cacheExpiresAt }));
+    if (!due.some((d) => !isMuted(d.s.id)) || !soundOn()) return;
     if (now - lastCacheTone >= 4000) { lastCacheTone = now; cacheTone(); }
-    showCacheToast(items);
-    cacheChan?.postMessage({ items });
   });
 }
 setInterval(checkCacheWarnings, 30000);
-// The toast that says which sessions the tone was for. It stays until closed or every cache on it ends.
-let cacheToastItems = [], cacheToastTimer = null;
-function showCacheToast(items) {
-  const now = Date.now();
-  const keep = cacheToastItems.filter((x) => x.expiresAt > now && !items.some((y) => y.id === x.id));
-  cacheToastItems = [...items, ...keep];
-  renderCacheToast();
-  clearInterval(cacheToastTimer);
-  cacheToastTimer = setInterval(renderCacheToast, 30000);
-}
-function renderCacheToast() {
-  const now = Date.now();
-  cacheToastItems = cacheToastItems.filter((x) => x.expiresAt > now);
-  const box = $('cacheToast');
-  if (!cacheToastItems.length) { box.hidden = true; clearInterval(cacheToastTimer); return; }
-  const n = cacheToastItems.length;
-  $('cacheToastTitle').textContent = n === 1 ? 'Session cache expiring' : `${n} session caches expiring`;
-  $('cacheToastList').innerHTML = cacheToastItems.map((x) => {
-    const mins = Math.max(1, Math.round((x.expiresAt - now) / 60000));
-    const where = x.client === S.client ? '' : `<span class="ct-co">${esc(x.company)}</span>`;
-    return `<button class="ct-item" data-ct-id="${esc(x.id)}" data-ct-client="${esc(x.client)}"${tip('cache-toast-open')}><span class="ct-t">${esc(x.title)}</span>${where}<span class="ct-m">${mins} min left</span></button>`;
-  }).join('');
-  box.hidden = false;
-}
-$('cacheToastList').onclick = (e) => {
-  const b = e.target.closest('[data-ct-id]'); if (!b) return;
-  const { ctId: id, ctClient: client } = b.dataset;
-  if (client !== S.client) { selectClient(client, id); renderCacheToast(); } else openSession(id).catch(() => {});
-};
-$('cacheToastClose').onclick = () => { cacheToastItems = []; renderCacheToast(); };
 
 // Per-conversation mute (remembered in this browser). The global bell overrides it.
 const mutedSessions = () => store.get('mutedSessions', {});
