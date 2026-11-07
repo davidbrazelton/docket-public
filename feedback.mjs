@@ -1,12 +1,16 @@
-// The 🔨 feedback button (#552): anyone using Docket can suggest a feature. The page sends the message, an optional
-// name and what its browser can see; the app adds what is safe to say about Docket itself, and sends the report to
-// the destination set on this computer (☰ > Settings > Feedback destination). There is no default destination.
+// The Suggest a feature button (#552, #563): anyone using Docket can suggest a feature. The page sends the message, an
+// optional name and what its browser can see; the app adds what is safe to say about Docket itself, and files the
+// report as a GitHub Issue in the repo set on this computer (☰ > Settings > Feedback destination), with the token set
+// there. There is no default repo and no token in the code: until both are set on a computer, nothing is sent.
 // What may go out is listed here, field by field: anything not on a list is dropped, and nothing about sessions
 // (their words, titles, folders), sign-ins, desk names or client names is ever read in, so it cannot leak.
+import { randomBytes } from 'node:crypto';
 
 // The screens the page may say it was on. Anything else becomes 'other'.
 export const VIEWS = ['session', 'new-session', 'session-list', 'schedules', 'desk-inspector', 'file-preview', 'setup', 'dialog', 'other'];
 export const DEVICES = ['desktop', 'tablet', 'phone'];
+// The most reports one install sends in a day, so a stuck button or a flood from one install stays small.
+export const DAILY_LIMIT = 10;
 const MAX_TEXT = 5000, MAX_NAME = 80, MAX_UA = 400;
 
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
@@ -41,13 +45,22 @@ export function cleanPageFacts(f = {}) {
   };
 }
 
+// This install's ID: eight random letters and digits made once and saved, so reports from one install can be told
+// apart (to spot a flood) without saying anything about the person or the computer.
+export const isInstallId = (v) => typeof v === 'string' && /^[0-9a-f]{8}$/.test(v);
+export function installId(state) {
+  if (!isInstallId(state.installId)) state.installId = randomBytes(4).toString('hex');
+  return state.installId;
+}
+
 // What is safe to say about Docket on this computer. Reads only the switches, which brands have a home folder set
 // (never the folder), and how many sessions are open and working (never which ones).
-export function docketFacts({ version = '', commit = '', clients = [], live = [], state = {}, os = '' } = {}) {
+export function docketFacts({ version = '', commit = '', clients = [], live = [], state = {}, os = '', install = '' } = {}) {
   const brands = ['claude', 'grok', 'codex'].filter((b) => clients.some((c) => (b === 'claude' ? c.home : c[b + 'Home'])));
   const sessions = [...live].filter((s) => s && s.status !== 'ended');
   return {
     version: word(version, 20), commit: /^[0-9a-f]{4,40}$/i.test(commit) ? commit.slice(0, 12) : '',
+    install: isInstallId(install) ? install : '',
     os: word(os, 20),
     desks: clients.length, remoteDesks: clients.filter((c) => c.remote).length,
     brands,
@@ -73,40 +86,55 @@ export function buildReport({ description, name, page, docket }) {
   return { title, body, fields };
 }
 
-// The destination as saved on this computer: { url, key? }, or null when not set. Only https, or http to this
-// computer for testing; the key is optional and only ever sent to that address.
+// The destination as saved on this computer: { repo: 'owner/name', token }, or null when either is missing.
 export function cleanDestination(d) {
   if (!d || typeof d !== 'object') return null;
-  let u; try { u = new URL(String(d.url || '').trim()); } catch { return null; }
-  const here = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname);
-  if (!(u.protocol === 'https:' || (u.protocol === 'http:' && here)) || u.username || u.password) return null;
-  const key = typeof d.key === 'string' ? d.key.trim().slice(0, 500) : '';
-  return { url: u.href, ...(key ? { key } : {}) };
+  const repo = String(d.repo || '').trim().replace(/^https:\/\/github\.com\//, '').replace(/\.git$|\/$/g, '');
+  const token = typeof d.token === 'string' ? d.token.trim() : '';
+  if (!/^[A-Za-z0-9-]{1,39}\/[A-Za-z0-9._-]{1,100}$/.test(repo) || !/^[A-Za-z0-9_]{20,255}$/.test(token)) return null;
+  return { repo, token };
 }
-// What the page may see of it: the address, and whether a key is set (never the key).
-export const destinationInfo = (d) => (d ? { url: d.url, hasKey: !!d.key } : { url: '', hasKey: false });
+// What the page may see of it: the repo, and whether a token is set (never the token).
+export const destinationInfo = (d) => (d ? { repo: d.repo, hasToken: true } : { repo: '', hasToken: false });
 
+// Today's count of reports sent from this install: { day: 'YYYY-MM-DD' (this computer's date), count }.
+export const today = (now = new Date()) => `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+export const sentToday = (sent, day) => (sent && sent.day === day && Number.isInteger(sent.count) ? sent.count : 0);
+export const limitReached = (sent, day, limit = DAILY_LIMIT) => sentToday(sent, day) >= limit;
+export const countSend = (sent, day) => ({ day, count: sentToday(sent, day) + 1 });
+export const limitMessage = (limit = DAILY_LIMIT) => `Not sent: this computer has already sent ${limit} reports today, the most it sends in one day. Your message is kept here; send it again tomorrow.`;
+
+// What each refusal from GitHub most likely means, in plain words.
+const GH_WHY = {
+  401: 'the token is not accepted (wrong, expired or cancelled)',
+  403: 'the token may not create issues there, or GitHub is limiting requests',
+  404: 'the repo was not found, or the token cannot see it',
+  410: 'Issues are turned off in that repo',
+  422: 'GitHub would not take the report as written',
+};
 const NO_NET = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'ENETDOWN', 'EHOSTUNREACH']);
-// Sends the report. Never says sent unless the destination answered with a 2xx:
-// { ok: true, where, link? } | { ok: false, kind: 'unset' | 'offline' | 'unreachable' | 'refused', code?, message }
+// Files the report as an Issue. Never says sent unless GitHub answered 201 Created:
+// { ok: true, where, link, number } | { ok: false, kind: 'unset' | 'offline' | 'unreachable' | 'refused', code?, message }
 export async function sendReport(dest, report, { fetch: f = globalThis.fetch, timeoutMs = 15000 } = {}) {
   if (!dest) return { ok: false, kind: 'unset', message: 'Feedback is not set up on this computer yet, so nothing was sent. Whoever looks after Docket here sets where it goes in ☰ > Settings > Feedback destination.' };
-  const host = new URL(dest.url).host;
   let r;
   try {
-    r = await f(dest.url, { method: 'POST', headers: { 'content-type': 'application/json', ...(dest.key ? { authorization: `Bearer ${dest.key}` } : {}) },
-      body: JSON.stringify(report), signal: AbortSignal.timeout(timeoutMs) });
+    r = await f(`https://api.github.com/repos/${dest.repo}/issues`, {
+      method: 'POST',
+      headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${dest.token}`, 'content-type': 'application/json', 'user-agent': 'Docket-feedback', 'x-github-api-version': '2022-11-28' },
+      body: JSON.stringify({ title: report.title, body: report.body }), signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {
     const code = e?.cause?.code || e?.code || '';
-    if (NO_NET.has(code)) return { ok: false, kind: 'offline', code, message: `Not sent: this computer could not reach ${host} (${code}: no network, or the address is wrong). Your message is kept here; press Send again when you are back online.` };
-    const why = e?.name === 'TimeoutError' ? 'took too long to answer' : code === 'ECONNREFUSED' ? 'is not answering' : 'could not be reached';
-    return { ok: false, kind: 'unreachable', code: code || e?.name || '', message: `Not sent: ${host} ${why}${code ? ` (${code})` : ''}. Your message is kept here; press Send again to retry.` };
+    if (NO_NET.has(code)) return { ok: false, kind: 'offline', code, message: `Not sent: this computer could not reach GitHub (${code}: no network). Your message is kept here; press Send again when you are back online.` };
+    const why = e?.name === 'TimeoutError' ? 'took too long to answer' : 'could not be reached';
+    return { ok: false, kind: 'unreachable', code: code || e?.name || '', message: `Not sent: GitHub ${why}${code ? ` (${code})` : ''}. Your message is kept here; press Send again to retry.` };
   }
   let j = null; try { j = await r.json(); } catch {}
-  if (!r.ok) {
-    const said = j && typeof j.error === 'string' ? `: ${j.error.slice(0, 200)}` : '';
-    return { ok: false, kind: 'refused', code: r.status, message: `Not sent: ${host} refused it with error ${r.status}${r.statusText ? ' ' + r.statusText : ''}${said}. Your message is kept here.` };
+  if (r.status !== 201) {
+    const said = j && typeof j.message === 'string' ? ` GitHub said: "${j.message.slice(0, 200)}".` : '';
+    const why = GH_WHY[r.status] || 'GitHub did not create the Issue';
+    return { ok: false, kind: 'refused', code: r.status, message: `Not sent: error ${r.status}, ${why}.${said} Your message is kept here.` };
   }
-  const link = j && typeof (j.html_url || j.url) === 'string' && /^https:\/\//.test(j.html_url || j.url) ? (j.html_url || j.url) : '';
-  return { ok: true, where: host, ...(link ? { link } : {}) };
+  const link = j && typeof j.html_url === 'string' && /^https:\/\/github\.com\//.test(j.html_url) ? j.html_url : '';
+  return { ok: true, where: `${dest.repo}${j?.number ? ` as Issue #${j.number}` : ''}`, ...(link ? { link } : {}), ...(j?.number ? { number: j.number } : {}) };
 }

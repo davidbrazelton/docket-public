@@ -59,7 +59,7 @@ import { scanPlanSystem, switchWarning, conversionBrief, systemName } from './pl
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
 import { SETUP_OFFER, scanFile, measureUse, measureFiles, assess, quickStart, costPerToken, checkDue, setupOfferKind, headlines, setupBrief, itemTable, kTokens, dollars } from './setup-size.mjs';
-import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport } from './feedback.mjs';
+import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport, installId, today, sentToday, limitReached, countSend, limitMessage, DAILY_LIMIT } from './feedback.mjs';
 import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
 import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE, COMPACT_AT_BREAK, BREAK_COMPACT, breakCompactDue } from './recall.mjs';
 import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPrUrl, adoPRsForBranch, adoPRById, adoWorkItemIds, adoItemKey, isAdoItemKey, adoItemKeyFrom, adoPRWorkItemIds, adoWorkItems, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, linkTtl, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
@@ -8327,27 +8327,31 @@ const server = http.createServer(async (req, res) => {
       onPower(ev);
       return json(res, 200, { paused: pauseView() });
     }
-    // The 🔨 feedback button (#552). GET: where reports go (never the key) and what Docket adds about itself, for the
-    // panel to show. POST: send one ({ description, name, page }); the answer always says whether it went (ok) and why not.
+    // The Suggest a feature button (#552, #563). GET: the repo reports go to (never the token), what Docket adds about
+    // itself, and how many this install sent today, for the panel to show. POST: send one ({ description, name, page });
+    // the answer always says whether it went (ok) and why not. Only a send GitHub took counts toward the daily limit.
     if (p === '/api/feedback') {
-      const facts = () => docketFacts({ version: updateInfo().version, commit: updateStatus.commit, clients: CLIENTS, live: live.values(), state, os: process.platform });
-      if (req.method === 'GET') return json(res, 200, { destination: destinationInfo(cleanDestination(state.feedback)), docket: facts() });
+      const install = () => { const had = state.installId, id = installId(state); if (id !== had) saveState(); return id; };
+      const facts = () => docketFacts({ version: updateInfo().version, commit: updateStatus.commit, clients: CLIENTS, live: live.values(), state, os: process.platform, install: install() });
+      if (req.method === 'GET') return json(res, 200, { destination: destinationInfo(cleanDestination(state.feedback)), docket: facts(), sentToday: sentToday(state.feedbackSent, today()), limit: DAILY_LIMIT });
       if (req.method === 'POST') {
         const b = await readBody(req);
         if (typeof b.description !== 'string' || !b.description.trim()) return json(res, 400, { error: 'Type a message first' });
+        const dest = cleanDestination(state.feedback);
+        if (dest && limitReached(state.feedbackSent, today())) return json(res, 200, { ok: false, kind: 'limit', message: limitMessage() });
         const report = buildReport({ description: b.description, name: b.name, page: b.page, docket: facts() });
-        return json(res, 200, await sendReport(cleanDestination(state.feedback), report));
+        const r = await sendReport(dest, report);
+        if (r.ok) { state.feedbackSent = countSend(state.feedbackSent, today()); saveState(); }
+        return json(res, 200, r);
       }
     }
-    // Where this computer sends feedback: { url, key? }, or url '' to turn sending off. keepKey keeps the saved key,
-    // only while the address stays on the same site, so a key never follows a change to somewhere else.
+    // Where this computer files feedback: { repo: 'owner/name', token }, or repo '' to turn sending off. An empty token
+    // keeps the one saved.
     if (req.method === 'POST' && p === '/api/feedback/destination') {
-      const b = await readBody(req), url = String(b.url || '').trim();
-      if (!url) { delete state.feedback; saveState(); return json(res, 200, destinationInfo(null)); }
-      const site = (u) => { try { return new URL(u).origin; } catch { return null; } };
-      const key = b.keepKey ? (site(state.feedback?.url) === site(url) ? state.feedback?.key : '') : b.key;
-      const d = cleanDestination({ url, key });
-      if (!d) return json(res, 400, { error: 'Give a full https:// address (http:// only for this computer)' });
+      const b = await readBody(req), repo = String(b.repo || '').trim();
+      if (!repo) { delete state.feedback; saveState(); return json(res, 200, destinationInfo(null)); }
+      const d = cleanDestination({ repo, token: String(b.token || '').trim() || state.feedback?.token });
+      if (!d) return json(res, 400, { error: 'Give the repo as owner/name, and a GitHub token' });
       state.feedback = d; saveState();
       return json(res, 200, destinationInfo(d));
     }

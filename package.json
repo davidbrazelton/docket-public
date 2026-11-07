@@ -1,6 +1,6 @@
 {
   "name": "docket",
-  "version": "1.156.3",
+  "version": "1.157.0",
   "description": "Local page to start, resume and track Claude Code sessions per client",
   "scripts": {
     "start": "node server.mjs",
