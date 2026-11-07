@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { NEW_CONFIG, makeGrokHome, grokHooks, writeGrokHooks, HOOK_FILE, signedInFrom, deviceLink, isInside } from '../grok-home.mjs';
+import { NEW_CONFIG, makeGrokHome, grokHooks, writeGrokHooks, HOOK_FILE, signedInFrom, grokAccount, deviceLink, isInside } from '../grok-home.mjs';
 import { checkGrok } from '../plugin/hooks/bash-cmdline-guard.mjs';
 
 const PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugin');
@@ -83,4 +83,12 @@ test('the guard script reads Grok\'s hook input and honours the off list and the
   assert.equal(JSON.parse(run('x'.repeat(400), { DOCKET_CMDLINE_LIMIT: '300' }).stdout).hookSpecificOutput.permissionDecision, 'deny');
   assert.equal(run('x'.repeat(33000), { DOCKET_HOOKS_OFF: 'bash-cmdline-guard' }).stdout, '');
   assert.equal(run('x'.repeat(33000), { DOCKET_ENGINE: '' }).stdout, '');
+});
+
+test('who a Grok home is signed in as: the email, else the name', () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'grok-acct-'));
+  const write = (e) => fs.writeFileSync(path.join(home, 'auth.json'), JSON.stringify({ 'https://auth.x.ai::id': { key: 'k', email: null, first_name: 'Pat Doe', ...e } }));
+  write({}); assert.equal(grokAccount(home), 'Pat Doe');
+  write({ email: 'pat@example.com' }); assert.equal(grokAccount(home), 'pat@example.com');
+  assert.equal(grokAccount(path.join(home, 'none')), null);
 });

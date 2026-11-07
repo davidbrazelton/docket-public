@@ -38,7 +38,7 @@ import { hooksFor, hooksOffFor, cleanDocketHooks } from './docket-hooks.mjs';
 import { configFiles, readPrint, configChanges, reloadDecision, rulesNote, reloadNote } from './config-watch.mjs';
 import { LAYERS, cleanSettingSources, writePluginOn, GROK_COMPAT, writeGrokCompat } from './switches.mjs';
 import { sourceFrom, cloneCommands, noPrompts, plainError, readMarket, isClone, hostOf, CLONES } from './plugin-sources.mjs';
-import { makeGrokHome, writeGrokHooks, signedInFrom, deviceLink, isInside, HOOK_FILE as GROK_HOOK_FILE } from './grok-home.mjs';
+import { makeGrokHome, writeGrokHooks, signedInFrom, grokAccount, deviceLink, isInside, HOOK_FILE as GROK_HOOK_FILE } from './grok-home.mjs';
 import { homeRootsFor } from './home-roots.mjs';
 import { homeInUse, freeHome } from './home-in-use.mjs';
 import { workFolders, existingHomes } from './work-folders.mjs';
@@ -49,7 +49,7 @@ import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampl
 import { cleanGateway, gatewayFor, loginOf, claudeRouteOf, claudeGateway, visibleGears, usableGear, modelFor, gearModelMap, liteArgs, liteCommand, loginLink, loginDone, pkceUnsupported, whoamiUser, tokenFrom, gatewayRefused, gatewayHost } from './gateway.mjs';
 import { groupProcesses, folderSize, cpuPercent, diskKeeper } from './machine-use.mjs';
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
-import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexDeviceLink } from './codex-home.mjs';
+import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexAccount, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
 import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES, PLAN_RULES_VERSION, reviewDue, planOpen } from './plans.mjs';
 import { REVIEW_EVERY_MS, reviewSent, nextReview, reviewText } from './plan-review.mjs';
@@ -272,23 +272,25 @@ function hookSettings(client, cwd) {
 }
 const forcedText = (provider) => `This computer's policy makes every Claude run use ${provider}, so a Claude sign-in will not work here.${provider === 'Amazon Bedrock' ? ' Use an AWS profile instead.' : ''}`;
 
-// { loggedIn, forced, email }. forced: the provider this computer's policy makes a Claude company use instead of
+// { loggedIn, forced, email, plan }. email: who it is signed in as, plan: the brand's plan, where it says. forced: the provider this computer's policy makes a Claude company use instead of
 // its Claude sign-in (claude auth status then says signed in, by "third_party"), so its sessions can't run here.
 async function authInfo(client, force, engine = 'claude') {
   const key = authKey(client.id, engine);
   const hit = authCache.get(key);
   if (hit && !force && Date.now() - hit.at < 60000) return hit;
-  let loggedIn = false, forced = null, email = null, extra = {};
+  let loggedIn = false, forced = null, email = null, plan = null, extra = {};
   const gw = gatewayFor(client, engine);
   if (gw) ({ loggedIn, email, ...extra } = await gatewayStatus(gw));
   else if (engine === 'grok') {
     // Grok signs in in the company's own Grok home: `grok models` says whether it is (it never opens a browser).
     loggedIn = signedInFrom((await runCommand(...grokCommand(['models']), { ...envFor(client, 'grok'), BROWSER: 'none' })).out);
+    if (loggedIn) email = grokAccount(client.grokHome || path.join(os.homedir(), '.grok'));
   } else if (engine === 'codex') {
     // Codex signs in in the company's own Codex home: `codex login status` says whether it is.
     const [cmd, args] = codexCommand(findCodexExe(), ['login', 'status']);
     const r = await runCommand(cmd, args, envFor(client, 'codex'));
     loggedIn = codexSignedIn(r.code, r.out);
+    if (loggedIn) ({ email, plan } = codexAccount(codexHomeOf(client)));
   } else if (isBedrock(client)) {
     // claude auth status says Bedrock is signed in whatever the AWS credentials are, so ask AWS. AWS or the network
     // can be slow: a check that runs out of time or can't reach AWS keeps the last answer rather than signing the desk out.
@@ -299,10 +301,10 @@ async function authInfo(client, force, engine = 'claude') {
       const j = JSON.parse(out.slice(out.indexOf('{')));
       const provider = PROVIDER_NAMES[String(j.apiProvider || '').toLowerCase()];
       if (j.authMethod === 'third_party' || provider) forced = provider || policyProvider() || 'another provider';
-      else { loggedIn = !!j.loggedIn; email = j.email || null; }
+      else { loggedIn = !!j.loggedIn; email = j.email || null; plan = j.subscriptionType ? `${j.subscriptionType[0].toUpperCase()}${j.subscriptionType.slice(1)}` : null; }
     } catch {}
   }
-  const info = { at: Date.now(), loggedIn, forced, email, ...extra };
+  const info = { at: Date.now(), loggedIn, forced, email, plan, ...extra };
   authCache.set(key, info);
   if (loggedIn) signedInAgain(client, engine, 'seen'); // sessions that failed on it carry on (also after a restart, when nothing changed)
   return info;
@@ -8182,7 +8184,7 @@ const server = http.createServer(async (req, res) => {
       const rows = await Promise.all(CLIENTS.map(async (c) => {
         const brands = await Promise.all(brandsOf(c).map(async (e) => {
           const signedIn = quick ? known(c, e) : await authStatus(c, force, e);
-          return { engine: e, name: BRANDS[e].name, signedIn, account: account(c, e, signedIn) };
+          return { engine: e, name: BRANDS[e].name, signedIn, account: account(c, e, signedIn), ...(signedIn && !gatewayFor(c, e) && authCache.get(authKey(c.id, e))?.plan ? { plan: authCache.get(authKey(c.id, e)).plan } : {}) };
         }));
         const signedIn = brands.some((x) => x.signedIn === false) ? false : brands.some((x) => x.signedIn === null) ? null : true;
         // startGears: the model a new Shift session starts on, per brand, for the model menu's "Shift (starts ...)".

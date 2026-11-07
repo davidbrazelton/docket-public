@@ -7717,7 +7717,7 @@ function setBrandSignedIn(clientId, engine, signedIn) {
   return before !== c.signedIn || !!b;
 }
 // A brand's sign-in in words: signed in (as whom, when Docket can tell), not signed in, can't run here, or checking.
-const brandStateText = (c, b) => b.engine === 'claude' && c.forced ? "can't run on this computer" : b.signedIn === true ? `signed in${b.account ? ` as ${b.account}` : ''}` : b.signedIn === false ? 'not signed in' : 'checking…';
+const brandStateText = (c, b) => b.engine === 'claude' && c.forced ? "can't run on this computer" : b.signedIn === true ? `signed in${b.account ? ` as ${b.account}` : ''}${b.plan ? ` (${b.plan} plan)` : ''}` : b.signedIn === false ? 'not signed in' : 'checking…';
 const brandState = (c, b) => b.engine === 'claude' && c.forced ? `<span class="signin-err">${brandStateText(c, b)}</span>` : (b.signedIn === true ? '✓ ' : '') + esc(brandStateText(c, b));
 // The steps of the sign-in under way (f, which is S.signin), for the company c.
 function signinFlowHtml(c, f) {

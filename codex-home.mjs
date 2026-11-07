@@ -34,6 +34,19 @@ const plain = (out) => String(out).replace(/\x1b\[[0-9;]*m/g, '');
 // 1. It writes that on its error output (Codex 0.163), so the exit code decides; the words only ever say no.
 export const codexSignedIn = (code, out = '') => code === 0 && !/not logged in/i.test(plain(out));
 
+// Who a Codex home is signed in as, from its auth.json: { email, plan } (null where it doesn't say). A ChatGPT sign-in
+// keeps an id token whose claims carry the email and the ChatGPT plan ("plus", "team"...; checked 2026-11-07);
+// an API key sign-in has no account. The token is only read, never checked: `codex login status` says whether it works.
+export function codexAccount(home) {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(home, 'auth.json'), 'utf8'));
+    if (!j.tokens?.id_token) return { email: j.OPENAI_API_KEY ? 'an OpenAI API key' : null, plan: null };
+    const claims = JSON.parse(Buffer.from(j.tokens.id_token.split('.')[1], 'base64url').toString('utf8'));
+    const plan = claims['https://api.openai.com/auth']?.chatgpt_plan_type;
+    return { email: claims.email || null, plan: plan ? `ChatGPT ${plan[0].toUpperCase()}${plan.slice(1)}` : null };
+  } catch { return { email: null, plan: null }; }
+}
+
 // `codex login --device-auth` prints a link (https://auth.openai.com/codex/device) and, separately, a one-time code
 // such as LO11-IXSZG, then waits until the code is entered on that page. The link does not carry the code.
 export function codexDeviceLink(out) {

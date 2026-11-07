@@ -52,6 +52,16 @@ export function writeGrokHooks(home, pluginDir) {
 // `grok models` starts with "You are logged in with grok.com." or "You are not authenticated." (Grok 1.0.41).
 export const signedInFrom = (out) => /\blogged in\b/i.test(String(out)) && !/not authenticated/i.test(String(out));
 
+// Who a Grok home is signed in as, from its auth.json (one entry per sign-in, each with the email, which may be empty,
+// and the name; checked 2026-11-07): the email, else the name, else null.
+export function grokAccount(home) {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(home, 'auth.json'), 'utf8'));
+    const a = Object.values(j).find((x) => x && typeof x === 'object' && (x.email || x.first_name));
+    return a ? a.email || a.first_name : null;
+  } catch { return null; }
+}
+
 // `grok login --device-auth` prints a link that carries its code, then waits until the code is approved in a browser.
 export function deviceLink(out) {
   const url = String(out).match(/https:\/\/\S+user_code=([\w-]+)/);
