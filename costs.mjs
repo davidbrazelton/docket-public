@@ -151,6 +151,24 @@ function causeAt(causes, at) {
   return !hit ? '' : hit.cause === 'report' && hit.quiet ? 'report-quiet' : hit.cause;
 }
 
+// One assistant log line (with message.usage) into replies (request id -> reply), each line once by its uuid (seen).
+// Returns the reply, or null for a line already counted or that is no API call. The session Timeline reads with it too.
+export function addReplyLine(replies, seen, e, subagent) {
+  const rawModel = e.message.model || '';
+  if (!rawModel || rawModel.startsWith('<')) return null; // "<synthetic>" lines are not API calls
+  if (e.uuid) { if (seen.has(e.uuid)) return null; seen.add(e.uuid); }
+  const key = e.requestId || e.message.id || e.uuid;
+  const r = replies.get(key) || { key, model: modelKey(rawModel), at: Date.parse(e.timestamp) || 0, subagent, usage: null, tools: new Map(),
+    bedrock: /^msg_bdrk/.test(e.message.id || ''), global: false };
+  if (rawModel.startsWith('global.')) r.global = true;
+  r.usage = maxUsage(r.usage, e.message.usage);
+  for (const b of e.message.content || []) if (b.type === 'tool_use' && b.id) r.tools.set(b.id, { name: b.name, file: FILE_TOOLS.has(b.name) ? b.input?.file_path || b.input?.notebook_path || null : null });
+  replies.set(key, r);
+  return r;
+}
+// A compact_boundary line as a compaction; its summary's length is filled in from the line after it.
+export const compactionOf = (e) => ({ at: Date.parse(e.timestamp), preTokens: e.compactMetadata?.preTokens || 0, ms: e.compactMetadata?.durationMs || 0, summary: 0 });
+
 // One record per Claude reply, plus the session's compactions, title, turns and waits on the person.
 // turns: each message sent (or task notification) to the last reply or tool result before the next one, from the
 // main log only, so a helper agent's work counts inside its parent's turn. waits: a question form or plan approval,
@@ -196,7 +214,7 @@ export function readSession(files) {
       if (fileIndex === 0 && (line.includes('"custom-title"') || line.includes('"compact_boundary"'))) {
         let e; try { e = JSON.parse(line); } catch { continue; }
         if (e.type === 'custom-title' && e.customTitle) title = e.customTitle;
-        if (e.subtype === 'compact_boundary' && e.timestamp) compactions.push({ at: Date.parse(e.timestamp), preTokens: e.compactMetadata?.preTokens || 0, ms: e.compactMetadata?.durationMs || 0, summary: 0 });
+        if (e.subtype === 'compact_boundary' && e.timestamp) compactions.push(compactionOf(e));
         continue;
       }
       if (!line.includes('"assistant"') || !line.includes('"usage"')) continue;
@@ -210,17 +228,7 @@ export function readSession(files) {
           if (b.type === 'tool_use' && /(^|__)report_quiet$/.test(b.name || '') && !b.input?.cancel && causeTurn) causeTurn.quiet = true;
         }
       }
-      const rawModel = e.message.model || '';
-      if (!rawModel || rawModel.startsWith('<')) continue; // "<synthetic>" lines are not API calls
-      const model = modelKey(rawModel);
-      if (e.uuid) { if (seen.has(e.uuid)) continue; seen.add(e.uuid); }
-      const key = e.requestId || e.message.id || e.uuid;
-      const r = replies.get(key) || { key, model, at: Date.parse(e.timestamp) || 0, subagent: fileIndex > 0 || !!e.isSidechain, usage: null, tools: new Map(),
-        bedrock: /^msg_bdrk/.test(e.message.id || ''), global: false };
-      if (rawModel.startsWith('global.')) r.global = true;
-      r.usage = maxUsage(r.usage, e.message.usage);
-      for (const b of e.message.content || []) if (b.type === 'tool_use' && b.id) r.tools.set(b.id, { name: b.name, file: FILE_TOOLS.has(b.name) ? b.input?.file_path || b.input?.notebook_path || null : null });
-      replies.set(key, r);
+      addReplyLine(replies, seen, e, fileIndex > 0 || !!e.isSidechain);
     }
   });
   const sorted = [...replies.values()].sort((a, b) => a.at - b.at);
@@ -494,6 +502,13 @@ export function dayRows(client, sessionId, title, priced, compactions, agentCoun
   return addSeconds(rows, 'LinesRemoved', removed);
 }
 
+// A session's replies (sorted by time) priced, with a reply for each compaction and cache expiries marked.
+export function priceReplies(replies, compactions, prices) {
+  const priced = addCompactions(replies, compactions, prices).map((r) => priceReply(r, prices));
+  markCacheExpiries(priced);
+  return priced;
+}
+
 // ---------- reading a session once, for both uses, cached until a log file or the prices change ----------
 const sessionCache = new Map(); // main file -> { sig, data }
 // models: a gateway's model names -> the gear model ids they stand for, so they are priced as those.
@@ -505,8 +520,7 @@ function analyse(mainFile, sessionId, pricingFile, models = null) {
   if (hit && hit.sig === sig) return hit.data;
   const { replies, compactions, title, turns, waits, edits } = readSession(files);
   if (models) for (const r of replies) r.model = models[r.model] || r.model;
-  const priced = addCompactions(replies, compactions, prices).map((r) => priceReply(r, prices));
-  markCacheExpiries(priced);
+  const priced = priceReplies(replies, compactions, prices);
   const data = { sig, priced, compactions, title, turns, waits, edits, agentCount: files.length - 1 };
   sessionCache.set(mainFile, { sig, data });
   return data;

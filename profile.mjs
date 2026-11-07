@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { LAYERS, GROK_COMPAT, readGrokCompat } from './switches.mjs';
 import { readMarket, marketFile, pluginsIn, bringsText, sourceLine } from './plugin-sources.mjs';
+import { addReplyLine, compactionOf, priceReplies, sessionLogFiles } from './costs.mjs';
 
 // ---------- the Timeline: one session's record file, entry by entry ----------
 // Categories, in the order the filter shows them. Hooks that ran without printing anything leave
@@ -47,24 +48,106 @@ const timelineCache = new Map(); // file -> the reading so far (see sessionTimel
 // Record files only grow, so each call reads just what was written since the last one. An entry keeps its
 // number (n, its place in the file) for good, and v says when it was added or last changed, so a page
 // holding everything up to some v asks only for what is newer. Show them ordered by at, then n.
-export function sessionTimeline(file, { docket = [], memoryRoot = '' } = {}) {
+// prices (pricing.json): also put what each step cost on its entries (see timelineCosts).
+export function sessionTimeline(file, { docket = [], memoryRoot = '', prices = null } = {}) {
   const st = fs.statSync(file);
   const key = docket.map((d) => d.text.length).join(',') + '|' + memoryRoot;
   let c = timelineCache.get(file);
   if (!c || c.key !== key || st.size < c.pos) {
-    c = { key, gen: Math.random().toString(36).slice(2), pos: 0, v: 0, last: 0, entries: [], counts: {}, tools: new Map(), hooks: new Map(), lastPrompt: '', texts: {} };
+    c = { key, gen: Math.random().toString(36).slice(2), pos: 0, v: 0, last: 0, entries: [], counts: {}, tools: new Map(), hooks: new Map(), lastPrompt: '', texts: {},
+      // for the costs: the replies as costs.mjs reads them, and where each one shows
+      replies: new Map(), seen: new Set(), compactions: [], replyEntry: new Map(), compactEntry: new Map(), turnStarts: [],
+      agentFiles: new Map(), agentIds: new Map(), runs: new Map(), lastAgentTool: null, costed: new Set(), priced: null };
     timelineCache.delete(file); timelineCache.set(file, c);
     if (timelineCache.size > 20) timelineCache.delete(timelineCache.keys().next().value);
   }
-  if (st.size > c.pos) {
-    const fd = fs.openSync(file, 'r');
-    const buf = Buffer.alloc(st.size - c.pos);
-    try { fs.readSync(fd, buf, 0, buf.length, c.pos); } finally { fs.closeSync(fd); }
-    const end = buf.lastIndexOf(10) + 1; // stop before a line still being written; the next call starts there
-    c.pos += end;
-    if (end) readTimelineLines(c, buf.subarray(0, end).toString('utf8').split('\n'), docket, memoryRoot.toLowerCase());
+  let read = false;
+  const lines = newLines(file, c, st.size);
+  if (lines) { read = true; readTimelineLines(c, lines, docket, memoryRoot.toLowerCase()); }
+  if (prices) {
+    if (readAgentFiles(c, file)) read = true;
+    if (read || c.priced !== prices) { c.priced = prices; timelineCosts(c, prices); }
   }
   return c;
+}
+// The whole lines written to a file since s.pos (moved on past them), or null when there are none.
+function newLines(file, s, size) {
+  if (size <= s.pos) return null;
+  const fd = fs.openSync(file, 'r');
+  const buf = Buffer.alloc(size - s.pos);
+  try { fs.readSync(fd, buf, 0, buf.length, s.pos); } finally { fs.closeSync(fd); }
+  const end = buf.lastIndexOf(10) + 1; // stop before a line still being written; the next call starts there
+  s.pos += end;
+  return end ? buf.subarray(0, end).toString('utf8').split('\n') : null;
+}
+// Helper agents' replies, from their own logs (<session>/subagents/, workflows' one level down), read on from where
+// the last call stopped. Each log's .meta.json names the Agent call that started it; a workflow's agents go to the
+// Workflow call whose result names their run. Returns whether anything new was read.
+function readAgentFiles(c, file) {
+  let read = false;
+  for (const f of sessionLogFiles(file, path.basename(file, '.jsonl')).slice(1)) {
+    let a = c.agentFiles.get(f), size;
+    try { size = fs.statSync(f).size; } catch { continue; }
+    if (!a) {
+      const dir = path.basename(path.dirname(path.dirname(f))) === 'workflows' ? path.basename(path.dirname(f)) : null;
+      a = { pos: 0, id: path.basename(f, '.jsonl').replace(/^agent-/, ''), run: dir, toolUseId: null };
+      c.agentFiles.set(f, a);
+    }
+    const lines = newLines(f, a, size);
+    if (!lines) continue;
+    read = true;
+    if (!a.toolUseId) { try { a.toolUseId = JSON.parse(fs.readFileSync(f.replace(/\.jsonl$/, '.meta.json'), 'utf8')).toolUseId || null; } catch {} }
+    for (const line of lines) {
+      if (!line.includes('"assistant"') || !line.includes('"usage"')) continue;
+      let o; try { o = JSON.parse(line); } catch { continue; }
+      if (o.type !== 'assistant' || !o.message?.usage) continue;
+      const r = addReplyLine(c.replies, c.seen, o, true);
+      if (r && !r.agent) r.agent = a;
+    }
+  }
+  return read;
+}
+// What each step cost, priced by costs.mjs as the Usage page and the Details panel price it, put on the entries as
+// e.cost: reply (the reply it is the first entry of; a reply's text and tool calls share one), expired (the cache had
+// run out before it), after (it rebuilt the cache after a compaction), compact ('cold' or 'warm', on a "Conversation
+// compacted" entry), agents (helper agents' replies, on the call that started them) and turn (everything from this
+// message to the next, on each message that starts a turn). Replies with no price (another brand, an unknown model)
+// add nothing, so a session with none shows no amounts. An entry whose costs change gets a new v, so the page,
+// asking for what is newer, gets it again.
+export function timelineCosts(c, prices) {
+  const replies = [...c.replies.values()].sort((a, b) => a.at - b.at);
+  const priced = priceReplies(replies, c.compactions, prices);
+  const turns = c.turnStarts.map((n) => c.entries[n]).filter((e) => e?.at).sort((a, b) => a.at - b.at || a.n - b.n);
+  const turnAt = (at) => { let lo = 0, hi = turns.length - 1, hit = null; while (lo <= hi) { const m = (lo + hi) >> 1; if (turns[m].at <= at) { hit = turns[m]; lo = m + 1; } else hi = m - 1; } return hit; };
+  const out = new Map();
+  const put = (e, k, v) => { const o = out.get(e) || {}; o[k] = typeof v === 'number' ? (o[k] || 0) + v : v; out.set(e, o); };
+  for (const r of priced) {
+    if (!r.priced) continue;
+    const t = r.at && turnAt(r.at);
+    if (t) put(t, 'turn', r.cost);
+    if (r.estimate) {
+      const e = c.compactEntry.get(r.at);
+      if (e) { put(e, 'reply', r.cost); put(e, 'compact', r.cold ? 'cold' : 'warm'); }
+    } else if (r.subagent) {
+      const id = r.agentTool || r.agent?.toolUseId || (r.agent && (c.agentIds.get(r.agent.id) || (r.agent.run && c.runs.get(r.agent.run))));
+      const e = id && c.tools.get(id);
+      if (e) put(e, 'agents', r.cost);
+    } else {
+      const e = c.replyEntry.get(r.key);
+      if (!e) continue;
+      put(e, 'reply', r.cost);
+      if (r.cacheExpired) put(e, 'expired', true);
+      if (r.compaction) put(e, 'after', true);
+    }
+  }
+  const round = (o) => { for (const k of Object.keys(o)) if (typeof o[k] === 'number') o[k] = Math.round(o[k] * 1e5) / 1e5; return o; };
+  for (const e of new Set([...c.costed, ...out.keys()])) {
+    const now = out.has(e) ? round(out.get(e)) : undefined;
+    if (JSON.stringify(now) === JSON.stringify(e.cost)) continue;
+    if (now) e.cost = now; else delete e.cost;
+    e.v = ++c.v;
+  }
+  c.costed = new Set(out.keys());
 }
 function readTimelineLines(c, lines, docket, memDir) {
   const { entries, tools, hooks } = c; // tools: tool_use id -> entry; hooks: toolUseID|hookName -> hook entry, so the context it added joins it
@@ -79,6 +162,9 @@ function readTimelineLines(c, lines, docket, memDir) {
   for (const line of lines) {
     if (!line) continue;
     let o; try { o = JSON.parse(line); } catch { continue; }
+    // A helper agent's reply written into this log (older Claude Code) goes to the last Agent call before it.
+    const reply = o.type === 'assistant' && o.message?.usage ? addReplyLine(c.replies, c.seen, o, !!o.isSidechain) : null;
+    if (reply && o.isSidechain && !reply.agentTool) reply.agentTool = c.lastAgentTool;
     if (o.isSidechain || SKIP_TYPES.has(o.type)) continue;
     const at = o.timestamp ? Date.parse(o.timestamp) : null;
     if (o.type === 'attachment' && o.attachment) {
@@ -140,6 +226,7 @@ function readTimelineLines(c, lines, docket, memDir) {
       }
       if (t === 'queued_command') {
         const note = a.commandMode === 'task-notification';
+        c.turnStarts.push(entries.length);
         add({ at, cat: note ? 'reminders' : 'messages', title: note ? 'Background task finished' : 'You (sent while Claude was working)', text: textOf(a.prompt), detail: short(textOf(a.prompt)), mark: !note });
         continue;
       }
@@ -159,7 +246,11 @@ function readTimelineLines(c, lines, docket, memDir) {
             (o.hookAdditionalContext || []).length && `Added:\n${o.hookAdditionalContext.map(textOf).join('\n')}`, o.preventedContinuation && `Kept Claude going: ${o.stopReason || ''}`].filter(Boolean).join('\n\n') });
         continue;
       }
-      if (o.subtype === 'compact_boundary') { add({ at, cat: 'messages', title: 'Conversation compacted', detail: 'older messages were summarised to make room', text: '', mark: true }); continue; }
+      if (o.subtype === 'compact_boundary') {
+        const e = add({ at, cat: 'messages', title: 'Conversation compacted', detail: 'older messages were summarised to make room', text: '', mark: true });
+        if (at) { c.compactions.push(compactionOf(o)); c.compactEntry.set(at, e); }
+        continue;
+      }
       if (o.subtype === 'local_command') { add({ at, cat: 'skills', title: 'Command output', detail: short(o.content), text: o.content || '' }); continue; }
       if (o.subtype === 'api_error') { add({ at, cat: 'reminders', title: 'Error from Claude\'s servers, retried', detail: short(o.error?.message || o.content || ''), text: JSON.stringify(o.error || o, null, 2), bad: true }); continue; }
       continue;
@@ -167,11 +258,17 @@ function readTimelineLines(c, lines, docket, memDir) {
     if (o.type === 'user' && o.message) {
       const content = o.message.content;
       const items = typeof content === 'string' ? [{ type: 'text', text: content }] : Array.isArray(content) ? content : [];
+      if (o.isCompactSummary) { const cp = c.compactions[c.compactions.length - 1]; if (cp && !cp.summary) cp.summary = items.filter((x) => x.type === 'text').map((x) => x.text).join('\n').length; }
+      // A turn starts at a message into the log, as costs.mjs counts turns: not a tool result, a meta line, a compact
+      // summary, a local command or an interruption. Its first entry carries the turn's total.
+      let turnDone = !!(o.isMeta || o.isCompactSummary || items.some((x) => x.type === 'tool_result'));
       for (const it of items) {
         if (it.type === 'tool_result') {
           const e = tools.get(it.tool_use_id);
           if (!e) continue;
+          if (o.toolUseResult?.agentId && (e.tool === 'Agent' || e.tool === 'Task')) c.agentIds.set(o.toolUseResult.agentId, it.tool_use_id);
           const r = textOf(it.content);
+          if (e.tool === 'Workflow') for (const m of r.match(/wf_[\w-]+/g) || []) c.runs.set(m, it.tool_use_id);
           e.result = r; e.text += `\n\nResult${it.is_error ? ' (error)' : ''}:\n${r}`; e.size = r.length; e.bad = !!it.is_error;
           if (at && e.at) e.durationMs = at - e.at;
           touch(e);
@@ -179,6 +276,8 @@ function readTimelineLines(c, lines, docket, memDir) {
         }
         if (it.type !== 'text') continue;
         const txt = it.text || '';
+        const starts = !turnDone && !/^<(command-|local-command)/.test(txt.trim()) && !txt.startsWith('[Request interrupted');
+        if (starts) { turnDone = true; c.turnStarts.push(entries.length); } // the entry each branch below adds, by its n
         const cmd = txt.match(/<command-name>([^<]*)<\/command-name>/);
         if (o.isMeta && o.sourceToolUseID && /^Base directory for this skill/.test(txt)) {
           const sk = tools.get(o.sourceToolUseID);
@@ -202,18 +301,22 @@ function readTimelineLines(c, lines, docket, memDir) {
     }
     if (o.type === 'assistant' && o.message) {
       const mid = o.message.id;
+      // One reply's text and tool calls come on several lines; its cost goes on the first entry (key as costs.mjs's).
+      const rk = o.requestId || mid || o.uuid;
+      const own = (e) => { if (rk && !c.replyEntry.has(rk)) c.replyEntry.set(rk, e); return e; };
       for (const it of o.message.content || []) {
         // The chat names a reply's text blocks <message id>:<count>; counting the same way lets the page match them.
         const k = it.type === 'text' && it.text && mid ? (c.texts[mid] = (c.texts[mid] ?? -1) + 1) : null;
-        if (it.type === 'text' && it.text?.trim()) add({ at, cat: 'messages', title: 'Claude', detail: short(it.text), text: it.text, mark: true, claude: true, textId: k === null ? undefined : `${mid}:${k}` });
+        if (it.type === 'text' && it.text?.trim()) own(add({ at, cat: 'messages', title: 'Claude', detail: short(it.text), text: it.text, mark: true, claude: true, textId: k === null ? undefined : `${mid}:${k}` }));
         if (it.type !== 'tool_use') continue;
+        if (it.name === 'Agent' || it.name === 'Task') c.lastAgentTool = it.id;
         const inp = it.input || {};
         let cat = toolCat(it.name);
         const fp = String(inp.file_path || '').toLowerCase();
         if (FILE_TOOLS.has(it.name) && memDir && fp.startsWith(memDir) && /[\\/]memory[\\/]/.test(fp)) cat = 'memory';
         if (it.name === 'Skill') cat = 'skills';
-        const e = add({ at, cat, title: it.name === 'Skill' ? `Skill called: ${inp.skill}` : cat === 'memory' ? `Memory ${it.name === 'Read' ? 'read' : 'saved'}: ${path.basename(fp)}` : it.name,
-          tool: it.name, toolId: it.id, detail: short(toolDetail(it.name, inp), 200), text: `Input:\n${JSON.stringify(inp, null, 2)}`, skill: inp.skill });
+        const e = own(add({ at, cat, title: it.name === 'Skill' ? `Skill called: ${inp.skill}` : cat === 'memory' ? `Memory ${it.name === 'Read' ? 'read' : 'saved'}: ${path.basename(fp)}` : it.name,
+          tool: it.name, toolId: it.id, detail: short(toolDetail(it.name, inp), 200), text: `Input:\n${JSON.stringify(inp, null, 2)}`, skill: inp.skill }));
         e.size = 0; // a tool call adds its result to what Claude reads; set when the result arrives
         tools.set(it.id, e);
       }

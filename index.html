@@ -1216,6 +1216,11 @@ html.popout header.top, html.popout .start-banner, html.popout aside.side, html.
 .tl-fold > summary::-webkit-details-marker { display: none; }
 .tl-fold > summary::before { content: '▸ '; }
 .tl-fold[open] > summary::before { content: '▾ '; }
+/* What a step cost (#783): an indicator, muted; a cache that had run out in the warning color. */
+.tl-cost { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tl-cost .tl-warn, .tl-e .tl-n .tl-warn { color: var(--warn); }
+.reply-actions .tl-cost { margin: 0 auto 0 8px; }
+.reply-actions .reply-when:has(+ .tl-cost) { margin-right: 0; }
 .tool .tl-meta { margin-left: auto; flex: none; display: inline-flex; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dlg.profile-page { width: min(1240px, 100%); height: min(90vh, 100%); padding: 0; gap: 0; overflow: hidden; background: var(--bg); }
 .profile-page[hidden] { display: none; }
@@ -9225,6 +9230,35 @@ const tlCatLabel = (k) => (tl.data?.cats.find(([c]) => c === k) || [k, k])[1];
 const tokensText = (chars) => { const t = Math.round(chars / 4); return !chars ? '' : t < 1000 ? `≈${t} tokens` : `≈${(t / 1000).toFixed(t < 10000 ? 1 : 0)}k tokens`; };
 const clock = (ms) => ms ? new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : '';
 const tlTime = (e) => [e.durationMs >= 1000 ? dur(e.durationMs) : e.durationMs ? `${e.durationMs} ms` : '', tokensText(e.size)].filter(Boolean).join(' · ');
+// What a step cost (e.cost, priced by the server as the Usage page prices it), an indicator: muted, with a cache that
+// had run out in the warning color. A reply's cost is on its first entry only; a session with no prices has none.
+const tlMoney = (n) => n < 0.01 ? '<$0.01' : money(n);
+function tlCost(c) {
+  if (!c) return '';
+  return [
+    c.turn !== undefined && `<span title="What this turn cost at API prices, up to the next message: replies, helper agents and compacting">turn ${tlMoney(c.turn)}</span>`,
+    c.reply !== undefined && `<span title="${c.compact ? 'What compacting cost at API prices (worked out: the call itself is not in the record)' : 'What this reply cost at API prices: its text and every tool call in it'}">${tlMoney(c.reply)}</span>`,
+    c.compact === 'cold' && '<span class="tl-warn" title="The cache had run out, so compacting wrote the whole conversation to the cache again">cold</span>',
+    c.expired && '<span class="tl-warn" title="The cache had run out since the reply before, so this reply wrote the whole conversation to the cache again">cache expired</span>',
+    c.after && '<span title="This reply rebuilt the cache from the summary after compacting, so it counts as compacting">after compacting</span>',
+    c.agents !== undefined && `<span title="What the helper agents this call started cost at API prices">agents ${tlMoney(c.agents)}</span>`,
+  ].filter(Boolean).join(' · ');
+}
+// A message's or reply's cost goes under it in the chat, next to its time.
+function tlPutCost(el, e) {
+  const html = tlCost(e.cost);
+  if (!html) return;
+  if (el.classList.contains('msg-user')) {
+    const when = el.nextElementSibling;
+    if (when?.classList.contains('msg-when')) when.insertAdjacentHTML('beforeend', `<span class="tl-cost"> · ${html}</span>`); // the space inside, so taking it out leaves none
+    else el.insertAdjacentHTML('afterend', `<div class="msg-when tl-cost${el.matches('.msg-from, .msg-docket') ? ' left' : ''}">${html}</div>`);
+    return;
+  }
+  const bar = el.querySelector('.reply-actions');
+  if (!bar) return;
+  const when = bar.querySelector('.reply-when');
+  if (when) when.insertAdjacentHTML('afterend', `<span class="tl-cost">${html}</span>`); else bar.insertAdjacentHTML('afterbegin', `<span class="tl-cost">${html}</span>`);
+}
 async function loadTimeline(id, newer) {
   const seq = ++tl.seq;
   if (tl.id !== id) { tl.id = id; tl.data = null; tl.sorted = []; tl.texts = {}; tl.err = ''; renderTlBar(); }
@@ -9270,7 +9304,7 @@ function renderTlBar() {
 }
 function tlEntryHtml(e) {
   return `<details class="tl-e ${e.mark ? 'mark' : ''} ${e.bad ? 'bad' : ''}" data-n="${e.n}" style="--c:${TL_COLORS[e.cat]}">
-    <summary><span class="tl-at">${clock(e.at)}</span><span class="tl-dot"></span><span class="tl-t">${esc(e.title)}</span><span class="tl-d" title="${esc(e.detail)}">${esc(e.detail)}</span><span class="tl-n">${tlTime(e)}</span></summary>
+    <summary><span class="tl-at">${clock(e.at)}</span><span class="tl-dot"></span><span class="tl-t">${esc(e.title)}</span><span class="tl-d" title="${esc(e.detail)}">${esc(e.detail)}</span><span class="tl-n">${[tlTime(e), tlCost(e.cost)].filter(Boolean).join(' · ')}</span></summary>
     <div class="tl-body"></div></details>`;
 }
 // Put the timeline into the chat, or take it out. The chat's own elements are left alone (open cards and
@@ -9279,7 +9313,7 @@ function weave() {
   const box = $('events');
   const open = new Set([...box.querySelectorAll('.tl-w .tl-e[open]')].map((x) => x.dataset.n));
   const unfolded = new Set([...box.querySelectorAll('.tl-w .tl-fold[open]')].map((x) => x.dataset.first));
-  box.querySelectorAll('.tl-w, .tl-meta').forEach((x) => x.remove());
+  box.querySelectorAll('.tl-w, .tl-meta, .tl-cost').forEach((x) => x.remove());
   const id = tlSession();
   if (!id) return;
   if (tl.id !== id) { loadTimeline(id); return; }
@@ -9304,12 +9338,14 @@ function weave() {
     const card = e.toolId && tools.get(e.toolId);
     if (card) {
       at = Math.max(at, place.get(card));
-      if (f[e.cat] !== false) card.querySelector('summary').insertAdjacentHTML('beforeend', `<span class="tl-meta" style="--c:${TL_COLORS[e.cat]}" title="${esc(tlCatLabel(e.cat))}">${tlTime(e) ? esc(tlTime(e)) + ' · ' : ''}${clock(e.at)}<span class="tl-dot"></span></span>`);
+      // Its cost shows whatever the filters say; its time and size only when its kind is ticked.
+      const meta = f[e.cat] !== false, cost = tlCost(e.cost);
+      if (meta || cost) card.querySelector('summary').insertAdjacentHTML('beforeend', `<span class="tl-meta" style="--c:${TL_COLORS[e.cat]}" title="${esc(tlCatLabel(e.cat))}">${cost ? `<span class="tl-cost">${cost}</span>${meta ? ' · ' : ''}` : ''}${meta ? `${tlTime(e) ? esc(tlTime(e)) + ' · ' : ''}${clock(e.at)}<span class="tl-dot"></span>` : ''}</span>`);
       continue;
     }
     if (tlIsMsg(e)) {
       const el = e.claude ? texts.get(e.textId) : users.find((u) => place.get(u) > at);
-      if (el) at = Math.max(at, place.get(el));
+      if (el) { at = Math.max(at, place.get(el)); tlPutCost(el, e); }
       continue;
     }
     if (f[e.cat] === false) continue;

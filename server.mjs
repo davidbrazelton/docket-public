@@ -7551,7 +7551,9 @@ async function profileRoutes(req, res, url, p) {
     const client = clientById(url.searchParams.get('client') || live.get(tm[1])?.client || state.sessions[tm[1]]?.client);
     const file = client && sessionFile(client, tm[1]);
     if (!file) return json(res, 404, { error: 'This session has no record file yet' });
-    const t = sessionTimeline(file, { docket: docketTexts(), memoryRoot: path.join(client.home, 'projects') });
+    let prices = null; // with no pricing.json the timeline shows no costs
+    try { prices = loadPrices(PRICING_FILE); } catch {}
+    const t = sessionTimeline(file, { docket: docketTexts(), memoryRoot: path.join(client.home, 'projects'), prices });
     const n = url.searchParams.get('entry');
     if (n !== null) { const e = t.entries[Number(n)]; return e ? json(res, 200, { text: e.text, path: e.path }) : json(res, 404, { error: 'No such entry' }); }
     // since=<v>: only the entries added or changed after the page's copy (a live session asks this way).
