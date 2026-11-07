@@ -43,6 +43,7 @@ import { homeRootsFor } from './home-roots.mjs';
 import { homeInUse, freeHome } from './home-in-use.mjs';
 import { workFolders, existingHomes } from './work-folders.mjs';
 import { sourceHomes, findGroups, planRun, writeReport, readReports, reportPaths, copyRun, checkCopies, undoRun } from './bring-in.mjs';
+import { moveDesk } from './move-desk.mjs';
 import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, treeListCommand, parseTreeList, descendants, leftBehind, killCommand, commandLineCommand, relaunchesApp,
   startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, findLite } from './platform.mjs';
 import { cleanGateway, gatewayFor, loginOf, claudeRouteOf, claudeGateway, visibleGears, usableGear, modelFor, gearModelMap, liteArgs, liteCommand, loginLink, loginDone, pkceUnsupported, whoamiUser, tokenFrom, gatewayRefused, gatewayHost } from './gateway.mjs';
@@ -8249,6 +8250,28 @@ const server = http.createServer(async (req, res) => {
       if (!client) return json(res, 404, { error: 'Unknown desk' });
       await checkSetup({ force: client.id });
       return json(res, 200, { ...(state.setupCheck[client.id] || {}), offers: setupOffers });
+    }
+    // Move sessions' records to another desk, after their files were moved between the desks' Claude homes by hand
+    // (move-desk.mjs): { from, to, ids, groupId? }. No files are touched; sessions open in Docket are skipped.
+    if (req.method === 'POST' && p === '/api/sessions/move-desk') {
+      const b = await readBody(req);
+      const from = clientById(b.from), to = clientById(b.to);
+      if (!from || !to) return json(res, 404, { error: 'Unknown desk' });
+      if (!Array.isArray(b.ids) || !b.ids.length) return json(res, 400, { error: 'Give the session ids' });
+      try {
+        const r = moveDesk(state, usage, { from: from.id, to: to.id, ids: b.ids, groupId: b.groupId ? String(b.groupId) : '',
+          groupIds: groupsOf(to.id).map((g) => g.id), isLive: (id) => live.has(id) });
+        if (r.changed) {
+          writeState(); saveUsageSoon();
+          for (const c of [from, to]) {
+            historyCache.delete(c.id);
+            history(c, true).then(() => broadcast({ t: 'history-ready', client: c.id })).catch(() => {});
+            for (const t of ['keep', 'places', 'groups']) broadcast({ t, client: c.id });
+          }
+          logEvent('sessions moved to another desk', `${r.results.filter((x) => x.result === 'moved').length} from ${from.id} to ${to.id}`);
+        }
+        return json(res, 200, r);
+      } catch (err) { return json(res, 400, { error: err.message }); }
     }
     // Bring in past sessions: what is found, the copy, the report, and its undo.
     if (p.startsWith('/api/bring-in')) {
