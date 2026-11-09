@@ -7,6 +7,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { randomUUID, createHash, createHmac, randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { spawn, execFile } from 'node:child_process';
 import { chromium } from 'playwright';
 import { createScheduler } from './scheduler.mjs';
@@ -18,7 +19,7 @@ import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting, keptReas
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from './reports.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE, lowGearNote } from './reports.mjs';
 import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from './keep-warm.mjs';
 import { WAITS, CONDITIONS, parseWait, waitWhat, prVerdict, sessionVerdict, portVerdict, portAnswers, timeoutLine, nextLook, waitInline, kindOf, checksOf, stateLine, branchPr } from './waits.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
@@ -26,10 +27,12 @@ import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoff
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
 import { transcriptTimes, asyncHookEvents, covered, turnSplit } from './chat-times.mjs';
+import { createSampler, turnLine, appendLine } from './turn-times.mjs';
+import { KEEP_DAYS as ACTIVITY_KEEP_DAYS, stateOf, createTally, slotKey, slotStart, dayOf as localDay, turnSpans, createRebuild, mergeRebuilt, runOnce, rollUp, today as activityToday } from './activity.mjs';
 import { DOCKET_BLOCK, SESSION_BLOCK, messageFrom, lastTyped, mergeTouches } from './touches.mjs';
-import { GEARS, gearsOf, findGear, topGearOf, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear } from './gears.mjs';
+import { GEARS, gearsOf, findGear, topGearOf, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear, parentHeldGear, belowTop } from './gears.mjs';
 import { shiftUpFor, coordinatorHold } from './shift-up.mjs';
-import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines, priceReply, usageLeft } from './costs.mjs';
+import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines, priceReply, usageLeft, SHORT_TURNS } from './costs.mjs';
 import { topGearCost, sessionShiftFacts, shiftEntry, withShift } from './shift-savings.mjs';
 import { defaultCodexHome, codexSessions, codexRows } from './codex-usage.mjs';
 import { connectionOf, parseAwsConfig, kindOfKey } from './connection.mjs';
@@ -47,7 +50,7 @@ import { moveDesk } from './move-desk.mjs';
 import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, treeListCommand, parseTreeList, descendants, leftBehind, killCommand, commandLineCommand, relaunchesApp,
   startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, findLite } from './platform.mjs';
 import { cleanGateway, gatewayFor, loginOf, claudeRouteOf, claudeGateway, visibleGears, usableGear, modelFor, gearModelMap, liteArgs, liteCommand, loginLink, loginDone, pkceUnsupported, whoamiUser, tokenFrom, gatewayRefused, gatewayHost } from './gateway.mjs';
-import { groupProcesses, folderSize, cpuPercent, diskKeeper } from './machine-use.mjs';
+import { groupProcesses, folderSize, cpuPercent, diskKeeper, breakdown, sharedServers } from './machine-use.mjs';
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
 import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexAccount, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
@@ -59,12 +62,13 @@ import { createFolderReader, readMarkers, markerPlan, cleanPlanFolder, planFolde
 import { scanPlanSystem, switchWarning, conversionBrief, systemName } from './plan-switch.mjs';
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
+import { START_OFFER, startTally, startOfferKind, startOfferWords } from './start-offer.mjs';
 import { SETUP_OFFER, scanFile, measureUse, measureFiles, assess, quickStart, costPerToken, checkDue, setupOfferKind, headlines, setupBrief, itemTable, kTokens, dollars } from './setup-size.mjs';
 import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport, installId, today, sentToday, limitReached, countSend, limitMessage, DAILY_LIMIT } from './feedback.mjs';
 import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
 import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE, COMPACT_AT_BREAK, BREAK_COMPACT, breakCompactDue } from './recall.mjs';
 import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPrUrl, adoPRsForBranch, adoPRById, adoWorkItemIds, adoItemKey, isAdoItemKey, adoItemKeyFrom, adoPRWorkItemIds, adoWorkItems, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, linkTtl, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
-  parseIssueUrl, branchIssue, githubTicket, CLOSES, CHECKS, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, sessionBranches,
+  parseIssueUrl, branchIssue, githubTicket, CLOSES, CHECKS, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, sessionBranches, sessionMadePr,
   prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe, ticketFinished } from './links.mjs';
 import { currentBranch } from './git-head.mjs';
 import { restDue, restMinutes } from './rest.mjs';
@@ -1185,6 +1189,16 @@ function hookSplit(s, ms) {
   return split;
 }
 
+// One line per finished turn in <data>/turn-times-YYYY-MM.jsonl, for scripts/turn-report.mjs (#793).
+const loopDelay = monitorEventLoopDelay({ resolution: 20 }); loopDelay.enable();
+const machineSample = createSampler({ cpus: os.cpus, freemem: os.freemem, histogram: loopDelay, resolutionMs: 20 });
+function logTurnTime(s, m, err, split, tools) {
+  try {
+    const working = [...live.values()].filter((x) => ['starting', 'running'].includes(x.status)).length;
+    appendLine(DATA_DIR, turnLine({ session: s.id, desk: s.client, brand: s.engine, model: s.model, error: err, ms: m.duration_ms, split, tools, usage: m.usage, working, machine: machineSample() }));
+  } catch (e) { console.log('[turn times]', e.message); }
+}
+
 function handleSdkMessage(s, m) {
   s.lastActivity = Date.now();
   if (keepsChat(s.engine) && !m.parent_tool_use_id && ['assistant', 'user', 'result'].includes(m.type)) keepChat(s.id, m, s.runnerSeq);
@@ -1278,7 +1292,9 @@ function handleSdkMessage(s, m) {
       // Docket's own save-before-compact turn is not news: no report to the parent and no unread mark.
       const quiet = s.quietTurn; s.quietTurn = false;
       const said = s.turnSaid; // endTurnMark takes it; a turn marked done reports even with jobs running (#713)
+      const turnTools = s.events.filter((e) => e.k === 'tool' && e.at >= Date.now() - (m.duration_ms || 0)).map((e) => [e.at, e.endAt]);
       const split = hookSplit(s, m.duration_ms); // how hooks held the turn up, for its Done line (#743)
+      if (!s.pingTurn) logTurnTime(s, m, err, split, turnTools);
       const endedQuietly = !quiet && endTurnMark(s, err); // its Done line says so, and the chat folds the turn (#672)
       addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err, ...(endedQuietly ? { quiet: true } : {}), ...(split || {}) });
       s.reportNews = err ? '' : endedQuietly ? 'quiet' : s.turnNews || ''; s.turnNews = ''; s.costSeen = m.total_cost_usd || 0; // what its report is, for a held turn too (#734)
@@ -1838,7 +1854,7 @@ function portalToolDefs(parent) {
           initiation: z.enum(['user_asked', 'offer', 'own_initiative']).describe(`user_asked = start now, ${split ? 'for real work the user asked for (no special words needed)' : 'when the user asked for the work in its own session'}; offer = only when the user asks you to suggest a session: ask New session / Do it here and wait; own_initiative = a proposal card for work the user did not ask for`),
           folder: z.string().optional().describe("Working folder; defaults to this session's folder"),
           brand: z.enum(Object.keys(BRANDS)).optional().describe("Which AI runs the new session (claude, grok or codex, which is OpenAI's Codex on a ChatGPT plan). Leave it out to use this session's own brand. Only a brand this desk has set up and signed in works; anything else returns an error"),
-          start_gear: z.string().optional().describe(`The new session starts in Shift mode, on the gear this session is on now; this picks the gear it starts on instead, and it can still shift up and down afterwards. ${Object.entries(GEARS).map(([b, gs]) => `${BRANDS[b]?.name || b}: ${gs.map((g) => g.key).join(', ')}`).join('; ')}. Leave it out for anything that changes code, debugs or decides; pick a lower gear only for clearly mechanical work (bulk reading, summarizing, writing up from a given outline)`),
+          start_gear: z.string().optional().describe(`The new session starts in Shift mode, on the gear this session is on now; this picks the gear it starts on instead, and it can still shift up and down afterwards. ${Object.entries(GEARS).map(([b, gs]) => `${BRANDS[b]?.name || b}: ${gs.map((g) => g.key).join(', ')}`).join('; ')}. Leave it out for open-ended work (investigating, designing, debugging an unknown cause, deciding). Pick a lower gear only when you have fully worked out the brief (the files, the change and what done looks like are spelled out, so the session only carries it out), or for clearly mechanical work. A session started below its top gear stays on that gear (it never shifts itself), each of its reports names the gear, and you check its result more closely; if it is weak or wrong, resend with send_to_session and gear set to the top gear`),
         },
         async ({ title, prompt, initiation, folder, brand, start_gear: startGear }) => {
           const cwd = folder || parent.cwd;
@@ -1862,9 +1878,10 @@ function portalToolDefs(parent) {
           }
           const child = startChild(parent, { title, prompt, cwd, engine: brand, startGear });
           parent.startedKids = (parent.startedKids || 0) + 1; // the turn may end without orange: its ring shows the child (#777)
-          const gear = findGear(child.engine, child.gear);
+          const gear = findGear(child.engine, child.gear), held = heldGearOf(child);
+          const heldNote = held ? ` It stays on ${held.name}, the lower gear you chose: when it reports, check the actual diff, test output or files, not only its summary, and if the result is weak or wrong send the work again with send_to_session and gear set to ${topGearOf(child.engine).key}.` : '';
           const planNote = planStartNote({ on: plansOn(client), own: !!sessionPlans(client, parent.id).own, childStarts: state.sessions[parent.id]?.childStarts || 0 });
-          return { content: [{ type: 'text', text: `Started session "${title}" (id ${child.id})${brand ? ` on ${BRANDS[brand].name}` : ''}${gear ? `, in Shift on ${gear.name}` : ''}. It appears in the portal list under this session.${planNote ? `\n\n${planNote}` : ''}` }] };
+          return { content: [{ type: 'text', text: `Started session "${title}" (id ${child.id})${brand ? ` on ${BRANDS[brand].name}` : ''}${gear ? `, in Shift on ${gear.name}` : ''}. It appears in the portal list under this session.${heldNote}${planNote ? `\n\n${planNote}` : ''}` }] };
         }),
       tool('propose_handoff',
         "Hand this work off to a fresh session that takes this one's place: same folder, same desk, under the same parent session (or top level). Shows the user a card: Continue in new session / Keep going here. Use it when your profile's rules call for handing off to a new session; pass the handoff block as the brief. Does not wait for the choice.",
@@ -1890,6 +1907,9 @@ function portalToolDefs(parent) {
           const client = clientById(parent.client);
           const hold = plansOn(client) && coordinatorHold({ gears: visibleGears(client, parent.engine), to: gear, plan: sessionPlans(client, parent.id).own });
           if (hold) return { content: [{ type: 'text', text: hold }], isError: true };
+          // A gear its parent chose stays until the parent raises it (#801): the session never picks its own.
+          const held = heldGearOf(parent);
+          if (held) return { content: [{ type: 'text', text: `Not shifted: your parent session chose ${held.name} for this work, so this session stays on it; only the parent raises it. If the work needs deciding that the brief did not settle, say so in your reply and stop there.` }], isError: true };
           if (from.id === gear.id) return { content: [{ type: 'text', text: `Already in ${gear.name}.` }] };
           try { await parent.query.setModel(modelFor(clientById(parent.client), parent.engine, gear.id)); } catch (e) { return { content: [{ type: 'text', text: 'Could not shift: ' + e.message }], isError: true }; }
           parent.gear = gear.id; parent.model = gear.id;
@@ -2282,6 +2302,93 @@ const USAGE_INDEX = path.join(DATA_DIR, 'usage-index.json');
 const USAGE_CSV = path.join(DATA_DIR, 'ai-usage-raw.csv');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+// ---------- session activity (#805) ----------
+// Once a minute the live sessions are counted per desk by the state their row dot shows (activity.mjs); each
+// 5-minute slot then goes to data/activity.jsonl as one line per desk. Today's slots stay in memory for the session
+// list's footer. On the first start with this, the past is rebuilt once from the Claude transcripts (working only).
+const ACTIVITY_FILE = path.join(DATA_DIR, 'activity.jsonl');
+const ACTIVITY_META = path.join(DATA_DIR, 'activity-meta.json'); // says the rebuild ran, so it never runs again
+const ACTIVITY_SINCE = Date.now(); // live tracking starts here: the rebuild stops at this slot
+const activityTally = createTally();
+let activityRecent = []; // today's slots kept so far, for the footer
+let activityRebuilding = false;
+const keepToday = (lines) => { const d = localDay(Date.now()); activityRecent = mergeRebuilt(activityRecent.filter((l) => l.t.startsWith(d)), lines.filter((l) => l.t.startsWith(d))); };
+const parseLines = (text, prefix = '') => text.split('\n').filter((l) => l && l.startsWith(prefix)).flatMap((l) => { try { return [JSON.parse(l)]; } catch { return []; } });
+try { keepToday(parseLines(fs.readFileSync(ACTIVITY_FILE, 'utf8'), `{"t":"${localDay(Date.now())}`)); } catch {}
+// Every write to the file goes in turn, so a rewrite (the rebuild, the roll-up) never loses an append.
+let activityWrites = Promise.resolve();
+function activityWrite(fn) {
+  const p = activityWrites.then(fn);
+  activityWrites = p.catch((e) => logEvent('could not write session activity', e?.stack || e));
+  return p;
+}
+let activityCache = null; // { sig, lines }: the file read back, until it changes
+function activityLines() {
+  let st; try { st = fs.statSync(ACTIVITY_FILE); } catch { return []; }
+  const sig = `${st.size}:${st.mtimeMs}`;
+  if (activityCache?.sig !== sig) activityCache = { sig, lines: parseLines(fs.readFileSync(ACTIVITY_FILE, 'utf8')) };
+  return activityCache.lines;
+}
+async function rewriteActivity(lines) {
+  const tmp = ACTIVITY_FILE + '.tmp';
+  await fs.promises.writeFile(tmp, lines.map((l) => JSON.stringify(l) + '\n').join(''));
+  await fs.promises.rename(tmp, ACTIVITY_FILE);
+}
+// The live sessions per desk by state: { desk: { w, c, n, i } }.
+function activityCounts() {
+  const by = {};
+  for (const s of live.values()) {
+    const busy = s.compacting || s.status === 'running' || s.status === 'starting';
+    const k = busy ? null : kidsOf(s); // only an idle one is told apart by its children
+    const st = stateOf({ status: s.status, compacting: !!s.compacting, lastError: state.sessions[s.id]?.lastError, unread: s.unread, jobs: runningTasks(s),
+      held: !!s.heldTurn, kidsWorking: k?.working, kidsWaiting: k?.waiting, kidNews: !!s.kidNews });
+    if (st) (by[s.client] ||= { w: 0, c: 0, n: 0, i: 0 })[st]++;
+  }
+  return by;
+}
+setInterval(() => {
+  try {
+    const done = activityTally.sample(Date.now(), activityCounts());
+    if (!done.length) return;
+    keepToday(done);
+    activityWrite(() => fs.promises.appendFile(ACTIVITY_FILE, done.map((l) => JSON.stringify(l) + '\n').join(''))).catch(() => {});
+  } catch (e) { logEvent('could not count session activity', e?.stack || e); }
+}, 60000).unref?.();
+// Slots older than ACTIVITY_KEEP_DAYS rolled up to hours, at start and then daily.
+const activityCutoff = () => { const d = new Date(); d.setDate(d.getDate() - ACTIVITY_KEEP_DAYS); return localDay(d.getTime()); };
+const rollUpActivity = () => activityWrite(async () => { const kept = activityLines(), out = rollUp(kept, activityCutoff()); if (out !== kept) await rewriteActivity(out); }).catch(() => {});
+setTimeout(rollUpActivity, 120000).unref?.();
+setInterval(rollUpActivity, 24 * 3600000).unref?.();
+// The one-time rebuild: every Claude desk's transcripts, one file at a time with a pause between, so nothing waits
+// on it. Codex and Grok are left for later. Its slots never go over one live tracking kept.
+async function rebuildActivity() {
+  const before = slotStart(slotKey(ACTIVITY_SINCE)), started = Date.now();
+  const { skipped, meta } = await runOnce({
+    read: () => { try { return JSON.parse(fs.readFileSync(ACTIVITY_META, 'utf8')); } catch { return null; } },
+    write: (m) => fs.writeFileSync(ACTIVITY_META, JSON.stringify(m, null, 1)),
+    run: async () => {
+      activityRebuilding = true;
+      const acc = createRebuild();
+      let files = 0;
+      for (const client of CLIENTS.filter((c) => !c.remote && c.home && brandsOf(c).includes('claude'))) {
+        for (const file of transcriptFiles(client).values()) {
+          let text = '';
+          try { text = await fs.promises.readFile(file, 'utf8'); } catch { continue; }
+          acc.add(client.id, turnSpans(text), before);
+          files++;
+          await new Promise((r) => setTimeout(r, 5)); // a small piece at a time
+        }
+      }
+      const rebuilt = acc.lines();
+      await activityWrite(() => rewriteActivity(rollUp(mergeRebuilt(activityLines(), rebuilt), activityCutoff())));
+      keepToday(rebuilt);
+      return { files, slots: rebuilt.length, days: new Set(rebuilt.map((l) => l.t.slice(0, 10))).size, ms: Date.now() - started };
+    },
+  }).finally(() => { activityRebuilding = false; });
+  if (!skipped) logEvent(`session activity rebuilt from ${meta.files} transcripts: ${meta.slots} slots over ${meta.days} days, ${(meta.ms / 1000).toFixed(1)} s`);
+}
+setTimeout(() => rebuildActivity().catch((e) => logEvent('could not rebuild session activity', e?.stack || e)), 30000).unref?.();
+
 // One copy of each mcp-atlassian server per desk, shared by its Claude sessions (shared-mcp.mjs), checked every 30s.
 const claudeJsonOf = (client) => isDefaultHome(client) ? path.join(os.homedir(), '.claude.json') : path.join(client.home, '.claude.json');
 const sharedMcp = createSharedMcp({ dataDir: DATA_DIR, log: (m) => console.log(m),
@@ -2521,6 +2628,29 @@ async function startSetupSession(client) {
 setTimeout(() => checkSetup().catch(() => {}), 90000);
 setInterval(() => checkSetup().catch(() => {}), SETUP_CHECK_MINUTES * 60000);
 
+// ---------- the start-cost check: the offer to turn splitting off where most children were short (#802, start-offer.mjs) ----------
+// On the setup check's cadence, each Claude desk with splitting on is measured from its usage rows of the last week.
+// state.startOffer: id -> { answer: 'later'|'applied', at, shortCost }; the open offers go to the page.
+state.startOffer ||= {};
+let startOffers = [];
+function startTallyFor(client, now = Date.now()) {
+  const from = new Date(now - (START_OFFER.days - 1) * 864e5).toLocaleDateString('en-CA');
+  const rows = Object.entries(usage).filter(([, u]) => u.client === client.id).flatMap(([id, u]) => rowsOf(id, u)).filter((r) => (r.Brand || 'claude') === 'claude');
+  return startTally(rows, { from, gearIds: gearsOf('claude').map((g) => g.id) });
+}
+function checkStartOffers() {
+  const out = [];
+  for (const c of setupDesks()) {
+    const t = startTallyFor(c);
+    const kind = startOfferKind({ tally: t, split: splitOn(c), answer: state.startOffer[c.id] });
+    if (kind) out.push({ client: c.id, name: c.name, kind, ...t, ...startOfferWords(c.name, t) });
+  }
+  if (JSON.stringify(out) !== JSON.stringify(startOffers)) { startOffers = out; broadcast({ t: 'start-offers', offers: out }); }
+  return out;
+}
+setTimeout(() => { try { checkStartOffers(); } catch {} }, 95000);
+setInterval(() => { try { checkStartOffers(); } catch {} }, SETUP_CHECK_MINUTES * 60000);
+
 // A company's Grok sessions, by the id their usage is filed under: the Docket session that ran them (state.sessions[id].grokIds),
 // else Grok's own id for a session run outside Docket. Each holds its Grok folders and Grok's title for it.
 function grokUsageSessions(client) {
@@ -2682,6 +2812,7 @@ function usageReport() {
     rows,
     shift, // Shift sessions: id -> { shifted, shifts, reachedTop }
     topGears: Object.fromEntries(Object.entries(GEARS).map(([b, g]) => [b, g.at(-1).name])),
+    shortTurns: SHORT_TURNS, // a child with this many turns or fewer is short (the Start cost card)
     connections: usageConnections(rows),
     models,
     baseline: modelRates(prices, prices.routingBaseline || 'claude-opus'),
@@ -3258,11 +3389,15 @@ function startChild(parent, { title, prompt, cwd, attachments = [], settings = {
   if (!byUser && !Object.keys(settings).length) {
     settings = childSettings(live.get(parent.id)?.settings || state.sessions[parent.id]?.settings, parentBrand, engine || defaultEngineOf(client));
   }
+  const chosenGear = startGear;
   if (!byUser && !startGear) {
     const ps = live.get(parent.id) || state.sessions[parent.id] || {};
     startGear = parentGear(engine || defaultEngineOf(client), parentBrand, ps.gear || (ps.settings?.model !== 'shift' ? ps.settings?.model : ''));
   }
-  const child = startSession({ clientId: parent.client, cwd, title, parentId: parent.id, settings, engine, gear: startGear, record: groupId !== undefined ? { groupId } : undefined });
+  // A lower start gear the parent asked for holds the child there, and its parent checks its reports harder (#801).
+  const heldBy = !byUser && chosenGear && belowTop(engine || defaultEngineOf(client), chosenGear);
+  const record = { ...(groupId !== undefined ? { groupId } : {}), ...(heldBy ? { gearBy: 'parent' } : {}) };
+  const child = startSession({ clientId: parent.client, cwd, title, parentId: parent.id, settings, engine, gear: startGear, record: Object.keys(record).length ? record : undefined });
   state.sessions[child.id].reportsTo = parent.id;
   if (groupId !== undefined) groupChanged(client.id);
   if (byUser && title) state.sessions[child.id].titleBy = 'you';
@@ -3763,13 +3898,14 @@ async function reportToParent(child, leftover = []) {
   if (!route.to) return;
   if (route.clearReplyTo) { delete rec.replyTo; saveState(); }
   const client = clientById(child.client);
+  const lowGear = heldGearOf(child); // named in the report, so the parent checks it harder (#801)
   // A report for a session that was closed goes to the nearest open session above the child, where the list now
   // shows it (#717): waking the closed one would run it again while its record says archived. With none, it stays here.
   const view = client && familyView(client);
   const to = view && !view.open(route.to) ? view.openParent(child.id) : route.to;
   if (!to) return;
   // A turn with no reply text (an error before any answer) says so in a line, not as an empty report (#759).
-  const report = { childId: child.id, title: child.title || 'Session', text: reportText(reply, { error: rec?.lastError?.text }).slice(0, 400), at: Date.now(), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}), ...(leftover.length ? { jobs: leftover } : {}) };
+  const report = { childId: child.id, title: child.title || 'Session', text: reportText(reply, { error: rec?.lastError?.text }).slice(0, 400), at: Date.now(), ...(lowGear ? { gear: lowGear.name, top: topGearOf(child.engine).key } : {}), ...(route.sent ? { sent: true } : {}), ...(child.turnBy === 'person' ? { byPerson: true } : {}), ...(leftover.length ? { jobs: leftover } : {}) };
   if (route.waiting) {
     const parent = live.get(to);
     if (parent && parent.status !== 'ended') {
@@ -3781,7 +3917,7 @@ async function reportToParent(child, leftover = []) {
   }
   // Only news (#734): a note with the halo, and it reaches the parent with its next turn rather than waking it now.
   const others = kidsOf({ id: to, client: child.client }).list.filter((k) => k.id !== child.id);
-  const news = reportIsNews({ cause: child.reportNews, lastOpen: !others.length }) && holdNews(to, report, child.reportNews);
+  const news = reportIsNews({ cause: child.reportNews, lastOpen: !others.length, lowGear: !!lowGear }) && holdNews(to, report, child.reportNews);
   if (!news && !await wakeWith(client, to, report)) return;
   const own = route.noteTo !== to && route.noteTo && live.get(route.noteTo);
   if (own && own.status !== 'ended') addEvent(own, { k: 'note', text: `"${report.title}" finished work sent by the session "${sessionTitle(client, to)}"; its report went there.` });
@@ -3847,7 +3983,7 @@ function flushReports(parent) {
   parent.waitingChildren?.clear();
   const line = (r) => r.kind === 'plan'
     ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'them'} as the plan's rules say, unless the user said to wait${r.tasks.some((t) => t.title.endsWith(userTag({ forUser: true }))) ? "; for the user's step, tell the user in a line or two what to do now" : ''}.`
-    : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}.${r.jobs ? ' ' + leftoverJobsText(r.jobs) : ''} Its latest reply begins: ${r.text}`;
+    : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}.${r.jobs ? ' ' + leftoverJobsText(r.jobs) : ''}${r.gear ? ' ' + lowGearNote(r.gear, r.top) : ''} Its latest reply begins: ${r.text}`;
   const body = [...reports.map(line), ...waiting].join('\n');
   sendToSession(parent, { text: '', system: true, report: true, reported: reports.map((r) => r.childId).filter(Boolean), context: `<session-report>
 ${body}
@@ -4431,6 +4567,8 @@ const engineOptions = { grok: grokOptions, codex: codexOptions };
 
 // "Shift" sessions start on a gear of their brand (gears.mjs) and change model with the shift_gear tool.
 const isShift = (s) => s.settings?.model === 'shift';
+// The lower gear a Shift child is held on because its parent chose it (gears.mjs parentHeldGear, #801), or null.
+const heldGearOf = (s) => parentHeldGear({ settings: s.settings, brand: s.engine, gear: s.gear || s.model, gearBy: state.sessions[s.id]?.gearBy });
 // What the usage record keeps of a Shift session, so a deleted one still counts on the Usage page; null for any other.
 const shiftOf = (rec) => (rec && isShift(rec) ? { gear: rec.gear || '', shifts: rec.shifts || [] } : null);
 // Every shift goes through here: kept in memory (s.shifts) and in the session's saved record, so its history
@@ -4449,6 +4587,7 @@ async function raiseChild(s, { from, gear }, parent) {
   if (s.gear !== gear.id && s.query) await s.query.setModel(modelFor(clientById(s.client), s.engine, gear.id));
   s.gear = gear.id; s.model = gear.id;
   state.sessions[s.id].gear = gear.id;
+  if (state.sessions[s.id].gearBy) { delete state.sessions[s.id].gearBy; s.gearFreed = true; } // raised: no longer held on the gear its parent chose (#801)
   const reason = `Raised by parent session: ${parent.title || parent.id}`;
   recordShift(s, { from: from.id, to: gear.id, reason, by: 'parent' });
   addEvent(s, { k: 'note', text: `Shifted up to ${gear.name}: ${reason}` });
@@ -4459,7 +4598,7 @@ async function raiseChild(s, { from, gear }, parent) {
 // then runs on the next step. s.shiftedFor: the tool calls chosen on the lower gear, which the hook turns down.
 // Returns whether it raised the gear.
 async function shiftUpForWork(s, tool, input, toolUseId) {
-  const d = shiftUpFor({ settings: s.settings, brand: s.engine, gear: s.gear || s.model, tool, input });
+  const d = shiftUpFor({ settings: s.settings, brand: s.engine, gear: s.gear || s.model, tool, input, held: !!heldGearOf(s) });
   if (!d) return false;
   const { from, to, why } = d;
   // At once, before the model changes: a second call in the same reply does not raise again, and the hook asking
@@ -4505,6 +4644,9 @@ const planRules = (s) => {
 function shiftRules(s) {
   if (!isShift(s)) return '';
   const gears = visibleGears(clientById(s.client), s.engine), start = findGear(s.engine, shiftModel(s, clientById(s.client))) || gears[0];
+  // A child held on the lower gear its parent chose gets the rules for staying there instead (#801).
+  const held = heldGearOf(s);
+  if (held) return optionalPrompt('parent-gear.md').replaceAll('{start}', held.name).replaceAll('{top}', gears[gears.length - 1].key);
   return optionalPrompt('model-shifting.md').replaceAll('{gears}', gears.map((g) => `${g.key} (${g.name})`).join(', '))
     .replaceAll('{start}', start.name).replaceAll('{mid}', gears[Math.min(1, gears.length - 1)].key).replaceAll('{top}', gears[gears.length - 1].key);
 }
@@ -4788,6 +4930,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   if (state.sessions[s.id]?.moveNote) { blocks.push({ type: 'text', text: state.sessions[s.id].moveNote }); delete state.sessions[s.id].moveNote; saveState(); }
   if (state.sessions[s.id]?.restartNote) { blocks.push({ type: 'text', text: RUNNER_RESTART_NOTE }); delete state.sessions[s.id].restartNote; saveState(); }
   if (state.sessions[s.id]?.recallNote) { blocks.push({ type: 'text', text: RECALL_NOTE }); delete state.sessions[s.id].recallNote; saveState(); }
+  if (s.gearFreed && isShift(s)) { blocks.push({ type: 'text', text: '(From the session portal: your parent session raised this session, so it is no longer held on the gear it chose. These rules replace "Your gear" in your instructions.)\n\n' + shiftRules(s) }); s.gearFreed = false; }
   if (s.shiftRulesPending && isShift(s)) { blocks.push({ type: 'text', text: '(From the session portal: this session was switched to Shift mode.)\n\n' + shiftRules(s) }); s.shiftRulesPending = false; }
   if (!blocks.length) return;
   if (system) { const line = stateLineFor(s, reported); if (line) blocks.push({ type: 'text', text: line }); } // reports and notices (#749)
@@ -4887,24 +5030,50 @@ setInterval(() => { const now = Date.now(); if (clockJumped(lastTick, now)) onWa
 // longer: they are counted in the background every 20 minutes and saved in the data folder (diskKeeper), so the
 // window and the gauges show the last count at once, even straight after a restart.
 const DISK_EVERY_MS = 20 * 60_000, MACHINE_KEEP_MS = 10_000;
+// The window's breakdown needs the command lines as well, so only its listing takes them (machineNow({ commands })).
 let machine = null, machineReading = null, cpuBefore = null;
-async function memoryUse() {
-  const { cmd, args } = processListCommand();
+async function memoryUse(commands) {
+  const { cmd, args } = processListCommand(process.platform, { commands });
   const out = await new Promise((resolve, reject) => execFile(cmd, args, { windowsHide: true, maxBuffer: 64 << 20, timeout: 20_000 },
     (err, stdout) => (err ? reject(err) : resolve(stdout))));
   const runnerPid = (await runnerHealth())?.pid;
-  return { ...groupProcesses(parseProcessList(out), { appPid: process.pid, runnerPid }), free: os.freemem(), size: os.totalmem() };
+  const list = parseProcessList(out);
+  return { memory: { ...groupProcesses(list, { appPid: process.pid, runnerPid }), free: os.freemem(), size: os.totalmem() }, list, runnerPid };
 }
-// { memory, memoryError, cpu (a percent, or null until there are two listings), at }.
-function machineNow() {
-  if (machine && Date.now() - machine.at < MACHINE_KEEP_MS) return Promise.resolve(machine);
-  return machineReading ||= memoryUse().then((memory) => {
-    const now = { cpu: memory.cpu, at: Date.now() };
+// { memory, memoryError, cpu (a percent, or null until there are two listings), at }, and for the breakdown the
+// list itself (with command lines when asked for: never sent to a page), the runner's pid, and the processor
+// times of the listing before ({ byPid, at }).
+function machineNow({ commands = false } = {}) {
+  if (machine && Date.now() - machine.at < MACHINE_KEEP_MS && (!commands || machine.commands)) return Promise.resolve(machine);
+  if (machineReading && (!commands || machineReading.commands)) return machineReading;
+  const reading = (machineReading || Promise.resolve()).catch(() => {}).then(() => memoryUse(commands)).then(({ memory, list, runnerPid }) => {
+    const now = { cpu: memory.cpu, at: Date.now(), byPid: new Map(list.map((p) => [p.pid, p.cpu])) };
     const cpu = cpuPercent(cpuBefore, now, os.cpus().length);
+    const before = cpuBefore;
     cpuBefore = now;
-    return machine = { memory, memoryError: '', cpu, at: now.at };
+    return machine = { memory, memoryError: '', cpu, at: now.at, commands, list, runnerPid, before };
   }, (err) => (machine = { memory: null, memoryError: err.message, cpu: null, at: Date.now() }))
-    .finally(() => { machineReading = null; });
+    .finally(() => { if (machineReading === reading) machineReading = null; });
+  reading.commands = commands;
+  return machineReading = reading;
+}
+// The window's breakdown of the reading (machine-use.mjs: breakdown): what the runner already says about its
+// helpers, the shared MCP servers of this Docket and of the test copies in docket-work, and the live sessions'
+// titles and desks. Read only while the window asks.
+async function machineBreakdown(m) {
+  if (!m.list) return null;
+  const readJson = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+  let dirs = [];
+  try { dirs = fs.readdirSync(WORK_DIR, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => path.join(WORK_DIR, e.name)); } catch {}
+  const copies = dirs.filter((d) => path.resolve(d) !== path.resolve(ROOT))
+    .map((folder) => ({ folder, servers: ['data-dev', 'data'].flatMap((x) => sharedServers(readJson(path.join(folder, x, 'shared-mcp.json')))) }));
+  const helpers = m.runnerPid ? await runnerCall('/helpers').catch(() => []) : [];
+  const deskName = (id) => clientById(id)?.name || id;
+  const sessions = new Map([...live.values()].map((s) => [s.id, { title: s.title || state.sessions[s.id]?.title || 'Untitled', desk: deskName(s.client) }]));
+  const b = breakdown(m.list, { appPid: process.pid, runnerPid: m.runnerPid, root: ROOT, sessions, helpers, copies,
+    shared: sharedServers(readJson(path.join(DATA_DIR, 'shared-mcp.json'))), before: m.before, at: m.at, cores: os.cpus().length });
+  for (const x of b.shared) x.desks = x.desks.map(deskName);
+  return b;
 }
 
 // ---------- Starting Docket after a restart ----------
@@ -6311,7 +6480,7 @@ async function ghTokenFor(env, login) {
   ghTokens.set(k, { at: Date.now(), token });
   return token;
 }
-async function ghOtherAccounts(env, owner) {
+async function ghAccountsOf(env) {
   const k = env.GH_CONFIG_DIR || '';
   let hit = ghAccountList.get(k);
   if (!fresh(hit, 600000)) {
@@ -6319,8 +6488,9 @@ async function ghOtherAccounts(env, owner) {
     hit = { at: Date.now(), accounts: ghAccounts(r.out) };
     ghAccountList.set(k, hit);
   }
-  return ghAccountOrder(owner, hit.accounts);
+  return hit.accounts;
 }
+async function ghOtherAccounts(env, owner) { return ghAccountOrder(owner, await ghAccountsOf(env)); }
 // One GraphQL query about repos of one owner, as the account that can read them: its answer (data and errors), or null.
 async function ghAsk(client, owner, query) {
   const env = envFor(client), key = `${env.GH_CONFIG_DIR || ''}|${owner.toLowerCase()}`;
@@ -6367,7 +6537,7 @@ async function fetchPRStatus(client, prs) {
   for (const chunk of byOwner(todo, 40)) {
     const parts = chunk.map((p, n) => {
       const [owner, name] = p.repo.split('/');
-      return `p${n}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequest(number: ${Number(p.number)}) { state isDraft mergeable title headRefName ${CLOSES} ${CHECKS} } }`;
+      return `p${n}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequest(number: ${Number(p.number)}) { state isDraft mergeable title headRefName author { login } ${CLOSES} ${CHECKS} } }`;
     });
     const data = (await ghAsk(client, chunk[0].repo.split('/')[0], `query { ${parts.join(' ')} }`))?.data || {};
     chunk.forEach((p, n) => {
@@ -6378,7 +6548,7 @@ async function fetchPRStatus(client, prs) {
   return prs.map((p) => {
     const d = prStatus.get(p.url)?.data || { state: 'UNKNOWN' };
     // p.branch (the branch last seen before the link) only when GitHub could not say; closes: the issues it fixes
-    return { ...p, status: ghStatus(d), draft: !!d.isDraft, title: d.title || '', branch: d.headRefName || p.branch || '', closes: closesOf(d), checks: checksOf(d.commits?.nodes?.[0]?.commit?.statusCheckRollup) };
+    return { ...p, status: ghStatus(d), draft: !!d.isDraft, title: d.title || '', branch: d.headRefName || p.branch || '', author: d.author?.login || '', closes: closesOf(d), checks: checksOf(d.commits?.nodes?.[0]?.commit?.statusCheckRollup) };
   });
 }
 
@@ -6626,6 +6796,9 @@ async function sessionLinks(client, ids) {
       }
     }
   }
+  // whose pull requests are the user's, for mine (#807): the gh accounts signed in here, the Azure DevOps identity
+  const anyGh = per.some((x) => x.gh.length || x.ghFound.size);
+  const me = { github: anyGh ? (await ghAccountsOf(envFor(client)).catch(() => [])).map((a) => a.login) : [], ado: ado ? [await adoMeFor(ado)] : [] };
   const out = {};
   for (const x of per) {
     const prs = new Map();
@@ -6636,7 +6809,10 @@ async function sessionLinks(client, ids) {
       for (const b of x.branches) for (const p of adoByBranch.get(`${ado.base}|${ado.project}|${b}`)?.prs || []) prs.set(p.url, p);
       for (const u of x.adoUrls) { const p = adoById.get(u)?.pr; if (p && !prs.has(p.url)) prs.set(p.url, p); }
     }
-    const list = [...prs.values()].filter((p) => !x.hidden.has('pr:' + p.url)).map(withTalk);
+    // mine: one the session made or pushed to, the only kind its row says merge for; one it only reviews is listed too
+    const made = { linked: new Set([...x.gh.map((p) => p.url), ...x.adoUrls]), own: x.scan?.own };
+    const list = [...prs.values()].filter((p) => !x.hidden.has('pr:' + p.url))
+      .map((p) => ({ ...p, mine: sessionMadePr(p, { ...made, me: me[p.kind === 'ado' ? 'ado' : 'github'] }) })).map(withTalk);
     // Jira ones are unread with a newer comment from someone else than when the user last opened them from Docket
     const tickets = [...(jira ? x.keys.map((k) => jiraStatus.get(`${jira.url}|${k}`)?.ticket).filter(Boolean)
       .map((t) => (ticketUnread(t, state.ticketSeen?.[t.key]) ? { ...t, unread: true } : t)) : []),
@@ -7418,7 +7594,7 @@ function docketTexts() {
   return [
     { name: 'Docket\'s own instructions', note: 'written in server.mjs', text: APPEND_PROMPT },
     ...md(dir).map((n) => ({ name: `prompts/${n}`, path: path.join(dir, n), note: 'every session', text: fs.readFileSync(path.join(dir, n), 'utf8').trim() })),
-    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'split-work.md' ? 'only desks that split work into sessions (Switches)' : n === 'plans.md' ? "only sessions that use a plan, on desks with Docket's own plans" : n === 'setup-slim.md' ? "the first message of a session started from the setup check card, with the desk's numbers in it" : 'only some sessions',
+    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'parent-gear.md' ? 'only Shift child sessions held on a lower gear their parent chose, instead of model-shifting.md' : n === 'split-work.md' ? 'only desks that split work into sessions (Switches)' : n === 'plans.md' ? "only sessions that use a plan, on desks with Docket's own plans" : n === 'setup-slim.md' ? "the first message of a session started from the setup check card, with the desk's numbers in it" : 'only some sessions',
       text: optionalPrompt(n) })),
   ];
 }
@@ -8115,6 +8291,7 @@ const APP_INSTALL_FILES = {
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json'],
   '/sw.js': ['sw.js', 'text/javascript; charset=utf-8'],
   '/shift-savings.mjs': ['shift-savings.mjs', 'text/javascript; charset=utf-8'], // the Usage page's Shift line
+  '/activity.mjs': ['activity.mjs', 'text/javascript; charset=utf-8'], // the Usage page's Activity section (#805)
   '/icon/docket-192.png': ['icon/docket-192.png', 'image/png'],
   '/icon/docket-512.png': ['icon/docket-512.png', 'image/png'],
   '/icon/docket-maskable-512.png': ['icon/docket-maskable-512.png', 'image/png'],
@@ -8290,6 +8467,25 @@ const server = http.createServer(async (req, res) => {
       broadcast({ t: 'setup-offers', offers: setupOffers });
       return json(res, 200, { ok: true, session });
     }
+    // The start-cost card: the open offers, and an answer to one ({ client, answer: later|apply }); apply turns splitting off.
+    if (req.method === 'GET' && p === '/api/start-offers') return json(res, 200, startOffers);
+    if (req.method === 'POST' && p === '/api/start-offers/answer') {
+      const b = await readBody(req);
+      const client = clientById(b.client);
+      if (!client) return json(res, 404, { error: 'Unknown desk' });
+      if (!['later', 'apply'].includes(b.answer)) return json(res, 400, { error: 'The answer is later or apply' });
+      const shortCost = startOffers.find((o) => o.client === client.id)?.shortCost || 0;
+      if (b.answer === 'apply') {
+        saveCompanies(CLIENTS.map((c) => (c.id === client.id ? { ...c, splitWork: false } : c)));
+        logEvent('start check', `${client.name}: splitting turned off from the start-cost card`);
+      }
+      state.startOffer[client.id] = { answer: b.answer === 'apply' ? 'applied' : 'later', at: Date.now(), shortCost };
+      saveState();
+      startOffers = startOffers.filter((o) => o.client !== client.id);
+      broadcast({ t: 'start-offers', offers: startOffers });
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && p === '/api/start-check') return json(res, 200, checkStartOffers()); // look again now
     if (req.method === 'POST' && p === '/api/setup-check') { // ?client=: check that desk in full now
       const client = clientById(url.searchParams.get('client'));
       if (!client) return json(res, 404, { error: 'Unknown desk' });
@@ -8354,8 +8550,12 @@ const server = http.createServer(async (req, res) => {
     // counting says one is under way). The gauges ask for the same in short, every 15 seconds.
     if (req.method === 'GET' && (p === '/api/machine-use' || p === '/api/machine-gauges')) {
       if (url.searchParams.get('fresh') === '1') diskUse.refresh();
-      const m = await machineNow(), d = diskUse.get(), counting = diskUse.counting();
-      if (p === '/api/machine-use') return json(res, 200, { memory: m.memory, memoryError: m.memoryError, disk: d, counting, everyMinutes: DISK_EVERY_MS / 60_000 });
+      const use = p === '/api/machine-use';
+      const m = await machineNow({ commands: use }), d = diskUse.get(), counting = diskUse.counting();
+      if (use) {
+        const breakdown = await machineBreakdown(m).catch((err) => { logEvent('memory breakdown failed', err.message); return null; });
+        return json(res, 200, { memory: m.memory, memoryError: m.memoryError, breakdown, disk: d, counting, everyMinutes: DISK_EVERY_MS / 60_000 });
+      }
       return json(res, 200, { cpu: m.cpu, memory: m.memory && { total: m.memory.total, rows: m.memory.rows }, counting,
         disk: d && { docket: d.docket?.bytes ?? null, copies: d.copies?.bytes ?? null, history: d.history.reduce((a, x) => a + x.bytes, 0), drive: d.drive, at: d.at } });
     }
@@ -8707,6 +8907,20 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { client: client.id, day, cost, budget: client.budget || null, agent, wait, user, added, removed });
     }
     if (req.method === 'GET' && p === '/api/usage/report') return json(res, 200, usageReport()); // the Usage page
+    // Session activity (#805). today: the footer's working line for one desk, from memory (?client=&day=YYYY-MM-DD).
+    // Without: the kept slots for the Usage page, with the slot under way (?client= for one desk, &from=&to= days).
+    if (req.method === 'GET' && p === '/api/activity/today') {
+      const client = clientById(url.searchParams.get('client'));
+      if (!client) return json(res, 404, { error: 'Unknown client' });
+      const asked = url.searchParams.get('day') || '', day = /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : localDay(Date.now());
+      return json(res, 200, { client: client.id, day, ...activityToday(mergeRebuilt(activityRecent, activityTally.open()).filter((l) => l.d === client.id), day) });
+    }
+    if (req.method === 'GET' && p === '/api/activity') {
+      const c = url.searchParams.get('client') || '', from = url.searchParams.get('from') || '', to = (url.searchParams.get('to') || '9999') + 'T99';
+      const lines = mergeRebuilt(activityLines(), activityTally.open()).filter((l) => (!c || l.d === c) && l.t >= from && l.t <= to);
+      let meta = null; try { meta = JSON.parse(fs.readFileSync(ACTIVITY_META, 'utf8')); } catch {}
+      return json(res, 200, { lines, rebuilt: meta?.rebuilt || null, rebuilding: activityRebuilding });
+    }
     if (req.method === 'GET' && p === '/api/terminal/folder') { // ?client=&session=: where that session's terminal starts
       const client = clientById(url.searchParams.get('client'));
       if (!client) return json(res, 400, { error: 'Unknown client' });

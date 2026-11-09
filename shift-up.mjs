@@ -25,10 +25,12 @@ export function workKind(tool, input) {
 // Whether Docket raises this session before the tool call: { from, to, why } (gears of its brand), or null when the
 // session is not in Shift (a model the user chose), the call changes nothing, or it is already on its top gear.
 // gear: the model it runs on now; one that is no gear of its brand counts as its lowest, as shift_gear counts it.
-export function shiftUpFor({ settings, brand, gear, tool, input }) {
+// held: its parent chose this lower gear for a worked-out brief (gears.mjs parentHeldGear, #801), so a file edit or
+// git commit runs on it and the parent checks the result; becoming a plan coordinator still raises it.
+export function shiftUpFor({ settings, brand, gear, tool, input, held = false }) {
   if (settings?.model !== 'shift') return null;
   const why = workKind(tool, input);
-  if (!why) return null;
+  if (!why || (held && why !== 'becoming a plan coordinator')) return null;
   const gears = gearsOf(brand), to = gears[gears.length - 1];
   const from = findGear(brand, gear) || gears[0];
   return from.id === to.id ? null : { from, to, why };

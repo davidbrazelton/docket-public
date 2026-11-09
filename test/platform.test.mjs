@@ -295,7 +295,34 @@ test('parseProcessList on a Mac: kilobytes to bytes, processor time to seconds, 
   ]);
 });
 
+test('processListCommand with command lines: CommandLine on Windows; on a Mac a second ps after a line of its own', () => {
+  assert.match(processListCommand('win32', { commands: true }).args.at(-1), /UserModeTime,CommandLine \| ConvertTo-Json/);
+  assert.doesNotMatch(processListCommand('win32').args.at(-1), /CommandLine/);
+  assert.deepEqual(processListCommand('darwin', { commands: true }),
+    { cmd: '/bin/sh', args: ['-c', 'ps -axo pid=,ppid=,rss=,time=,comm= && echo --docket-args-- && ps -axww -o pid=,args='] });
+});
+
+test('parseProcessList with command lines: cmd on each program, on Windows and a Mac', () => {
+  assert.deepEqual(parseProcessList('[{"ProcessId":10,"ParentProcessId":4,"Name":"node.exe","WorkingSetSize":1,"CommandLine":"node C:\\\\Docket\\\\runner.mjs"},{"ProcessId":4,"ParentProcessId":0,"Name":"System","WorkingSetSize":1,"CommandLine":null}]', 'win32'),
+    [{ pid: 10, ppid: 4, name: 'node', mem: 1, cpu: 0, cmd: 'node C:\\Docket\\runner.mjs' }, { pid: 4, ppid: 0, name: 'system', mem: 1, cpu: 0, cmd: '' }]);
+  const out = '  501   1  2048   1:02.25 /Users/pat/.local/bin/claude\n  502   501   100 0:00.00 /Applications/Google Chrome for Testing.app/Contents/Frameworks/Google Chrome for Testing Helper (Renderer)\n  503   1  10 0:00.00 /usr/local/bin/node\n'
+    + '--docket-args--\n  501 /Users/pat/.local/bin/claude --session-id=abc\n  502 /Applications/Google Chrome for Testing.app/Contents/Frameworks/Google Chrome for Testing Helper (Renderer) --type=renderer\n';
+  assert.deepEqual(parseProcessList(out, 'darwin').map((p) => [p.pid, p.name, p.cmd]), [
+    [501, 'claude', '/Users/pat/.local/bin/claude --session-id=abc'],
+    [502, 'google chrome for testing helper (renderer)', '/Applications/Google Chrome for Testing.app/Contents/Frameworks/Google Chrome for Testing Helper (Renderer) --type=renderer'],
+    [503, 'node', ''], // ended between the two ps
+  ]);
+});
+
 // The real command on this computer gives a list that holds this test's own program.
+test('processListCommand with command lines runs here and gives this program its own', () => {
+  const { cmd, args } = processListCommand(process.platform, { commands: true });
+  const r = spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true, maxBuffer: 64 << 20 });
+  assert.equal(r.status, 0, r.stderr);
+  const me = parseProcessList(r.stdout).find((p) => p.pid === process.pid);
+  assert.ok(me && me.name === 'node' && /platform\.test\.mjs|node/.test(me.cmd), JSON.stringify(me));
+});
+
 test('processListCommand runs here and lists this program', () => {
   const { cmd, args } = processListCommand();
   const r = spawnSync(cmd, args, { encoding: 'utf8', windowsHide: true, maxBuffer: 64 << 20 });

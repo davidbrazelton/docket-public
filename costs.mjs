@@ -271,10 +271,26 @@ export function timeByDay(turns, waits = []) {
   }
   return out;
 }
+// ---------- the start of a session (#802) ----------
+// What starting a session cost: its first main reply's prompt, the instructions, tools and first message it read and
+// wrote to the cache (the reply's output is the work, so it is left out). Child: a session started it (its first turn
+// is a brief). Short: a child that took SHORT_TURNS turns or fewer, so starting it may have cost more than doing the work
+// in place. These go on the session's first row (Starts 1), as Agents does, so adding up rows counts each session once.
+export const SHORT_TURNS = 2;
+export const NO_START = { Starts: 0, StartCost: 0, Child: 0, ShortChild: 0 };
+export function startFacts(priced, causes) {
+  const first = priced.find((r) => !r.subagent && !r.compaction && !r.estimate);
+  if (!first) return null;
+  const p = first.parts || {};
+  const cost = first.priced ? Math.max(0, first.cost - (p.output || 0) - (p.webSearch || 0)) : 0;
+  const child = causes[0]?.cause === 'brief';
+  return { cost: Math.round(cost * 10000) / 10000, child, short: child && causes.length <= SHORT_TURNS, turns: causes.length };
+}
+const startColumns = (f) => (f ? { Starts: 1, StartCost: f.cost, Child: f.child ? 1 : 0, ShortChild: f.short ? 1 : 0 } : { ...NO_START });
 // A row with no use on it, for a day that only has time on it.
 export const emptyRow = (from, day) => ({ ...from, Date: day, Source: 'main', Turns: 0, Agents: 0, CacheExpiry: 0, Compacting: 0, ToolCalls: 0, FilesTouched: 0,
   AvgTokensPerTurn: 0, InputTokens: 0, OutputTokens: 0, CacheRead: 0, CacheCreate: 0, CacheCreate1h: 0, Cost: 0, PersonalCost: 0, HypotheticalCost: 0, CacheSaved: 0,
-  AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0, Cause: '' });
+  AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0, Cause: '', ...NO_START });
 // Each day's seconds (or lines) (key: AgentSeconds, WaitSeconds or UserSeconds) go on that day's first row, as Compacting does, so
 // adding up any set of rows counts them once. A day with time but no row gets an empty row of its own to carry it.
 export function addSeconds(rows, key, byDay) {
@@ -446,19 +462,20 @@ export function summarize(priced) {
 // ---------- per-day rows, in the tracker's columns ----------
 export const CSV_COLUMNS = ['Client', 'Group', 'SessionId', 'Date', 'Title', 'Source', 'Model', 'Turns', 'Agents', 'CacheExpiry', 'Compacting', 'ToolCalls', 'FilesTouched',
   'AvgTokensPerTurn', 'InputTokens', 'OutputTokens', 'CacheRead', 'CacheCreate', 'CacheCreate1h', 'Cost', 'PersonalCost', 'BilledProfile', 'ProfileInferred',
-  'HypotheticalCost', 'CacheSaved', 'Brand', 'AgentSeconds', 'WaitSeconds', 'UserSeconds', 'LinesAdded', 'LinesRemoved', 'Connection', 'Cause'];
+  'HypotheticalCost', 'CacheSaved', 'Brand', 'AgentSeconds', 'WaitSeconds', 'UserSeconds', 'LinesAdded', 'LinesRemoved', 'Connection', 'Cause', 'Starts', 'StartCost', 'Child', 'ShortChild'];
 // billed: { subscription, bedrock, bedrockKnown } names the account each kind of reply was paid by; with
 // connection / bedrockConnection (connection.mjs) the row gets its key in Connection and its label in BilledProfile.
 // A connection recorded on the session when it started (recorded: true) is not inferred; one read from today's setup is.
 // A session through a LiteLLM gateway has the gateway as both connections, and models (below) to price its names.
 // times: { turns, waits } for the agent and wait seconds; without it they are 0.
 // edits: { at, added, removed } per file edit; each day's lines go on its first row, as the seconds do.
+// start: the session's startFacts, on its first row; null for none.
 function billedColumns(bedrock, billed) {
   const conn = bedrock ? billed.bedrockConnection : billed.connection;
   if (conn) return { BilledProfile: conn.label || '', ProfileInferred: conn.recorded ? 0 : 1, Connection: conn.key || '' };
   return { BilledProfile: (bedrock ? billed.bedrock : billed.subscription) || '', ProfileInferred: bedrock && billed.bedrockKnown ? 0 : 1, Connection: '' };
 }
-export function dayRows(client, sessionId, title, priced, compactions, agentCount, prices, billed = {}, times = null, edits = []) {
+export function dayRows(client, sessionId, title, priced, compactions, agentCount, prices, billed = {}, times = null, edits = [], start = null) {
   const groups = new Map(); // date|source|model -> row
   const compactsByDay = {};
   for (const c of compactions) compactsByDay[localDate(c.at)] = (compactsByDay[localDate(c.at)] || 0) + 1;
@@ -470,7 +487,7 @@ export function dayRows(client, sessionId, title, priced, compactions, agentCoun
       Turns: 0, Agents: 0, CacheExpiry: 0, Compacting: 0, ToolCalls: 0, FilesTouched: 0, AvgTokensPerTurn: 0,
       InputTokens: 0, OutputTokens: 0, CacheRead: 0, CacheCreate: 0, CacheCreate1h: 0, Cost: 0, PersonalCost: 0,
       ...billedColumns(r.bedrock, billed),
-      HypotheticalCost: 0, CacheSaved: 0, Brand: r.brand || 'claude', AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0, Cause: r.cause || '', _files: new Set() };
+      HypotheticalCost: 0, CacheSaved: 0, Brand: r.brand || 'claude', AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0, Cause: r.cause || '', ...NO_START, _files: new Set() };
     if (!r.estimate) g.Turns++;
     g.InputTokens += r.tokens.input; g.OutputTokens += r.tokens.output; g.CacheRead += r.tokens.cacheRead;
     g.CacheCreate += r.tokens.cacheWrite5m + r.tokens.cacheWrite1h; g.CacheCreate1h += r.tokens.cacheWrite1h;
@@ -492,7 +509,7 @@ export function dayRows(client, sessionId, title, priced, compactions, agentCoun
     g.AvgTokensPerTurn = g.Turns ? Math.round((g.InputTokens + g.OutputTokens + g.CacheRead + g.CacheCreate) / g.Turns) : 0;
     for (const k of ['Cost', 'PersonalCost', 'HypotheticalCost', 'CacheSaved']) g[k] = Math.round(g[k] * 10000) / 10000;
   }
-  if (rows.length) rows[0].Agents = agentCount;
+  if (rows.length) Object.assign(rows[0], { Agents: agentCount, ...startColumns(start) });
   const byDay = Object.entries(times ? timeByDay(times.turns || [], times.waits || []) : {});
   addSeconds(rows, 'AgentSeconds', Object.fromEntries(byDay.map(([d, t]) => [d, t.agent])));
   addSeconds(rows, 'WaitSeconds', Object.fromEntries(byDay.map(([d, t]) => [d, t.wait])));
@@ -518,15 +535,15 @@ function analyse(mainFile, sessionId, pricingFile, models = null) {
   const sig = sessionSignature(mainFile, sessionId, pricingFile) + (models ? JSON.stringify(models) : '');
   const hit = sessionCache.get(mainFile);
   if (hit && hit.sig === sig) return hit.data;
-  const { replies, compactions, title, turns, waits, edits } = readSession(files);
+  const { replies, compactions, title, turns, waits, edits, causes } = readSession(files);
   if (models) for (const r of replies) r.model = models[r.model] || r.model;
   const priced = priceReplies(replies, compactions, prices);
-  const data = { sig, priced, compactions, title, turns, waits, edits, agentCount: files.length - 1 };
+  const data = { sig, priced, compactions, title, turns, waits, edits, agentCount: files.length - 1, start: startFacts(priced, causes) };
   sessionCache.set(mainFile, { sig, data });
   return data;
 }
 // ROWS_VERSION changes when the rows gain columns, so every session that still has a log is read again once.
-const ROWS_VERSION = 5; // 3: agent and wait seconds; 4: lines added and removed; 5: cause
+const ROWS_VERSION = 6; // 3: agent and wait seconds; 4: lines added and removed; 5: cause; 6: start cost
 export function sessionSignature(mainFile, sessionId, pricingFile) {
   loadPrices(pricingFile);
   return sessionLogFiles(mainFile, sessionId).map((f) => { try { return fs.statSync(f).size; } catch { return 0; } }).join(',') + '|' + priceCache.mtime + '|v' + ROWS_VERSION;
@@ -552,7 +569,7 @@ export const rowLines = (rows) => ({ added: rows.reduce((a, r) => a + (r.LinesAd
 export function sessionRows(client, mainFile, sessionId, pricingFile, title, billed, appWaits = []) {
   const d = analyse(mainFile, sessionId, pricingFile, billed?.models && Object.keys(billed.models).length ? billed.models : null);
   return dayRows(client, sessionId, title || d.title, d.priced, d.compactions, d.agentCount, loadPrices(pricingFile), billed,
-    { turns: d.turns, waits: [...d.waits, ...appWaits] }, d.edits);
+    { turns: d.turns, waits: [...d.waits, ...appWaits] }, d.edits, d.start);
 }
 
 // ---------- the CSV ----------

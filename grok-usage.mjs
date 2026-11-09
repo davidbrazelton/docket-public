@@ -18,7 +18,7 @@
 //    cost is what the same use would cost on the API.
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadPrices, pricesVersion, modelRates } from './costs.mjs';
+import { loadPrices, pricesVersion, modelRates, NO_START } from './costs.mjs';
 
 const TICKS_PER_DOLLAR = 1e10;
 const localDate = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
@@ -116,7 +116,7 @@ export function grokRows(client, sessionId, dirs, pricingFile, title, billed) {
         Turns: 0, Agents: 0, CacheExpiry: 0, Compacting: 0, ToolCalls: 0, FilesTouched: 0, AvgTokensPerTurn: 0,
         InputTokens: 0, OutputTokens: 0, CacheRead: 0, CacheCreate: 0, CacheCreate1h: 0, Cost: 0, PersonalCost: 0,
         ...who, HypotheticalCost: 0, CacheSaved: 0, Brand: 'grok',
-        AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0, Cause: '' }; // Grok's usage.json has when each turn ended, not when it started, nor what began it
+        AgentSeconds: 0, WaitSeconds: 0, UserSeconds: 0, LinesAdded: 0, LinesRemoved: 0, Cause: '', ...NO_START }; // Grok's usage.json has when each turn ended, not when it started, nor what began it
       g.Turns += t.calls; g.InputTokens += t.input; g.OutputTokens += t.output; g.CacheRead += t.cacheRead; g.Cost += t.cost;
       const r = modelRates(prices, t.model, t.at);
       if (r) g.CacheSaved += t.cacheRead * (r.input - r.cacheRead) / 1e6;

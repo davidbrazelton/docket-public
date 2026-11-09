@@ -36,7 +36,10 @@ function switchedTo(args) {
 
 // The branches one shell command makes, switches to or pushes: worktree add -b, checkout -b, switch -c,
 // checkout <branch>, switch <branch>, push <remote> <branch>.
-export function branchesInCommand(cmd) {
+// own: only the ones that are the session's own work (#807): made or pushed, or named as the source of a pull request
+// it opens (gh pr create --head, az repos pr create --source-branch); a branch it only switched to may be someone
+// else's that it reads or reviews.
+export function branchesInCommand(cmd, own = false) {
   const out = [];
   const word = String.raw`["']?([^\s"';&|()<>]+)["']?`;
   for (const part of String(cmd || '').split(/\r?\n|&&|\|\||;|\|/)) {
@@ -47,7 +50,9 @@ export function branchesInCommand(cmd) {
     const make = new RegExp(String.raw`${git}(?:worktree\s+add\b.*?\s-[bB]|checkout\b.*?\s-[bB]|switch\b.*?\s(?:-[cC]|--create|--force-create))\s+${word}`, 'g');
     while ((m = make.exec(part))) out.push(m[1]);
     const to = part.match(new RegExp(String.raw`${git}(checkout|switch)\b(.*)$`));
-    if (to && !/\s(?:-[bBcC]|--create|--force-create|--orphan)\b/.test(to[2])) out.push(switchedTo(words(to[2])));
+    if (!own && to && !/\s(?:-[bBcC]|--create|--force-create|--orphan)\b/.test(to[2])) out.push(switchedTo(words(to[2])));
+    const opens = own && part.match(/(?:^|[\s(])(?:gh(?:\.exe)?\s+pr|az(?:\.cmd)?\s+repos\s+pr)\s+create\b.*?\s(?:--head|-H|--source-branch|-s)[\s=]["']?([^\s"';&|()<>]+)/);
+    if (opens) out.push(opens[1]);
     const push = part.match(new RegExp(String.raw`${git}\bpush\b(.*)$`));
     if (push && !/\s(--delete|-d)\b/.test(push[1])) {
       const args = push[1].trim().split(/\s+/).filter((a) => a && !a.startsWith('-')).map((a) => a.replace(/^["']|["']$/g, ''));
@@ -64,8 +69,11 @@ export function branchesInCommand(cmd) {
 // Set-Location, Push-Location, git -C <folder>), from cwd, the session's own folder, to start.
 // last: the folder the command worked in at its end, for which branch the session is on now: the last folder it moved
 // to or ran git in, else ''. A folder with a variable, ~ or a wildcard in it is left out.
+// wrote: only the folders whose branch it wrote to (#807): commit, push, merge, rebase, cherry-pick, revert, am, or a
+// pull request it opened there (gh pr create, az repos pr create); not checkout, switch or a worktree it only added.
 const MOVES = new Set(['cd', 'chdir', 'pushd', 'set-location', 'sl', 'push-location']);
 const BRANCH_WORK = new Set(['commit', 'push', 'checkout', 'switch', 'merge', 'rebase', 'cherry-pick', 'revert', 'am']);
+const BRANCH_LOOK = new Set(['checkout', 'switch']);
 const WORKTREE_VALUE = new Set(['-b', '-B', '--reason']);
 const winPath = (p) => /^[A-Za-z]:([\\/]|$)|^\\\\/.test(p);
 export function resolveFolder(base, p) {
@@ -76,7 +84,7 @@ export function resolveFolder(base, p) {
   if (!base && !(win || p.startsWith('/'))) return ''; // relative, with nothing to start from
   return (win ? path.win32 : path.posix).resolve(base || p, p);
 }
-export function foldersInCommand(cmd, cwd) {
+export function foldersInCommand(cmd, cwd, wrote = false) {
   const folders = [];
   let here = String(cwd || ''), last = '';
   const worked = (d) => { if (d) folders.push(d); };
@@ -88,7 +96,8 @@ export function foldersInCommand(cmd, cwd) {
       if (d) here = last = d;
       continue;
     }
-    if (/^gh(\.exe)?$/i.test(w[0]) && w[1] === 'pr' && w[2] === 'create') { if (here) worked(last = here); continue; }
+    if (/^gh(\.exe)?$/i.test(w[0]) && w[1] === 'pr' && w[2] === 'create'
+      || /^az(\.cmd)?$/i.test(w[0]) && w[1] === 'repos' && w[2] === 'pr' && w[3] === 'create') { if (here) worked(last = here); continue; }
     const g = w.findIndex((a) => /^git(\.exe)?$/i.test(a));
     if (g < 0) continue;
     let dir = here, i = g + 1;
@@ -97,8 +106,8 @@ export function foldersInCommand(cmd, cwd) {
     }
     if (!dir) continue;
     last = dir;
-    if (BRANCH_WORK.has(w[i])) worked(dir);
-    if (w[i] === 'worktree' && w[i + 1] === 'add') {
+    if (BRANCH_WORK.has(w[i]) && !(wrote && BRANCH_LOOK.has(w[i]))) worked(dir);
+    if (w[i] === 'worktree' && w[i + 1] === 'add' && !wrote) {
       const args = w.slice(i + 2);
       for (let j = 0; j < args.length; j++) {
         if (WORKTREE_VALUE.has(args[j])) j++;
@@ -139,7 +148,11 @@ const resultText = (c) => (typeof c === 'string' ? c : Array.isArray(c) ? c.map(
 // folders: its own folder, the folders its shell commands did branch work in and those it edited files in, oldest
 // first, and lastFolder the one it worked in last;
 // made: the last branch its own commands made or switched to.
-export function newLinkScan() { return { offset: 0, rest: '', prs: new Map(), branches: new Set(), last: '', dirs: new Map(), issues: new Map(), filing: new Set(), folders: new Set(), lastFolder: '', made: '' }; }
+// own: the branches that are its own work, whose open pull request it may say merge for (#807): made or pushed by its
+// commands, named as a pull request's source, or committed on (the entry's gitBranch when it wrote in its own folder;
+// for another folder, wrote keeps the folder until sessionBranches learns its branch). A branch it only runs on or
+// switched to, as a review does, is listed in branches but not here.
+export function newLinkScan() { return { offset: 0, rest: '', prs: new Map(), branches: new Set(), last: '', dirs: new Map(), issues: new Map(), filing: new Set(), folders: new Set(), lastFolder: '', made: '', own: new Set(), wrote: new Set() }; }
 const MAX_FOLDERS = 30;
 function sawFolder(scan, d) {
   scan.folders.delete(d); scan.folders.add(d); // the newest last
@@ -179,6 +192,12 @@ export function scanLinkText(scan, text) {
       if (f.last) scan.lastFolder = f.last;
       if (made.length) scan.made = made[made.length - 1];
       if (f.last) for (const b of made) scan.dirs.set(b, f.last); // the folder it was made in, not the session's own
+      for (const b of branchesInCommand(c.input.command, true)) scan.own.add(b);
+      for (const d of foldersInCommand(c.input.command, e.cwd, true).folders) {
+        // its own folder is on gitBranch, unless this command moved it to another branch first
+        if (d !== String(e.cwd || '')) scan.wrote.add(d);
+        else if (!made.length && goodBranch(e.gitBranch)) scan.own.add(goodBranch(e.gitBranch));
+      }
     }
     if (e.type === 'user') for (const c of content) {
       if (c?.type !== 'tool_result' || !scan.filing.delete(c.tool_use_id)) continue;
@@ -192,18 +211,31 @@ export function scanLinkText(scan, text) {
 // is on now ('' for none or a trunk branch), for the folders that were asked; only folders in scan.folders count (an
 // answer saved before for a folder the session only read is left out), and a branch found that way is remembered in
 // the scan. The branch now is the one its latest folder is on, else the one that folder was on when last asked, else
-// the last one its own commands made or switched to, else the last one seen.
+// the last one its own commands made or switched to, else the last one seen. A folder it wrote to adds its branch
+// to scan.own.
 export function sessionBranches(scan, here = new Map()) {
   here = new Map([...here].filter(([dir]) => scan.folders.has(dir)));
   for (const [dir, b] of here) {
     const g = goodBranch(b);
     if (!g) continue;
     scan.branches.add(g);
+    if (scan.wrote.has(dir)) scan.own.add(g);
     if (!scan.dirs.has(g)) scan.dirs.set(g, dir);
   }
   if (scan.lastFolder && here.has(scan.lastFolder)) scan.now = { dir: scan.lastFolder, branch: goodBranch(here.get(scan.lastFolder)) };
   const now = scan.now && scan.now.dir === scan.lastFolder ? scan.now.branch : goodBranch(scan.made) || scan.last, all = [...scan.branches];
   return all.includes(now) ? { current: now, branches: [now, ...all.filter((b) => b !== now)] } : { current: '', branches: all };
+}
+
+// Whether a pull request is the session's own, the one its row may say merge for (#807): one it opened or linked
+// (linked: their addresses), or one from a branch it made, pushed or committed on (own); never one whose author is
+// known and is not the user (me: the user's GitHub logins or Azure DevOps id, empty when not known). A pull request
+// from a branch the session only runs on, as a review does, is still listed, just not merged by it.
+export function sessionMadePr(p, { linked = new Set(), own = new Set(), me = [] } = {}) {
+  const lower = (x) => String(x || '').toLowerCase();
+  const by = lower(p?.author), mine = me.map(lower).filter(Boolean);
+  if (by && mine.length && !mine.includes(by)) return false;
+  return [...linked].some((u) => lower(u) === lower(p?.url)) || !!p?.branch && [...own].some((b) => lower(b) === lower(p.branch));
 }
 
 // The GitHub issue number in a branch name, or 0: issue-12, gh-12, fix/12-typo, details-branches-317, feature/317.
@@ -273,7 +305,7 @@ export const CHECKS = 'commits(last: 1) { nodes { commit { statusCheckRollup { s
 export function ghBranchQuery(pairs) {
   return 'query { ' + pairs.map(({ repo, branch }, n) => {
     const [owner, name] = repo.split('/');
-    return `b${n}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequests(headRefName: ${JSON.stringify(branch)}, first: 20, orderBy: { field: CREATED_AT, direction: DESC }) { nodes { number url state isDraft mergeable title headRefName ${CLOSES} ${CHECKS} } } }`;
+    return `b${n}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) { pullRequests(headRefName: ${JSON.stringify(branch)}, first: 20, orderBy: { field: CREATED_AT, direction: DESC }) { nodes { number url state isDraft mergeable title headRefName author { login } ${CLOSES} ${CHECKS} } } }`;
   }).join(' ') + ' }';
 }
 // Its answer per pair: the pull requests, or null where GitHub could not say (no such repo, no access).
@@ -281,7 +313,7 @@ export function ghBranchAnswer(pairs, data) {
   return pairs.map(({ repo }, n) => {
     const nodes = data?.[`b${n}`]?.pullRequests?.nodes;
     if (!Array.isArray(nodes)) return null;
-    return nodes.map((d) => ({ kind: 'github', url: d.url, number: d.number, repo, status: ghStatus(d), draft: !!d.isDraft, title: d.title || '', branch: d.headRefName || '', closes: closesOf(d), checks: checksOf(d.commits?.nodes?.[0]?.commit?.statusCheckRollup) }));
+    return nodes.map((d) => ({ kind: 'github', url: d.url, number: d.number, repo, status: ghStatus(d), draft: !!d.isDraft, title: d.title || '', branch: d.headRefName || '', author: d.author?.login || '', closes: closesOf(d), checks: checksOf(d.commits?.nodes?.[0]?.commit?.statusCheckRollup) }));
   });
 }
 
@@ -353,7 +385,8 @@ export function adoPR(base, project, p) {
   const status = p?.status === 'completed' ? 'merged' : p?.status === 'abandoned' ? 'closed'
     : p?.status === 'active' ? (p.mergeStatus === 'conflicts' ? 'conflict' : 'open') : 'unknown';
   return { kind: 'ado', url: adoPrPage(base, p?.repository?.project?.name || project, repo, p?.pullRequestId), number: p?.pullRequestId,
-    repo: `${p?.repository?.project?.name || project}/${repo}`, status, draft: !!p?.isDraft, title: p?.title || '', branch: String(p?.sourceRefName || '').replace(/^refs\/heads\//, '') };
+    repo: `${p?.repository?.project?.name || project}/${repo}`, status, draft: !!p?.isDraft, title: p?.title || '', branch: String(p?.sourceRefName || '').replace(/^refs\/heads\//, ''),
+    author: p?.createdBy?.id || '' };
 }
 const basic = (user, secret) => 'Basic ' + Buffer.from(`${user}:${secret}`).toString('base64');
 async function getJson(fetchFn, url, auth) {

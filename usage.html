@@ -15,6 +15,7 @@
   --bg: #f7f6f3; --panel: #ffffff; --panel-2: #efeee9; --line: #e2e0d8; --text: #1f1e1b; --muted: #6b6a64;
   --accent: #c2410c; --accent-soft: #fde7d9; --ok: #15803d; --bad: #b91c1c;
   --s-hypo: #8a8983; --s-save: #15803d; --s-actual: var(--accent); --s-main: #2563eb; --s-agent: #9333ea; --s-compact: #d97706; --s-expiry: #dc2626;
+  --s-start: var(--c-brief); /* the start cost line: the color of start briefs, whatever the theme */
   --lines-add: #14703a; --lines-del: #b91c1c; /* lines added / removed, 4.5:1 or better on --bg, --panel and --panel-2 */
   /* what started each turn (the Cause column); the coordination causes are the warm ones */
   --c-person: #2563eb; --c-brief: #0d9488; --c-send: #65a30d; --c-report: #dc2626; --c-report-quiet: #db2777; --c-notice-coord: #d97706; --c-notice: #8a8983; --c-task: #9333ea; --c-none: #c8c6bf; --s-coord: #dc2626;
@@ -100,6 +101,18 @@ header .lab { display: flex; gap: 5px; align-items: center; font-size: 12px; col
 .blogo svg { display: block; width: 100%; height: 100%; }
 details.help { margin: 6px 0; } details.help summary { cursor: pointer; font-weight: 600; } details.help p { margin: 6px 0 6px 16px; max-width: 760px; } details.help ol { margin: 4px 0 6px 16px; max-width: 744px; } details.help li { margin: 3px 0; }
 .empty { padding: 30px; text-align: center; color: var(--muted); }
+/* Activity (#805): the dot colors of Docket's session list */
+:root { --run: #2563eb; --warn: #b45309; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --run: #60a5fa; --warn: #fbbf24; } }
+:root[data-theme="dark"] { --run: #60a5fa; --warn: #fbbf24; }
+.akey { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; font-weight: 400; color: var(--muted); }
+.akey i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+.akey i.hatch { background: repeating-linear-gradient(135deg, var(--run) 0 2px, transparent 2px 5px); }
+svg.chart.bands { height: 200px; }
+#activity { scroll-margin-top: 64px; } /* clear of the sticky header when the footer's link jumps here */
+.heat { display: grid; grid-template-columns: 36px repeat(24, 1fr); gap: 2px; font-size: 10px; color: var(--muted); max-width: 980px; }
+.heat .c { aspect-ratio: 1.4; border-radius: 2px; }
+.box h3 { font-size: 13px; margin: 16px 0 6px; }
 </style>
 <script>
 // The same theme and main color as Docket's own page (index.html keeps them in this browser's storage).
@@ -144,6 +157,14 @@ details.help { margin: 6px 0; } details.help summary { cursor: pointer; font-wei
   <div class="box">
     <h2>Spend by day <span class="legend"><button data-split="source" title="Bars split into your sessions, helper agents and compaction">By source</button><button data-split="cause" title="Bars split by what started each turn: your messages, a session's brief or report, a Docket notice, a background task">By cause</button></span> <span class="legend" id="dayLegend"></span></h2>
     <svg class="chart" id="dayChart" preserveAspectRatio="none"></svg>
+  </div>
+  <div class="box" id="activity">
+    <h2>Activity <span class="akey" id="actKey"></span></h2>
+    <div class="cards" id="actTiles"></div>
+    <svg class="chart bands" id="actBands" preserveAspectRatio="none"></svg>
+    <h3>Average working, by hour · last 4 weeks</h3>
+    <div class="heat" id="actHeat"></div>
+    <p class="muted" id="actNote" style="font-size:12px;margin:8px 0 0"></p>
   </div>
   <div class="box">
     <h2>
@@ -246,7 +267,7 @@ const causeKey = (r) => 'c-' + (r.Cause || 'none'); // a chart series
 
 // ---------- adding up ----------
 function totals(rows) {
-  const t = { byCause: {}, coord: 0, cost: 0, main: 0, agent: 0, compact: 0, compactions: 0, grokCompactions: 0, hypo: 0, hypoAgent: 0, agentCost: 0, list: 0, input: 0, cacheRead: 0, cacheSaved: 0, expiries: 0, turns: 0, output: 0, agentSec: 0, waitSec: 0, userSec: 0, added: 0, removed: 0 };
+  const t = { byCause: {}, coord: 0, cost: 0, main: 0, agent: 0, compact: 0, compactions: 0, grokCompactions: 0, hypo: 0, hypoAgent: 0, agentCost: 0, list: 0, input: 0, cacheRead: 0, cacheSaved: 0, expiries: 0, turns: 0, output: 0, agentSec: 0, waitSec: 0, userSec: 0, added: 0, removed: 0, starts: 0, startCost: 0, children: 0, short: 0, shortCost: 0 };
   for (const r of rows) {
     t.cost += r.Cost; t.list += r.PersonalCost ?? r.Cost; t.hypo += r.HypotheticalCost ?? r.Cost;
     t[r.Source] = (t[r.Source] || 0) + r.Cost;
@@ -260,6 +281,8 @@ function totals(rows) {
     t.turns += r.Turns || 0; t.output += r.OutputTokens || 0;
     t.agentSec += r.AgentSeconds || 0; t.waitSec += r.WaitSeconds || 0; t.userSec += r.UserSeconds || 0;
     t.added += r.LinesAdded || 0; t.removed += r.LinesRemoved || 0;
+    // The start of each session is on its first row only (costs.mjs startFacts), so each counts once.
+    if (r.Starts) { t.starts++; t.startCost += r.StartCost || 0; if (r.Child) t.children++; if (r.ShortChild) { t.short++; t.shortCost += r.StartCost || 0; } }
   }
   t.savings = t.hypo - t.cost; t.saveAgent = t.hypoAgent - t.agentCost; t.saveMain = t.savings - t.saveAgent;
   t.cacheEff = t.cacheRead / (t.input + t.cacheRead);
@@ -280,6 +303,7 @@ function renderCards(rows) {
     card('Hypothetical cost', money(t.hypo), `all on ${esc(R.baseline?.name || 'Opus')}, no routing`),
     card('Routing savings', money(t.savings), `agents ${money(t.saveAgent)} · sessions ${money(t.saveMain)}`, t.savings > 0 ? 'good' : ''),
     ...shiftCard(rows, card),
+    startCard(t, card),
     card('Cache efficiency', pct(t.cacheEff), `${money(t.cacheSaved)} saved`),
     card('Cache expiries', t.expiries.toLocaleString(), 'gaps longer than the cache'),
     card('Agent time', span(t.agentSec), 'working on your messages'),
@@ -300,6 +324,14 @@ function coordCard(t, card) {
     + (none >= 0.01 ? `<br>${money(none)} in rows with no cause recorded` : ''));
 }
 
+// What starting sessions cost: each one's first reply reading its instructions, tools and first message.
+function startCard(t, card) {
+  const title = "Each session's first reply: reading and caching its instructions, tools and first message (its brief, for a child). The output is left out: that is the work";
+  return card(`<span title="${esc(title)}">Start cost</span>`, money(t.startCost),
+    `${t.starts.toLocaleString()} session${t.starts === 1 ? '' : 's'} started${t.starts ? `, ${money(t.startCost / t.starts)} each` : ''}<br>`
+    + `${t.children} started by a session · ${t.short} of them short (${R.shortTurns || 2} turns or fewer), ${money(t.shortCost)}`);
+}
+
 // What Shift mode saved: its sessions' spend against the same tokens on their brand's top gear.
 function shiftCard(rows, card) {
   const s = SS ? SS.shiftTotals(rows, R.shift) : null;
@@ -314,23 +346,24 @@ function shiftCard(rows, card) {
 // ---------- charts (plain SVG) ----------
 const SERIES = {
   cum: [['hypo', 'Hypothetical', '--s-hypo', true], ['save', 'Savings', '--s-save'], ['actual', 'Actual', '--s-actual'], ['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['coord', 'Coordination', '--s-coord']],
-  day: [['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['hypo', 'Hypothetical', '--s-hypo'], ['expiry', 'Cache expiries', '--s-expiry']],
+  day: [['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['hypo', 'Hypothetical', '--s-hypo'], ['start', 'Start cost', '--s-start'], ['expiry', 'Cache expiries', '--s-expiry']],
 };
 // The daily bars' series: by source, or by cause (only the causes with spend in these rows), then the hypothetical and expiries.
 function daySeries(rows) {
   if (F.split !== 'cause') return SERIES.day;
   const has = new Set(rows.filter((r) => r.Cost).map(causeKey));
-  return [...CAUSES.map(([k, l, c]) => ['c-' + (k || 'none'), l, c]).filter(([k]) => has.has(k)), ...SERIES.day.filter(([k]) => ['hypo', 'expiry'].includes(k))];
+  return [...CAUSES.map(([k, l, c]) => ['c-' + (k || 'none'), l, c]).filter(([k]) => has.has(k)), ...SERIES.day.filter(([k]) => LINES.includes(k))];
 }
+const LINES = ['hypo', 'start', 'expiry']; // drawn over the bars, not stacked in them
 function dailyData(rows) {
   const [a, b] = rangeDates();
   const days = [];
   for (let d = new Date(a); dayStr(d) <= dayStr(b); d = addDays(d, 1)) days.push(dayStr(d));
-  const zero = () => ({ main: 0, agent: 0, compact: 0, hypo: 0, actual: 0, expiry: 0, coord: 0, ...Object.fromEntries(CAUSES.map(([k]) => ['c-' + (k || 'none'), 0])) });
+  const zero = () => ({ main: 0, agent: 0, compact: 0, hypo: 0, actual: 0, expiry: 0, coord: 0, start: 0, ...Object.fromEntries(CAUSES.map(([k]) => ['c-' + (k || 'none'), 0])) });
   const by = new Map(days.map((d) => [d, zero()]));
   for (const r of rows) {
     const x = by.get(r.Date); if (!x) continue;
-    x[r.Source] += r.Cost; x[causeKey(r)] += r.Cost; if (COORD.has(r.Cause)) x.coord += r.Cost; x.actual += r.Cost; x.hypo += r.HypotheticalCost ?? r.Cost; x.expiry += r.CacheExpiry || 0;
+    x[r.Source] += r.Cost; x[causeKey(r)] += r.Cost; if (COORD.has(r.Cause)) x.coord += r.Cost; x.actual += r.Cost; x.hypo += r.HypotheticalCost ?? r.Cost; x.expiry += r.CacheExpiry || 0; x.start += r.StartCost || 0;
   }
   return days.map((d) => ({ day: d, ...by.get(d) }));
 }
@@ -384,10 +417,10 @@ function renderCharts(rows) {
   hoverZones(cumSvg, cum, (d) => cumOn.map(([k, label, c]) => [label, c, `${money(d[k])} <span class="muted">(${sign(d.own[k])} that day)</span>`]),
     () => `(total since ${shortDay(cum[0].day)})`);
   legend($('cumLegend'), 'cum');
-  // each day: bars stacked, the hypothetical as a bar behind them, cache expiries as a line on the right axis
+  // each day: bars stacked, the hypothetical as a bar behind them, the start cost as a line, cache expiries as a line on the right axis
   const series = daySeries(rows);
-  const stack = series.filter(([k]) => !['hypo', 'expiry'].includes(k) && !hidden.has('d:' + k));
-  const showHypo = !hidden.has('d:hypo'), showExp = !hidden.has('d:expiry');
+  const stack = series.filter(([k]) => !LINES.includes(k) && !hidden.has('d:' + k));
+  const showHypo = !hidden.has('d:hypo'), showExp = !hidden.has('d:expiry'), showStart = !hidden.has('d:start');
   const dmax = niceMax(Math.max(0, ...data.map((d) => Math.max(stack.reduce((a, [k]) => a + d[k], 0), showHypo ? d.hypo : 0))));
   const emax = Math.max(4, Math.ceil(Math.max(0, ...data.map((d) => d.expiry)) / 4) * 4);
   s = axes(dmax, data.map((d) => d.day), showExp ? emax : 0);
@@ -402,6 +435,7 @@ function renderCharts(rows) {
       base += d[k];
     }
   });
+  if (showStart) s += `<polyline points="${data.map((d, i) => `${xAt(i, data.length)},${yAt(d.start, dmax)}`).join(' ')}" fill="none" stroke="${colorOf('--s-start')}" stroke-width="2"/>`;
   if (showExp) s += `<polyline points="${data.map((d, i) => `${xAt(i, data.length)},${yAt(d.expiry, emax)}`).join(' ')}" fill="none" stroke="${colorOf('--s-expiry')}" stroke-width="1.5"/>`;
   const daySvg = $('dayChart'); daySvg.setAttribute('viewBox', `0 0 ${W} ${H}`); daySvg.innerHTML = s;
   hoverZones(daySvg, data, (d) => series.filter(([k]) => !hidden.has('d:' + k)).map(([k, label, c]) => [label, c, k === 'expiry' ? d[k] : money(d[k])]));
@@ -418,7 +452,7 @@ document.addEventListener('click', (e) => {
 
 // ---------- the table ----------
 const sum = (rows) => totals(rows);
-const cells = (t) => `<td>${t.turns.toLocaleString()}</td><td>${tok(t.output)}</td><td>${pct(t.cacheEff)}</td><td>${money(t.cost)}</td><td>${span(t.agentSec)}</td><td>${span(t.waitSec)}</td><td>${span(t.userSec)}</td><td>${linesStr(t)}</td>`;
+const cells = (t) => `<td>${t.turns.toLocaleString()}</td><td>${tok(t.output)}</td><td>${pct(t.cacheEff)}</td><td>${money(t.cost)}</td><td title="${t.starts} started${t.short ? `, ${t.short} short children` : ''}">${t.starts ? money(t.startCost) : ''}</td><td>${span(t.agentSec)}</td><td>${span(t.waitSec)}</td><td>${span(t.userSec)}</td><td>${linesStr(t)}</td>`;
 const goneTag = (r) => (r.Gone ? `<span class="tag" title="${r.Gone === 'deleted' ? 'Deleted in Docket; its cost still counts' : 'Claude Code removed its log; its cost still counts'}">${esc(r.Gone)}</span>` : '');
 const sourceName = { main: 'Session', agent: 'Agents', compact: 'Compaction' };
 function groupBy(rows, key) { const m = new Map(); for (const r of rows) { const k = key(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); } return m; }
@@ -442,7 +476,7 @@ function sessionNodes(rows, level) {
 }
 function renderTable(rows) {
   nodeId = 0; lazy.clear();
-  const head = `<thead><tr><th>${F.view === 'tree' ? 'Desk › group › family › session' : F.view === 'conn' ? 'Connection › desk › group › session' : F.view === 'cause' ? 'What started the turn › session' : 'Title'}</th><th>Turns</th><th>Output</th><th>Cache eff</th><th>Cost</th><th title="Time working on your messages, waits on you taken out">Agent</th><th title="Time a turn stood waiting on you: a permission, a question, a plan">Wait</th><th title="Time you spent typing your messages">You</th><th title="Lines added and removed by the session's file edits">Lines</th></tr></thead>`;
+  const head = `<thead><tr><th>${F.view === 'tree' ? 'Desk › group › family › session' : F.view === 'conn' ? 'Connection › desk › group › session' : F.view === 'cause' ? 'What started the turn › session' : 'Title'}</th><th>Turns</th><th>Output</th><th>Cache eff</th><th>Cost</th><th title="What starting the sessions cost: each one's first reply reading its instructions, tools and first message (in Cost too)">Start</th><th title="Time working on your messages, waits on you taken out">Agent</th><th title="Time a turn stood waiting on you: a permission, a question, a plan">Wait</th><th title="Time you spent typing your messages">You</th><th title="Lines added and removed by the session's file edits">Lines</th></tr></thead>`;
   $('allWrap').style.display = F.view === 'raw' ? '' : 'none';
   document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === F.view));
   if (!rows.length) { $('table').innerHTML = '<div class="empty">No usage in this range.</div>'; return; }
@@ -495,7 +529,7 @@ $('table').addEventListener('click', (e) => {
     n?.remove();
   }
 });
-const RAW_COLS = ['Date', 'Brand', 'Client', 'Group', 'Title', 'Source', 'Cause', 'Model', 'Turns', 'OutputTokens', 'CacheRead', 'Cost', 'AgentSeconds', 'WaitSeconds', 'UserSeconds', 'LinesAdded', 'LinesRemoved'];
+const RAW_COLS = ['Date', 'Brand', 'Client', 'Group', 'Title', 'Source', 'Cause', 'Model', 'Turns', 'OutputTokens', 'CacheRead', 'Cost', 'StartCost', 'AgentSeconds', 'WaitSeconds', 'UserSeconds', 'LinesAdded', 'LinesRemoved'];
 function renderRaw(rows) {
   const cols = F.all ? [...new Set(rows.flatMap((r) => Object.keys(r)))] : RAW_COLS;
   const fmt = (c, v) => (typeof v === 'number' ? (/Cost|Saved/.test(c) ? money(v) : /Seconds$/.test(c) ? span(v) : c === 'LinesAdded' ? `<span class="ln-add">${v.toLocaleString()}</span>` : c === 'LinesRemoved' ? `<span class="ln-del">${v.toLocaleString()}</span>` : v.toLocaleString()) : c === 'Client' ? esc(companyName(v)) : c === 'Model' ? esc(R.models[v] || v) : esc(v));
@@ -633,6 +667,9 @@ function renderHelp(rows) {
   <details class="help"><summary>Coordination cost, and what started each turn</summary>
     <p>A turn runs from one message into a session to the next, and each row says what that message was (its <b>cause</b>): one of your messages, the <b>brief</b> a session was started with, work another session <b>sent</b> it, a <b>report</b> from a session it started, a <b>notice</b> from Docket, or a <b>background task</b> reporting back. Helper agents count in the turn they ran in, and so does a compaction.</p>
     <p>The <b>coordination cost</b> is what sessions cost each other beyond the work itself: turns woken by a report from a session they started (with whatever they then did in that turn, so a report that unblocked real work counts in full), including those that ended in report_quiet (news only), and Docket's notes about a session's sessions ("now reports to you", "started your proposal"). Briefs and sent work are the work, so they are left out. Rows kept from before causes were recorded (their logs are gone), and Codex and Grok rows, have no cause.</p></details>
+  <details class="help"><summary>Start cost, and short children</summary>
+    <p>Every session starts by reading Docket's and the desk's instructions, the tools it may call and its first message, and putting them in the cache. The <b>start cost</b> is what that first reply cost, its output left out (that is the work); it is part of the cost above, not on top of it. A session another session started (a <b>child</b>) has its brief as its first message.</p>
+    <p>A <b>short child</b> is one that took ${R.shortTurns || 2} turns or fewer, so starting it may have cost more than doing the work in the session that started it. A desk whose children are mostly short can turn splitting off (its Inspector, under Switches), and Docket offers that in a card when last week's short children cost enough. Sessions from before this was recorded show no start.</p></details>
   <details class="help"><summary>Routing savings</summary>
     <p>Your own turns usually run on ${name}. Helper agents and some steps run on cheaper models such as Sonnet or Haiku. The <b>hypothetical cost</b> prices all of that work as if it had run on ${name} instead (${per(b.input)} per million tokens read, ${per(b.output)} per million written). The <b>routing savings</b> are the difference: what sending work to cheaper models saved. Work already on an Opus model keeps its own price. Work on a dearer model than ${name}, such as Fable, counts against the savings, so they can go below zero.</p></details>
   <details class="help"><summary>Shift savings</summary>
@@ -665,11 +702,94 @@ function renderHelp(rows) {
   <p class="muted" style="font-size:12px;margin:8px 0 0">Prices are Anthropic's API list prices from Docket's pricing.json, with Bedrock's regional rate where a reply went through Bedrock. A Claude subscription is billed flat, so for those accounts this is what the same use would cost on the API. Codex sessions use OpenAI's API list prices; a ChatGPT sign-in is billed flat too, so for those this is the API value. Codex logs its compaction calls, so they are counted, not estimated, and its approval reviewer shows as Agents. Deleted sessions, and sessions whose log Claude Code removed, still count and are marked.</p>`;
 }
 
+// ---------- activity (#805) ----------
+// How many sessions were working, waiting on their children or a background job, waiting on you, or idle, from the
+// 5-minute slots Docket keeps (activity.mjs, the same sums the session list's footer reads). Slots are counted per
+// desk over every brand, so the desk and dates apply here and the other filters do not.
+const ASTATES = [['w', 'Working', '--run', 1], ['c', 'Waiting on children / background', '--run', 0.4], ['n', 'Waiting on you', '--warn', 1], ['i', 'Idle (live)', '--ok', 0.45]];
+let A = null, AM = null, aAsk = 0, aScrolled = false;
+async function loadActivity() {
+  const ask = ++aAsk;
+  AM ||= await import('/activity.mjs').catch(() => null);
+  const [a, b] = rangeDates().map(dayStr), today = dayStr(new Date()), heatFrom = dayStr(addDays(new Date(), -27));
+  const q = new URLSearchParams({ client: F.company, from: a < heatFrom ? a : heatFrom, to: b > today ? b : today });
+  let r = null; try { const res = await fetch('/api/activity?' + q); if (res.ok) r = await res.json(); } catch {}
+  if (ask !== aAsk) return;
+  A = r; renderActivity();
+  if (!aScrolled && location.hash === '#activity') { aScrolled = true; $('activity').scrollIntoView({ block: 'start' }); } // the footer's link
+}
+const aWhen = (t, oneDay) => oneDay ? t.slice(11, 16) : `${shortDay(t.slice(0, 10))}, ${t.slice(11, 16)}`;
+const aFill = (c, o) => `fill:var(${c});fill-opacity:${o}`;
+function renderActivity() {
+  $('actKey').innerHTML = ASTATES.map(([, l, c, o]) => `<span><i style="--c:color-mix(in srgb, var(${c}) ${o * 100}%, transparent)"></i>${l}</span>`).join('')
+    + '<span><i class="hatch"></i>Rebuilt from transcripts (working only)</span>';
+  if (!A || !AM) { $('actTiles').innerHTML = '<div class="empty">Could not load the activity slots.</div>'; $('actBands').innerHTML = ''; $('actHeat').innerHTML = ''; return; }
+  const [a, b] = rangeDates().map(dayStr), oneDay = a === b;
+  const all = AM.sumDesks(A.lines), lines = all.filter((l) => l.t.slice(0, 10) >= a && l.t.slice(0, 10) <= b);
+  const t = AM.tiles(lines);
+  const card = (k, v, s) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  $('actTiles').innerHTML = [
+    card('Peak working', t.peak, t.peakAt ? 'at ' + aWhen(t.peakAt, oneDay) : 'none in these dates'),
+    card('Avg working (8–18)', t.dayAvg, oneDay ? 'sessions at once, 08:00 to 18:00' : 'sessions at once, 08:00 to 18:00, per day with any'),
+    card('Time with ≥1 working', span(t.busyMin * 60), 'at least one session working'),
+    card('Waiting on you, avg', t.waitAvg, t.waitPeak ? `peak ${t.waitPeak} at ${aWhen(t.waitPeakAt, oneDay)}` : 'while sessions were live'),
+  ].join('');
+  renderBands(lines, a, b);
+  renderHeat(AM.heat(all, dayStr(new Date())));
+  $('actNote').textContent = (A.rebuilding ? 'Past days are being rebuilt from the Claude transcripts; reload in a minute or two. '
+    : A.rebuilt ? 'Hatched slots, from before Docket began counting, are rebuilt from the Claude transcripts: working only, each turn from its prompt to its last reply. ' : '')
+    + (F.company ? '' : 'All desks added up: peaks add, so they are the most there could have been at once. ')
+    + 'Counted per desk over every brand, so the brand, connection, group and session filters do not apply here.';
+}
+// The day (or range) as stacked bands: a bar per 5-minute slot, or per hour over more than two days.
+function renderBands(lines, a, b) {
+  const svg = $('actBands'), start = new Date(a + 'T00:00:00').getTime(), end = addDays(new Date(b + 'T00:00:00'), 1).getTime();
+  const days = Math.round((end - start) / 86400000), hourly = days > 2, step = (hourly ? 60 : 5) * 60000, BH = 200;
+  const data = hourly ? AM.toHours(lines) : lines;
+  const x = (ms) => PAD.l + (W - PAD.l - PAD.r) * (ms - start) / (end - start);
+  const y = (v, max) => PAD.t + (BH - PAD.t - PAD.b) * (1 - v / max);
+  const total = (l) => ASTATES.reduce((s, [k]) => s + (l[k]?.[1] || 0), 0);
+  const max = niceMax(Math.max(1, ...data.map(total)));
+  let s = '<defs><pattern id="aHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="2" height="5" style="fill:var(--run)"/></pattern></defs>';
+  for (let i = 0; i <= 4; i++) { const v = max * i / 4, yy = y(v, max); s += `<line class="grid" x1="${PAD.l}" x2="${W - PAD.r}" y1="${yy}" y2="${yy}"/><text x="${PAD.l - 6}" y="${yy + 4}" text-anchor="end">${+v.toFixed(1)}</text>`; }
+  if (days <= 2) for (let h = 0; h <= days * 24; h += 3) s += `<text x="${x(start + h * 3600000)}" y="${BH - 6}" text-anchor="middle">${String(h % 24).padStart(2, '0')}:00</text>`;
+  else { const every = Math.max(1, Math.ceil(days / 10)); for (let i = 0; i < days; i += every) { const d = addDays(new Date(a + 'T12:00:00'), i); s += `<text x="${x(new Date(dayStr(d) + 'T12:00:00').getTime())}" y="${BH - 6}" text-anchor="middle">${shortDay(dayStr(d))}</text>`; } }
+  for (const l of data) {
+    const x0 = x(AM.slotStart(l.t)), w = Math.max(0.5, x(AM.slotStart(l.t) + step) - x0);
+    let base = 0;
+    for (const [k, , c, o] of ASTATES) {
+      const v = l[k]?.[1] || 0; if (!v) continue;
+      s += `<rect x="${x0.toFixed(1)}" width="${w.toFixed(2)}" y="${y(base + v, max).toFixed(1)}" height="${(y(base, max) - y(base + v, max)).toFixed(1)}" style="${l.r && k === 'w' ? 'fill:url(#aHatch)' : aFill(c, o)}"/>`;
+      base += v;
+    }
+  }
+  const now = Date.now();
+  if (now >= start && now < end) s += `<line x1="${x(now)}" x2="${x(now)}" y1="${PAD.t}" y2="${BH - PAD.b}" style="stroke:var(--accent)" stroke-dasharray="3 3"/><text x="${x(now) + 4}" y="${PAD.t + 10}" style="fill:var(--accent)">now</text>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${BH}`); svg.innerHTML = s;
+  const byT = new Map(data.map((l) => [l.t, l]));
+  svg.onmousemove = (e) => {
+    const r = svg.getBoundingClientRect(), ms = start + ((e.clientX - r.left) / r.width * W - PAD.l) / (W - PAD.l - PAD.r) * (end - start);
+    if (ms < start || ms >= end) { $('tip').style.display = 'none'; return; }
+    const t = hourly ? AM.slotKey(ms).slice(0, 13) + ':00' : AM.slotKey(ms), l = byT.get(t), tip = $('tip');
+    tip.innerHTML = `<b>${days > 1 ? shortDay(t.slice(0, 10)) + ', ' : ''}${t.slice(11, 16)}${hourly ? ' (the hour)' : ''}</b>${l?.r ? ' <span class="muted">rebuilt</span>' : ''}`
+      + (l ? ASTATES.filter(([k]) => l[k]).map(([k, label, c]) => `<div><span><i style="--c:var(${c})"></i>${label}</span><span>${l[k][1]} <span class="muted">(peak ${l[k][0]})</span></span></div>`).join('') : '<div><span class="muted">Nothing live</span></div>');
+    tip.style.display = 'block';
+    tip.style.left = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = e.clientY + 14 + 'px';
+  };
+  svg.onmouseleave = () => { $('tip').style.display = 'none'; };
+}
+// The average working by hour and weekday over the last four weeks, darker for busier.
+function renderHeat(cells) {
+  const top = Math.max(1, ...cells.flat()), names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  $('actHeat').innerHTML = '<div></div>' + Array.from({ length: 24 }, (_, h) => `<div style="text-align:center">${h % 3 ? '' : h}</div>`).join('')
+    + cells.map((row, d) => `<div>${names[d]}</div>` + row.map((v, h) => `<div class="c" title="${names[d]} ${String(h).padStart(2, '0')}:00 · avg ${v} working" style="background:color-mix(in srgb, var(--run) ${Math.round(v / top * 100)}%, var(--panel-2))"></div>`).join('')).join('');
+}
+
 // ---------- drawing it all ----------
 function render(closePick = true) {
   fillFilters();
   const rows = filtered();
-  renderCards(rows); renderCharts(rows); renderTable(rows); renderHelp(rows);
+  renderCards(rows); renderCharts(rows); renderTable(rows); renderHelp(rows); loadActivity();
   if (!$('pickMenu').hidden && !closePick) renderPick(); else { $('pickMenu').hidden = true; renderPick(); }
 }
 async function load() {

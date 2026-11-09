@@ -40,6 +40,17 @@ export function parentGear(childBrand, parentBrand, parentModel) {
   const cg = gearsOf(childBrand);
   return cg[Math.max(0, cg.length - (pg.length - i))].id;
 }
+// A lower gear the parent chose (start_session's start_gear, #801): the gear a Shift child is held on, or null.
+// gearBy: 'parent' on the child's record when its parent picked a start gear below the top; the hold ends when the
+// child is on its top gear (a parent's raise also clears gearBy). The child never picks or raises its own gear
+// (#635): while held it stays there, Docket does not raise it on a first edit, and its parent checks its result harder.
+export function parentHeldGear({ settings, brand, gear, gearBy }) {
+  if (gearBy !== 'parent' || settings?.model !== 'shift') return null;
+  const g = findGear(brand, gear);
+  return g && g.id !== topGearOf(brand).id ? g : null;
+}
+// Whether a start gear a parent asked for is below the top one, so the child is marked gearBy 'parent'.
+export const belowTop = (brand, name) => { const g = findGear(brand, name); return !!g && g.id !== topGearOf(brand).id; };
 // The settings a session runs with: a new one given no model is in Shift; one picked up again (resumed, or with saved
 // settings) keeps its saved model, the account default ('') included. asked: what was sent, already cleaned.
 export function sessionSettings(saved, asked = {}, resumed = false) {

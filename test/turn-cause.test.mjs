@@ -107,6 +107,5 @@ test('rows are per session, day, agent, model and cause, and add up to the same 
   assert.equal(rows.reduce((a, r) => a + r.Turns, 0), replies);
   assert.ok(all > 0 && Math.abs(all - cost(() => true)) < 1e-9);
   assert.equal(rows.filter((r) => r.Agents).length, 1, 'per-session counts stay on one row');
-  assert.equal(CSV_COLUMNS.at(-1), 'Cause', 'the new column goes last, so readers by position still work');
-  assert.equal(CSV_COLUMNS.at(-2), 'Connection');
+  assert.deepEqual(CSV_COLUMNS.slice(-6), ['Connection', 'Cause', 'Starts', 'StartCost', 'Child', 'ShortChild'], 'new columns go last, so readers by position still work');
 });

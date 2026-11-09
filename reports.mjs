@@ -233,8 +233,9 @@ export function turnNewsFor({ notice = '', message = '', done = false } = {}) {
 }
 // Whether a finished child turn is only news. cause: its turnNews ('' when nothing marked it), or 'quiet'.
 // lastOpen: no other session the parent waits on is still working or waiting on the person.
-export function reportIsNews({ cause = '', error = false, lastOpen = false } = {}) {
-  if (error || !cause) return false;
+// lowGear: the child ran on a lower gear its parent chose (#801), whose result the parent checks: never news.
+export function reportIsNews({ cause = '', error = false, lastOpen = false, lowGear = false } = {}) {
+  if (error || !cause || lowGear) return false;
   if (cause === 'agreed' && lastOpen) return false;
   return true;
 }
@@ -250,6 +251,12 @@ export function heldNewsText(news = []) {
   if (!news.length) return '';
   const lines = news.map((r) => `- "${r.title}" (id ${r.childId}) finished a turn: ${r.text}`);
   return `(From Docket: while you were not working, these sessions you started reported news only, so Docket left it in your chat instead of waking you. Nothing to do about it unless it changes what you are doing.\n${lines.join('\n')})`;
+}
+
+// What a report from a child held on a lower gear its parent chose adds (#801): gear, top: gear names.
+export function lowGearNote(gear, top) {
+  if (!gear) return '';
+  return `It ran on ${gear}, the lower gear you chose for it, so check its result more closely than its summary: the actual diff, test output or files. If it is weak or wrong, send the work again with send_to_session and gear set to ${top}, rather than patching it on the low gear.`;
 }
 
 // Children that finish close together share one wake-up: an idle session's reports wait until none has come for

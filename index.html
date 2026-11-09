@@ -722,6 +722,8 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 #setupOffer .b button { white-space: nowrap; }
 #setupOffer ul, #setupOffer .d, #setupOffer .b { grid-column: 2; }
 #setupOffer ul { margin: 2px 0 0; padding-left: 18px; font-size: 13px; overflow-wrap: anywhere; }
+/* The start-cost card (#802) is the same card again. */
+#startOffer .b button { white-space: nowrap; }
 /* The plan system card (#180) waits while the cache offer holds the corner. */
 #planOffer .b button { white-space: nowrap; }
 #cacheOffer:not([hidden]) + #planOffer { display: none; }
@@ -773,6 +775,12 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 .mu-row span + span { text-align: right; color: var(--muted); } .mu-row span:last-child { color: var(--text); }
 .mu-row.sub span:first-child { padding-left: 16px; color: var(--muted); }
 .mu-row.total { font-weight: 600; }
+.mu-row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mu-l2 > span:first-child, .mu-note.mu-l2 { padding-left: 18px; } .mu-l3 > span:first-child { padding-left: 40px; color: var(--muted); }
+.mu-fold { border: 0; background: none; color: inherit; font: inherit; padding: 0 4px; margin-left: -4px; border-radius: 8px; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.mu-fold:hover { background: var(--panel-2); }
+.mu-fold[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+.mu-arrow { display: inline-block; width: 1em; transition: transform .15s; } .mu-fold[aria-expanded="true"] .mu-arrow { transform: rotate(90deg); }
 .mu-note { margin-top: 8px; font-size: 12px; color: var(--muted); } .mu-note button { font-size: 12px; padding: 0 4px; }
 /* ☰ > Bring in past sessions */
 .bi-run { display: flex; gap: 10px; align-items: center; } .bi-run span { flex: 1; }
@@ -1015,7 +1023,7 @@ body.resizing.rows { cursor: row-resize; }
 .err-text { color: var(--bad); font-size: 13px; }
 .browser-box { border-top: 1px solid var(--line); padding: 10px 14px 12px; font-size: 12px; }
 /* the bottom line: today's cost */
-.side-foot { display: flex; align-items: center; border-top: 1px solid var(--line); }
+.side-foot { display: flex; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--line); }
 /* the remote icon in the top bar while a remote connection is on */
 .rc-wrap { position: relative; display: flex; }
 .rc-wrap[hidden] { display: none; }
@@ -1029,6 +1037,16 @@ header.top .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
 .today-spend b { color: var(--text); font-weight: 600; } .today-spend .ln { white-space: nowrap; }
 .today-spend.near, .today-spend.near b { color: var(--warn); }
 .today-spend.over, .today-spend.over b { color: var(--bad); font-weight: 600; }
+/* under it, session activity (#805): the live counts by dot color, then today's working line; a link, like the spend */
+.act-line { flex: 1 0 100%; display: flex; align-items: center; gap: 10px; border: none; border-radius: 0; background: none; padding: 6px 14px; font-size: 12px; color: var(--muted); cursor: pointer; min-width: 0; }
+.act-line[hidden] { display: none; }
+.today-spend:not([hidden]) + .act-line { border-top: 1px solid var(--line); }
+.act-line:hover { background: var(--panel-2); }
+.act-line .cnt { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.act-line .cnt b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.act-line .ad { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.act-line .ad.w { background: var(--run); } .act-line .ad.n { background: var(--warn); } .act-line .ad.i { background: var(--ok); }
+.act-line svg { flex: 1; height: 22px; min-width: 60px; display: block; }
 .browser-box .bh { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 13px; }
 .browser-box .sites { color: var(--muted); margin: 4px 0 8px; line-height: 1.4; }
 .browser-box .btns { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1352,7 +1370,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     <div class="pick-bar" id="pickBar" hidden></div>
     <div class="list" id="list"></div>
     <div class="browser-box" id="browserBox"></div>
-    <div class="side-foot"><button class="today-spend" id="todaySpend" data-tip="today-spend" hidden></button></div>
+    <div class="side-foot"><button class="today-spend" id="todaySpend" data-tip="today-spend" hidden></button><button class="act-line" id="activity" data-tip="activity" hidden></button></div>
   </aside>
   <main>
     <section class="preview" id="preview" hidden aria-label="File preview">
@@ -1417,6 +1435,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="install-offer" id="cacheOffer" role="dialog" aria-labelledby="cacheOfferTitle" hidden></div>
 <div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
 <div class="install-offer" id="setupOffer" role="dialog" aria-labelledby="setupOfferTitle" hidden></div>
+<div class="install-offer" id="startOffer" role="dialog" aria-labelledby="startOfferTitle" hidden></div>
 <div class="install-offer" id="updateOffer" role="dialog" aria-labelledby="updateOfferTitle" hidden></div>
 </div>
 <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Larger view of the image" hidden><img id="lbImg" alt=""><button class="lb-close" id="lbClose" data-tip="lb-close" aria-label="Close">✕</button><button class="lb-prev" id="lbPrev" data-tip="lb-prev" aria-label="Previous image">‹</button><button class="lb-next" id="lbNext" data-tip="lb-next" aria-label="Next image">›</button><div class="lb-count" id="lbCount"></div></div>
@@ -1543,6 +1562,7 @@ const HELP = [
     ['show-empty', '👁 > Show empty groups', 'Show empty groups: list groups that have no sessions too', 'Groups with no sessions are listed too. Turn it off to hide them.'],
     ['group-head', 'A group header', 'Click to fold or unfold the group. Drag it to change the order. Right-click to rename it, set its start folder, archive or delete it.'],
     ['today-spend', 'Today $… / $… · … agent · … you · +… / −…', 'What this desk has spent today at API prices, against its daily budget if it has one (set in ☰ > Desks). Amber from 80% of the budget, red at 100%. Then the time its sessions spent working (agent) and the time you spent typing to them (you), each added up over every session; the time they stood waiting on you is in the hover text. Last, the lines their file edits added (green) and removed (red) today, the same as the Lines column on the Usage page. Click to open Usage for today.'],
+    ['activity', '● 3 ● 1 ● 9 and a line', 'This desk\'s live sessions by the color of their dot: blue working, orange waiting on you, green idle. Then a line of how many were working through today, midnight to now, in 5-minute steps. The hover text says today\'s peak and how long at least one was working. Click to open Usage › Activity, with the day by state and a week\'s busy hours.'],
     ['resize-left', 'The list\'s edge', 'Drag to make the session list wider or narrower. Double-click to reset.'],
     ['resize-compose', 'The typing box\'s top edge', 'Drag up to make the typing box taller, down to make it shorter. Double-click to go back to the automatic size.'],
     ['sign-in', 'Sign in', 'Sign this desk in. Sessions for it can\'t run until it is.'],
@@ -1747,6 +1767,7 @@ const HELP = [
     ['menu-usage', 'Gauges > AI Usage', 'What the AI has cost, by day, account, desk, group and session, with charts (opens in its own window)'],
     ['menu-machine', 'Gauges > Memory and Disk', 'How much memory Docket and its sessions use right now, and how much disk space its folders take'],
     ['mu-again', 'Refresh', 'Memory and disk: measure the folder sizes again now, instead of showing the last measurement'],
+    ['mu-fold', 'Show or hide', 'Memory and disk: show or hide the programs counted in this line'],
     ['menu-helps', 'Help', 'The Key, the Instructions, and the tour of the page'],
     ['menu-key', 'Help > Key', 'What the dots, colors and sounds mean'],
     ['menu-help', 'Help > Instructions', 'What every button and symbol does (shortcut: ?)'],
@@ -1840,6 +1861,9 @@ const HELP = [
     ['cache-never', 'Never', 'Never ask about this desk\'s prompt cache again'],
     ['setup-start', 'Start a session', 'Start a session on this desk that backs up its setup, proposes each cut with the tokens it saves, asks you about each one and changes only what you approve'],
     ['setup-later', 'Not now', 'Ask again in 30 days, or sooner if the setup grows noticeably'],
+    ['start-apply', 'Turn splitting off', "This desk's new sessions do the work in place, and start a session only when you ask for one. Turn it back on in the desk's Inspector, under Switches"],
+    ['start-usage', 'See AI Usage', "This desk's last week in Gauges > AI Usage, with the start cost of each session"],
+    ['start-later', 'Not now', 'Ask again in 30 days if most child sessions are still short'],
     ['plan-yes', 'OK', 'Keep Docket\'s plans on for this desk. Change it later in the desk\'s Inspector, under Switches'],
     ['ro-on', 'Turn it on', 'Draw the reason icon in place of the dot on rows that need you, on this desk. Ticked, the word stays on the right too; unticked, there is no column. Change it any time in 👁 > Reason tags'],
     ['ro-words', 'Keep the word on the right too', 'Ticked: the reason word stays in its column on the right as well (Words). Unticked: only the icon at the dot, and no column (Off)'],
@@ -2165,7 +2189,8 @@ const kidsNamed = (s) => {
 };
 // The label on a row that needs you, and its tooltip (#671).
 const NEED_TIPS = { question: 'It asked you something: a question, a permission prompt or a card waits on you', problem: 'Its last turn ended in an error', merge: 'Its pull request is open and waiting on you', done: 'It says its work is complete and ready to close', reply: 'A finished reply to read' };
-const openPR = (id) => (S.prs[id] || []).some((p) => ['open', 'conflict'].includes(prState(p)));
+// Only a pull request the session made or pushed to (mine, #807): one it only reviews is listed, but never says merge.
+const openPR = (id) => (S.prs[id] || []).some((p) => p.mine && ['open', 'conflict'].includes(prState(p)));
 // 👁 > Reason tags (#686): words, icons or off (S.reasonTags, icons by default since #695). An error gets none: its dot has a red ring
 // and its time says "error" already.
 const NEED_SVG = 'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
@@ -2400,7 +2425,7 @@ function selectClient(id, openId) {
   showAccent();
   S.picked.clear(); S.pickAnchor = null; S.pickMsg = ''; renderPickBar();
   const c = S.clients.find((x) => x.id === id);
-  showSignin(); renderBrowser(); refreshSpend();
+  showSignin(); renderBrowser(); refreshSpend(); refreshActivity();
   renderClients(); renderList(); refreshPRs(); loadShells(); // the AI programs differ by desk
   if (c?.remote && !c.remote.connected) { newDraft(); $('list').querySelector(`[data-rd-code="${id}"]`)?.focus(); return; } // connect it first
   if (S.mode === 'schedules') { setMode(openId ? 'sessions' : 'schedules', openId); return; }
@@ -2556,6 +2581,50 @@ function renderSpend(r) {
   el.hidden = false;
 }
 setInterval(() => refreshSpend(), 60000);
+// ---------- session activity (#805) ----------
+// Under today's spend: the desk's live sessions by the color of their dot (working, waiting on you, idle), then a line
+// of how many worked through today, midnight to now. The counts come from the list itself, so they move with the
+// dots; the line is the app's 5-minute slots, asked for once a minute.
+const ACT_STATE = { running: 'w', starting: 'w', background: 'c', childwait: 'c', childnews: 'c', asking: 'n', needs: 'n', failed: 'n', idle: 'i', resting: 'i' };
+let actDay = null; // the app's { day, slots, peak, peakAt, busyMin } for the desk in view
+let actTimer = null;
+function refreshActivity(delay = 0) {
+  clearTimeout(actTimer);
+  actTimer = setTimeout(async () => {
+    const id = S.client; if (!id || S.clients.find((c) => c.id === id)?.remote) { actDay = null; drawActivity(); return; }
+    const d = new Date(), day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    let r; try { r = await api(`/api/activity/today?client=${encodeURIComponent(id)}&day=${day}`); } catch { return; }
+    if (id === S.client) { actDay = r; drawActivity(); }
+  }, delay);
+}
+setInterval(() => refreshActivity(), 60000);
+// Today's working line: the average working in each 5-minute slot, midnight to now, with a dashed mark at noon.
+function actSpark(day) {
+  const W = 200, H = 22, N = 288, now = new Date(), upTo = Math.floor((now.getHours() * 60 + now.getMinutes()) / 5);
+  const v = Array(upTo + 1).fill(0);
+  for (const s of day?.slots || []) { const i = (+s.t.slice(11, 13) * 60 + +s.t.slice(14, 16)) / 5; if (i <= upTo) v[i] = s.w; }
+  const max = Math.max(1, ...v), xy = v.map((n, i) => [(i / (N - 1)) * W, H - 1 - (n / max) * (H - 3)]);
+  const d = 'M' + xy.map((p) => p.map((n) => n.toFixed(1)).join(',')).join('L');
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><line x1="${W / 2}" x2="${W / 2}" y1="0" y2="${H}" stroke="var(--line)" stroke-dasharray="2 2"/>`
+    + `<path d="${d}L${xy.at(-1)[0].toFixed(1)},${H}L0,${H}Z" fill="var(--run)" opacity=".18"/><path d="${d}" fill="none" stroke="var(--run)" stroke-width="1.4" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function drawActivity() {
+  const el = $('activity'), c = S.clients.find((x) => x.id === S.client);
+  if (!c || c.remote) { el.hidden = true; return; }
+  const n = { w: 0, c: 0, n: 0, i: 0 };
+  for (const s of Object.values(S.live)) if (s.client === S.client && s.live) { const k = ACT_STATE[dotClass(s)]; if (k) n[k]++; }
+  const key = JSON.stringify([n, actDay?.day, actDay?.slots?.length, actDay?.slots?.at(-1), Math.floor(Date.now() / 300000)]);
+  if (el.dataset.key === key && !el.hidden) return; // the list draws often; the footer only when something moved
+  el.dataset.key = key;
+  const cnt = (k, v) => `<span class="cnt"><span class="ad ${k}"></span><b>${v}</b></span>`;
+  el.innerHTML = cnt('w', n.w) + cnt('n', n.n) + cnt('i', n.i) + actSpark(actDay);
+  const at = (t) => t ? t.slice(11, 16) : '';
+  el.title = `Now: ${n.w} working, ${n.n} waiting on you, ${n.i} idle${n.c ? `, ${n.c} waiting on child sessions or a background job` : ''}.`
+    + (actDay?.peak ? `\nToday: peak ${actDay.peak} working at ${at(actDay.peakAt)} · at least one working for ${spanText(actDay.busyMin * 60)}.` : '\nToday: nothing has worked yet.')
+    + (actDay?.slots?.some((s) => s.r) ? '\nThe hours before tracking began are rebuilt from the transcripts.' : '')
+    + '\nClick to open Usage › Activity for today.';
+  el.hidden = false;
+}
 const tokCount = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n);
 let costTimer = null;
 function refreshCost(id = S.selected) {
@@ -4539,6 +4608,7 @@ document.addEventListener('click', async (e) => {
   catch (err) { tell(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
 });
 function renderList() {
+  drawActivity(); // the footer's live counts follow the dots
   if (menuHold(renderList)) return; // waits while a menu is open (menu hold)
   pruneBoxes();
   if (S.plans.client !== S.client) loadPlans();
@@ -5474,6 +5544,7 @@ function machineHtml(r) {
     h += m.rows.map((x) => row(x.label, x.label === 'Docket app' || x.label === 'Session runner' ? (x.count ? '' : 'not running') : countText(x.count, 'program', 'programs'), x.count ? sizeText(x.mem) : '')).join('');
     h += row('Docket and its sessions in all', '', sizeText(m.total), 'total');
     h += row('Free on this computer', `of ${sizeText(m.size)}`, sizeText(m.free), 'total');
+    if (r.breakdown) h += breakdownHtml(r.breakdown);
   }
   h += '<h3>Disk</h3>';
   const d = r.disk;
@@ -5492,6 +5563,43 @@ function machineHtml(r) {
   h += `<div class="mu-note">${r.counting ? `Measuring now… showing the sizes from ${at} until it finishes.` : `Folder sizes measured ${agoText(d.at)} (${at}). Measured again every ${r.everyMinutes} minutes.`} <button class="ghost" id="muAgain"${r.counting ? ' disabled' : ''}${tip('mu-again')}>${r.counting ? 'Measuring…' : 'Refresh'}</button></div>`;
   return h;
 }
+// The breakdown under the totals: sessions, what they share, and test copies and leftovers, each a row that opens
+// (a link, DESIGN.md) to one line per thing, and a session or folder to the programs in it. CPU is each line's share
+// of the computer since the listing before. What is open stays open when the window loads again (Refresh).
+const muOpen = new Set();
+function breakdownHtml(b) {
+  const cpu = (x) => x.cpu == null ? '' : `${x.cpu}% CPU`;
+  const fold = (key, label, x, lvl, title = '') => `<div class="mu-row mu-l${lvl}"${title ? ` title="${esc(title)}"` : ''}><span><button class="mu-fold" data-fold="${esc(key)}" aria-expanded="${muOpen.has(key)}"${tip('mu-fold')}><span class="mu-arrow">▸</span>${esc(label)}</button></span><span>${esc(cpu(x))}</span><span>${x.mem ? esc(sizeText(x.mem)) : ''}</span></div>`;
+  const leaf = (label, x, lvl, title = '') => `<div class="mu-row mu-l${lvl}"${title ? ` title="${esc(title)}"` : ''}><span>${esc(label)}</span><span>${esc(cpu(x))}</span><span>${x.mem ? esc(sizeText(x.mem)) : ''}</span></div>`;
+  const inside = (key, html) => `<div class="mu-in" data-in="${esc(key)}"${muOpen.has(key) ? '' : ' hidden'}>${html}</div>`;
+  const programs = (n) => countText(n, 'program', 'programs');
+  const PROGRAM = { claude: 'Claude program', grok: 'Grok program', codex: 'Codex program' };
+  const parts = (key, x) => inside(key, x.parts.map((p) => leaf(`${PROGRAM[p.label] || p.label} (${programs(p.count)})`, p, 3)).join(''));
+  const sum = (xs) => ({ mem: xs.reduce((a, x) => a + x.mem, 0), cpu: xs.some((x) => x.cpu != null) ? xs.reduce((a, x) => a + (x.cpu || 0), 0) : null });
+  let h = '<h3>Where it goes</h3>';
+  const ses = [...b.sessions, ...(b.unmatched ? [b.unmatched] : [])];
+  h += fold('sessions', `Sessions (${b.sessions.length})`, sum(ses), 1);
+  h += inside('sessions', b.sessions.map((s) => fold('s:' + s.id, `${s.title || 'A session that has closed'}${s.desk ? ' · ' + s.desk : ''}`, s, 2, s.title) + parts('s:' + s.id, s)).join('')
+    + (b.unmatched ? fold('s:none', 'Not matched to a session', b.unmatched, 2) + parts('s:none', b.unmatched) : '')
+    + (ses.length ? '' : '<div class="mu-note mu-l2">No session is running.</div>'));
+  const deskOf = (x) => x.desks.length ? ` (${x.desks.join(', ')})` : '';
+  const sharedLabel = (x) => x.kind === 'browser' ? `Private browser${deskOf(x)}` : x.kind === 'mcp' ? `${x.name.charAt(0).toUpperCase() + x.name.slice(1)}${deskOf(x)}` : x.name;
+  h += fold('shared', 'Shared by sessions', sum(b.shared), 1);
+  h += inside('shared', b.shared.map((x) => leaf(`${sharedLabel(x)} (${programs(x.count)})`, x, 2)).join('') || '<div class="mu-note mu-l2">Nothing shared is running.</div>');
+  h += fold('left', `Test copies and leftovers${b.leftovers.length ? ` (${countText(b.leftovers.length, 'folder', 'folders')})` : ''}`, sum(b.leftovers), 1,
+    'Docket programs from other folders: test copies and anything left running. Not in the total above.');
+  h += inside('left', b.leftovers.map((g) => fold('l:' + g.folder, g.folder, g, 2, g.folder) + parts('l:' + g.folder, g)).join('') || '<div class="mu-note mu-l2">None running.</div>');
+  return h;
+}
+// Opening and closing a row of the breakdown, kept in muOpen.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest?.('.mu-fold'); if (!b) return;
+  const key = b.dataset.fold, open = !muOpen.has(key);
+  if (open) muOpen.add(key); else muOpen.delete(key);
+  b.setAttribute('aria-expanded', open);
+  const box = [...b.closest('.mu').querySelectorAll('.mu-in')].find((x) => x.dataset.in === key);
+  if (box) box.hidden = !open;
+});
 const agoText = (at) => { const m = Math.round((Date.now() - at) / 60000); return m < 1 ? 'just now' : m === 1 ? 'a minute ago' : m < 120 ? m + ' minutes ago' : Math.round(m / 60) + ' hours ago'; };
 async function showMachineUse() {
   const pending = dialog({ title: 'Memory and disk', body: '<div class="mu" id="muBody"><div class="mu-note">Looking…</div></div>', buttons: [{ label: 'Close', value: null, primary: true }] });
@@ -7277,7 +7385,8 @@ function eventHtml(ev) {
       const ic = ev.status === 'running' ? ['running', '●'] : ev.status === 'error' ? ['error', '✕'] : ['done', '✓'];
       const body = JSON.stringify(ev.input ?? {}, null, 2) + (ev.result ? '\n\n── result ──\n' + ev.result : '');
       const said = /mark_turn$/.test(ev.name) && ev.input?.label === 'done' ? ' data-said="done"' : ''; // a turn marked done (#726)
-      return `<details class="tool" data-tool="${esc(ev.id)}"${said}><summary><span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${esc(ev.name.replace(/^mcp__\w+?__/, ''))}</span><span class="lb">${esc(ev.label)}</span>${stepsWhen([ev])}</summary><pre>${esc(body)}</pre></details>`;
+      const book = BOOKKEEPING.test(ev.name || '') ? ' data-book' : '';
+      return `<details class="tool" data-tool="${esc(ev.id)}"${said}${book}><summary><span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${esc(ev.name.replace(/^mcp__\w+?__/, ''))}</span><span class="lb">${esc(ev.label)}</span>${stepsWhen([ev])}</summary><pre>${esc(body)}</pre></details>`;
     }
     case 'files': return `<div class="file-card">${ev.note ? `<div class="note">${esc(ev.note)}</div>` : ''}${(ev.paths || []).map((p) => fileRow({ path: p, name: p.split(/[\\/]/).pop(), folder: p.replace(/[\\/][^\\/]*$/, ''), exists: true, canOpen: true, kind: 'presented', modified: ev.at }, S.selected)).join('')}</div>`;
     case 'proposal': {
@@ -7534,12 +7643,17 @@ const hiddenHere = (el) => {
 };
 // Narration (#706): a reply among c's children with more steps after it before its turn's Done line. The last reply of a
 // turn is its final reply and stays as it is; while a turn runs, its latest reply waits until a step comes after it.
+// Docket's bookkeeping steps (BOOKKEEPING, #799) come after a session's answer, so they make the replies before them
+// narration only once another reply follows them: the answer stays the final reply.
+const BOOKKEEPING = /^mcp__portal__(mark_turn|report_quiet|rename_session|suggest_title|present_file|dismiss_proposal|close_session|send_to_session|start_session|propose_handoff|propose_to_desk|link_session|set_parent|needs_signin|remove_folder_later|recycle)$/;
 function markNarration(c) {
-  let said = [];
+  let said = [], book = false;
+  const narr = () => { for (const r of said) r.classList.add('narr'); said = []; book = false; };
   for (const el of c.children) {
-    if (el.matches('.reply')) said.push(el);
-    else if (el.matches('details.tool, details.steps')) { for (const r of said) r.classList.add('narr'); said = []; }
-    else if (el.matches('.done-line')) said = [];
+    if (el.matches('.reply')) { if (book) narr(); said.push(el); }
+    else if (el.matches('details.tool:not([data-book]), details.steps:has(details.tool:not([data-book]))')) narr();
+    else if (el.matches('details.tool, details.steps')) book = true;
+    else if (el.matches('.done-line')) { said = []; book = false; }
   }
 }
 // Folds each run of steps among c's children into one group, adding to a group already there; with notes (Group), the
@@ -7718,7 +7832,7 @@ function appendEvent(ev) {
   const stick = atBottom();
   if ($('events').querySelector('.empty')) $('events').innerHTML = '';
   $('events').insertAdjacentHTML('beforeend', atHtml(ev));
-  if (ev.k === 'tool') stepsView();
+  if (ev.k === 'tool' || ev.k === 'text') stepsView(); // a new reply makes the one before a bookkeeping step narration (#799)
   if (ev.k === 'result') markFinished($('events'));
   scrollDown(stick);
   if (ev.login) showSignin();
@@ -7970,6 +8084,8 @@ document.addEventListener('click', (e) => { if (e.target.id === 'usageCsv') api(
 document.addEventListener('click', (e) => { if (e.target.id === 'usagePage') window.open('/usage?' + new URLSearchParams({ client: S.client }), 'docket-usage'); });
 // Today's spend opens Usage on the same figure: this company, today, every group, brand and account.
 $('todaySpend').onclick = () => window.open('/usage?' + new URLSearchParams({ client: S.client, range: 'today', group: '', brand: '', billed: '' }), 'docket-usage');
+// Session activity opens Usage at its Activity section, for today.
+$('activity').onclick = () => window.open('/usage?' + new URLSearchParams({ client: S.client, range: 'today', group: '', brand: '', billed: '' }) + '#activity', 'docket-usage');
 document.addEventListener('click', (e) => { const a = e.target.closest('[data-goto]'); if (a) { e.preventDefault(); openSession(a.dataset.goto); } });
 // Links Claude writes as [title](#session:<id>) open that session.
 document.addEventListener('click', (e) => {
@@ -9154,6 +9270,8 @@ function connect() {
       showCacheOffer(m.offers);
     } else if (m.t === 'setup-offers') {
       showSetupOffer(m.offers);
+    } else if (m.t === 'start-offers') {
+      showStartOffer(m.offers);
     } else if (m.t === 'update') {
       if (updateBusy && (m.update.restartWaiting || !m.update.checking && m.update.result !== 'updated')) updateBusy = ''; // it did not go through, or it waits for a quiet moment: show the card again
       showUpdate(m.update);
@@ -9844,6 +9962,36 @@ $('setupOffer').onclick = async (e) => {
 for (const id of ['cacheOffer', 'planOffer']) new MutationObserver(() => showSetupOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 api('/api/setup-offers').then(showSetupOffer).catch(() => {});
 
+// The start-cost check's offer (#802): the server adds up what each desk spent starting sessions last week and lists
+// the desks where most child sessions finished in a turn or two; the card asks about one desk at a time (the one on
+// view first), and waits while the cache, plan or setup card holds the corner. Turn splitting off saves it for the desk.
+let startOfferList = [];
+function showStartOffer(list) {
+  if (list) startOfferList = list;
+  const el = $('startOffer');
+  const o = startOfferList.find((x) => x.client === S.client) || startOfferList[0];
+  if (!o || POPOUT || ['cacheOffer', 'planOffer', 'setupOffer'].some((id) => !$(id).hidden)) { el.hidden = true; return; }
+  el.dataset.client = o.client;
+  el.innerHTML = `<span class="ico" aria-hidden="true">⑂</span><div class="t" id="startOfferTitle">${esc(o.title)}</div>
+    ${o.lines.map((l) => `<div class="d">${esc(l)}</div>`).join('')}
+    <div class="d">${esc(o.ask)} <a href="/usage?${new URLSearchParams({ client: o.client, range: 'last7', group: '', brand: '', billed: '' })}" target="docket-usage"${tip('start-usage')}>See AI Usage</a></div>
+    <div class="b"><button data-start="later"${tip('start-later')}>Not now</button><button class="primary" data-start="apply"${tip('start-apply')}>Turn splitting off</button></div>`;
+  el.hidden = false;
+}
+$('startOffer').onclick = async (e) => {
+  const b = e.target.closest('[data-start]'), el = $('startOffer');
+  if (!b) return;
+  const client = el.dataset.client, answer = b.dataset.start;
+  for (const x of el.querySelectorAll('button')) x.disabled = true;
+  try { await api('/api/start-offers/answer', { client, answer }); }
+  catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return tell(err.message); }
+  startOfferList = startOfferList.filter((o) => o.client !== client);
+  showStartOffer();
+  if (answer === 'apply') tell(`Splitting is off for ${S.clients.find((c) => c.id === client)?.name || 'this desk'}. Turn it back on in its Inspector, under Switches.`);
+};
+for (const id of ['cacheOffer', 'planOffer', 'setupOffer']) new MutationObserver(() => showStartOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+api('/api/start-offers').then(showStartOffer).catch(() => {});
+
 // The card after the update that brought Docket's plans (#180): once for each desk on this computer with no plan system
 // chosen yet (planSystem ''), the desk on view first. Plans are on for such a desk (#605), so it says so: OK saves
 // that, Turn them off saves none, and either way it never comes back; a desk made in the setup wizard chose already.
@@ -9861,7 +10009,7 @@ function reasonOfferSample(words) { // declared, not const: the page's start may
 }
 function showReasonOffer() {
   const el = $('reasonOffer');
-  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['cacheOffer', 'planOffer', 'setupOffer', 'updateOffer'].some((id) => !$(id).hidden);
+  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'updateOffer'].some((id) => !$(id).hidden);
   if (busy || S.reasonDot || deskStore.get('reasonDotOffer', false)) { el.hidden = true; return; }
   if (!el.hidden && el.dataset.client === S.client) return; // already showing it: keep the keyboard where it is
   el.dataset.client = S.client;
@@ -9888,7 +10036,7 @@ $('reasonOffer').onclick = (e) => {
   el.hidden = true;
 };
 // It waits for the others: each one closing (or the wizard, the tour or a dialog) looks again.
-for (const id of ['cacheOffer', 'planOffer', 'setupOffer', 'updateOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'updateOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 function showPlanOffer() {
   const el = $('planOffer');
   // A switch of plan system waiting on its conversion session (#700) comes first: it ends only with Finish or Cancel.

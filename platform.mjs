@@ -190,10 +190,14 @@ export function windowsTerminalCommand({ shell, script, file, exe, wt }) {
 // and the gauges. Windows: one PowerShell call (WorkingSetSize is in bytes; KernelModeTime and
 // UserModeTime in 100-nanosecond steps). macOS and Linux: ps, whose rss is in kilobytes, whose time is
 // [[dd-]hh:]mm:ss[.ss], and whose last column is the program path, which may hold spaces ("Google Chrome for
-// Testing Helper (Renderer)").
-export function processListCommand(platform = process.platform) {
+// Testing Helper (Renderer)"). commands: each program's command line too, for the breakdown in the window (only
+// while it is open: the lines are long and hold the sessions' settings, so they never leave the app). On a Mac
+// that is a second ps in the same call, after a line of its own, since comm and args both may hold spaces.
+export const PS_SPLIT = '--docket-args--';
+export function processListCommand(platform = process.platform, { commands = false } = {}) {
   if (platform === 'win32') return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command',
-    'Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,WorkingSetSize,KernelModeTime,UserModeTime | ConvertTo-Json -Compress'] };
+    `Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,WorkingSetSize,KernelModeTime,UserModeTime${commands ? ',CommandLine' : ''} | ConvertTo-Json -Compress`] };
+  if (commands) return { cmd: '/bin/sh', args: ['-c', `ps -axo pid=,ppid=,rss=,time=,comm= && echo ${PS_SPLIT} && ps -axww -o pid=,args=`] };
   return { cmd: 'ps', args: ['-axo', 'pid=,ppid=,rss=,time=,comm='] };
 }
 // ps's time column in seconds.
@@ -202,17 +206,22 @@ const psSeconds = (t) => {
   return rest.split(':').reduce((a, x) => a * 60 + Number(x), 0) + Number(d) * 86400 || 0;
 };
 // The output of processListCommand as [{ pid, ppid, name, mem, cpu }]: name is the program's own name in lower
-// case, without its folder or .exe; mem is in bytes; cpu is the processor time used so far, in seconds.
+// case, without its folder or .exe; mem is in bytes; cpu is the processor time used so far, in seconds; cmd, only
+// when the command lines were asked for, is the command line ('' where the system does not say).
 export function parseProcessList(text, platform = process.platform) {
   const name = (s) => String(s || '').split(/[\\/]/).pop().replace(/\.exe$/i, '').toLowerCase();
   if (platform === 'win32') {
     let l; try { l = JSON.parse(text); } catch { return []; }
     return (Array.isArray(l) ? l : [l]).filter(Boolean)
       .map((p) => ({ pid: Number(p.ProcessId), ppid: Number(p.ParentProcessId), name: name(p.Name), mem: Number(p.WorkingSetSize) || 0,
-        cpu: ((Number(p.KernelModeTime) || 0) + (Number(p.UserModeTime) || 0)) / 1e7 }));
+        cpu: ((Number(p.KernelModeTime) || 0) + (Number(p.UserModeTime) || 0)) / 1e7, ...('CommandLine' in p ? { cmd: p.CommandLine || '' } : {}) }));
   }
-  return String(text).split('\n').map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+([\d:.-]+)\s+(.+?)\s*$/)).filter(Boolean)
-    .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), name: name(m[5]), mem: Number(m[3]) * 1024, cpu: psSeconds(m[4]) }));
+  const [list, args] = String(text).split(new RegExp(`^${PS_SPLIT}\\r?$`, 'm'));
+  const cmds = new Map();
+  for (const line of String(args ?? '').split('\n')) { const m = line.match(/^\s*(\d+)\s(.*?)\s*$/); if (m) cmds.set(Number(m[1]), m[2].trim()); }
+  return list.split('\n').map((line) => line.match(/^\s*(\d+)\s+(\d+)\s+(\d+)\s+([\d:.-]+)\s+(.+?)\s*$/)).filter(Boolean)
+    .map((m) => ({ pid: Number(m[1]), ppid: Number(m[2]), name: name(m[5]), mem: Number(m[3]) * 1024, cpu: psSeconds(m[4]),
+      ...(args !== undefined ? { cmd: cmds.get(Number(m[1])) || '' } : {}) }));
 }
 
 // The helper that hears the computer go to sleep, wake, or shut down: Node cannot hear these itself.

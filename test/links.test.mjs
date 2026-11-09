@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { newLinkScan, scanLinkText, branchesInCommand, ticketKeys, adoBase, parseAdoPrUrl, adoPR, adoPRsForBranch, adoWorkItemIds, adoItemKeyFrom, adoCategory, adoPRWorkItemIds, adoWorkItems, jiraTicket, jiraTickets, ticketFinished, jiraMe, ticketUnread, jiraFromClaudeJson, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
-  filesIssue, parseIssueUrl, branchIssue, githubTicket, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, ghDerivedDefault, foldersInCommand, sessionBranches } from '../links.mjs';
+  filesIssue, parseIssueUrl, branchIssue, githubTicket, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, ghDerivedDefault, foldersInCommand, sessionBranches, sessionMadePr } from '../links.mjs';
 
 const fixture = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'session-links.jsonl'), 'utf8');
 
@@ -409,4 +409,64 @@ test('the company default is worked out from its sign-ins when ghDefault is not 
   assert.match(pick(two, 'third').why, /set in its settings/); // explicit still works with several
   assert.deepEqual(pick(one, 'workacct'), { login: 'workacct', why: "the desk's default account (set in its settings)" }); // explicit wins over derived
   assert.equal(ghPick({ owner: 'x', accounts: one, groupLast: 'workacct' }).login, 'workacct'); // the order is unchanged
+});
+
+// #807: the merge tag is only for a pull request the session made or pushed to.
+const shell = (gitBranch, cwd, cmd) => JSON.stringify({ type: 'assistant', cwd, gitBranch, message: { content: [{ type: 'tool_use', id: 't', name: 'Bash', input: { command: cmd } }] } });
+test('a session that only reviews someone else\'s branch lists it but does not own it', () => {
+  const b = 'feature/COSCRYPTO-1143-review-me', cwd = '/r/review';
+  const scan = scanLinkText(newLinkScan(), [shell(b, cwd, 'git fetch origin'), shell(b, cwd, `git checkout ${b}`),
+    shell(b, cwd, 'git diff origin/master...HEAD && git log --oneline -5'), shell(b, cwd, 'az repos pr show --id 111724')].join('\n') + '\n');
+  assert.deepEqual([...scan.branches], [b]); // still shown in Details
+  assert.deepEqual([...scan.own], []);
+  sessionBranches(scan, new Map([[cwd, b]]));
+  assert.deepEqual([...scan.own], [], 'a folder it only sits on adds no own branch');
+  const pr = { kind: 'ado', url: 'https://dev.azure.com/o/P/_git/R/pullrequest/111724', branch: b, status: 'open', author: 'colleague-id' };
+  assert.equal(sessionMadePr(pr, { own: scan.own, me: ['my-id'] }), false);
+  assert.equal(sessionMadePr({ ...pr, author: '' }, { own: scan.own }), false, 'no author known: still not its own');
+});
+
+test('branches a session made, pushed, committed on or opened a pull request from are its own', () => {
+  assert.deepEqual(branchesInCommand('git worktree add -b fix-9 ../w/fix-9 origin/master && git checkout other-1', true), ['fix-9']);
+  assert.deepEqual(branchesInCommand('git push -u origin fix-10', true), ['fix-10']);
+  assert.deepEqual(branchesInCommand('gh pr create --head fix-11 --fill', true), ['fix-11']);
+  assert.deepEqual(branchesInCommand('az repos pr create --source-branch feature/X-12 --target-branch master', true), ['feature/X-12']);
+  assert.deepEqual(branchesInCommand('git checkout feature/a-1; git switch fix-2', true), []);
+  assert.deepEqual(foldersInCommand('cd /r/b && git checkout x && git commit -m y', '/r/a', true).folders, ['/r/b']);
+  assert.deepEqual(foldersInCommand('git -C /r/c checkout feature/y && git worktree add ../w', '/r/a', true).folders, []);
+  assert.deepEqual(foldersInCommand('az repos pr create --title t', '/r/a', true).folders, ['/r/a']);
+  // a commit in its own folder: the branch it ran on; in another folder: that folder's branch once asked
+  const scan = scanLinkText(newLinkScan(), [shell('PROJ-5-mine', '/r/app', 'git add -A && git commit -m "x"'),
+    shell('PROJ-5-mine', '/r/app', 'cd /r/other && git commit -am y'), shell('PROJ-5-mine', '/r/app', 'git checkout -b PROJ-6 && git commit -m z')].join('\n') + '\n');
+  assert.deepEqual([...scan.own].sort(), ['PROJ-5-mine', 'PROJ-6']); // PROJ-6 made by the command itself
+  sessionBranches(scan, new Map([['/r/other', 'PROJ-7-other']]));
+  assert.deepEqual([...scan.own].sort(), ['PROJ-5-mine', 'PROJ-6', 'PROJ-7-other']);
+  // a branch it switched to in its own folder before committing does not make the old gitBranch its own
+  const moved = scanLinkText(newLinkScan(), shell('their-branch', '/r/app', 'git switch mine-1 && git commit -m x') + '\n');
+  assert.deepEqual([...moved.own], []);
+});
+
+test('whose pull request it is: linked or from an own branch, and not written by someone else', () => {
+  const pr = { kind: 'github', url: 'https://github.com/o/r/pull/3', branch: 'Fix-1', author: 'Me' };
+  assert.equal(sessionMadePr(pr, { own: new Set(['fix-1']), me: ['me', 'work-me'] }), true);
+  assert.equal(sessionMadePr(pr, { own: new Set(['fix-1']) }), true, 'no logins known');
+  assert.equal(sessionMadePr({ ...pr, author: 'colleague' }, { own: new Set(['fix-1']), me: ['me'] }), false, 'pushed to someone else\'s pull request');
+  assert.equal(sessionMadePr(pr, { linked: new Set(['https://github.com/O/R/pull/3']) }), true, 'opened or linked by it');
+  assert.equal(sessionMadePr(pr, {}), false);
+  // authors come with the pull requests
+  assert.equal(adoPR('https://dev.azure.com/o', 'P', { pullRequestId: 1, createdBy: { id: 'abc' }, repository: { name: 'R' } }).author, 'abc');
+  assert.match(ghBranchQuery([{ repo: 'o/r', branch: 'b' }]), /author \{ login \}/);
+  assert.equal(ghBranchAnswer([{ repo: 'o/r', branch: 'b' }], { b0: { pullRequests: { nodes: [{ number: 1, url: 'u', state: 'OPEN', author: { login: 'me' } }] } } })[0][0].author, 'me');
+});
+
+test('the row says merge only for an open pull request of its own', () => {
+  const page = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+  const line = page.split(/\r?\n/).find((l) => l.startsWith('const openPR = '));
+  const prState = (p) => p.status === 'open' && p.draft ? 'draft' : p.status;
+  const S = { prs: { review: [{ status: 'open', mine: false }], own: [{ status: 'open', mine: false }, { status: 'conflict', mine: true }], done: [{ status: 'merged', mine: true }] } };
+  const openPR = new Function('S', 'prState', line + '\nreturn openPR;')(S, prState);
+  assert.equal(openPR('review'), false);
+  assert.equal(openPR('own'), true);
+  assert.equal(openPR('done'), false);
+  assert.equal(openPR('none'), false);
 });

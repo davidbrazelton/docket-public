@@ -88,10 +88,10 @@ test('a session whose log is gone keeps its rows, with an empty Cause', async ()
 
 test('the CSV has a Cause column, last, filled for re-read rows and empty for kept ones', async () => {
   const file = path.join(DATA, 'ai-usage-raw.csv');
-  const csv = await waitFor('the CSV with causes', async () => { const t = fs.readFileSync(file, 'utf8'); return t.includes(',report\r\n') && t; }, 20000);
+  const csv = await waitFor('the CSV with causes', async () => { const t = fs.readFileSync(file, 'utf8'); return /,report,[\d.]+,[\d.]+,[\d.]+,[\d.]+\r\n/.test(t) && t; }, 20000);
   const [head, ...lines] = csv.trim().split('\r\n');
   const cols = head.split(',');
-  assert.equal(cols.at(-1), 'Cause');
+  assert.deepEqual(cols.slice(-5), ['Cause', 'Starts', 'StartCost', 'Child', 'ShortChild'], 'the start columns (#802) come after it');
   const cell = (line, c) => line.split(',')[cols.indexOf(c)];
   const of = (id) => lines.filter((l) => cell(l, 'SessionId') === id);
   assert.deepEqual(of('kept').map((l) => cell(l, 'Cause')).sort(), ['person', 'report']);
