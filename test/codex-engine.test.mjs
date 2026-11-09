@@ -1,4 +1,4 @@
-// Tests for engines/codex.mjs, against a stand-in for `codex app-server` (fixtures/fake-codex.mjs). Run with: npm test
+// Tests for engines/codex.mjs, against a stand-in for `codex app-server` (test-fixtures/fake-codex.mjs). Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start, shownItem } from '../engines/codex.mjs';
 
-const AGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fake-codex.mjs');
+const AGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'test-fixtures', 'fake-codex.mjs');
 const memory = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-codex-'));
 
 // Runs one turn and returns the messages, the questions asked, and the start message.

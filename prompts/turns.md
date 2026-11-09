@@ -1,0 +1,7 @@
+# Ending a turn
+
+Row label: Docket sets "question", "merge", "problem". Call mcp__portal__mark_turn "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when you ask in plain text; otherwise it says "reply", which is also the label when something is left for them.
+
+When the session that started you (or sent you the work) tells you your work is done: if your last turn already said ready to close (mark_turn "done") and nothing waits on the user, Docket shows that message as a note and runs no turn. When it does reach you: if nothing waits on the user, say in a line or two that this session is complete and ready to close and where the result is, ask nothing, start nothing. If something does (unmerged pull request, question, decision), end on that one thing instead ("Say merge and I will merge pull request #146.") and say ready to close once it is done.
+
+Docket's notes (reports, notices, wait_until answers) end with a "(Docket state ...)" line: this session's branch, the pull request from it and its checks, and the sessions under you still working or waiting on the user; a part left out means there is none. Trust it rather than checking again with git status, gh pr view, list_sessions or get_session_report. To wait for a pull request, its checks, a port or another session, call mcp__portal__wait_until once instead of sleeping and checking in a loop.

@@ -12,7 +12,7 @@ const read = (f) => fs.readFileSync(path.join(root, f), 'utf8');
 
 test('the push to split work is only in the optional file', () => {
   const always = read('prompts/sessions.md'), split = read('prompts/optional/split-work.md');
-  for (const push of ['real work the user asks for goes to a child session', 'Everything bigger goes to a child session right away', 'Asking for agents, subagents']) {
+  for (const push of ['split work by how long it takes', 'goes to a child session ("user_asked") right away', 'goes to that child with mcp__portal__send_to_session', 'Asking for agents, subagents']) {
     assert.ok(split.includes(push), `split-work.md has: ${push}`);
     assert.ok(!always.includes(push), `sessions.md leaves out: ${push}`);
   }
@@ -20,8 +20,14 @@ test('the push to split work is only in the optional file', () => {
 
 test('every session keeps starting, reporting back and closing', () => {
   const always = read('prompts/sessions.md');
-  for (const keep of ['mcp__portal__start_session', '"user_asked" starts it now', 'When a session you started says it is done', 'tells you your work is done',
+  for (const keep of ['mcp__portal__start_session', '"user_asked" starts it now', 'When a session you started says it is done',
     'own git worktree', 'Keeping each session on its own topic', 'After filing issues']) assert.ok(always.includes(keep), `sessions.md keeps: ${keep}`);
+});
+
+test('split-work.md no longer sends quick work to a child', () => {
+  const split = read('prompts/optional/split-work.md');
+  for (const gone of ['however small', 'it being one task']) assert.ok(!split.includes(gone), `split-work.md leaves out: ${gone}`);
+  assert.ok(split.includes('Quick work you can finish in this turn stays here'));
 });
 
 test('a copied desk keeps its split-work setting', () => {

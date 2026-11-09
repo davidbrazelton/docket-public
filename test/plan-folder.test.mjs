@@ -1,5 +1,5 @@
 // The read-only plan folder (#180 step 3): plan-folder.mjs reads a folder of markdown checklist plans another system
-// keeps, works out the tree, and never changes anything there. The fixture is test/fixtures/plan-folder: notes/Projects
+// keeps, works out the tree, and never changes anything there. The fixture is test/test-fixtures/plan-folder: notes/Projects
 // holds one folder per piece of work, worktree/ is reached only through a shortcut folder (a junction made per test),
 // and home/ holds the per-session marker files.
 import { test } from 'node:test';
@@ -15,7 +15,7 @@ import { DOCKET_KEYS, copyEntry } from '../copy-company.mjs';
 import { plansOnFor, planUse } from '../plan-use.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const FX = path.join(here, 'fixtures', 'plan-folder');
+const FX = path.join(here, '..', 'test-fixtures', 'plan-folder');
 const page = fs.readFileSync(path.join(here, '..', 'index.html'), 'utf8');
 const server = fs.readFileSync(path.join(here, '..', 'server.mjs'), 'utf8');
 

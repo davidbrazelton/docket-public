@@ -1,5 +1,5 @@
 // The setup wizard picks the AI brands, on a throwaway Docket (its own ports, state and an empty company list in
-// a temp folder) whose Codex is fixtures/fake-codex.mjs, whose Grok is fixtures/fake-acp-agent.mjs, and whose Claude
+// a temp folder) whose Codex is test-fixtures/fake-codex.mjs, whose Grok is test-fixtures/fake-acp-agent.mjs, and whose Claude
 // is a program that does not exist. Covers the computer check for each brand, and saving a Grok-only, a Codex-only
 // and a Claude-only company the way the wizard sends them, including going back and changing the brands.
 import { test, before, after } from 'node:test';
@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -41,7 +41,7 @@ before(async () => {
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
       PORTAL_CLAUDE_EXE: path.join(tmp, 'no-such-claude.exe'),
-      PORTAL_CODEX_EXE: path.join(HERE, 'fixtures', 'fake-codex.mjs'), PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs') },
+      PORTAL_CODEX_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-codex.mjs'), PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });
   for (const until = Date.now() + 30000; ; await sleep(150)) {
     if (await fetch(URL_ + '/api/clients?quick=1').then((r) => r.ok).catch(() => false)) break;
@@ -52,9 +52,9 @@ before(async () => {
 after(async () => {
   const pid = await runnerPid();
   server?.kill();
-  if (pid) try { process.kill(pid); } catch {}
+  if (pid) stopTree(pid);
   await sleep(300);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
 
 test('the computer check says which brands are installed, and where their home folders go', async () => {
@@ -147,7 +147,7 @@ test('the Inspector\'s plan choice saves the desk\'s plan system and refuses any
 });
 
 test('a plan folder desk (#180 step 3): its folder and marker pattern are saved, and the page reads the folder', async () => {
-  const fx = path.join(HERE, 'fixtures', 'plan-folder');
+  const fx = path.join(HERE, '..', 'test-fixtures', 'plan-folder');
   const set = (key, value) => api('/api/clients/claudeco/profile/switch', { kind: 'plan-folder', key, value });
   assert.equal((await api('/api/clients/claudeco/profile/switch', { kind: 'plans', key: 'plans', value: 'folder' })).status, 200);
   assert.equal(saved().find((x) => x.id === 'claudeco').planSystem, 'folder');

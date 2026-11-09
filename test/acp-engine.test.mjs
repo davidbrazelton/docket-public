@@ -1,4 +1,4 @@
-// Tests for engines/acp.mjs, against a stand-in agent (fixtures/fake-acp-agent.mjs). Run with: npm test
+// Tests for engines/acp.mjs, against a stand-in agent (test-fixtures/fake-acp-agent.mjs). Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { start } from '../engines/acp.mjs';
 
-const AGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fake-acp-agent.mjs');
+const AGENT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'test-fixtures', 'fake-acp-agent.mjs');
 
 // Runs one turn and returns the messages, the questions asked, and the engine.
 async function turn({ permissionMode = 'default', answer = { behavior: 'allow' }, rules = '', env = process.env, allowTools, resume, text = 'hi there', mcpServers = [{ name: 'portal', command: 'x', args: [], env: [] }], mcpHttp } = {}) {

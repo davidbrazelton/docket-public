@@ -1,5 +1,5 @@
 // Codex sessions in Docket, end to end on a throwaway Docket (its own ports, state and company list in a temp
-// folder) whose Codex is the stand-in in fixtures/fake-codex.mjs and whose Grok is fixtures/fake-acp-agent.mjs.
+// folder) whose Codex is the stand-in in test-fixtures/fake-codex.mjs and whose Grok is test-fixtures/fake-acp-agent.mjs.
 // Company t1 uses Codex (by default) and Grok; company t2 uses Grok only. Covers the sign-in, a chat with a
 // permission question and Docket's tools, End and pickup with memory, an app restart, usage under t1, a Codex
 // session messaging a Grok one with no approval, and ask_desk and propose_to_desk (and their old names) into a Codex desk.
@@ -11,6 +11,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { stopTree } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -60,7 +61,7 @@ async function startDocket() {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_REPORT_DEBOUNCE: '{"quietMs":0,"maxMs":0}', PORTAL_STATE: STATE, PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
-      PORTAL_CODEX_EXE: path.join(HERE, 'fixtures', 'fake-codex.mjs'), PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs'),
+      PORTAL_CODEX_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-codex.mjs'), PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs'),
       CODEX_HOME: path.join(tmp, 'shared-codex') }, // the Codex home of sessions run outside Docket: not this computer's own
   });
   await waitFor('the test Docket to start', () => api('/api/clients?quick=1'), 30000);
@@ -85,9 +86,9 @@ before(async () => {
 after(async () => {
   const pid = await runnerPid();
   server?.kill();
-  if (pid) try { process.kill(pid); } catch {}
+  if (pid) stopTree(pid);
   await sleep(300);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
 
 test('a company signs in to Codex in its own Codex home, with a link and a separate code', async () => {

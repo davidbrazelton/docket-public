@@ -5,7 +5,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, treeListCommand, parseTreeList, descendants, killCommand, commandLineCommand, relaunchesApp, leftBehind } from '../platform.mjs';
+import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, treeListCommand, parseTreeList, descendants, killCommand, commandLineCommand, relaunchesApp, leftBehind,
+  keyCodes, fitShot, shotArea, toScreen, screenScript, screenCommand, screenBadgeCommand, SCREEN_BADGE } from '../platform.mjs';
 
 test('vsCodePaths: Code.exe for the user, for everyone, and beside a code.cmd on the PATH, on Windows', () => {
   const env = { LOCALAPPDATA: 'C:\\Users\\pat\\AppData\\Local', ProgramFiles: 'C:\\Program Files',
@@ -707,4 +708,92 @@ test('treeListCommand and commandLineCommand run here', () => {
   assert.ok(descendants(list, [process.ppid]).includes(process.pid));
   const c = commandLineCommand(process.pid);
   assert.match(spawnSync(c.cmd, c.args, { encoding: 'utf8', windowsHide: true }).stdout, /node/i);
+});
+
+// ---------- screen and mouse control (#822) ----------
+test('keyCodes: combinations as people write them, as Windows virtual keys and macOS key codes', () => {
+  assert.deepEqual(keyCodes('ctrl+s', 'win32'), { codes: [0x11, 0x53], names: ['ctrl', 's'], typesText: false });
+  assert.deepEqual(keyCodes('Ctrl + Shift + Esc', 'win32').codes, [0x11, 0x10, 0x1b]);
+  assert.deepEqual(keyCodes('alt+f4', 'win32').codes, [0x12, 0x73]);
+  assert.deepEqual(keyCodes('ctrl++', 'win32').names, ['ctrl', 'plus']);
+  assert.deepEqual(keyCodes('cmd+s', 'darwin').codes, [55, 1]);
+  assert.deepEqual(keyCodes('cmd+shift+z', 'darwin').codes, [55, 56, 6]);
+  assert.deepEqual(keyCodes('enter', 'darwin').codes, [36]);
+  assert.deepEqual(keyCodes('f5', 'darwin').codes, [96]);
+  // a character, alone or with Shift, counts as typing (the password-field check); a shortcut or Enter does not
+  assert.equal(keyCodes('a', 'win32').typesText, true);
+  assert.equal(keyCodes('shift+a', 'win32').typesText, true);
+  assert.equal(keyCodes('enter', 'win32').typesText, false);
+  assert.equal(keyCodes('ctrl+v', 'win32').typesText, false);
+  assert.throws(() => keyCodes('ctrl+banana', 'win32'), /Unknown key "banana"/);
+  assert.throws(() => keyCodes('', 'win32'), /No key given/);
+});
+
+test('fitShot: scaled down to what the model reads (1568 on the long side, ~1.15 megapixels), never up', () => {
+  assert.deepEqual(fitShot(1280, 720), { w: 1280, h: 720, scale: 1 });
+  assert.equal(fitShot(3840, 1080).w, 1568);
+  const big = fitShot(2560, 1600);
+  assert.ok(big.w * big.h <= 1150000 && big.w <= 1568, `${big.w}×${big.h}`);
+});
+
+test('shotArea and toScreen: every monitor, one monitor, a region of the last shot, mapped back to the screen', () => {
+  // a 125% main monitor and a second one to its left (negative x), as Windows numbers them in physical pixels
+  const screens = [{ x: 0, y: 0, w: 2400, h: 1350, primary: true }, { x: -1920, y: 200, w: 1920, h: 1080 }];
+  assert.deepEqual(shotArea(screens), { x: -1920, y: 0, w: 4320, h: 1350 });
+  assert.deepEqual(shotArea(screens, { monitor: 2 }), { x: -1920, y: 200, w: 1920, h: 1080 });
+  assert.throws(() => shotArea(screens, { monitor: 3 }), /no monitor 3/);
+  const fit = fitShot(2400, 1350), shot = { x: 0, y: 0, w: 2400, h: 1350, iw: fit.w, ih: fit.h };
+  assert.deepEqual(toScreen(shot, fit.w / 2, fit.h / 2), { x: 1200, y: 675 });
+  const left = { x: -1920, y: 200, w: 1920, h: 1080, iw: 960, ih: 540 };
+  assert.deepEqual(toScreen(left, 100, 50), { x: -1720, y: 300 });
+  assert.deepEqual(shotArea(screens, { region: [100, 50, 200, 100], from: left }), { x: -1720, y: 300, w: 400, h: 200 });
+  assert.throws(() => shotArea(screens, { region: [0, 0, 10, 10] }), /take a screen_shot/);
+});
+
+test('screenCommand: PowerShell with the request as base64 JSON on Windows, osascript JavaScript on a Mac', () => {
+  const req = { op: 'type', text: 'Hello "world" & $env:PATH ü' };
+  const win = screenCommand('C:\\D\\screen-control.ps1', req, 'win32');
+  assert.equal(win.cmd, 'powershell.exe');
+  assert.deepEqual(win.args.slice(0, 6), ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', 'C:\\D\\screen-control.ps1']);
+  assert.deepEqual(JSON.parse(Buffer.from(win.args[6], 'base64').toString('utf8')), req);
+  assert.deepEqual(screenCommand('/d/screen-control.js', req, 'darwin'), { cmd: 'osascript', args: ['-l', 'JavaScript', '/d/screen-control.js', JSON.stringify(req)] });
+  assert.throws(() => screenCommand('/d/x', req, 'linux'), /Windows and macOS only/);
+  assert.equal(screenScript('linux'), null);
+});
+
+test('the screen scripts: DPI aware SendInput on Windows, CoreGraphics on a Mac, each request and the password check', () => {
+  const win = screenScript('win32'), mac = screenScript('darwin');
+  assert.equal(win.file, 'screen-control.ps1');
+  assert.equal(mac.file, 'screen-control.js');
+  for (const op of ['screens', 'shot', 'move', 'click', 'drag', 'scroll', 'type', 'keys']) {
+    assert.ok(win.text.includes(`'${op}' {`), `Windows ${op}`);
+    assert.ok(mac.text.includes(`r.op === '${op}'`), `Mac ${op}`);
+  }
+  assert.ok(win.text.includes('SetProcessDpiAwarenessContext(new IntPtr(-4))')); // per-monitor aware: physical pixels at any scaling
+  assert.ok(win.text.includes('GetDpiForMonitor'));
+  assert.ok(win.text.includes('SendInput'));
+  assert.ok(win.text.includes('FocusedElement.Current.IsPassword'));
+  for (const s of ['CGEventCreateMouseEvent', 'CGEventSetFlags', 'screencapture -x', 'backingScaleFactor', 'IsSecureEventInputEnabled']) assert.ok(mac.text.includes(s), s);
+});
+
+test('screenBadgeCommand: the on-screen Stop bar on Windows, closing with Docket; none on a Mac', () => {
+  const c = screenBadgeCommand('C:\\D\\screen-badge.ps1', 'Docket: "Fix" is using the mouse', 'win32', 1234);
+  assert.equal(Buffer.from(c.args[6], 'base64').toString('utf8'), 'Docket: "Fix" is using the mouse');
+  assert.equal(c.args[7], '1234');
+  assert.equal(screenBadgeCommand('/d/b', 'x', 'darwin'), null);
+  assert.ok(SCREEN_BADGE.text.includes('ShowWithoutActivation')); // never takes the keyboard from the program being worked on
+});
+
+// The Windows script for real, on a Windows computer: the monitors it finds, read without moving or typing anything.
+test('the Windows screen script lists the monitors in physical pixels', { skip: process.platform !== 'win32' }, () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'screen-'));
+  try {
+    const sc = screenScript('win32'), file = path.join(dir, sc.file);
+    fs.writeFileSync(file, sc.text);
+    const c = screenCommand(file, { op: 'screens' }, 'win32');
+    const r = JSON.parse(spawnSync(c.cmd, c.args, { encoding: 'utf8', windowsHide: true }).stdout.trim());
+    assert.equal(r.ok, true);
+    assert.ok(r.screens.length >= 1 && r.screens.some((s) => s.primary));
+    for (const s of r.screens) assert.ok(s.w > 0 && s.h > 0 && s.scale >= 1, JSON.stringify(s));
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

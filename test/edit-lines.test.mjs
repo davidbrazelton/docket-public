@@ -10,7 +10,7 @@ import { readCodexSession, patchLines } from '../codex-usage.mjs';
 
 const HERE = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
 const PRICING = path.join(path.dirname(HERE), 'pricing.json');
-const FIXTURE = path.join(HERE, 'fixtures', 'edits-session.jsonl');
+const FIXTURE = path.join(HERE, '..', 'test-fixtures', 'edits-session.jsonl');
 
 // The fixture as a session folder, with a helper agent that made one edit of two new lines.
 function session() {

@@ -21,7 +21,7 @@ export function findCodexExe(env = process.env) {
   }
   return found.sort((a, b) => b.t - a.t)[0]?.f || 'codex';
 }
-// A stand-in written in JavaScript (the tests' fixtures/fake-codex.mjs) is run with node.
+// A stand-in written in JavaScript (the tests' test-fixtures/fake-codex.mjs) is run with node.
 export const codexCommand = (exe, args) => /\.m?js$/i.test(exe) ? [process.execPath, [exe, ...args]] : [exe, args];
 
 // A new Codex home is just a folder: Codex fills it in when it signs in. An existing one is left alone.

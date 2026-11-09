@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -66,9 +66,9 @@ before(async () => {
 after(async () => {
   const pid = await runnerPid();
   server?.kill();
-  if (pid) try { process.kill(pid); } catch {}
+  if (pid) stopTree(pid);
   await sleep(300);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
 
 test('a session whose log is still there is read again, with a cause on each row', async () => {

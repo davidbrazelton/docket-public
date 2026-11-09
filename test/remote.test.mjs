@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import https from 'node:https';
 import crypto from 'node:crypto';
 import { base32, unbase32, newSecret, codeAt, checkCode, stepOf, otpUri, makeCertificate, fingerprintOf, checkCodeOf, sameCheck,
-  isOfficeAddress, officeAddresses, remoteRoute, remoteNote, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedRequest, connectError } from '../remote.mjs';
+  isOfficeAddress, officeAddresses, remoteRoute, remoteNote, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedRequest, connectError,
+  PILOT_KEY_DAYS, isPilotKey, pilotKeyHash, grantPilotKey, findPilotKey, livePilotKeys, revokePilotKey, pilotKeyView, pilotKeyRoute, pilotItemsFor } from '../remote.mjs';
+import { mayAnswer, stricter } from '../pilot.mjs';
 
 test('authenticator codes match RFC 6238 and the apps (SHA-1, 6 digits, 30 seconds)', () => {
   const secret = base32(Buffer.from('12345678901234567890'));
@@ -159,4 +161,129 @@ test('a message from another computer gets the note naming it and this computer;
   // a picture alone is still a message; starting a session with nothing in it sends nothing, so no note
   assert.equal(remoteMessage({ attachments: [{ name: 'a.png' }] }, 'FIELD-LAPTOP', 'HOST-PC').context, note);
   assert.deepEqual(remoteMessage({ client: 'd1', title: 'New', context: 'x' }, 'FIELD-LAPTOP', 'HOST-PC'), { client: 'd1', title: 'New' });
+});
+
+test('screen control: a remote session may act on the screen (answered only when the desk has it on), see who is in control and press Stop, never turn it on', () => {
+  assert.deepEqual(remoteRoute('POST', '/api/screen/act'), { kind: 'screen' });
+  assert.deepEqual(remoteRoute('GET', '/api/screen'), { kind: 'desk' });
+  assert.deepEqual(remoteRoute('POST', '/api/screen/stop'), { kind: 'desk' });
+  assert.equal(remoteRoute('POST', '/api/screen'), null); // the setting is this computer's
+  assert.equal(remoteRoute('POST', '/api/screen/log'), null);
+  assert.equal(remoteRoute('GET', '/api/screen/act'), null);
+  assert.ok(relayFor({ t: 'screen', client: 'acme', active: [] }, 'acme', () => undefined));
+  assert.ok(!relayFor({ t: 'screen', client: 'other', active: [] }, 'acme', () => undefined));
+});
+
+// ---------- pilot keys (#827) ----------
+test('pilot key: granted as a random key, kept only as a hash, never the authenticator secret', () => {
+  const secret = newSecret(), now = Date.parse('2026-11-09T12:00:00Z');
+  const { key, record } = grantPilotKey({ name: 'OFFICE-PC', ip: '192.168.1.5', desk: 'acme', screen: false, now });
+  assert.ok(isPilotKey(key));
+  assert.match(key, /^dpk_[0-9a-f]{64}$/);
+  assert.ok(!key.toUpperCase().includes(secret), 'nothing of the authenticator secret');
+  assert.notEqual(grantPilotKey({ desk: 'acme' }).key, key, 'each key is new');
+  assert.equal(record.hash, pilotKeyHash(key));
+  assert.ok(!JSON.stringify(record).includes(key.slice(4)), 'the record holds no copy of the key');
+  assert.deepEqual(Object.keys(pilotKeyView(record)).sort(), ['at', 'desk', 'expires', 'id', 'ip', 'name', 'screen', 'used'], 'the page never gets the hash');
+  assert.equal(record.expires, now + PILOT_KEY_DAYS * 86400e3);
+  assert.equal(record.desk, 'acme');
+  assert.equal(record.screen, false);
+  assert.equal(grantPilotKey({ desk: 'acme', days: 1000, now }).record.expires, now + 90 * 86400e3, 'at most 90 days');
+  for (const bad of ['', 'dpk_', 'dpk_' + 'g'.repeat(64), 'a'.repeat(64), secret, null]) assert.ok(!isPilotKey(bad), String(bad));
+});
+
+test('pilot key: works for its desk only, and only until it expires', () => {
+  const now = Date.now();
+  const a = grantPilotKey({ name: 'A', desk: 'acme', now }), b = grantPilotKey({ name: 'B', desk: 'acme', now });
+  const keys = [a.record, b.record];
+  assert.equal(findPilotKey(keys, a.key, 'acme', now), a.record);
+  assert.equal(findPilotKey(keys, b.key, 'acme', now), b.record);
+  assert.equal(findPilotKey(keys, a.key, 'other', now), null, 'another desk');
+  assert.equal(findPilotKey(keys, grantPilotKey({ desk: 'acme' }).key, 'acme', now), null, 'a key never granted');
+  assert.equal(findPilotKey(keys, a.key.slice(0, -1) + (a.key.endsWith('0') ? '1' : '0'), 'acme', now), null, 'one character off');
+  assert.equal(findPilotKey(keys, a.record.hash, 'acme', now), null, 'the hash is not the key');
+  // expiring
+  const end = a.record.expires;
+  assert.equal(findPilotKey(keys, a.key, 'acme', end - 1), a.record);
+  assert.equal(findPilotKey(keys, a.key, 'acme', end), null, 'refused once its time is up');
+  assert.deepEqual(livePilotKeys(keys, end), [], 'and dropped from the list');
+  assert.equal(livePilotKeys(keys, now).length, 2);
+});
+
+test('pilot key: revoked, it stops working at once and the others keep working', () => {
+  const a = grantPilotKey({ desk: 'acme' }), b = grantPilotKey({ desk: 'acme' });
+  const left = revokePilotKey([a.record, b.record], a.record.id);
+  assert.equal(findPilotKey(left, a.key, 'acme'), null);
+  assert.equal(findPilotKey(left, b.key, 'acme'), b.record);
+  assert.deepEqual(revokePilotKey(left, 'pk_none'), left);
+  assert.deepEqual(revokePilotKey(undefined, 'x'), []);
+});
+
+test('pilot key: reaches only the pilot\'s actions, and the screen tools only when granted with them', () => {
+  const plain = grantPilotKey({ desk: 'acme' }).record, screen = grantPilotKey({ desk: 'acme', screen: true }).record;
+  assert.deepEqual(pilotKeyRoute('GET', '/remote/pilot/pending', plain), { kind: 'pending' });
+  assert.deepEqual(pilotKeyRoute('POST', '/remote/pilot/answer', plain), { kind: 'answer' });
+  assert.deepEqual(pilotKeyRoute('POST', '/remote/pilot/revoke', plain), { kind: 'revoke' });
+  assert.equal(pilotKeyRoute('POST', '/api/screen/act', plain), null);
+  assert.deepEqual(pilotKeyRoute('POST', '/api/screen/act', screen), { kind: 'screen' });
+  // Nothing a connection may do: no starting or sending to sessions, no new keys or connections, no settings.
+  for (const [m, p] of [['GET', '/api/sessions'], ['POST', '/api/sessions'], ['POST', '/api/sessions/s1/send'], ['POST', '/api/sessions/s1/permission'],
+    ['GET', '/api/clients'], ['POST', '/remote/pilot-key'], ['POST', '/remote/hello'], ['POST', '/remote/bye'], ['GET', '/remote/ws'], ['POST', '/api/screen'],
+    ['POST', '/api/screen/stop'], ['GET', '/remote/pilot/answer'], ['POST', '/remote/pilot/pending'], ['POST', '/api/tools/call'], ['POST', '/api/pilot']])
+    assert.equal(pilotKeyRoute(m, p, screen), null, `${m} ${p}`);
+  // A connection's token cannot use the pilot's paths either.
+  for (const p of ['/remote/pilot/pending', '/remote/pilot/answer', '/remote/pilot/revoke']) assert.equal(remoteRoute(p.endsWith('pending') ? 'GET' : 'POST', p), null, p);
+});
+
+test('pilot key: sees only the linked desk\'s items, never another computer asking to come in', () => {
+  const items = [{ id: 'permission:1', kind: 'permission', desk: 'acme' }, { id: 'card:2', kind: 'card', desk: 'other' },
+    { id: 'remote:ra_1', kind: 'remote', desk: 'acme' }, { id: 'merge:s1:4', kind: 'merge', desk: 'acme' }];
+  assert.deepEqual(pilotItemsFor(items, 'acme').map((i) => i.id), ['permission:1', 'merge:s1:4']);
+  assert.deepEqual(pilotItemsFor(undefined, 'acme'), []);
+});
+
+test('pilot key: the stricter of the two computers\' rules counts', () => {
+  assert.equal(stricter('allow', 'ask'), 'ask');
+  assert.equal(stricter('deny', 'allow'), 'deny');
+  assert.equal(stricter('allow', 'allow'), 'allow');
+  assert.equal(stricter(undefined, 'allow'), 'ask', 'unknown counts as ask');
+  const rules = { kinds: { permission: 'allow' } };
+  const item = { id: 'r:r1:permission:k', kind: 'permission', desk: 'r1', tool: 'Read', input: { file_path: 'a.txt' } };
+  assert.equal(mayAnswer(rules, item, 'allow').ok, true);
+  assert.equal(mayAnswer(rules, item, 'allow', 'allow').ok, true);
+  const d = mayAnswer(rules, item, 'allow', 'deny');
+  assert.equal(d.ok, false); assert.match(d.why, /computer with the desk/);
+  assert.equal(mayAnswer(rules, item, 'deny', 'deny').ok, true, 'deny there still lets it decline');
+  assert.equal(mayAnswer(rules, item, 'deny', 'ask').ok, false, 'ask there keeps it with the person');
+  // A hard stop here still holds when the desk's computer allows it.
+  assert.equal(mayAnswer(rules, { ...item, tool: 'Bash', input: { command: 'gh pr merge 5' } }, 'allow', 'allow').ok, false);
+});
+
+// Both ends over HTTPS: a key sent as the bearer is checked against the hash kept, and refused once revoked or expired.
+test('pilot key: used over the pinned connection, then revoked and expired', async () => {
+  const certs = makeCertificate(), fp = fingerprintOf(certs.cert);
+  let keys = [];
+  const srv = https.createServer(certs, (req, res) => {
+    const key = String(req.headers.authorization || '').replace(/^Bearer /, '');
+    const rec = findPilotKey(keys, key, 'acme', Number(req.headers['x-now']) || Date.now());
+    const route = rec && pilotKeyRoute(req.method, req.url, rec);
+    res.statusCode = !rec ? 401 : route ? 200 : 403;
+    res.end(JSON.stringify(route || {}));
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  const address = `https://127.0.0.1:${srv.address().port}`;
+  try {
+    const g = grantPilotKey({ name: 'OFFICE-PC', desk: 'acme' });
+    keys = [g.record];
+    const call = (method, path, token = g.key) => pinnedRequest(address, { pin: fp, cert: certs.cert, method, path, token });
+    assert.equal((await call('GET', '/remote/pilot/pending')).status, 200);
+    assert.equal((await call('POST', '/api/sessions')).status, 403, 'only the pilot\'s actions');
+    assert.equal((await call('POST', '/api/screen/act')).status, 403, 'no screen tools unless granted');
+    assert.equal((await call('GET', '/remote/pilot/pending', 'dpk_' + '0'.repeat(64))).status, 401);
+    keys = revokePilotKey(keys, g.record.id);
+    assert.equal((await call('GET', '/remote/pilot/pending')).status, 401, 'revoked');
+    const h = grantPilotKey({ desk: 'acme', screen: true, now: Date.now() - (PILOT_KEY_DAYS * 86400e3 + 1000) });
+    keys = [h.record];
+    assert.equal((await call('POST', '/api/screen/act', h.key)).status, 401, 'expired');
+  } finally { srv.close(); }
 });

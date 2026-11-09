@@ -1,5 +1,5 @@
 // A stopped Grok session keeps its chat and its memory when picked up again. Runs a throwaway Docket (its
-// own ports, state and company list in a temp folder) whose Grok is the stand-in agent in fixtures/fake-acp-agent.mjs,
+// own ports, state and company list in a temp folder) whose Grok is the stand-in agent in test-fixtures/fake-acp-agent.mjs,
 // set to remember its conversations and to offer session/resume, as `grok agent stdio` does (grok 1.0.41).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -50,7 +50,7 @@ async function startDocket() {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: STATE, PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
-      PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs'), FAKE_ACP_MEMORY: path.join(tmp, 'grok-memory'), FAKE_ACP_RESUME: 'resume' },
+      PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs'), FAKE_ACP_MEMORY: path.join(tmp, 'grok-memory'), FAKE_ACP_RESUME: 'resume' },
   });
   await waitFor('the test Docket to start', () => api('/api/clients?quick=1'), 30000);
 }
@@ -74,9 +74,9 @@ before(async () => {
 after(async () => {
   const pid = await runnerPid();
   server?.kill();
-  if (pid) try { process.kill(pid); } catch {}
+  if (pid) stopTree(pid);
   await sleep(300);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
 
 test('a Grok session stopped with End shows its chat, and picked up again, Grok remembers it', async () => {

@@ -19,6 +19,7 @@
   --card-gap: 10px; --card-r: 10px; --card-shadow: 0 2px 10px rgba(40,35,25,.08); --card-bg: var(--panel); --divider: transparent; --row-inset: 6px;
   color-scheme: light;
   --lines-add: #14703a; --lines-del: #b91c1c; /* lines added / removed, 4.5:1 or better on --bg, --panel, --panel-2 and --head */
+  --pop-bg: #fdfcf9; --pop-line: #cdc9be; --pop-hover: #f1efe9; --pop-shadow: 0 2px 6px rgba(40,35,25,.10), 0 12px 32px rgba(40,35,25,.18); --scrim: rgba(31,30,27,.40); --scrim-blur: 2px; /* menus, pops and dialogs */
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -29,6 +30,7 @@
     --head: #383733; --head-text: #d4d3cc;
     --card-gap: 10px; --card-r: 10px; --card-shadow: 0 6px 20px rgba(0,0,0,.35); --card-bg: var(--panel); --divider: transparent; --row-inset: 6px;
     color-scheme: dark; --lines-add: #4ade80; --lines-del: #fb8585;
+    --pop-bg: #262624; --pop-line: #4d4b46; --pop-hover: #31302d; --pop-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 2px 6px rgba(0,0,0,.4), 0 14px 36px rgba(0,0,0,.55); --scrim: rgba(0,0,0,.6); --scrim-blur: 2px;
   }
 }
 :root[data-theme="dark"] {
@@ -39,6 +41,7 @@
     --head: #383733; --head-text: #d4d3cc;
     --card-gap: 10px; --card-r: 10px; --card-shadow: 0 6px 20px rgba(0,0,0,.35); --card-bg: var(--panel); --divider: transparent; --row-inset: 6px;
   color-scheme: dark; --lines-add: #4ade80; --lines-del: #fb8585;
+    --pop-bg: #262624; --pop-line: #4d4b46; --pop-hover: #31302d; --pop-shadow: inset 0 0 0 1px rgba(255,255,255,.06), 0 2px 6px rgba(0,0,0,.4), 0 14px 36px rgba(0,0,0,.55); --scrim: rgba(0,0,0,.6); --scrim-blur: 2px;
 }
 /* A main color picked in the menu: one color, shaded per theme so text in it stays readable, set by applyAccent below. */
 :root[data-accent] { --accent: var(--accent-light); --on-accent: var(--on-accent-light); --accent-soft: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
@@ -146,6 +149,12 @@ aside.side { position: relative; border-right: 1px solid var(--divider); backgro
 .row .pin { font-size: 10px; flex: none; }
 .near-full { color: var(--bad); }
 .row .meta { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: var(--meta-w, 0); text-align: right; flex: none; } /* as wide as the widest time (fitColumns), so the plan and reason columns left of it line up */
+/* 👁 > Cost (#806): what a session (or its family) cost, just left of its time. An indicator (DESIGN.md): muted, figures
+   lined up down the list (as wide as the widest, fitColumns). Bold in the text color where it adds sessions under it. */
+.row .ccost { flex: none; min-width: var(--cost-w, 0); text-align: right; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.row .ccost.fam { color: var(--text); font-weight: 600; }
+.row .ccost.none { opacity: .6; }
+.row .ccost.live::after { content: '+'; margin-left: 1px; opacity: .7; } /* still working: this turn is added when it ends */
 /* A session paused on a question or permission prompt (the "?" dot) has a yellow title (#686). */
 .row .t.asking { color: var(--warn); }
 /* Plan badge, then reason tag, each in a column that only takes room while some row in the list has one (#686). */
@@ -326,15 +335,20 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 #events .lm-flash { outline: 2px solid var(--accent); outline-offset: 2px; scroll-margin-top: 12px; }
 /* Cards waiting on you (#774): one line per card, above the chat, at most four lines before it scrolls on its own. The
    line is a link to its card; its buttons are the card's own two, the main one solid. */
-.card-strip { border-bottom: 1px solid var(--line); background: var(--panel-2); max-height: 128px; overflow: auto; }
+.card-strip { border-bottom: 1px solid var(--line); background: var(--accent); color: var(--on-accent); max-height: 128px; overflow: auto; }
 .card-strip[hidden] { display: none; }
+/* In the primary color (#823), so it is hard to miss; its buttons are inverted like the install offer's. */
 .cs-row { display: flex; align-items: center; gap: 6px; padding: 2px max(18px, calc((100% - 816px) / 2)); font-size: 13px; cursor: pointer; }
-.cs-row + .cs-row { border-top: 1px solid var(--line); }
-.cs-row:hover { background: var(--user-bg); }
-.cs-row .cs-go { flex: 1; min-width: 0; display: flex; gap: 6px; border: none; border-radius: 8px; background: none; padding: 4px 0; text-align: left; }
-.cs-row .cs-k { flex: none; color: var(--muted); font-weight: 600; }
-.cs-row .cs-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cs-row button[data-strip-act] { flex: none; padding: 2px 10px; font-size: 12px; }
+.cs-row + .cs-row { border-top: 1px solid color-mix(in srgb, var(--on-accent) 25%, transparent); }
+.cs-row:hover { background: color-mix(in srgb, var(--on-accent) 12%, transparent); }
+.cs-row .cs-go { flex: 1; min-width: 0; display: flex; gap: 6px; border: none; border-radius: 8px; background: none; color: inherit; padding: 4px 0; text-align: left; }
+.cs-row .cs-k { flex: none; opacity: .8; font-weight: 600; }
+.cs-row .cs-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.cs-row button[data-strip-act] { flex: none; padding: 2px 10px; font-size: 12px; background: transparent; border-color: currentColor; color: inherit; }
+.cs-row button[data-strip-act]:hover { background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
+.cs-row button[data-strip-act].primary { background: var(--on-accent); border-color: var(--on-accent); color: var(--accent); font-weight: 600; }
+.cs-row button[data-strip-act].primary:hover { filter: none; background: color-mix(in srgb, var(--on-accent) 88%, var(--accent)); }
+.cs-row button:focus-visible { outline: 2px solid var(--on-accent); outline-offset: 2px; }
 .inner { max-width: 860px; margin: 0 auto; padding: 0 22px; display: flex; flex-direction: column; gap: 10px; }
 .msg-user { align-self: flex-end; background: var(--user-bg); border-radius: 14px; padding: 9px 13px; max-width: 85%; white-space: pre-wrap; word-wrap: break-word; }
 .msg-user img { max-width: 220px; max-height: 160px; border-radius: 8px; display: block; margin-top: 6px; }
@@ -568,12 +582,12 @@ aside.tasks.hidden { display: none; }
 .tag.near-full { color: var(--bad); flex: none; }
 .tag.stalled { border-color: var(--warn); color: var(--warn); font-weight: 600; flex: none; }
 /* Why a row needs you (#671, #686): a word on a soft fill (a tag, no outline) or a bare icon (never filled, so it does not
-   look like a button). Only question has color; the fills mix with whatever is under them, so they show on a hovered row too. */
+   look like a button). Only question and card have color; the fills mix with whatever is under them, so they show on a hovered row too. */
 .tag.need { flex: none; margin-left: 0; border-color: transparent; background: color-mix(in srgb, var(--text) 9%, transparent); }
-.tag.need-question { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); font-weight: 600; }
+.tag.need-question, .tag.need-card { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); font-weight: 600; }
 .nic { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--muted); }
 .nic svg, .nic .pr-ic { width: 14px; height: 14px; display: block; color: inherit; }
-.nic.need-question { color: var(--warn); }
+.nic.need-question, .nic.need-card { color: var(--warn); }
 
 .signin { margin: 10px; padding: 10px; border: 1px solid var(--warn); border-radius: 8px; font-size: 12px; }
 .prb { display: inline-flex; align-items: center; gap: 1px; font-size: 11px; font-weight: 600; margin-left: 2px; }
@@ -635,6 +649,8 @@ aside.tasks.hidden { display: none; }
 .gsec .gname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gsec .gdots { display: inline-flex; justify-content: flex-end; gap: 4px; margin-left: auto; }
 .gsec .gdots .dot { width: 7px; height: 7px; animation: none; box-shadow: none; }
+.gsec .gcost { flex: none; font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; white-space: nowrap; } /* 👁 > Cost > Group totals */
+.gsec .gcost .per { font-weight: 400; opacity: .75; margin-right: 4px; font-size: 11px; }
 .gsec .gdots .dot.background { box-shadow: inset 0 0 0 1.5px var(--run); } .gsec .gdots .dot.resting { box-shadow: inset 0 0 0 1.5px var(--ok); } /* hollow ones keep their ring */
 .gsec .gdots .dot.background { box-shadow: inset 0 0 0 2px var(--run); }
 .gsec .gdots .dot.childwait { box-shadow: inset 0 0 0 2px var(--run); } .gsec .gdots .dot.childnews { box-shadow: inset 0 0 0 2px var(--run), 0 0 0 2px color-mix(in srgb, var(--run) 30%, transparent); }
@@ -654,9 +670,9 @@ aside.tasks.hidden { display: none; }
 #list.moving .drag-src { opacity: .45; }
 .gsec.archived .gname { text-decoration: line-through; }
 .gnew { color: var(--accent); }
-.dlg-back { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 50; display: grid; place-items: center; padding: 16px; }
+.dlg-back { position: fixed; inset: 0; background: var(--scrim); backdrop-filter: blur(var(--scrim-blur)); z-index: 50; display: grid; place-items: center; padding: 16px; }
 .dlg-back[hidden] { display: none; }
-.dlg { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; width: min(440px, 100%); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.dlg { background: var(--pop-bg); border: 1px solid var(--pop-line); box-shadow: var(--pop-shadow); border-radius: 12px; width: min(440px, 100%); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .dlg-title { font-weight: 600; }
 .dlg-body { font-size: 13px; color: var(--muted); display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; }
 .dlg-body label { display: flex; align-items: center; gap: 8px; color: var(--text); }
@@ -669,6 +685,11 @@ aside.tasks.hidden { display: none; }
 .toast { pointer-events: auto; display: flex; gap: 8px; align-items: flex-start; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-left: 4px solid var(--bad); border-radius: 10px; box-shadow: var(--card-shadow); padding: 10px 10px 10px 12px; font-size: 13px; }
 .toast .t-msg { flex: 1; white-space: pre-wrap; overflow-wrap: anywhere; }
 .toast button { flex: none; }
+/* Screen control (#822): which session is using the mouse and keyboard now, with Stop, over everything */
+.screen-bar { position: fixed; top: 8px; left: 50%; transform: translateX(-50%); z-index: 75; display: flex; flex-direction: column; gap: 6px; width: min(560px, calc(100vw - 32px)); }
+.screen-bar[hidden] { display: none; }
+.screen-bar .row { display: flex; gap: 8px; align-items: center; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-left: 4px solid var(--warn); border-radius: 8px; box-shadow: var(--card-shadow); padding: 6px 8px 6px 12px; font-size: 13px; }
+.screen-bar .row span { flex: 1; overflow-wrap: anywhere; }
 /* the Suggest a feature panel, and its speech bubble button in the top bar */
 header.top #feedbackBtn { padding: 4px 8px; display: inline-flex; align-items: center; }
 header.top #feedbackBtn svg { width: 18px; height: 18px; }
@@ -731,21 +752,29 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 #updateOffer .x:hover { background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
 /* The one-time offer of 👁 > Reason tags > Icon as session dot (#720): the same card, with an icon tile, a × and a
    sample of rows on the panel color so the icons show in their real colors. */
-#reasonOffer .t { padding-right: 18px; }
-#reasonOffer .ic { grid-row: span 2; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--on-accent) 18%, transparent); display: grid; place-items: center; }
+/* The one-time card about 👁 > Cost (#806) is the same card again, its sample rows with a cost left of the time. */
+:is(#reasonOffer, #costOffer) .t { padding-right: 18px; }
+:is(#reasonOffer, #costOffer) .ic { grid-row: span 2; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--on-accent) 18%, transparent); display: grid; place-items: center; }
 #reasonOffer .ic svg { width: 22px; height: 22px; }
-#reasonOffer .x { position: absolute; top: 6px; right: 8px; border: none; padding: 0 6px; font-size: 16px; line-height: 1.4; opacity: .8; color: inherit; }
-#reasonOffer .x:hover { opacity: 1; background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
-#reasonOffer .x:focus-visible { outline: 2px solid var(--on-accent); outline-offset: 2px; }
-#reasonOffer .ro-sample { grid-column: 1 / -1; margin-top: 6px; background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px; font-size: 13px; }
-#reasonOffer .ro-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; }
-#reasonOffer .ro-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#costOffer .ic { font-size: 20px; font-weight: 700; }
+:is(#reasonOffer, #costOffer) .x { position: absolute; top: 6px; right: 8px; border: none; padding: 0 6px; font-size: 16px; line-height: 1.4; opacity: .8; color: inherit; }
+:is(#reasonOffer, #costOffer) .x:hover { opacity: 1; background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
+:is(#reasonOffer, #costOffer) .x:focus-visible { outline: 2px solid var(--on-accent); outline-offset: 2px; }
+:is(#reasonOffer, #costOffer) .ro-sample { grid-column: 1 / -1; margin-top: 6px; background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px; font-size: 13px; }
+:is(#reasonOffer, #costOffer) .ro-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; }
+#costOffer .ro-row.child { padding-left: 28px; position: relative; }
+#costOffer .ro-row.child::before { content: '↳'; position: absolute; left: 12px; color: var(--muted); }
+#costOffer .ro-head { display: flex; align-items: center; gap: 8px; padding: 3px 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--head-text); background: var(--head); border-radius: 6px; }
+#costOffer .ro-head span:first-child { flex: 1; }
+#costOffer .ro-head .per { font-weight: 400; opacity: .75; margin-right: 4px; text-transform: none; letter-spacing: 0; }
+#costOffer .ro-c { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 38px; text-align: right; }
+:is(#reasonOffer, #costOffer) .ro-t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #reasonOffer .ro-t.asking { color: var(--warn); }
-#reasonOffer .ro-m { font-size: 11px; color: var(--muted); }
+:is(#reasonOffer, #costOffer) .ro-m { font-size: 11px; color: var(--muted); }
 #reasonOffer .ro-cap { font-size: 11px; color: var(--muted); padding: 2px 10px 0; }
 #reasonOffer .ro-opt { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 4px; cursor: pointer; }
 #reasonOffer .ro-opt input { accent-color: var(--on-accent); margin: 0; }
-#reasonOffer .ro-hint { grid-column: 1 / -1; font-size: 11px; opacity: .85; }
+:is(#reasonOffer, #costOffer) .ro-hint { grid-column: 1 / -1; font-size: 11px; opacity: .85; }
 #menuBtn.has-update { position: relative; }
 #menuBtn.has-update::after { content: ''; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 .key h4 { margin: 8px 0 2px; font-size: 12px; color: var(--text); }
@@ -1023,30 +1052,54 @@ body.resizing.rows { cursor: row-resize; }
 .err-text { color: var(--bad); font-size: 13px; }
 .browser-box { border-top: 1px solid var(--line); padding: 10px 14px 12px; font-size: 12px; }
 /* the bottom line: today's cost */
-.side-foot { display: flex; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--line); }
+.side-foot { display: flex; align-items: center; border-top: 1px solid var(--line); white-space: nowrap; overflow: hidden; }
 /* the remote icon in the top bar while a remote connection is on */
 .rc-wrap { position: relative; display: flex; }
 .rc-wrap[hidden] { display: none; }
 header.top .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
+/* the autopilot indicator in the top bar while it is flying (#821) */
+header.top .pilot-btn { border: none; padding: 4px 6px; font-size: 14px; color: var(--accent); min-width: 32px; min-height: 28px; }
+header.top .pilot-btn[hidden] { display: none; }
+.by-pilot { color: var(--accent); }
+.pilot-dlg .pl-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+.pilot-dlg select { max-width: 100%; }
+.pilot-dlg h4 { margin: 14px 0 4px; font-size: 13px; }
+.pilot-dlg .pl-list { max-height: 180px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; font-size: 12px; }
+.pilot-dlg .pl-list div { padding: 3px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.pilot-dlg .pl-list div:last-child { border-bottom: none; }
+.pilot-dlg .pl-no { color: var(--warn); }
 .tl-menu.rc-pop { left: auto; right: 0; min-width: 260px; }
 .rc-pop .rc-item { display: flex; align-items: center; gap: 8px; padding: 6px; font-size: 13px; }
 .rc-pop .rc-item span { flex: 1; }
 .clients .rc-mark { font-size: 12px; }
-.today-spend { flex: 1; border: none; border-radius: 0; background: none; text-align: left; padding: 6px 14px; font-size: 12px; color: var(--muted); cursor: pointer; }
+.today-spend { flex: none; border: none; border-radius: 0; background: none; text-align: left; padding: 6px 8px 6px 14px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .today-spend:hover { background: var(--panel-2); }
-.today-spend b { color: var(--text); font-weight: 600; } .today-spend .ln { white-space: nowrap; }
+.today-spend b { color: var(--text); font-weight: 600; }
 .today-spend.near, .today-spend.near b { color: var(--warn); }
 .today-spend.over, .today-spend.over b { color: var(--bad); font-weight: 600; }
-/* under it, session activity (#805): the live counts by dot color, then today's working line; a link, like the spend */
-.act-line { flex: 1 0 100%; display: flex; align-items: center; gap: 10px; border: none; border-radius: 0; background: none; padding: 6px 14px; font-size: 12px; color: var(--muted); cursor: pointer; min-width: 0; }
+/* on the same line, pushed right: session activity (#805), the live counts by dot color, then today's working line; a link, like the spend */
+.act-line { flex: none; margin-left: auto; display: flex; align-items: center; gap: 7px; border: none; border-radius: 0; background: none; padding: 6px 8px 6px 10px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .act-line[hidden] { display: none; }
-.today-spend:not([hidden]) + .act-line { border-top: 1px solid var(--line); }
 .act-line:hover { background: var(--panel-2); }
-.act-line .cnt { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
-.act-line .cnt b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
-.act-line .ad { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.act-line .ad.w { background: var(--run); } .act-line .ad.n { background: var(--warn); } .act-line .ad.i { background: var(--ok); }
-.act-line svg { flex: 1; height: 22px; min-width: 60px; display: block; }
+.act-cnts { display: inline-flex; gap: 7px; }
+.act-cnts .cnt, .foot-pop .cnt { display: inline-flex; align-items: center; gap: 3px; }
+.act-cnts .cnt b, .foot-pop .cnt b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.act-cnts .ad, .foot-pop .ad { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.ad.w { background: var(--run); } .ad.n { background: var(--warn); } .ad.i { background: var(--ok); }
+.act-line svg { width: 44px; height: 16px; display: block; }
+/* the line never wraps: whole pieces hide in a fixed order (fitFoot), and ⋯ lists what is hidden */
+.side-foot [data-p].gone, .act-line.gone { display: none; }
+.foot-more { flex: none; min-width: 32px; min-height: 28px; margin: 0 4px 0 auto; padding: 0 6px; color: var(--muted); letter-spacing: 1px; }
+.act-line:not([hidden]):not(.gone) + .foot-more { margin-left: 0; }
+.foot-more[hidden] { display: none; }
+.foot-more[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+.tl-menu.foot-pop { position: fixed; top: auto; max-width: calc(100vw - 16px); min-width: 220px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.foot-pop .it { display: flex; align-items: center; gap: 8px; padding: 5px 8px; }
+.foot-pop .it > :last-child { margin-left: auto; }
+.foot-pop b { color: var(--text); font-weight: 600; }
+.foot-pop .it svg { width: 70px; height: 18px; display: block; flex: none; }
+.foot-pop .sep { height: 1px; background: var(--line); margin: 4px 2px; }
+.foot-pop button { display: block; width: 100%; text-align: left; border: none; border-radius: 6px; padding: 5px 8px; font-size: 12px; color: var(--text); }
 .browser-box .bh { display: flex; align-items: center; justify-content: space-between; font-weight: 600; font-size: 13px; }
 .browser-box .sites { color: var(--muted); margin: 4px 0 8px; line-height: 1.4; }
 .browser-box .btns { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -1068,9 +1121,9 @@ header.top .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
 .sites-view .sv-add button, .sites-view .sv-forget { font-size: 12px; padding: 4px 10px; align-self: flex-start; }
 .sites-view .sv-forget { margin-top: 10px; color: var(--muted); }
 .sites-view .sv-forget:hover { color: var(--bad); border-color: var(--bad); }
-.ctx { position: fixed; z-index: 20; min-width: 200px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 6px 24px rgba(0,0,0,.25); }
+.ctx { position: fixed; z-index: 20; min-width: 200px; background: var(--pop-bg); border: 1px solid var(--pop-line); border-radius: 8px; padding: 4px; box-shadow: var(--pop-shadow); }
 .ctx button { display: block; width: 100%; text-align: left; border: none; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
-.ctx hr { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
+.ctx hr { border: none; border-top: 1px solid var(--pop-line); margin: 4px 0; }
 .ctx .ver { padding: 6px 10px; font-size: 12px; color: var(--muted); max-width: 320px; }
 .ctx .ver b { color: var(--text); font-weight: 600; }
 .ctx .ver .why { white-space: pre-wrap; max-height: 8em; overflow: auto; margin-top: 4px; overflow-wrap: anywhere; }
@@ -1079,7 +1132,7 @@ header.top .rc-btn { border: none; padding: 4px 6px; font-size: 14px; }
 .ctx .ver.waiting .res { color: var(--accent); font-weight: 600; }
 /* ☰ menu groups: open beside the menu, or under their name where there is no room */
 .ctx .sub-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.ctx .sub-btn[aria-expanded="true"] { background: var(--panel-2); }
+.ctx button:hover, .tl-menu button:hover, .ctx .sub-btn[aria-expanded="true"] { background: var(--pop-hover); }
 .ctx .sub-arrow { color: var(--muted); }
 .ctx.sub { z-index: 21; min-width: 220px; }
 .ctx.sub[hidden] { display: none; }
@@ -1194,12 +1247,12 @@ html.popout header.top, html.popout .start-banner, html.popout aside.side, html.
 .hover-card .hc-bar i { display: block; height: 100%; background: var(--muted); }
 .hover-card .hc-bar.full i { background: var(--bad); }
 .hover-card .snip { white-space: normal; }
-.tl-menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 10; min-width: 230px; max-height: 360px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 4px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.tl-menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 10; min-width: 230px; max-height: 360px; overflow: auto; background: var(--pop-bg); border: 1px solid var(--pop-line); border-radius: 8px; padding: 4px; box-shadow: var(--pop-shadow); }
 .tl-menu label { display: flex; gap: 7px; align-items: center; padding: 3px 6px; border-radius: 5px; font-size: 12px; cursor: pointer; }
-.tl-menu label:hover { background: var(--panel-2); }
+.tl-menu label:hover { background: var(--pop-hover); }
 .tl-menu label b { font-weight: 400; flex: 1; }
 .tl-menu label em { font-style: normal; color: var(--muted); font-variant-numeric: tabular-nums; }
-.tl-menu .tl-all { display: flex; gap: 12px; padding: 4px 6px 6px; margin: -4px -4px 2px; position: sticky; top: -4px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.tl-menu .tl-all { display: flex; gap: 12px; padding: 4px 6px 6px; margin: -4px -4px 2px; position: sticky; top: -4px; background: var(--pop-bg); border-bottom: 1px solid var(--pop-line); }
 .tl-menu .tl-mnote { font-size: 11px; color: var(--muted); padding: 6px 6px 2px; border-top: 1px solid var(--line); margin-top: 4px; max-width: 260px; }
 .tl-menu i, .tl-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); display: inline-block; flex: none; }
 .tl-bar .tl-sum { font-size: 12px; color: var(--muted); flex: 1 1 220px; min-width: 0; display: flex; gap: 8px; align-items: center; }
@@ -1215,6 +1268,11 @@ html.popout header.top, html.popout .start-banner, html.popout aside.side, html.
 /* Reason tags (#686): one choice of three, its own line above the toggles */
 .view-pop .vm-reason { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
 .view-pop .vm-reason > span { flex-basis: 100%; font-size: 11px; color: var(--muted); }
+/* Cost (#806): under Reason tags, three lines of chips, each with its own small label; a chip with nothing to change grays out */
+.view-pop .vm-cost { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.view-pop .vm-cost > span { flex-basis: 100%; font-size: 11px; color: var(--muted); }
+.view-pop .vm-cost > span:not(:first-child) { margin-top: 2px; }
+.view-pop .chip-tgl:disabled { opacity: .45; cursor: default; }
 .tl-note { font-size: 11px; color: var(--muted); padding: 6px 14px 0; }
 .tl-w { display: flex; flex-direction: column; gap: 1px; border-left: 2px solid var(--line); padding-left: 6px; margin: -4px 0; }
 .tl-e { border: 1px solid transparent; border-radius: 6px; font-size: 12px; min-width: 0; }
@@ -1353,7 +1411,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   <button id="pauseBtn" data-tip="pause-all" aria-label="Pause all sessions">⏸︎</button>
   <button id="reloadAllBtn" data-tip="reload-all" aria-label="Reload all sessions whose config changed" hidden>⟳<span id="reloadAllN"></span></button>
   <button class="ghost" id="feedbackBtn" data-tip="feedback" aria-label="Suggest a feature" aria-haspopup="dialog" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></button>
-  <span class="top-icons"><span class="sep" aria-hidden="true"></span><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
+  <span class="top-icons"><span class="sep" aria-hidden="true"></span><button class="ghost pilot-btn" id="pilotBtn" data-tip="pilot-icon" aria-label="Autopilot flying" hidden>✈</button><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
 </header>
 <div class="start-banner" id="startBanner" role="status" hidden><span id="startBannerText"></span><button class="primary" id="startSignin" data-tip="start-signin">Start Docket at sign-in (recommended)</button><button id="startShortcut" data-tip="start-shortcut">Just add a shortcut</button><button id="startNever" data-tip="start-never">Don't ask again</button></div>
 <div class="app">
@@ -1370,7 +1428,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     <div class="pick-bar" id="pickBar" hidden></div>
     <div class="list" id="list"></div>
     <div class="browser-box" id="browserBox"></div>
-    <div class="side-foot"><button class="today-spend" id="todaySpend" data-tip="today-spend" hidden></button><button class="act-line" id="activity" data-tip="activity" hidden></button></div>
+    <div class="side-foot" id="sideFoot"><button class="today-spend" id="todaySpend" data-tip="today-spend" hidden></button><button class="act-line" id="activity" data-tip="activity" hidden></button><button class="ghost foot-more" id="footMore" aria-haspopup="menu" aria-expanded="false" aria-label="More of today" data-tip="foot-more" hidden>⋯</button></div>
   </aside>
   <main>
     <section class="preview" id="preview" hidden aria-label="File preview">
@@ -1432,6 +1490,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="wiz-back" id="wiz" hidden><div class="wiz" role="dialog" aria-modal="true" aria-labelledby="wizTitle" id="wizCard"></div></div>
 <div id="cornerStack">
 <div class="install-offer" id="reasonOffer" role="dialog" aria-labelledby="reasonOfferTitle" hidden></div>
+<div class="install-offer" id="costOffer" role="dialog" aria-labelledby="costOfferTitle" hidden></div>
 <div class="install-offer" id="cacheOffer" role="dialog" aria-labelledby="cacheOfferTitle" hidden></div>
 <div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
 <div class="install-offer" id="setupOffer" role="dialog" aria-labelledby="setupOfferTitle" hidden></div>
@@ -1443,6 +1502,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="dlg-back" id="dlg" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle"><div class="dlg-title" id="dlgTitle"></div><div class="dlg-body" id="dlgBody"></div><div class="dlg-btns" id="dlgBtns"></div></div></div>
 <div class="dlg-back" id="askDlg" hidden><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="askTitle" aria-describedby="askBody"><div class="dlg-title" id="askTitle"></div><div class="dlg-body" id="askBody"></div><div class="dlg-btns"><button id="askNo" title="No: leave things as they are (Esc)"></button><button class="primary" id="askYes" title="Yes: go ahead (Enter)"></button></div></div></div>
 <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<div class="screen-bar" id="screenBar" role="status" aria-live="polite" hidden></div>
 <div class="dlg-back" id="fbDlg" hidden><div class="dlg fb" role="dialog" aria-modal="true" aria-labelledby="fbTitle"><div class="dlg-title" id="fbTitle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="fb-title-ic" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg>Suggest a feature</div><div class="dlg-body">
   <textarea id="fbText" placeholder="What would make Docket better? (required)" aria-label="Your message (required)" aria-required="true" data-tip="fb-text"></textarea>
   <input type="text" id="fbName" placeholder="Your name (optional)" aria-label="Your name (optional)" maxlength="80" data-tip="fb-name">
@@ -1540,12 +1600,15 @@ const HELP = [
     ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is. Blinks yellow while the session open now needs you to sign in to a site'],
     ['new', '+ New session', 'Start a new conversation with the AI'],
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
-    ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), whether rows show why they need you, and which chips each row shows. Each desk keeps its own.'],
+    ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), whether rows show why they need you, what sessions and groups cost, and which chips each row shows. Each desk keeps its own.'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
     ['attn', '✦ Needs attention', 'Needs attention: show only sessions that\n• need you (a reply or an error you have not opened yet)\n• wait on your answer\n• are working\n• have a warm cache\nBelow them:\n• the ones you touched lately (sent a message or started; the Keep period on the right of ✦ sets how far back, Workday (the last workday) at first; picking one also turns ✦ on)\n• the ones you pinned (right-click a session)\nA family shows whole: a session started from another one sits under it, its parent shown too.\nThe orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then what you touched lately or pinned. Click to show everything.'],
     ['attn-window', '✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, below the others, by when you last touched them (sent a message or started them; opening one does not count):\n• Off: none\n• 12 hours\n• Yesterday: from the start of yesterday\n• Workday (the last workday): from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included\n• 7 days\n• Pins: only pinned ones\nPinned sessions show under every choice. Each desk keeps its own.'],
     ['reasontags', '👁 > Reason tags', 'Reason tags: a session that needs you also shows why on its row, as a small word or an icon (question, merge, done or reply; hover an icon for its word) in a column on the right. Only question has color. An error needs no tag: its dot has a red ring and its time says "error". Off: no column. Icon as session dot, beside these, draws the reason icon in place of the dot. Each desk keeps its own.'],
     ['reasondot', '👁 > Reason tags > Icon as session dot', 'Icon as session dot: a session that needs you draws its reason icon (question, merge, done, reply, or a red triangle for an error) in place of its yellow dot; hover it for the word. A session paused on a prompt keeps the "?" dot. Works with Words, Icons or Off, which set the column on the right.', 'The reason icon takes the place of the dot on rows that need you. Turn it off for the plain yellow dot.'],
+    ['costrows', '👁 > Cost > Sessions', 'Cost on each row, just left of its time, at API prices as in Details > Cost and the Usage page:\n• Off: none\n• Session: what the session cost, with its helper agents\n• Family: the session and every session under it, all the way down, archived and deleted ones too (in bold where it adds any)\nA working session shows its cost up to its last turn, with a +. Schedule rows show none. Each desk keeps its own.'],
+    ['costgroups', '👁 > Cost > Group totals', 'Group totals: each group header shows what all its sessions cost at API prices, archived and deleted ones too, even while the group is folded. Only while the list is Grouped. Each desk keeps its own.', 'Each group header shows what its sessions cost. Turn it off to hide the totals.'],
+    ['costperiod', '👁 > Cost > Period', 'Period, for every cost shown on rows and group headers: Today (since midnight, the same day as the Today spend at the bottom left) or Ever. Each desk keeps its own.'],
     ['prchips', '👁 > Pull request chips', 'Pull request chips: show each session\'s pull requests on its row, colored by where they stand', 'Each row shows its pull requests. Turn it off to hide them; Details still lists them.'],
     ['tkchips', '👁 > Ticket chips', 'Ticket chips: show the ticket found in each session\'s git branch name on its row', 'Each row shows the ticket from its git branch name. Turn it off to hide them; Details still lists them.'],
     ['commentchips', '👁 > Comment chips', 'Comment chips: show a speech bubble on a session\'s row when one of its tickets or pull requests has a new comment', 'Each row shows a speech bubble when a comment is waiting. Turn it off to hide them; Details still shows them.'],
@@ -1563,6 +1626,9 @@ const HELP = [
     ['group-head', 'A group header', 'Click to fold or unfold the group. Drag it to change the order. Right-click to rename it, set its start folder, archive or delete it.'],
     ['today-spend', 'Today $… / $… · … agent · … you · +… / −…', 'What this desk has spent today at API prices, against its daily budget if it has one (set in ☰ > Desks). Amber from 80% of the budget, red at 100%. Then the time its sessions spent working (agent) and the time you spent typing to them (you), each added up over every session; the time they stood waiting on you is in the hover text. Last, the lines their file edits added (green) and removed (red) today, the same as the Lines column on the Usage page. Click to open Usage for today.'],
     ['activity', '● 3 ● 1 ● 9 and a line', 'This desk\'s live sessions by the color of their dot: blue working, orange waiting on you, green idle. Then a line of how many were working through today, midnight to now, in 5-minute steps. The hover text says today\'s peak and how long at least one was working. Click to open Usage › Activity, with the day by state and a week\'s busy hours.'],
+    ['foot-more', '⋯', 'What a narrow list leaves out of the line above: the pieces that did not fit, then links to Usage › Activity and Usage for today. The line drops lines added and removed first, then the activity line, your time, the counts, agent time and the word Today; the dollar figure always stays.'],
+    ['foot-go-activity', 'Open Usage › Activity', 'Opens Usage on its Activity part: when sessions worked, hour by hour'],
+    ['foot-go-today', 'Open Usage for today', 'Opens Usage for today: what each session spent and how long it worked'],
     ['resize-left', 'The list\'s edge', 'Drag to make the session list wider or narrower. Double-click to reset.'],
     ['resize-compose', 'The typing box\'s top edge', 'Drag up to make the typing box taller, down to make it shorter. Double-click to go back to the automatic size.'],
     ['sign-in', 'Sign in', 'Sign this desk in. Sessions for it can\'t run until it is.'],
@@ -1635,6 +1701,7 @@ const HELP = [
     ['last-msg', 'Your last message', 'Jump to this message in the conversation'],
     ['card-strip-go', 'A card waiting on you', 'Jump to this card in the conversation'],
     ['card-strip-answer', 'Answer', 'Jump to the questions to pick your answers'],
+    ['card-strip-kid', 'Waiting in a session under this one', 'Open the session under this one where a card or a prompt waits on you'],
     ['jump-new', 'Jump to new', 'Scroll to the line above what came in since you last looked'],
     ['copy-reply', 'Copy reply', 'Copy this whole reply'],
     ['tl-filters', '🕘 Filters', 'Choose which kinds of steps from the session\'s record show in the chat'],
@@ -1790,6 +1857,9 @@ const HELP = [
     ['menu-update', 'About > Check for updates', 'Look on GitHub for a newer Docket now'],
     ['upd-every', 'Check every', 'How often Docket looks on GitHub for a newer version'],
     ['menu-updmode', 'Settings > Updates', 'Automatic: Docket takes each new version from GitHub by itself and restarts once no session is busy (sessions keep working). Manual: it only says when one is waiting, and you press Update now. Kept on this computer only'],
+    ['menu-screen', 'Settings > Screen control', 'On: this desk\'s sessions get tools to take screenshots, move and click the mouse and type, in any program on this computer (and on a remote desk\'s computer where it is on too). A last resort for programs with no better way in. Every action is logged, a bar shows while a session is in control, and Stop halts it. Off by default; sessions started or woken after you turn it on get the tools. Kept on this computer only'],
+    ['menu-screenlog', 'Settings > Screen control log', 'Open the folder with the log of every screen action (one file a day: session, time, action) and the picture of the screen taken before each click or drag. Kept 30 days'],
+    ['screen-stop', 'Stop', 'Stop this session using the mouse and keyboard now. Its running action ends at once, and its screen tools are refused until you next write to it'],
     ['menu-signins', 'Settings > Private browser sign-ins', 'The sites this desk is signed in to in its private browser, the one its sessions use: add a sign-in or delete one. The same as the 🌐 button'],
     ['menu-fbdest', 'Settings > Feedback destination', 'Which GitHub repo the Suggest a feature button files reports in from this computer, and the GitHub token it files them with. Not set means nothing is sent. Kept on this computer only'],
     ['fb-dest-repo', 'Repo', 'The GitHub repo the reports become Issues in, as owner/name. Leave it empty to stop sending'],
@@ -1868,6 +1938,8 @@ const HELP = [
     ['ro-on', 'Turn it on', 'Draw the reason icon in place of the dot on rows that need you, on this desk. Ticked, the word stays on the right too; unticked, there is no column. Change it any time in 👁 > Reason tags'],
     ['ro-words', 'Keep the word on the right too', 'Ticked: the reason word stays in its column on the right as well (Words). Unticked: only the icon at the dot, and no column (Off)'],
     ['ro-no', 'Not now', 'Keep the plain dot. This card does not show again; 👁 > Reason tags has Icon as session dot whenever you want it'],
+    ['co-on', 'Turn it on', 'Show each session\'s own cost on its row and each group\'s total on its header, on this desk, for today. Change it any time in 👁 > Cost'],
+    ['co-no', 'Not now', 'Keep the list as it is. This card does not show again; 👁 > Cost has it whenever you want it'],
     ['plan-no', 'Turn them off', 'Turn plans off for this desk and don\'t ask again. Turn them on later in the desk\'s Inspector, under Switches'],
     ['ps-convert', 'Convert in a session', 'Start a session on this desk that carries the plans listed here over to the new plan system. The old files stay as they are, and the desk keeps its old plan system until you press Finish the switch'],
     ['ps-switch', 'Switch without converting', 'Switch the plan system now and leave what is listed here where it is, unconverted'],
@@ -1942,8 +2014,15 @@ const HELP = [
     ['rd-setup-cancel', 'Cancel', 'Keep the authenticator you had, or none'],
     ['rd-desk', 'Desk it may use', 'The one desk another computer may use. Its sign-ins and costs stay on this computer'],
     ['rd-on', 'Turn on / Turn off', 'While on, computers on the office network can ask to connect (with a code from the authenticator app, and only after someone here clicks Allow). While off, nothing on the network can reach Docket here'],
+    ['pilot-icon', '✈ Autopilot flying', 'The autopilot is on: its pilot session answers what waits on you, under the rules on this computer, and everything it answers says "answered by pilot". Click to see its log, or to turn it off'],
+    ['pilot-pick', 'Pilot', 'The session that answers for you. Pick one that is running (Grok first, any brand), then Save pilot'],
+    ['menu-autopilot', 'Settings > Autopilot', 'Let a pilot session answer what waits on you (permission prompts, question forms, cards) under rules kept on this computer. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the pilot, what waits now and the log of its answers'],
     ['rc-icon', '📡 Remote connection on', 'Another computer is using a desk here, or this computer is using a desk on another computer. Click the 📡 at the bottom left to see which, and to Disconnect'],
     ['rd-drop', 'Disconnect', 'End this computer\'s connection now. It needs a new code and an Allow to come back'],
+    ['rd-revoke', 'Revoke', 'End this pilot key now. The autopilot on that computer can no longer reach this desk until someone here allows a new one'],
+    ['rd-pk', 'Ask for a pilot key', 'Lets the autopilot on this computer answer what waits on that desk, under the rules on both computers, for 30 days with no code. Someone at that computer must click Allow within 2 minutes, and can revoke it there at any time'],
+    ['rd-pk-screen', 'With the screen tools', 'Ask for the screen and mouse tools as well. They still work only while screen control is on for that desk there'],
+    ['rd-pk-revoke', 'Revoke pilot key', 'Give the pilot key back: it stops working on both computers'],
     ['rd-code', '6-digit code', 'The code the authenticator app shows for the other computer\'s Docket right now'],
     ['rd-connect', 'Connect', 'Send the code. Someone at the other computer must then click Allow within 2 minutes'],
     ['rd-off', 'Disconnect', 'End the connection to this remote desk. Nothing of it is kept on this computer'],
@@ -2013,6 +2092,7 @@ const S = {
   editors: [],     // the editors installed here that a session's folder opens in
   live: {},        // id -> live session summary (all clients)
   history: {},     // clientId -> rows
+  costs: {},       // clientId -> the session list's cost figures (👁 > Cost)
   inbox: {},       // clientId -> work another desk handed over, waiting for Start
   signinNeeds: {}, // clientId -> { sessionId: { site, url } }: sessions waiting on a private browser sign-in (#775)
   picked: new Set(), pickAnchor: null, pickMsg: '', // sessions picked with Ctrl/Shift+click, for the bar above the list
@@ -2037,10 +2117,13 @@ const inBackground = (s) => s.live && s.status === 'idle' && (s.runningTasks > 0
 // or a saved one that was waiting when the portal stopped.
 const needsYou = (s) => s.live ? (s.status === 'requires_action' || (s.unread && ((s.status === 'idle' && !inBackground(s)) || (s.status === 'ended' && !!s.lastError)))) : !!s.waiting;
 // Why it needs you (#671), strongest first, from Docket's own signals: why it turned orange (unreadWhy), a prompt or a
-// reply ending in a question (asksYou), an error, an open pull request (pr). The label the session declared (unreadSaid,
-// from mark_turn) only chooses between done and reply, or raises it to question: it never makes a row quieter.
-const NEED_ASKING = ['requires_action', 'permission', 'offer', 'cross', 'handoff'];
-const needLabel = (s, pr = false) => s.status === 'requires_action' || s.asksYou || NEED_ASKING.includes(s.unreadWhy) || s.unreadSaid === 'question' ? 'question'
+// reply ending in a question (asksYou), a card waiting on a click (cardOpen, #823), an error, an open pull request (pr).
+// A card (a session offer, a proposal, a handoff) is one click, so it says card rather than question, unless a prompt
+// or a question came with it. The label the session declared (unreadSaid, from mark_turn) only chooses between done
+// and reply, or raises it to question: it never makes a row quieter.
+const NEED_ASKING = ['requires_action', 'permission'], NEED_CARD = ['offer', 'cross', 'handoff'];
+const needLabel = (s, pr = false) => s.status === 'requires_action' || NEED_ASKING.includes(s.unreadWhy) ? 'question'
+  : NEED_CARD.includes(s.unreadWhy) ? 'card' : s.asksYou || s.unreadSaid === 'question' ? 'question' : s.cardOpen ? 'card'
   : s.lastError || s.unreadWhy === 'error' ? 'problem' : pr ? 'merge' : s.unreadSaid === 'done' ? 'done' : 'reply';
 // end of needs you
 // A row's place in the list: when it last turned orange (or started), never its latest activity,
@@ -2188,7 +2271,7 @@ const kidsNamed = (s) => {
   return ':' + lines.join('') + (list.some((k) => k.held && k.jobs.length) ? '\nRight-click this row (or ⋯) and Mark done to stop waiting for a held job.' : '');
 };
 // The label on a row that needs you, and its tooltip (#671).
-const NEED_TIPS = { question: 'It asked you something: a question, a permission prompt or a card waits on you', problem: 'Its last turn ended in an error', merge: 'Its pull request is open and waiting on you', done: 'It says its work is complete and ready to close', reply: 'A finished reply to read' };
+const NEED_TIPS = { question: 'It asked you something: a question, a question form or a permission prompt waits on you', card: 'A card waits on your click: a session offer, a proposal or a handoff', problem: 'Its last turn ended in an error', merge: 'Its pull request is open and waiting on you', done: 'It says its work is complete and ready to close', reply: 'A finished reply to read' };
 // Only a pull request the session made or pushed to (mine, #807): one it only reviews is listed, but never says merge.
 const openPR = (id) => (S.prs[id] || []).some((p) => p.mine && ['open', 'conflict'].includes(prState(p)));
 // 👁 > Reason tags (#686): words, icons or off (S.reasonTags, icons by default since #695). An error gets none: its dot has a red ring
@@ -2198,6 +2281,7 @@ const needIcon = (l) => l === 'merge' ? prIcon('merged') : `<svg viewBox="0 0 16
   question: `<circle cx="8" cy="8" r="6.6" ${NEED_SVG}/><path d="M6.1 6.2a2 2 0 1 1 2.9 1.8c-.6.3-1 .7-1 1.4v.3" ${NEED_SVG}/><circle cx="8" cy="11.7" r=".95" fill="currentColor"/>`,
   done: `<path d="M2.8 8.6 6.3 12 13.2 4.4" ${NEED_SVG} stroke-width="2"/>`,
   reply: `<path d="M2.4 3.2h11.2v7.4H7.4l-3.2 2.6v-2.6H2.4Z" ${NEED_SVG}/>`,
+  card: `<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="2" ${NEED_SVG}/><path d="M4.2 6h7.6" ${NEED_SVG}/><rect x="4" y="8.6" width="3.6" height="2.4" rx=".8" fill="currentColor"/><rect x="8.6" y="8.6" width="3.4" height="2.4" rx=".8" ${NEED_SVG} stroke-width="1.2"/>`,
   problem: `<path d="M8 1.9 14.6 13.4H1.4Z" ${NEED_SVG}/><path d="M8 6.2v3.3" ${NEED_SVG} stroke-width="1.9"/><circle cx="8" cy="11.5" r=".95" fill="currentColor"/>`
 }[l]}</svg>`;
 const needMark = (l, as = S.reasonTags) => as === 'icons' ? `<span class="nic need-${l}" title="${l}: ${esc(NEED_TIPS[l])}" aria-label="${l}">${needIcon(l)}</span>` : `<span class="tag need need-${l}" title="${esc(NEED_TIPS[l])}">${l}</span>`;
@@ -2360,6 +2444,7 @@ async function init() {
   api('/api/startup').then(showStartupBanner).catch(() => {});
   showPlanOffer();
   showReasonOffer();
+  showCostOffer();
   // The other companies (their counts on the tabs), and the sign-in checks, arrive behind it.
   Promise.all(shownDesks().filter((c) => c.id !== S.client).map((c) => Promise.all([loadSessions(c.id), loadGroups(c.id)]))).then(renderClients);
   api('/api/clients').then((full) => {
@@ -2422,6 +2507,7 @@ function selectClient(id, openId) {
   S.client = id; store.set('client', id); history.replaceState(null, '', '#' + id);
   readDeskSettings(); if (viewOpen()) renderViewMenu(); // each desk shows its list its own way
   showReasonOffer(); // its card is per desk
+  showCostOffer(); // it does not show on a desk with a cost display on
   showAccent();
   S.picked.clear(); S.pickAnchor = null; S.pickMsg = ''; renderPickBar();
   const c = S.clients.find((x) => x.id === id);
@@ -2557,11 +2643,61 @@ function refreshSpend(delay = 0) {
   clearTimeout(spendTimer);
   spendTimer = setTimeout(async () => {
     const id = S.client; if (!id) return;
-    if (S.clients.find((c) => c.id === id)?.remote) { $('todaySpend').hidden = true; return; } // a remote desk's cost stays on its own computer
+    if (S.clients.find((c) => c.id === id)?.remote) { $('todaySpend').hidden = true; fitFoot(); return; } // a remote desk's cost stays on its own computer
     const d = new Date(), day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    loadCosts();
     let r; try { r = await api(`/api/usage/today?client=${encodeURIComponent(id)}&day=${day}`); } catch { return; }
     if (id === S.client) renderSpend(r);
   }, delay);
+}
+// ---------- 👁 > Cost (#806): each row's cost, its family's, and each group's, today or ever ----------
+// Asked for when a cost display is switched on, and with Today's spend (above) after that. Only for a desk on this
+// computer, as Today's spend. S.costs[desk]: { day, s, f, g } from /api/usage/list (server.mjs, listCosts).
+const pageDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+async function loadCosts() {
+  const id = S.client;
+  if (!id || !costOn() || S.clients.find((c) => c.id === id)?.remote) return;
+  let r; try { r = await api(`/api/usage/list?client=${encodeURIComponent(id)}&day=${pageDay()}`); } catch { return; }
+  const was = S.costs[id];
+  S.costs[id] = r;
+  if (id === S.client && JSON.stringify(was) !== JSON.stringify(r)) renderList();
+}
+const costMoney = (n) => !n ? '–' : n < 0.01 ? '<$0.01' : money(n);
+const costLeft = (archived, deleted) => [archived && `${archived} archived`, deleted && `${deleted} deleted`].filter(Boolean).join(' and ');
+// The sessions with a working session at or under them, for the + on their figure: worked out once per redraw.
+let costWorking = null;
+function costWorkingIds() {
+  if (costWorking) return costWorking;
+  const rows = allSessionRows(), byId = new Map(rows.map((r) => [r.id, r]));
+  costWorking = new Set();
+  for (const x of rows) if (working(x)) for (let id = x.id, n = 0; id && n < 50; id = byId.get(id)?.parentId, n++) costWorking.add(id);
+  return costWorking;
+}
+// The figure just left of a row's time. Schedule rows show none.
+function costCell(s, run) {
+  if (S.costRows === 'off' || run) return '';
+  const c = S.costs[S.client];
+  if (!c) return '<span class="ccost"></span>';
+  const p = S.costPeriod === 'today' ? 1 : 0, per = S.costPeriod;
+  const own = c.s[s.id]?.[p] || 0, f = S.costRows === 'family' ? c.f[s.id] : null;
+  const n = f ? f[p] : own, live = f ? costWorkingIds().has(s.id) : working(s);
+  let t;
+  if (f) {
+    const left = costLeft(f[3], f[4]);
+    t = `Family, ${per}: ${costMoney(n)} at API prices. This session ${costMoney(own)}, ${plural(f[2], 'session')} under it ${costMoney(n - own)}${left ? `, including ${left}` : ''}.`
+      + (live ? ' One of them is still working: its turn is added when it ends.' : '');
+  } else if (live) t = `So far${per === 'today' ? ' today' : ''}: ${costMoney(n)}, up to the end of its last turn. This turn is added when it ends.`;
+  else t = !n ? (per === 'today' ? `Nothing today. Ever: ${costMoney(c.s[s.id]?.[0] || 0)}.` : 'Nothing yet.') : `${per === 'today' ? 'Today' : 'Ever'}: ${costMoney(n)} at API prices, with its helper agents.`;
+  return `<span class="ccost${n ? '' : ' none'}${f && n ? ' fam' : ''}${live && n ? ' live' : ''}" title="${esc(t)}">${costMoney(n)}</span>`;
+}
+// A group's total on its header line, after its name.
+function groupCostHtml(gid, name) {
+  if (!costGroupsShown()) return '';
+  if (!S.costs[S.client]) return '';
+  const g = S.costs[S.client].g[gid || ''];
+  const per = S.costPeriod, n = g ? g[S.costPeriod === 'today' ? 1 : 0] : 0, left = g ? costLeft(g[3], g[4]) : '';
+  const t = `${name}, ${per}: ${costMoney(n)} at API prices across ${plural(g ? g[2] : 0, 'session')}${left ? `, including ${left}` : ''}.`;
+  return `<span class="gcost" title="${esc(t)}"><span class="per">${per}</span>${costMoney(n)}</span>`;
 }
 // Seconds as "2h 10m", "25m" or "40s".
 const spanText = (s) => { s = Math.round(s || 0); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}h ${m}m` : m ? `${m}m` : `${s}s`; };
@@ -2571,7 +2707,9 @@ function renderSpend(r) {
   const exact = (n) => '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const share = r.budget ? r.cost / r.budget : 0;
   el.className = 'today-spend' + (!r.budget ? '' : share >= 1 ? ' over' : share >= 0.8 ? ' near' : '');
-  el.innerHTML = `Today <b>${money(r.cost)}</b>${r.budget ? ` / ${whole(r.budget)}` : ''} · ${spanText(r.agent)} agent · ${spanText(r.user)} you · <span class="ln"><span class="ln-add">+${(r.added || 0).toLocaleString()}</span> / <span class="ln-del">−${(r.removed || 0).toLocaleString()}</span></span>`;
+  spendDay = r;
+  // each piece but the dollar figure in its own data-p, so fitFoot can hide it whole
+  el.innerHTML = `<span data-p="today">Today </span><b>${money(r.cost)}</b>${r.budget ? ` / ${whole(r.budget)}` : ''}<span data-p="agent"> · ${spanText(r.agent)} agent</span><span data-p="you"> · ${spanText(r.user)} you</span><span data-p="lines"> · ${todayLines(r)}</span>`;
   el.title = `${name} today at API prices: ${exact(r.cost)}` + (r.budget
     ? ` of a ${exact(r.budget)} daily budget (${Math.round(share * 100)}%). ${r.cost > r.budget ? exact(r.cost - r.budget) + ' over.' : exact(r.budget - r.cost) + ' left.'}`
     : '. No daily budget set (☰ > Desks).')
@@ -2579,10 +2717,13 @@ function renderSpend(r) {
     + `\nLines added ${(r.added || 0).toLocaleString()}, removed ${(r.removed || 0).toLocaleString()}, by the sessions' file edits today.`
     + '\nClick to open Usage for today.';
   el.hidden = false;
+  fitFoot();
 }
+let spendDay = null; // the last /api/usage/today answer, for the ⋯ menu
+const todayLines = (r) => `<span class="ln-add">+${(r.added || 0).toLocaleString()}</span> / <span class="ln-del">−${(r.removed || 0).toLocaleString()}</span>`;
 setInterval(() => refreshSpend(), 60000);
 // ---------- session activity (#805) ----------
-// Under today's spend: the desk's live sessions by the color of their dot (working, waiting on you, idle), then a line
+// On today's spend line, at the right: the desk's live sessions by the color of their dot (working, waiting on you, idle), then a line
 // of how many worked through today, midnight to now. The counts come from the list itself, so they move with the
 // dots; the line is the app's 5-minute slots, asked for once a minute.
 const ACT_STATE = { running: 'w', starting: 'w', background: 'c', childwait: 'c', childnews: 'c', asking: 'n', needs: 'n', failed: 'n', idle: 'i', resting: 'i' };
@@ -2599,8 +2740,8 @@ function refreshActivity(delay = 0) {
 }
 setInterval(() => refreshActivity(), 60000);
 // Today's working line: the average working in each 5-minute slot, midnight to now, with a dashed mark at noon.
-function actSpark(day) {
-  const W = 200, H = 22, N = 288, now = new Date(), upTo = Math.floor((now.getHours() * 60 + now.getMinutes()) / 5);
+function actSpark(day, W = 44, H = 16) {
+  const N = 288, now = new Date(), upTo = Math.floor((now.getHours() * 60 + now.getMinutes()) / 5);
   const v = Array(upTo + 1).fill(0);
   for (const s of day?.slots || []) { const i = (+s.t.slice(11, 13) * 60 + +s.t.slice(14, 16)) / 5; if (i <= upTo) v[i] = s.w; }
   const max = Math.max(1, ...v), xy = v.map((n, i) => [(i / (N - 1)) * W, H - 1 - (n / max) * (H - 3)]);
@@ -2610,21 +2751,80 @@ function actSpark(day) {
 }
 function drawActivity() {
   const el = $('activity'), c = S.clients.find((x) => x.id === S.client);
-  if (!c || c.remote) { el.hidden = true; return; }
+  if (!c || c.remote) { if (!el.hidden) { el.hidden = true; fitFoot(); } return; }
   const n = { w: 0, c: 0, n: 0, i: 0 };
   for (const s of Object.values(S.live)) if (s.client === S.client && s.live) { const k = ACT_STATE[dotClass(s)]; if (k) n[k]++; }
   const key = JSON.stringify([n, actDay?.day, actDay?.slots?.length, actDay?.slots?.at(-1), Math.floor(Date.now() / 300000)]);
   if (el.dataset.key === key && !el.hidden) return; // the list draws often; the footer only when something moved
-  el.dataset.key = key;
-  const cnt = (k, v) => `<span class="cnt"><span class="ad ${k}"></span><b>${v}</b></span>`;
-  el.innerHTML = cnt('w', n.w) + cnt('n', n.n) + cnt('i', n.i) + actSpark(actDay);
+  el.dataset.key = key; actNow = n;
+  el.innerHTML = `<span class="act-cnts" data-p="counts">${actCounts(n)}</span><span data-p="spark">${actSpark(actDay)}</span>`;
   const at = (t) => t ? t.slice(11, 16) : '';
   el.title = `Now: ${n.w} working, ${n.n} waiting on you, ${n.i} idle${n.c ? `, ${n.c} waiting on child sessions or a background job` : ''}.`
     + (actDay?.peak ? `\nToday: peak ${actDay.peak} working at ${at(actDay.peakAt)} · at least one working for ${spanText(actDay.busyMin * 60)}.` : '\nToday: nothing has worked yet.')
     + (actDay?.slots?.some((s) => s.r) ? '\nThe hours before tracking began are rebuilt from the transcripts.' : '')
     + '\nClick to open Usage › Activity for today.';
   el.hidden = false;
+  fitFoot();
 }
+let actNow = null; // the counts last drawn, for the ⋯ menu
+const actCounts = (n) => ['w', 'n', 'i'].map((k) => `<span class="cnt"><span class="ad ${k}"></span><b>${n[k]}</b></span>`).join('');
+// The footer is one line that never wraps. Show every piece, then hide whole pieces in this order until it fits;
+// the dollar figure always stays. ⋯ appears once anything is hidden, and its menu lists just those pieces.
+const FOOT_ORDER = ['lines', 'spark', 'you', 'counts', 'agent', 'today'];
+let footGone = [];
+function fitFoot() {
+  const f = $('sideFoot'), more = $('footMore'), act = $('activity');
+  if (!f.clientWidth) return; // the list is shut: the ResizeObserver fits it once it shows
+  f.querySelectorAll('[data-p].gone').forEach((e) => e.classList.remove('gone'));
+  act.classList.remove('gone');
+  const anyShown = !$('todaySpend').hidden || !act.hidden;
+  more.hidden = !anyShown; // room for ⋯ while measuring
+  const gone = [], over = () => f.scrollWidth > f.clientWidth + 1;
+  for (const p of FOOT_ORDER) {
+    if (!over()) break;
+    const e = f.querySelector(`[data-p="${p}"]`); if (!e || e.closest('[hidden]')) continue;
+    e.classList.add('gone'); gone.push(p);
+    if (p === 'counts' && f.querySelector('[data-p="spark"].gone')) act.classList.add('gone'); // nothing left of it: no empty link
+  }
+  footGone = gone;
+  more.hidden = !gone.length;
+  if (!gone.length) footMenu(false); else if (footMenuOpen()) footMenu('keep');
+}
+new ResizeObserver(() => fitFoot()).observe($('sideFoot'));
+// The ⋯ menu: the hidden pieces, then the two Usage links. It lives on the page, not in the footer (which clips),
+// and is placed above ⋯ but kept on screen: right edges lined up when it fits, else pushed in from the window's edge.
+const footMenuOpen = () => !!$('footMenu') && !$('footMenu').hidden;
+function footMenu(open) {
+  let m = $('footMenu');
+  if (!m) { m = document.createElement('div'); m.id = 'footMenu'; m.className = 'tl-menu foot-pop'; m.setAttribute('role', 'menu'); m.setAttribute('aria-label', 'More of today'); m.hidden = true; document.body.append(m); m.onclick = footMenuClick; }
+  $('footMore').setAttribute('aria-expanded', String(!!open));
+  if (!open) { m.hidden = true; return; }
+  const r = spendDay, at = (t) => t ? t.slice(11, 16) : '';
+  const items = {
+    counts: actNow && `<div class="it" role="none">${actCounts(actNow)}<span>now</span></div>`,
+    spark: `<div class="it" role="none">${actSpark(actDay, 70, 18)}<span>${actDay?.peak ? `peak <b>${actDay.peak}</b> at ${at(actDay.peakAt)}` : 'nothing worked yet'}</span></div>`,
+    agent: r && `<div class="it" role="none">Agent today<b>${spanText(r.agent)}</b></div>`,
+    you: r && `<div class="it" role="none">You today<b>${spanText(r.user)}</b></div>`,
+    lines: r && `<div class="it" role="none">Lines today<span>${todayLines(r)}</span></div>`,
+  };
+  const shown = ['counts', 'spark', 'agent', 'you', 'lines'].filter((k) => footGone.includes(k) && items[k]).map((k) => items[k]).join('');
+  m.innerHTML = shown + (shown ? '<div class="sep" role="none"></div>' : '')
+    + (!$('activity').hidden ? `<button role="menuitem" data-go="activity"${tip('foot-go-activity')}>Open Usage › Activity</button>` : '')
+    + `<button role="menuitem" data-go="today"${tip('foot-go-today')}>Open Usage for today</button>`;
+  m.hidden = false;
+  const b = $('footMore').getBoundingClientRect(), w = m.offsetWidth;
+  m.style.bottom = (innerHeight - b.top + 6) + 'px';
+  m.style.left = Math.max(8, Math.min(b.right - w, innerWidth - w - 8)) + 'px';
+  if (open !== 'keep') m.querySelector('button')?.focus();
+}
+function footMenuClick(e) {
+  const go = e.target.closest('[data-go]')?.dataset.go; if (!go) return;
+  footMenu(false); $(go === 'activity' ? 'activity' : 'todaySpend').click();
+}
+$('footMore').onclick = () => footMenu(!footMenuOpen());
+addEventListener('resize', () => { if (footMenuOpen()) footMenu('keep'); });
+document.addEventListener('mousedown', (e) => { if (footMenuOpen() && !e.target.closest('#footMenu, #footMore')) footMenu(false); });
+document.addEventListener('keydown', (e) => { if (footMenuOpen() && e.key === 'Escape') { e.stopPropagation(); footMenu(false); $('footMore').focus(); } }, true);
 const tokCount = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n);
 let costTimer = null;
 function refreshCost(id = S.selected) {
@@ -3822,7 +4022,7 @@ function renderGroupView(q = '') {
     const statuses = [...GROUP_DOT_ORDER.filter((c) => present.has(c)), ...[...present].filter((c) => !GROUP_DOT_ORDER.includes(c))];
     const closed = !q && !!col[gid || '__none'];
     return `<div class="gsec ${g?.archived ? 'archived' : ''}" data-gid="${esc(gid)}" ${g ? 'draggable="true"' : ''} ${g ? tip('group-head') : ''}>
-      <span class="caret">${closed ? '▸' : '▾'}</span><span class="gname">${esc(name)} (${counted.length})</span>
+      <span class="caret">${closed ? '▸' : '▾'}</span><span class="gname">${esc(name)} (${counted.length})</span>${groupCostHtml(gid, name)}
       <span class="gdots">${statuses.map((c) => `<span class="dot ${c}"></span>`).join('')}</span></div>`
       + (closed ? '' : `<div class="gbody">${familyHtml(list) || '<div class="row meta">No sessions</div>'}</div>`);
   };
@@ -4216,15 +4416,32 @@ function readDeskSettings() {
   const oldTags = store.get('needTags', null);
   S.reasonTags = REASON_TAGS.find(([v]) => v === deskStore.get('reasonTags'))?.[0] || (oldTags === null ? 'icons' : oldTags ? 'words' : 'off');
   S.reasonDot = deskStore.get('reasonDot', false); // Icon as session dot (#720): off until picked, so desks keep their look
+  // 👁 > Cost (#806): each row's own cost or its family's, each group's total, and for today or ever. All off at first.
+  S.costRows = COST_ROWS.find(([v]) => v === deskStore.get('costRows'))?.[0] || 'off';
+  S.costGroups = deskStore.get('costGroups', false);
+  S.costPeriod = deskStore.get('costPeriod') === 'ever' ? 'ever' : 'today';
 }
 const REASON_TAGS = [['words', 'Words'], ['icons', 'Icons'], ['off', 'Off']];
+const COST_ROWS = [['off', 'Off'], ['session', 'Session'], ['family', 'Family']];
+const COST_PERIODS = [['today', 'Today'], ['ever', 'Ever']];
+const costGroupsShown = () => S.costGroups && S.groupView; // the flat list has no group headers to put them on
+const costOn = () => S.costRows !== 'off' || costGroupsShown();
 readDeskSettings();
 const viewOpen = () => !$('viewMenu').hidden;
 function renderViewMenu() {
   // toggle chips, a filter (DESIGN.md): bordered, and when on a soft tint, main-color border and ✓
   $('viewMenu').innerHTML = `<div class="vm-reason" role="group" aria-label="Reason tags"><span>Reason tags</span>${REASON_TAGS.map(([v, label]) => `<button class="chip-tgl${S.reasonTags === v ? ' on' : ''}" data-reason="${v}" aria-pressed="${S.reasonTags === v}"${tip('reasontags')}>${label}</button>`).join('')}<span aria-hidden="true"></span><button class="chip-tgl${S.reasonDot ? ' on' : ''}" data-reasondot aria-pressed="${S.reasonDot}"${tip('reasondot', S.reasonDot)}>Icon as session dot</button></div>`
+    + costMenuHtml()
     + VIEW_OPTS.filter(([k]) => (k !== 'brandLogos' || multiBrand()) && (k !== 'showEmptyGroups' || S.groupView))
     .map(([k, , label, key]) => `<button class="chip-tgl${S[k] ? ' on' : ''}" data-view="${k}" aria-pressed="${!!S[k]}"${tip(key, S[k])}>${label}</button>`).join('');
+}
+// 👁 > Cost (#806): Sessions (one of three), Group totals (grayed out while the list is flat) and the Period for both
+// (grayed out while neither shows).
+function costMenuHtml() {
+  const chip = (on, label, attr, key, off = false) => `<button class="chip-tgl${on ? ' on' : ''}" ${attr} aria-pressed="${on}"${off ? ' disabled' : ''}${tip(key, on)}>${label}</button>`;
+  return `<div class="vm-cost" role="group" aria-label="Cost"><span>Cost</span><span>Sessions</span>${COST_ROWS.map(([v, label]) => chip(S.costRows === v, label, `data-costrows="${v}"`, 'costrows')).join('')}`
+    + `<span>Groups</span>${chip(S.costGroups, 'Group totals', 'data-costgroups', 'costgroups', !S.groupView)}`
+    + `<span>Period, for every cost shown</span>${COST_PERIODS.map(([v, label]) => chip(S.costPeriod === v, label, `data-costperiod="${v}"`, 'costperiod', !costOn())).join('')}</div>`;
 }
 // ✦ carries the attention count, so nothing waiting on you goes unseen; the whole control is lit while the list shows only
 // what needs attention. The Keep period beside it is redrawn here too.
@@ -4271,11 +4488,20 @@ $('viewMenu').addEventListener('click', (e) => {
   if (e.target.closest('[data-reasondot]')) { S.reasonDot = !S.reasonDot; deskStore.set('reasonDot', S.reasonDot); renderViewMenu(); $('viewMenu').querySelector('[data-reasondot]')?.focus(); renderList(); renderHead(); return; }
   const r = e.target.closest('[data-reason]');
   if (r) { S.reasonTags = r.dataset.reason; deskStore.set('reasonTags', S.reasonTags); renderViewMenu(); $('viewMenu').querySelector(`[data-reason="${S.reasonTags}"]`)?.focus(); renderList(); return; }
+  const c = e.target.closest('[data-costrows], [data-costgroups], [data-costperiod]');
+  if (c) {
+    if (c.dataset.costrows) { S.costRows = c.dataset.costrows; deskStore.set('costRows', S.costRows); }
+    else if (c.dataset.costperiod) { S.costPeriod = c.dataset.costperiod; deskStore.set('costPeriod', S.costPeriod); }
+    else { S.costGroups = !S.costGroups; deskStore.set('costGroups', S.costGroups); }
+    renderViewMenu(); $('viewMenu').querySelector(c.dataset.costrows ? `[data-costrows="${S.costRows}"]` : c.dataset.costperiod ? `[data-costperiod="${S.costPeriod}"]` : '[data-costgroups]')?.focus();
+    loadCosts(); renderList(); return;
+  }
   const b = e.target.closest('[data-view]'); if (!b) return;
   const [k, key] = VIEW_OPTS.find(([x]) => x === b.dataset.view);
   S[k] = !S[k]; deskStore.set(key, S[k]);
   renderViewMenu(); // redrawn: the chip's look and tip, and Show empty groups only means something while grouped
   $('viewMenu').querySelector(`[data-view="${k}"]`)?.focus();
+  loadCosts(); // Grouped brings group totals back
   renderList();
 });
 document.addEventListener('mousedown', (e) => { if (viewOpen() && !e.target.closest('.view-menu')) viewMenu(false); });
@@ -4382,12 +4608,12 @@ function sessionRow(s, depth) {
   const tb = timeBit(s);
   const pin = !s.archived && pinnedHere(s.id) ?`<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
   return `<div class="row ${depth ? 'child' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''}${S.hoverCard ? '' : ` title="${esc((run?.title || s.title) || 'Untitled')}"`}>
-      ${depth ? '<span class="arrow">↳</span>' : ''}${rowDot(s)}<span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>
+      ${depth ? '<span class="arrow">↳</span>' : ''}${rowDot(s)}<span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>${costCell(s, run)}
       <span class="meta ${tb[0]}" title="${esc(tb[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${tb[0].startsWith('warn') ? `<span class="tpill${tb[0].endsWith('end') ? ' end' : ''}">${tb[1]}</span>` : tb[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // ---------- the hover card (#691): a row's full title and every detail, while 👁 > Hover card is on ----------
 // Each line shows only when it applies. Read from the same data the row itself draws from.
-const NEED_WORDS = { question: 'a question', merge: 'a pull request to merge', done: 'work done, ready to close', reply: 'a reply to read', problem: 'an error' };
+const NEED_WORDS = { question: 'a question', card: 'a card to click', merge: 'a pull request to merge', done: 'work done, ready to close', reply: 'a reply to read', problem: 'an error' };
 function statusWords(s, c) {
   if (c === 'asking') return 'Waiting on your answer';
   if (c === 'needs' || needsYou(s)) return `Waiting on you: ${NEED_WORDS[needLabel(s, openPR(s.id))]}`;
@@ -4503,7 +4729,7 @@ function fitChips(list) {
 // while a title keeps TITLE_MIN of room: a list too narrow for that lets each row's badges take just their own width.
 const TITLE_MIN = 90;
 function fitColumns(list) {
-  const cols = [['--plan-w', '.row .cplan > *'], ['--need-w', '.row .cneed > *'], ['--meta-w', '.row .meta']];
+  const cols = [['--plan-w', '.row .cplan > *'], ['--need-w', '.row .cneed > *'], ['--cost-w', '.row .ccost'], ['--meta-w', '.row .meta']];
   for (const [v] of cols) list.style.removeProperty(v);
   const ws = cols.map(([, sel]) => Math.max(0, ...[...list.querySelectorAll(sel)].map((el) => el.getBoundingClientRect().width)));
   cols.forEach(([v], i) => { if (ws[i]) list.style.setProperty(v, Math.ceil(ws[i]) + 'px'); });
@@ -4618,6 +4844,7 @@ function renderList() {
   if (remoteOff(S.client)) { setListBar(); return setList(remoteGoneHtml(S.clients.find((c) => c.id === S.client))); }
   S.runInfo = new Map();
   S.keptOnly = new Set();
+  costWorking = null;
   const q = $('search').value.trim().toLowerCase();
   if (S.textSearch && q && !textHitsFor(q) && S.textAsked !== S.client + '\n' + q) askTextSearch(); // another desk, or a search set by code
   const match = sessionMatch(q);
@@ -5198,7 +5425,7 @@ $('menuBtn').onclick = (e) => {
     ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
-    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()],['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['rest', restLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ['signins', 'Private browser sign-ins'], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
+    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()],['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['rest', restLabel()], ['updmode', updModeLabel()], ['startup', startupLabel()], ['autopilot', pilotLabel()], ['signins', 'Private browser sign-ins'], ...(S.clients.find((c) => c.id === S.client)?.remote ? [] : [['screen', screenLabel()], ['screenlog', 'Screen control log']]), ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
     ['about', S.update?.waiting || S.update?.restartWaiting ? 'About · update waiting' : 'About', [...(S.update?.restartWaiting && !S.update.restartWaiting.restarting ? [['restartnow', 'Update now anyway']] : S.update?.waiting ? [['updnow', 'Update now']] : []), ['update', 'Check for updates']]], 'hr', ['restartdocket', 'Restart Docket']];
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
     ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${x[0]}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0])}>${esc(x[1])}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
@@ -5215,6 +5442,8 @@ $('menuBtn').onclick = (e) => {
   api('/api/startup').then((r) => { S.startup = r; const b = m.querySelector('[data-mact=startup]'); if (b) b.textContent = startupLabel(); }).catch(() => {});
   api('/api/rest-minutes').then((r) => { S.restMinutes = r.minutes; const b = m.querySelector('[data-mact=rest]'); if (b) b.textContent = restLabel(); }).catch(() => {});
   api('/api/auto-pause').then((r) => { S.autoPause = r.on; const b = m.querySelector('[data-mact=autopause]'); if (b) b.textContent = autoPauseLabel(); }).catch(() => {});
+  const screenDesk = S.client;
+  if (m.querySelector('[data-mact=screen]')) api(`/api/screen?client=${encodeURIComponent(screenDesk)}`).then((r) => { S.screenOn[screenDesk] = r.on; const b = m.querySelector('[data-mact=screen]'); if (b) b.textContent = screenLabel(); }).catch(() => {});
   const hoverOk = () => matchMedia('(hover: hover)').matches && innerWidth > 600;
   const shut = (w) => { // a group and any group open inside it
     for (const x of [w, ...w.querySelectorAll('.sub-wrap')]) { x.querySelector('.sub').hidden = true; x.classList.remove('inline'); x.firstChild.setAttribute('aria-expanded', 'false'); }
@@ -5297,6 +5526,13 @@ $('menuBtn').onclick = (e) => {
       b.textContent = autoPauseLabel();
       return;
     }
+    if (act === 'screen') { // stays open and shows the new state; turning it on asks first
+      const b = ev.target.closest('button'), desk = S.client, on = !S.screenOn[desk];
+      if (on && !await ask(`Let ${S.clients.find((c) => c.id === desk)?.name || 'this desk'}'s sessions use the mouse and keyboard?`, SCREEN_ASK)) return;
+      try { S.screenOn[desk] = (await api('/api/screen', { client: desk, on })).on; } catch (err) { tell(err.message); }
+      b.textContent = screenLabel();
+      return;
+    }
     if (act === 'sound') { // stays open and shows the new state
       const b = ev.target.closest('button');
       toggleSound(); b.textContent = soundLabel(); b.title = soundTip(); b.setAttribute('aria-pressed', String(soundOn()));
@@ -5321,6 +5557,7 @@ $('menuBtn').onclick = (e) => {
     if (act === 'fbdest') setFeedbackDestination();
     if (act === 'rest') setRestMinutes();
     if (act === 'signins') openSites();
+    if (act === 'screenlog') api('/api/screen/log', {}).catch((err) => tell(err.message));
     if (act === 'key') showKey();
     if (act === 'help') showHelp();
     if (act === 'tour') startTour();
@@ -5328,9 +5565,34 @@ $('menuBtn').onclick = (e) => {
     if (act === 'plantree') openPlanTree();
     if (act === 'machine') showMachineUse();
     if (act === 'startup') showStartupSettings();
+    if (act === 'autopilot') showAutopilot();
     if (act === 'usage') window.open('/usage?' + new URLSearchParams({ client: S.client }), 'docket-usage');
   };
 };
+
+// ---------- screen control (#822) ----------
+// ☰ > Settings > Screen control turns it on for the desk shown (off by default, never for a remote desk from here),
+// and the bar at the top says which session is using the mouse and keyboard now, here or on a remote desk's
+// computer, with Stop. On Windows the same bar also shows on the screen itself, over every program.
+S.screenOn = {}; // desk id -> on, as last read
+S.screenActive = {}; // desk id -> [{ key, session, title, from, action, at }]
+const screenLabel = () => `Screen control: ${S.screenOn[S.client] ? 'on' : 'off'}`;
+const SCREEN_ASK = 'Its sessions get tools to take screenshots, move and click the mouse and type, in any program on this computer, as you would. It is a last resort, for programs with no better way in.\n\nEvery action is logged (with a picture of the screen before each click), a bar shows while a session is in control, and Stop halts it at once. Docket never types into a password field.\n\nSessions started or woken after this get the tools.';
+function drawScreenBar() {
+  const rows = Object.entries(S.screenActive).flatMap(([desk, list]) => (list || []).map((a) => ({ ...a, desk })));
+  $('screenBar').hidden = !rows.length;
+  $('screenBar').innerHTML = rows.map((a) => {
+    const c = S.clients.find((x) => x.id === a.desk), where = c?.remote ? ` on ${esc(c.name)}'s computer` : '';
+    return `<div class="row"><span>🖱️ <b>${esc(a.title)}</b> is using the mouse and keyboard${where}</span><button data-screen-stop="${esc(a.desk)}"${tip('screen-stop')}>Stop</button></div>`;
+  }).join('');
+}
+$('screenBar').onclick = async (e) => {
+  const b = e.target.closest('[data-screen-stop]');
+  if (b) try { await api(`/api/screen/stop?client=${encodeURIComponent(b.dataset.screenStop)}`, {}); } catch (err) { tell(err.message); }
+};
+function loadScreen() {
+  api('/api/screen').then((r) => { S.screenActive = {}; for (const a of r.active || []) (S.screenActive[a.desk] ||= []).push(a); drawScreenBar(); }).catch(() => {});
+}
 
 // ---------- Back and Forward through the sessions you viewed ----------
 // Like a browser tab: every session (or new-session draft) you open is a step in a chain, across
@@ -5494,7 +5756,8 @@ function keyHtml() {
     ${row('3h ago', 'Grey: the session cache expired, so the next message costs more.', 'cold')}
     ${row('working', '<b>working</b>, <b>background</b>, <b>interrupted</b>, <b>compacting…</b> and a red <b>error</b> take the place of the time and match the dot. A session that needs you keeps showing its minutes of session cache left, and the time since its last reply once that has run out.')}
     ${head('Why a yellow row needs you (👁 > Reason tags: words, icons or off, and the icon as the session dot)')}
-    ${row(needSample('question'), 'It asked you something: a question in its reply, a question form, an "Allow this?" prompt, or a card such as a session offer. Work waits on your answer. While it is paused on a question form or a prompt (the "?" dot), its title is yellow too. A last turn that ended in an error has no tag: its dot has a red ring and its time says "error".' + (S.reasonDot ? ' With Icon as session dot, a prompt keeps the "?" dot, so it still looks different from a reply that ends in a question.' : ''))}
+    ${row(needSample('question'), 'It asked you something: a question in its reply, a question form, or an "Allow this?" prompt. Work waits on your answer. While it is paused on a question form or a prompt (the "?" dot), its title is yellow too. A last turn that ended in an error has no tag: its dot has a red ring and its time says "error".' + (S.reasonDot ? ' With Icon as session dot, a prompt keeps the "?" dot, so it still looks different from a reply that ends in a question.' : ''))}
+    ${row(needSample('card'), 'A card waits on your click: a session offer (New session or Do it here), a proposal from the session or another desk, or a handoff. The cards also wait in the strip above the chat.')}
     ${S.reasonDot ? row(reasonIcon('problem') + ' problem', 'With Icon as session dot: the last turn ended in an error. The red triangle takes the place of the red-ringed dot; hover it for the error.') : ''}
     ${row(needSample('merge'), 'Its pull request is open and waiting on you to say merge.')}
     ${row(needSample('done'), 'It says its work is complete and ready to close.')}
@@ -5648,6 +5911,7 @@ pollGauges();
 // who is connected. The other side: remote desks (address and check code), each connected with a code and an Allow
 // clicked on that computer. A remote desk's sessions stay on that computer; this one only shows them.
 const rdTime = (t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+const rdDate = (t) => new Date(t).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 function remoteHereHtml(rc, setup) {
   let h = '<h3 class="rd-h">Let another computer use a desk here</h3>';
   if (setup) return h + `<p>In the authenticator app on your phone (Google Authenticator or Microsoft Authenticator), add an account and scan this code, or type the key instead.</p>
@@ -5665,7 +5929,8 @@ function remoteHereHtml(rc, setup) {
     <p class="meta">Each connection needs a code from the authenticator app and someone clicking Allow here, and lasts ${rc.hours} hours. Only computers on the office network can connect, and only to this desk.</p>`;
   else h += '<p class="meta">While it is off, nothing on the network can reach Docket on this computer.</p>';
   if (rc.connections.length) h += `<p>Connected now:</p><ul>${rc.connections.map((c) => `<li>${esc(c.name)} (${esc(c.ip)}), until ${rdTime(c.expires)} <button data-rd-drop="${esc(c.id)}"${tip('rd-drop')}>Disconnect</button></li>`).join('')}</ul>`;
-  return h + `<p class="meta"><button id="rdSetup"${tip('rd-setup')}>Set up the authenticator again</button> This ends every connection, and codes from the old one stop working.</p>`;
+  if (rc.pilotKeys?.length) h += `<p>Pilot keys: the autopilot on that computer may answer what waits on you on this desk, under the autopilot rules on this computer, with no code.</p><ul>${rc.pilotKeys.map((k) => `<li>${esc(k.name)} (${esc(k.ip)})${k.screen ? ', with the screen tools' : ''}, until ${rdDate(k.expires)}, ${k.used ? `last used ${agoText(k.used)}` : 'not used yet'} <button data-rd-revoke="${esc(k.id)}"${tip('rd-revoke')}>Revoke</button></li>`).join('')}</ul>`;
+  return h + `<p class="meta"><button id="rdSetup"${tip('rd-setup')}>Set up the authenticator again</button> This ends every connection and pilot key, and codes from the old one stop working.</p>`;
 }
 const rdConnectHtml = (id) => `<input type="text" data-rd-code="${id}" inputmode="numeric" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code"${tip('rd-code')}><button class="primary" data-rd-on="${id}"${tip('rd-connect')}>Connect</button>`;
 // Connect a remote desk with the code typed, then show its sessions. say() shows the wait, and a refusal is thrown.
@@ -5675,11 +5940,18 @@ async function connectRemote(id, code, say) {
   await reloadClients();
   await Promise.all([loadSessions(id, true), loadGroups(id)]);
 }
+// A remote desk's pilot key (#827): the autopilot here reaches that desk with it, with no code, until it ends or is revoked.
+function rdPilotHtml(d) {
+  if (d.pilot) return `<div class="rd-line">Pilot key until ${rdDate(d.pilot.expires)}${d.pilot.screen ? ', with the screen tools' : ''}<button data-rd-pk-revoke="${d.id}"${tip('rd-pk-revoke')}>Revoke pilot key</button></div>`;
+  const gone = d.pilotGone ? `<div class="meta">The pilot key ended: ${esc(d.pilotGone)}.</div>` : '';
+  if (!d.connected) return gone;
+  return gone + `<div class="rd-line"><label><input type="checkbox" data-rd-pk-screen="${d.id}"${tip('rd-pk-screen')}> with the screen tools</label><button data-rd-pk="${d.id}"${tip('rd-pk')}>Ask for a pilot key</button></div>`;
+}
 function remoteThereHtml(list) {
   let h = '<h3 class="rd-h">Use a desk on another computer</h3>';
   h += list.length ? list.map((d) => `<div class="rd-row"><div><b>${esc(d.name)}</b> <span class="meta">${esc(d.address)}${d.deskName ? ` · desk ${esc(d.deskName)}` : ''}</span></div>
     <div class="rd-line">${d.connected ? `Connected until ${rdTime(d.expires)}<button data-rd-off="${d.id}"${tip('rd-off')}>Disconnect</button>`
-      : rdConnectHtml(d.id)}<button data-rd-rm="${d.id}"${tip('rd-remove')}>Remove</button></div>
+      : rdConnectHtml(d.id)}<button data-rd-rm="${d.id}"${tip('rd-remove')}>Remove</button></div>${rdPilotHtml(d)}
     <div class="meta" data-rd-msg="${d.id}"></div></div>`).join('') : '<p class="meta">None yet.</p>';
   return h + `<details${list.length ? '' : ' open'}><summary>Add a remote desk</summary>
     <p>Turn on remote control on the other computer first (☰ > Remote Desks there). It shows the address and the check code.</p>
@@ -5717,6 +5989,19 @@ async function showRemoteDesks(focus) {
     if (b.id === 'rdSetupOk') return act(async () => { await api('/api/remote-control/authenticator/confirm', { code: document.getElementById('rdSetupCode').value }); setup = null; });
     if (b.id === 'rdOn') return act(async () => { const on = b.textContent === 'Turn on'; await api('/api/remote-control', { on }); });
     if (b.dataset.rdDrop) return act(() => api('/api/remote-control/disconnect', { id: b.dataset.rdDrop }));
+    if (b.dataset.rdRevoke) return act(() => api('/api/remote-control/pilot-keys/revoke', { id: b.dataset.rdRevoke }));
+    if (b.dataset.rdPkRevoke) {
+      if (!await ask('Revoke the pilot key?', 'The autopilot here can no longer reach that desk until someone there allows a new one.', { yes: 'Revoke' })) return;
+      return act(() => api(`/api/remote-desks/${b.dataset.rdPkRevoke}/pilot-key-revoke`, {}));
+    }
+    if (b.dataset.rdPk) {
+      const pid = b.dataset.rdPk, screen = !!body.querySelector(`[data-rd-pk-screen="${pid}"]`)?.checked;
+      b.disabled = true;
+      msg[pid] = 'Waiting for someone to click Allow on the other computer (up to 2 minutes)…';
+      body.querySelector(`[data-rd-msg="${pid}"]`).textContent = msg[pid];
+      try { await api(`/api/remote-desks/${pid}/pilot-key`, { screen }); delete msg[pid]; } catch (e2) { msg[pid] = e2.message; }
+      return draw();
+    }
     if (b.id === 'rdAdd') {
       b.disabled = true; b.textContent = 'Checking…';
       return act(() => api('/api/remote-desks', { name: document.getElementById('rdName').value, address: document.getElementById('rdAddr').value, check: document.getElementById('rdCheck').value }).then(reloadClients));
@@ -5771,7 +6056,8 @@ function drawRemoteAsks() {
       delete S.remoteAsks[b.dataset.ra]; drawRemoteAsks();
     };
   }
-  box.innerHTML = asks.map((a) => `<div class="ra"><b>${esc(a.name)}</b> (${esc(a.ip)}) wants to use the desk <b>${esc(a.desk || '')}</b> from another computer, with a correct authenticator code.
+  box.innerHTML = asks.map((a) => `<div class="ra">${a.pilot ? `<b>${esc(a.name)}</b> (${esc(a.ip)}), connected to the desk <b>${esc(a.desk || '')}</b>, asks for a pilot key: its autopilot could then answer what waits on you on this desk, under the autopilot rules on this computer${a.pilot.screen ? ', and use the screen tools' : ''}, for ${a.pilot.days} days with no code. You can revoke it in ☰ > Remote Desks.`
+    : `<b>${esc(a.name)}</b> (${esc(a.ip)}) wants to use the desk <b>${esc(a.desk || '')}</b> from another computer, with a correct authenticator code.`}
     <div class="ra-btns"><button data-ra="${a.id}" data-allow="0"${tip('ra-no')}>Don't allow</button><button class="primary" data-ra="${a.id}" data-allow="1"${tip('ra-yes')}>Allow</button></div></div>`).join('');
   $('cornerStack').scrollTop = $('cornerStack').scrollHeight; // a tall stack scrolls; the Allow prompt is at its foot
   try { chime(true); } catch {}
@@ -5864,6 +6150,46 @@ function startupHtml(v) {
     <p>${esc(startPinNote())}</p><p class="meta">Each Docket shortcut starts Docket if it is not running, then opens it.${v.choice === 'none' && v.now.mode === 'neither' ? ' Docket will not ask about this again on this computer.' : ''}</p>`;
 }
 // ☰ > Settings > Starting Docket: the state, and buttons to switch to each of the others.
+// ---------- ☰ > Settings > Autopilot (#821) ----------
+// A pilot session answers what waits on you, under the rules in the file shown here. The ✈ in the top bar shows while
+// it is flying (switch on, pilot set), and opens this. What it answered says "answered by pilot" on the card.
+S.pilot = { on: false, flying: false };
+const pilotLabel = () => `Autopilot: ${S.pilot.on ? 'on' : 'off'}`;
+function drawPilot(p) {
+  if (!p) return;
+  S.pilot = { on: !!p.on, flying: !!p.flying, session: p.session, title: p.title };
+  const b = $('pilotBtn'); b.hidden = !S.pilot.flying;
+  b.title = `Autopilot flying: ${S.pilot.title || 'its pilot session'}. ${tipText('pilot-icon')}`;
+}
+const PILOT_WHEN = (t) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+function autopilotHtml(v) {
+  const opts = [`<option value="">No pilot</option>`, ...v.sessions.map((s) => `<option value="${esc(s.id)}"${s.id === v.session ? ' selected' : ''}>${esc(`${s.desk}: ${s.title} (${BRAND_NAMES[s.brand] || s.brand})`)}</option>`)];
+  if (v.session && !v.sessions.some((s) => s.id === v.session)) opts.push(`<option value="${esc(v.session)}" selected>${esc(v.title)} (not running now)</option>`);
+  const may = { allow: 'pilot may answer', deny: 'pilot may only decline', ask: 'stays with you' };
+  const waiting = v.waiting.length ? v.waiting.map((w) => `<div><b>${esc(w.desk)}</b> · ${esc(w.kind)} · ${esc(w.what || w.title)} <span class="${w.may === 'ask' ? 'pl-no' : 'by-pilot'}">(${may[w.may]})</span></div>`).join('') : '<div>Nothing waits on you now.</div>';
+  const log = v.log.length ? v.log.map((l) => `<div>${esc(PILOT_WHEN(l.at))} · <b>${esc(l.kind)}</b> · ${esc(l.answer)} · ${esc(l.what || l.title)}${l.ok ? '' : ` <span class="pl-no">refused: ${esc(l.why)}</span>`}</div>`).join('') : '<div>The pilot has answered nothing yet.</div>';
+  return `<div class="pilot-dlg"><div>A pilot session answers what waits on you, on every desk on this computer: permission prompts, question forms and cards. It is ${v.on ? '<b>on</b>' : '<b>off</b>'}${v.flying ? ', and flying' : ''}. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them.</div>
+    <div class="pl-row"><label for="pilotPick">Pilot</label><select id="pilotPick"${tip('pilot-pick')}>${opts.join('')}</select></div>
+    <div class="meta" style="margin-top:4px">A session made the pilot is started again once it is idle, to give it the pilot tools.</div>
+    <div class="meta" style="margin-top:8px">Rules (allow, deny or ask, per kind and per desk): <code>${esc(v.rulesFile)}</code></div>
+    <h4>Waiting on you now</h4><div class="pl-list">${waiting}</div>
+    <h4>The pilot's answers</h4><div class="pl-list">${log}</div></div>`;
+}
+async function showAutopilot() {
+  for (;;) {
+    let v; try { v = await api('/api/pilot'); } catch (err) { tell(err.message); return; }
+    drawPilot(v);
+    const pick = await dialog({ title: 'Autopilot', body: autopilotHtml(v), buttons: [
+      { label: v.on ? 'Turn off' : 'Turn on', value: 'switch', tip: v.on ? 'Every pilot tool refuses until you turn it on again' : 'The pilot may answer what its rules allow' },
+      { label: 'Save pilot', value: 'pilot', tip: 'Make the session picked above the pilot' },
+      { label: 'Close', value: null, primary: true }] });
+    if (!pick) return;
+    const body = pick === 'switch' ? { on: !v.on } : { session: document.getElementById('pilotPick').value || null };
+    try { drawPilot(await api('/api/pilot', body)); } catch (err) { tell(err.message); }
+  }
+}
+$('pilotBtn').onclick = () => showAutopilot();
+
 async function showStartupSettings() {
   for (;;) {
     let v; try { v = await api('/api/startup?fresh=1'); } catch (err) { tell(err.message); return; }
@@ -7374,9 +7700,12 @@ function docketHtml(ev) {
     ? `<details><summary>${head}</summary>${noteList(all)}</details>` : `<div>${head}</div>`;
   return `<div class="msg-user msg-docket" data-ev data-from="docket">${inner}</div>${msgWhen(ev, ' left')}`;
 }
+// What the autopilot answered says so (#821), after the card's own record of the answer.
+const byPilot = (ev) => ev.by === 'pilot' ? ' <span class="by-pilot">· answered by pilot</span>' : '';
 function eventHtml(ev) {
   switch (ev.k) {
     case 'user': if (ev.from === 'docket' && /<session-report>/.test(ev.text)) return reportHtml(ev);
+      if (ev.from === 'pilot') return `<div class="msg-user msg-from" data-ev data-from="pilot"><div class="mf-head">✈ Sent by the autopilot</div>${esc(ev.text)}</div>${msgWhen(ev, ' left')}`;
       if (ev.from === 'docket') return docketHtml(ev);
       if (ev.from === 'session') return sentHtml(ev);
       return `<div class="msg-user" data-ev${ev.from ? ` data-from="${esc(ev.from)}"` : ''}>${esc(ev.text)}${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}</div>${ev.at ? `<div class="msg-when">${stamp(ev.at)}</div>` : ''}`;
@@ -7395,7 +7724,7 @@ function eventHtml(ev) {
       if (st !== 'open') {
         const how = st === 'started' ? `started as <a href="#session:${esc(ev.startedId)}"${tip('open-session')}>its session</a>`
           : (st === 'withdrawn' ? 'withdrawn by ' + openBrand() : 'dismissed') + (ev.note ? ': ' + esc(ev.note) : '');
-        return `<div class="scard done slim" data-card="${esc(ev.id)}">Suggested session${earlier(ev)}: <b>${esc(ev.title)}</b>, ${how}</div>`;
+        return `<div class="scard done slim" data-card="${esc(ev.id)}">Suggested session${earlier(ev)}: <b>${esc(ev.title)}</b>, ${how}${byPilot(ev)}</div>`;
       }
       const tail = `<div class="sbtn"><button class="primary" data-prop="${esc(ev.id)}" data-act="start"${tip('prop-start')}>Start</button><button data-prop="${esc(ev.id)}" data-act="dismiss"${tip('prop-dismiss')}>Dismiss</button></div>`;
       return `<div class="scard" data-card="${esc(ev.id)}"><div class="sk">Suggested session${cardBrand(ev)}${earlier(ev)}</div><div class="st">${esc(ev.title)}</div><div class="sb">${esc(ev.brief)}</div>${tail}</div>`;
@@ -7406,19 +7735,19 @@ function eventHtml(ev) {
       const what = asks ? `A short read-only session in ${esc(ev.toName)} will search its past sessions and answer. Only its answer comes back here.`
         : `It goes to ${esc(ev.toName)}'s session list as a card. Nothing runs until you press Start there, and it bills to ${esc(ev.toName)}.`;
       const tail = ev.state === 'pending' ? `<div class="sbtn"><button class="primary" data-cross="${esc(ev.id)}" data-send="1"${tip('cross-send')}>Send</button><button data-cross="${esc(ev.id)}" data-send="0"${tip('cross-stop')}>Don't send</button></div><div class="sbtn hint">Sending also lets this session reach ${esc(ev.toName)} again without asking, until it ends.</div>`
-        : `<div class="sbtn hint">${{ sent: `Sent to ${esc(ev.toName)}`, stopped: 'Not sent', expired: 'Not sent: Docket restarted before you answered' }[ev.state] || ''}</div>`;
+        : `<div class="sbtn hint">${{ sent: `Sent to ${esc(ev.toName)}`, stopped: 'Not sent', expired: 'Not sent: Docket restarted before you answered' }[ev.state] || ''}${byPilot(ev)}</div>`;
       return `<div class="scard ${ev.state === 'pending' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">${esc(ev.fromName)} → ${esc(ev.toName)}${earlier(ev)}</div><div class="st">${head}</div><div class="sb">${what}</div>${ev.title ? `<div class="st">${esc(ev.title)}</div>` : ''}<div class="sb cross-text">${esc(ev.text)}</div>${tail}</div>`;
     }
     case 'offer': {
       const tail = ev.state === 'pending' ? `<div class="sbtn"><button class="primary" data-offer="${esc(ev.id)}" data-choice="new"${tip('offer-new')}>New session</button><button data-offer="${esc(ev.id)}" data-choice="here"${tip('offer-here')}>Do it here</button></div>`
-        : ev.state === 'new' ? `<div class="sbtn hint">Started as a new session: <a href="#session:${esc(ev.startedId)}"${tip('open-session')}>open it</a></div>` : '<div class="sbtn hint">Doing it here</div>';
+        : ev.state === 'new' ? `<div class="sbtn hint">Started as a new session: <a href="#session:${esc(ev.startedId)}"${tip('open-session')}>open it</a>${byPilot(ev)}</div>` : `<div class="sbtn hint">Doing it here${byPilot(ev)}</div>`;
       return `<div class="scard ${ev.state === 'pending' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Start this as its own session${cardBrand(ev)}?${earlier(ev)}</div><div class="st">${esc(ev.title)}</div><div class="sb">${esc(ev.brief)}</div>${tail}</div>`;
     }
     case 'handoff': { // continue this work in a fresh session that takes this one's place
       const st = ev.state;
       const tail = st === 'open' ? `<div class="sbtn"><button class="primary" data-hoff="${esc(ev.id)}" data-act="continue"${tip('hoff-continue')}>Continue in new session</button><button data-hoff="${esc(ev.id)}" data-act="here"${tip('hoff-here')}>Keep going here</button></div>`
-        : st === 'here' ? '<div class="sbtn hint">Keeping going here</div>'
-        : `<div class="sbtn hint">Continued in <a href="#session:${esc(ev.startedId)}"${tip('open-session')}>the new session</a></div>`
+        : st === 'here' ? `<div class="sbtn hint">Keeping going here${byPilot(ev)}</div>`
+        : `<div class="sbtn hint">Continued in <a href="#session:${esc(ev.startedId)}"${tip('open-session')}>the new session</a>${byPilot(ev)}</div>`
           + (ev.archive === 'offered' ? `<div class="sbtn"><span class="hint">Archive this session now?</span><button class="primary" data-hoff="${esc(ev.id)}" data-act="archive"${tip('hoff-archive')}>Archive it</button><button data-hoff="${esc(ev.id)}" data-act="keep"${tip('hoff-keep')}>Keep it</button></div>`
             : `<div class="sbtn hint">${ev.archive === 'archived' ? 'This session was archived' : 'This session was kept'}</div>`);
       return `<div class="scard ${st === 'open' || ev.archive === 'offered' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Hand off to a fresh session?${earlier(ev)}</div><div class="st">${esc(ev.title)}</div><div class="sb">${esc(ev.brief)}</div>${tail}</div>`;
@@ -7443,7 +7772,7 @@ function eventHtml(ev) {
       return `<div class="perm ${done ? 'done' : ''}" data-perm="${esc(ev.id)}">
         <div class="pt">${esc(ev.title || `${openBrand()} wants to use ${ev.tool}`)}</div>
         <div class="pl">${esc(ev.label || '')}</div>
-        ${done ? `<div class="hint">${said}</div>` : `<div class="pb"><button class="primary" data-answer="allow"${tip('perm-allow')}>Allow</button><button data-answer="always"${tip('perm-always')}>Always allow</button><button data-answer="deny"${tip('perm-deny')}>Deny</button></div>`}
+        ${done ? `<div class="hint">${said}${byPilot(ev)}</div>` : `<div class="pb"><button class="primary" data-answer="allow"${tip('perm-allow')}>Allow</button><button data-answer="always"${tip('perm-always')}>Always allow</button><button data-answer="deny"${tip('perm-deny')}>Deny</button></div>`}
       </div>`;
     }
     case 'note': return `<div class="note">${esc(ev.text)}</div>`;
@@ -7477,6 +7806,8 @@ $('lastMsg').onclick = () => {
 // into another desk, a handoff or its archive ask, a plan offer, a suggested title, an "Allow this?" prompt or a question
 // form), so a card that scrolled away stays in reach. Its buttons press the card's own, so they do exactly what the card
 // does; the rest of the line scrolls to the card. Like the last-message strip, it follows whatever is in #events.
+// Below them, one line per session under this one (at any depth) with a card or a prompt waiting in it, which opens that
+// session: a child's card otherwise shows only in the child's own chat and as its row's reason in the list.
 const STRIP_CARDS = '.scard[data-card]:not(.done):not(.slim), .perm[data-perm]:not(.done), .qform[data-qform]';
 const stripKey = (el) => el.dataset.card ? 'c:' + el.dataset.card : 'p:' + el.dataset.perm;
 const stripCard = (key) => $('events').querySelector(`[data-${key[0] === 'c' ? 'card' : 'perm'}="${CSS.escape(key.slice(2))}"]`);
@@ -7496,6 +7827,14 @@ function stripText(el) {
   // a question beside the buttons (a handoff's "Archive this session now?") is what the card asks now
   return [txt(el.querySelector('.sbtn .hint')) || txt(el.querySelector('.sk')).split(' · ')[0], [...el.querySelectorAll('.st')].map(txt).join(' · ')];
 }
+// The open session's live sessions under it, at any depth, with a card (a suggested session, an offer, a handoff) or a
+// prompt (Allow this?, a question form) waiting in them.
+function kidsWaiting(id) {
+  const all = Object.values(S.live), out = [], seen = new Set([id]);
+  const walk = (pid) => { for (const k of all) if (k.parentId === pid && !seen.has(k.id)) { seen.add(k.id); if (k.live && (k.cardOpen || k.status === 'requires_action')) out.push(k); walk(k.id); } };
+  if (id) walk(id);
+  return out;
+}
 let stripDrawn = '';
 function renderCardStrip() {
   const box = $('cardStrip'), cards = [...$('events').querySelectorAll(STRIP_CARDS)].filter((el) => stripBtns(el).some(Boolean));
@@ -7504,6 +7843,9 @@ function renderCardStrip() {
     const [ok, no] = stripBtns(el), [kind, title] = stripText(el);
     const main = ok ? btn(ok, 'ok') : `<button class="primary" data-strip-act="go"${tip('card-strip-answer')}>Answer</button>`;
     return `<div class="cs-row" data-strip="${esc(stripKey(el))}"><button class="cs-go"${tip('card-strip-go')}><span class="cs-k">${esc(kind)}</span><span class="cs-t">${esc(title)}</span></button>${main}${btn(no, 'no')}</div>`;
+  }).join('') + kidsWaiting(S.selected).map((k) => {
+    const kind = k.status === 'requires_action' ? 'Waiting on you in' : 'Card waiting in';
+    return `<div class="cs-row" data-strip="${esc('s:' + k.id)}"><button class="cs-go"${tip('card-strip-kid')}><span class="cs-k">${esc(kind)}</span><span class="cs-t">${esc(k.title || 'Untitled')}</span></button><button class="primary" data-strip-act="go"${tip('card-strip-kid')}>Open</button></div>`;
   }).join('');
   if (html === stripDrawn) return;
   stripDrawn = html;
@@ -7513,10 +7855,13 @@ function renderCardStrip() {
   const d = box.offsetHeight - before; if (d) t.scrollTop += d;
 }
 let stripSoon = 0;
-new MutationObserver(() => { cancelAnimationFrame(stripSoon); stripSoon = requestAnimationFrame(renderCardStrip); })
+const stripLater = () => { cancelAnimationFrame(stripSoon); stripSoon = requestAnimationFrame(renderCardStrip); };
+new MutationObserver(stripLater)
   .observe($('events'), { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'class'] });
 $('cardStrip').addEventListener('click', (e) => {
-  const row = e.target.closest('[data-strip]'), el = row && stripCard(row.dataset.strip); if (!el) return;
+  const row = e.target.closest('[data-strip]'); if (!row) return;
+  if (row.dataset.strip.startsWith('s:')) { openSession(row.dataset.strip.slice(2), 'card strip'); return; } // a session under this one
+  const el = stripCard(row.dataset.strip); if (!el) return;
   const act = e.target.closest('[data-strip-act]')?.dataset.stripAct;
   if (act === 'ok' || act === 'no') { stripBtns(el)[act === 'ok' ? 0 : 1]?.click(); return; }
   for (let d = el.parentElement.closest('details'); d; d = d.parentElement.closest('details')) d.open = true;
@@ -8133,7 +8478,7 @@ function questionFormHtml(ev) {
   if (ev.state !== 'pending') {
     const said = { answered: 'Answered', skipped: 'Skipped: answering in the chat', cancelled: 'No longer needed' }[ev.state] || '';
     const rows = qs.map((q) => `<div class="qa">${esc(q.question)}<br><b>${esc(ev.answers?.[q.question] ?? '—')}</b></div>`).join('');
-    return `<div class="qform done" data-perm="${esc(ev.id)}"><div class="qk">${openBrand()}'s questions · ${said}</div>${ev.state === 'answered' ? rows : ''}</div>`;
+    return `<div class="qform done" data-perm="${esc(ev.id)}"><div class="qk">${openBrand()}'s questions · ${said}${byPilot(ev)}</div>${ev.state === 'answered' ? rows : ''}</div>`;
   }
   const body = qs.map((q, qi) => {
     const type = q.multiSelect ? 'checkbox' : 'radio', name = `q${esc(ev.id)}-${qi}`;
@@ -9165,6 +9510,8 @@ function connect() {
     if ($('restartCover') && S.restartDown) { stashBox(); try { sessionStorage.setItem('docket-reload', JSON.stringify({ client: S.client, selected: S.selected })); } catch {} location.reload(); return; } // back after Restart Docket
     $('conn').hidden = true;
     loadPaused();
+    loadScreen();
+    api('/api/pilot').then(drawPilot).catch(() => {});
     api('/api/reloads').then(showReloads).catch(() => {});
     if (S.wasConnected) { // the portal may have restarted: reload what it knows
       api('/api/update').then(showUpdate).catch(() => {}); // a restart that waited for a quiet moment is done
@@ -9179,8 +9526,10 @@ function connect() {
     const m = JSON.parse(e.data);
     const mine = m.id === S.selected;
     if (m.t === 'remote-features') { setRemoteOn(m.on); return; }
+    if (m.t === 'pilot') { drawPilot(m.pilot); return; }
     if (m.t === 'remote-ask') { if (S.remoteOn) { S.remoteAsks[m.ask.id] = m.ask; drawRemoteAsks(); } return; }
     if (m.t === 'remote-asked') { delete S.remoteAsks[m.id]; drawRemoteAsks(); return; }
+    if (m.t === 'screen') { S.screenActive[m.client] = m.active || []; drawScreenBar(); return; }
     if (m.t === 'remote-here') { S.remoteHere = { desk: m.desk, connections: m.connections || [] }; renderClients(); return; }
     if (m.t === 'session') {
       const before = S.live[m.session.id];
@@ -9189,7 +9538,7 @@ function connect() {
       if (before && before.status !== 'idle' && m.session.status === 'idle' && m.session.client === S.client) refreshSpend(5000);
       if (before && before.status !== 'idle' && m.session.status === 'idle') { refreshPRs(); if (m.session.id === S.selected) { refreshFiles(); refreshCost(); } } // a finished turn may have opened one
       if (m.session.id === S.selected) { renderHead(); markSeen('live update'); renderComposerBar(); if (before && before.status !== m.session.status) { tlSoon(); if (!S.schedOpen) renderTasks(); } } // Mark done shows only once the turn has ended
-      renderList(); renderClients();
+      renderList(); renderClients(); stripLater(); // a card in a session under the open one shows in its strip
     } else if (m.t === 'event' && mine) {
       if (S.events.some((x) => x === m.ev)) return;
       S.events.push(m.ev); appendEvent(m.ev);
@@ -10009,8 +10358,8 @@ function reasonOfferSample(words) { // declared, not const: the page's start may
 }
 function showReasonOffer() {
   const el = $('reasonOffer');
-  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'updateOffer'].some((id) => !$(id).hidden);
-  if (busy || S.reasonDot || deskStore.get('reasonDotOffer', false)) { el.hidden = true; return; }
+  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'updateOffer'].some((id) => !$(id).hidden);
+  if (busy || S.reasonDot || deskStore.get('reasonDotOffer', false)) { if (!el.hidden) el.hidden = true; return; } // only a real change: the cost card watches this one, and this one it
   if (!el.hidden && el.dataset.client === S.client) return; // already showing it: keep the keyboard where it is
   el.dataset.client = S.client;
   el.innerHTML = `<button class="x" data-ro="no" aria-label="Close"${tip('ro-no')}>×</button><span class="ic" aria-hidden="true">${needIcon('question')}</span>
@@ -10036,7 +10385,40 @@ $('reasonOffer').onclick = (e) => {
   el.hidden = true;
 };
 // It waits for the others: each one closing (or the wizard, the tour or a dialog) looks again.
-for (const id of ['cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'updateOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'updateOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+// The one-time card about 👁 > Cost (#806): once per computer, after the update that brings it or on a new install.
+// Never where a cost display is on already, and never on top of another corner card, the setup wizard, the tour or a
+// dialog: it waits until they close. Not now, × and Turn it on all mark it seen (costOffer), so it does not come back.
+function costOfferSample() { // declared, not const: the page's start may call showCostOffer before this line runs
+  const rows = [['idle', 'Plan the spring catalog', '$4.85', '12m', ''], ['running', 'Draft the product pages', '$0.87+', 'now', 'child'],
+    ['needs', 'Summarize the supplier emails', '$0.42', '35m', ''], ['idle', 'What port does the runner use?', '<$0.01', '2h', '']];
+  return `<div class="ro-sample" aria-hidden="true"><div class="ro-head"><span>Marketing</span><span><span class="per">today</span>$6.14</span></div>${rows.map(([c, t, n, m, k]) =>
+    `<div class="ro-row ${k}"><span class="dot ${c}"></span><span class="ro-t">${t}</span><span class="ro-c">${esc(n)}</span><span class="ro-m">${m}</span></div>`).join('')}</div>`;
+}
+function showCostOffer() {
+  const el = $('costOffer');
+  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'updateOffer'].some((id) => !$(id).hidden);
+  if (busy || store.get('costOffer', false) || S.costRows !== 'off' || S.costGroups) { if (!el.hidden) el.hidden = true; return; } // only a real change, as above
+  if (!el.hidden) return; // already showing it: keep the keyboard where it is
+  el.innerHTML = `<button class="x" data-co="no" aria-label="Close"${tip('co-no')}>×</button><span class="ic" aria-hidden="true">$</span>
+    <div class="t" id="costOfferTitle">New: see what sessions cost, in the list</div>
+    <div class="d">Each row can show its cost, by itself or with the sessions under it, and each group its total, for today or ever.</div>
+    ${costOfferSample()}
+    <div class="ro-hint">Change it any time in 👁 &gt; Cost.</div>
+    <div class="b"><button data-co="no"${tip('co-no')}>Not now</button><button class="primary" data-co="on"${tip('co-on')}>Turn it on</button></div>`;
+  el.hidden = false;
+}
+$('costOffer').onclick = (e) => {
+  const b = e.target.closest('button[data-co]'); if (!b) return;
+  store.set('costOffer', true);
+  $('costOffer').hidden = true;
+  if (b.dataset.co !== 'on') return;
+  S.costRows = 'session'; deskStore.set('costRows', 'session');
+  S.costGroups = true; deskStore.set('costGroups', true);
+  if (viewOpen()) renderViewMenu();
+  loadCosts(); renderList();
+};
+for (const id of ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'updateOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showCostOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 function showPlanOffer() {
   const el = $('planOffer');
   // A switch of plan system waiting on its conversion session (#700) comes first: it ends only with Finish or Cancel.

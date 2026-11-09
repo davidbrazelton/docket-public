@@ -18,15 +18,26 @@ test('a row says why it needs you, from Docket\'s own signals first (#671)', () 
   assert.equal(needLabel({ ...done, unreadSaid: 'done' }, true), 'merge', 'an open pull request outranks done');
   assert.equal(needLabel({ ...done, unreadWhy: 'error' }), 'problem');
   assert.equal(needLabel({ ...done, lastError: { text: 'fetch failed' } }), 'problem');
-  for (const why of ['offer', 'permission', 'cross', 'handoff', 'requires_action']) assert.equal(needLabel({ ...done, unreadWhy: why }), 'question', why);
+  for (const why of ['permission', 'requires_action']) assert.equal(needLabel({ ...done, unreadWhy: why }), 'question', why);
+  for (const why of ['offer', 'cross', 'handoff']) assert.equal(needLabel({ ...done, unreadWhy: why }), 'card', why);
   assert.equal(needLabel({ ...done, status: 'requires_action' }), 'question');
   assert.equal(needLabel({ ...done, asksYou: true }), 'question', 'a reply that ends by asking');
   assert.equal(needLabel({ ...done, unreadSaid: 'question' }), 'question', 'a session may say its plain reply asks');
 });
 
+test('a card waiting on a click says card; a prompt or a question still says question (#823)', () => {
+  const done = { live: true, unread: true, status: 'idle', unreadWhy: 'result' };
+  assert.equal(needLabel({ ...done, cardOpen: true }), 'card', 'a card posted after it turned orange');
+  assert.equal(needLabel({ ...done, cardOpen: true, unreadSaid: 'done' }, true), 'card', 'outranks merge and done');
+  assert.equal(needLabel({ ...done, cardOpen: true, asksYou: true }), 'question', 'a question in the reply beside an old card');
+  assert.equal(needLabel({ ...done, cardOpen: true, status: 'requires_action' }), 'question', 'paused on a prompt or a question form');
+  assert.equal(needLabel({ ...done, unreadWhy: 'permission', cardOpen: true }), 'question');
+  assert.equal(needLabel({ ...done, unreadWhy: 'offer', asksYou: true }), 'card', 'the card is what turned it orange');
+});
+
 test('a declared label never makes a row quieter than Docket\'s signal', () => {
   const base = { live: true, unread: true, status: 'idle' };
-  assert.equal(needLabel({ ...base, unreadWhy: 'offer', unreadSaid: 'done' }), 'question', 'an open card stays question');
+  assert.equal(needLabel({ ...base, unreadWhy: 'offer', unreadSaid: 'done' }), 'card', 'an open card stays card');
   assert.equal(needLabel({ ...base, unreadWhy: 'error', unreadSaid: 'reply' }), 'problem');
   assert.equal(needLabel({ ...base, asksYou: true, unreadSaid: 'done' }), 'question');
   assert.equal(needLabel({ ...base, unreadSaid: 'reply' }, true), 'merge');
@@ -78,7 +89,7 @@ test('the page keeps its other needs you cases', () => {
 
 test('Mark unread brings back the tag the row had before it was read (#771)', () => {
   const row = (r) => ({ live: true, unread: true, status: 'idle', unreadWhy: r.why, unreadSaid: r.said });
-  for (const [why, said, label] of [['result', 'done', 'done'], ['result', 'question', 'question'], ['error', '', 'problem'], ['offer', '', 'question'], ['result', '', 'reply']]) {
+  for (const [why, said, label] of [['result', 'done', 'done'], ['result', 'question', 'question'], ['error', '', 'problem'], ['offer', '', 'card'], ['result', '', 'reply']]) {
     const kept = keptReason(why, said); // saved as readWhy when it is read, so it survives a restart
     assert.equal(needLabel(row(markUnreadReason(JSON.parse(JSON.stringify(kept))))), label, `${why} ${said}`);
   }

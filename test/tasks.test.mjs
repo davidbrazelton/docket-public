@@ -183,7 +183,7 @@ test('a subagent the session waited for ends with its answer', () => {
 });
 
 test('the real messages of a background Agent-tool run (captured 2026-10-23) count it running, then done', () => {
-  const msgs = fs.readFileSync(new URL('./fixtures/background-agent.ndjson', import.meta.url), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  const msgs = fs.readFileSync(new URL('../test-fixtures/background-agent.ndjson', import.meta.url), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
   const tasks = new Map(), seen = [];
   for (const m of msgs) {
     // What server.mjs does with the call and its answer (convertMessage, applyToolResult).

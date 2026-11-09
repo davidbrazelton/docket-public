@@ -1,5 +1,5 @@
 // Open menus survive session updates (#591), in a real browser on a throwaway Docket whose Grok is
-// fixtures/fake-acp-agent.mjs. The page's live connection is passed through Playwright, which adds updates of its
+// test-fixtures/fake-acp-agent.mjs. The page's live connection is passed through Playwright, which adds updates of its
 // own (a session's new title and status, replies arriving, list and panel redraws) while each kind of menu is open.
 // Each menu must stay open and usable, the updates must wait while it is open and show once it closes, and a menu
 // for a session that is deleted still closes. Skipped where Playwright's Chromium is not installed.
@@ -10,7 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -48,7 +48,7 @@ before(async () => {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
-      PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs') },
+      PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });
   await waitFor('the test Docket to start', () => api('/api/clients?quick=1'));
   a = await api('/api/sessions', { client: 't1', text: 'first', engine: 'grok' });
@@ -73,7 +73,7 @@ after(async () => {
   await browser?.close();
   const pid = await runnerPid();
   server?.kill();
-  if (pid) try { process.kill(pid); } catch {}
+  if (pid) stopTree(pid);
   await sleep(300);
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
 });

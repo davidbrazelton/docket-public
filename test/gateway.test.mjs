@@ -1,5 +1,5 @@
 // A LiteLLM gateway as a company's connection: the config, what a Claude session gets on each route, the gears
-// and model names, reading lite's output (with the stand-in in fixtures/fake-lite.mjs), a stand-in gateway that takes
+// and model names, reading lite's output (with the stand-in in test-fixtures/fake-lite.mjs), a stand-in gateway that takes
 // or refuses a key, and cost rows billed to the gateway.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -20,7 +20,7 @@ import { dayRows } from '../costs.mjs';
 import { connectionOf } from '../connection.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const FAKE = path.join(HERE, 'fixtures', 'fake-lite.mjs');
+const FAKE = path.join(HERE, '..', 'test-fixtures', 'fake-lite.mjs');
 const GW = 'https://gateway.example.com';
 const company = (gateway) => ({ id: 'acme', gateway });
 

@@ -594,3 +594,299 @@ export function leftBehind(before, after, stopped) {
     return !!parent && (!p.start || !parent.start || p.start >= parent.start);
   }).map((p) => p.pid);
 }
+
+// ---------- screen and mouse control (#822) ----------
+// A session sees and acts on the desktop through one small script per platform, run once per action: it takes a
+// request (what to do, in the screen's own coordinates) and prints one line of JSON. Windows: PowerShell with
+// user32 SendInput and System.Drawing, nothing to build. macOS: JavaScript for Automation (osascript) with
+// CoreGraphics events, screencapture and sips; Docket's program needs Screen Recording and Accessibility in
+// System Settings > Privacy & Security. Screen coordinates are physical pixels on Windows (the script is DPI aware,
+// so 125% or 150% scaling and mixed monitors line up) and points on a Mac (CoreGraphics' own unit).
+
+// Keys by name: [Windows virtual-key code, macOS key code (ANSI layout)]. Letters, digits and F keys are added below.
+const KEYS = {
+  enter: [0x0d, 36], return: [0x0d, 36], tab: [0x09, 48], escape: [0x1b, 53], esc: [0x1b, 53], space: [0x20, 49],
+  backspace: [0x08, 51], delete: [0x2e, 117], del: [0x2e, 117], insert: [0x2d, 114], home: [0x24, 115], end: [0x23, 119],
+  pageup: [0x21, 116], pagedown: [0x22, 121], left: [0x25, 123], right: [0x27, 124], up: [0x26, 126], down: [0x28, 125],
+  ctrl: [0x11, 59], control: [0x11, 59], shift: [0x10, 56], alt: [0x12, 58], option: [0x12, 58],
+  win: [0x5b, 55], cmd: [0x5b, 55], command: [0x5b, 55], meta: [0x5b, 55], super: [0x5b, 55],
+  capslock: [0x14, 57], printscreen: [0x2c, 105], menu: [0x5d, 110],
+  minus: [0xbd, 27], '-': [0xbd, 27], plus: [0xbb, 24], equal: [0xbb, 24], '=': [0xbb, 24], comma: [0xbc, 43], ',': [0xbc, 43],
+  period: [0xbe, 47], '.': [0xbe, 47], slash: [0xbf, 44], '/': [0xbf, 44], semicolon: [0xba, 41], ';': [0xba, 41],
+  quote: [0xde, 39], "'": [0xde, 39], backquote: [0xc0, 50], '`': [0xc0, 50], '[': [0xdb, 33], ']': [0xdd, 30], backslash: [0xdc, 42], '\\': [0xdc, 42],
+};
+const MAC_ORDER = 'asdfhgzxcv_bqweryt123465=97-80]ou[ip_lj\'k;\\,/nm.'; // a macOS key code is its place here (ANSI layout)
+for (let i = 0; i < 26; i++) { const ch = String.fromCharCode(97 + i); KEYS[ch] = [0x41 + i, MAC_ORDER.indexOf(ch)]; }
+for (let d = 0; d <= 9; d++) KEYS[String(d)] = [0x30 + d, MAC_ORDER.indexOf(String(d))];
+[122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111].forEach((mac, i) => { KEYS['f' + (i + 1)] = [0x70 + i, mac]; });
+const MODIFIERS = new Set(['ctrl', 'control', 'shift', 'alt', 'option', 'win', 'cmd', 'command', 'meta', 'super']);
+
+// A key or combination as people write it ("ctrl+s", "Ctrl+Shift+Esc", "enter", "cmd+v") as the key codes pressed in
+// order (and let go in reverse), and whether it types a character (no modifier but Shift), which counts as typing for
+// the password-field check. Throws on a key it does not know.
+export function keyCodes(combo, platform = process.platform) {
+  const text = String(combo || '').toLowerCase().trim();
+  const names = (text === '+' ? 'plus' : text.replace(/\+\s*\+$/, '+plus')).split('+').map((k) => k.trim()).filter(Boolean);
+  if (!names.length) throw new Error('No key given. Write keys like enter, ctrl+s or ctrl+shift+esc.');
+  const col = platform === 'darwin' ? 1 : 0;
+  const codes = names.map((k) => {
+    const c = KEYS[k];
+    if (!c) throw new Error(`Unknown key "${k}". Use names like enter, tab, esc, backspace, delete, up, f5, ctrl, shift, alt, ${platform === 'darwin' ? 'cmd' : 'win'}, or one letter or digit; use key_type for text.`);
+    return c[col];
+  });
+  const typesText = names.every((k) => k === 'shift' || !MODIFIERS.has(k)) && names.some((k) => k.length === 1 || k === 'space' || k === 'plus');
+  return { codes, names, typesText };
+}
+
+// The size a screenshot is scaled to for the model: at most 1568 pixels on its long side and about 1.15 megapixels
+// (what the model reads without scaling it again), never larger than it is.
+export function fitShot(w, h, { maxSide = 1568, maxPixels = 1150000 } = {}) {
+  const k = Math.min(1, maxSide / Math.max(w, h), Math.sqrt(maxPixels / (w * h)));
+  return { w: Math.max(1, Math.round(w * k)), h: Math.max(1, Math.round(h * k)), scale: k };
+}
+// The screen area of a screenshot: every monitor (the box round them all), one monitor (1 is the first listed),
+// or a region given in an earlier screenshot's image pixels (zooming in on it). screens: [{ x, y, w, h }].
+export function shotArea(screens, { monitor, region, from } = {}) {
+  if (!screens?.length) throw new Error('No monitor found');
+  if (region) {
+    if (!from) throw new Error('A region is given in an earlier screenshot\'s pixels: take a screen_shot without one first.');
+    const [ix, iy, iw, ih] = region.map(Number);
+    if (![ix, iy, iw, ih].every(Number.isFinite) || iw < 1 || ih < 1) throw new Error('A region is [x, y, width, height] in the last screenshot\'s pixels.');
+    const a = toScreen(from, ix, iy), b = toScreen(from, ix + iw, iy + ih);
+    return { x: a.x, y: a.y, w: Math.max(1, b.x - a.x), h: Math.max(1, b.y - a.y) };
+  }
+  if (monitor !== undefined) {
+    const m = screens[Number(monitor) - 1];
+    if (!m) throw new Error(`There is no monitor ${monitor}: this computer has ${screens.length}.`);
+    return { x: m.x, y: m.y, w: m.w, h: m.h };
+  }
+  const x = Math.min(...screens.map((s) => s.x)), y = Math.min(...screens.map((s) => s.y));
+  return { x, y, w: Math.max(...screens.map((s) => s.x + s.w)) - x, h: Math.max(...screens.map((s) => s.y + s.h)) - y };
+}
+// A point in a screenshot's image on the screen. shot: { x, y, w, h } (the screen area) and { iw, ih } (the image size).
+export function toScreen(shot, ix, iy) {
+  return { x: Math.round(shot.x + Number(ix) * shot.w / shot.iw), y: Math.round(shot.y + Number(iy) * shot.h / shot.ih) };
+}
+
+// The script each platform runs, written to Docket's data folder on first use; null where screen control does not work.
+export function screenScript(platform = process.platform) {
+  if (platform === 'win32') return { file: 'screen-control.ps1', text: WIN_SCREEN };
+  if (platform === 'darwin') return { file: 'screen-control.js', text: MAC_SCREEN };
+  return null;
+}
+// How one request runs. Windows gets it as base64 JSON, so no quoting can break it.
+export function screenCommand(script, req, platform = process.platform) {
+  const json = JSON.stringify(req);
+  if (platform === 'win32') return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, Buffer.from(json, 'utf8').toString('base64')] };
+  if (platform === 'darwin') return { cmd: 'osascript', args: ['-l', 'JavaScript', script, json] };
+  throw new Error('Screen control works on Windows and macOS only');
+}
+
+// The requests both scripts take, in screen coordinates: screens; shot { x, y, w, h, tw, th, file } (the area, the
+// size to scale it to, and a .png or .jpg to save); move { x, y }; click { x, y, button, count, before };
+// drag { x, y, x2, y2, button, before }; scroll { x, y, dx, dy } (notches; dy > 0 is down, dx > 0 right);
+// type { text }; keys { codes, guard }. before: a shot saved first, for the log. guard (and always for type): refuse
+// with { error: 'password' } when the focused field is a password field. Each answers { ok: true } (and screens:
+// [{ x, y, w, h, primary, scale }] for screens) or { error }.
+const WIN_SCREEN = String.raw`param([string]$Req)
+$ErrorActionPreference = 'Stop'
+try {
+$r = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Req)) | ConvertFrom-Json
+Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @'
+using System; using System.Collections.Generic; using System.Runtime.InteropServices; using System.Threading;
+public static class DocketScreen {
+  [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr extra; }
+  [StructLayout(LayoutKind.Sequential)] struct KEYBDINPUT { public ushort vk, scan; public uint flags, time; public IntPtr extra; }
+  [StructLayout(LayoutKind.Explicit)] struct UNION { [FieldOffset(0)] public MOUSEINPUT mi; [FieldOffset(0)] public KEYBDINPUT ki; }
+  [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint type; public UNION u; }
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct MONITORINFOEX { public int cbSize; public RECT rcMonitor, rcWork; public uint dwFlags; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string szDevice; }
+  delegate bool MonitorProc(IntPtr h, IntPtr hdc, ref RECT r, IntPtr data);
+  [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] inputs, int size);
+  [DllImport("user32.dll")] static extern bool SetProcessDpiAwarenessContext(IntPtr v);
+  [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] static extern bool EnumDisplayMonitors(IntPtr hdc, IntPtr clip, MonitorProc cb, IntPtr data);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool GetMonitorInfo(IntPtr h, ref MONITORINFOEX mi);
+  [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr h, int type, out uint x, out uint y);
+  [StructLayout(LayoutKind.Sequential)] struct GUITHREADINFO { public int cbSize, flags; public IntPtr active, focus, capture, menuOwner, moveSize, caret; public RECT rcCaret; }
+  [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint thread, ref GUITHREADINFO g);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+  [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
+  [DllImport("user32.dll")] static extern IntPtr SendMessageTimeout(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint ms, out IntPtr result);
+  // A classic Edit control with the keyboard that hides what is typed (ES_PASSWORD, or a password character set).
+  public static bool PasswordEdit() {
+    var g = new GUITHREADINFO(); g.cbSize = Marshal.SizeOf(typeof(GUITHREADINFO));
+    if (!GetGUIThreadInfo(0, ref g) || g.focus == IntPtr.Zero) return false;
+    var cls = new System.Text.StringBuilder(256); GetClassName(g.focus, cls, 256);
+    if (cls.ToString().IndexOf("edit", StringComparison.OrdinalIgnoreCase) < 0) return false;
+    if ((GetWindowLong(g.focus, -16) & 0x20) != 0) return true;
+    IntPtr ch; SendMessageTimeout(g.focus, 0xD2, IntPtr.Zero, IntPtr.Zero, 2, 300, out ch); // EM_GETPASSWORDCHAR
+    return ch != IntPtr.Zero;
+  }
+  public static void Aware() { SetProcessDpiAwarenessContext(new IntPtr(-4)); }
+  public static string Monitors() {
+    var list = new List<string>();
+    EnumDisplayMonitors(IntPtr.Zero, IntPtr.Zero, delegate (IntPtr h, IntPtr hdc, ref RECT rc, IntPtr d) {
+      var mi = new MONITORINFOEX(); mi.cbSize = Marshal.SizeOf(typeof(MONITORINFOEX)); GetMonitorInfo(h, ref mi);
+      uint dx = 96, dy = 96; try { GetDpiForMonitor(h, 0, out dx, out dy); } catch { }
+      var m = mi.rcMonitor;
+      list.Add(String.Format(System.Globalization.CultureInfo.InvariantCulture, "{{\"x\":{0},\"y\":{1},\"w\":{2},\"h\":{3},\"primary\":{4},\"scale\":{5}}}",
+        m.Left, m.Top, m.Right - m.Left, m.Bottom - m.Top, (mi.dwFlags & 1) == 1 ? "true" : "false", dx / 96.0));
+      return true; }, IntPtr.Zero);
+    return "[" + String.Join(",", list) + "]";
+  }
+  static void Send(params INPUT[] a) { SendInput((uint)a.Length, a, Marshal.SizeOf(typeof(INPUT))); }
+  static INPUT Mouse(uint flags, int data) { var i = new INPUT(); i.type = 0; i.u.mi.dwFlags = flags; i.u.mi.mouseData = (uint)data; return i; }
+  static INPUT Key(ushort vk, ushort scan, uint flags) { var i = new INPUT(); i.type = 1; i.u.ki.vk = vk; i.u.ki.scan = scan; i.u.ki.flags = flags; return i; }
+  static uint Down(string b) { return b == "right" ? 0x8u : b == "middle" ? 0x20u : 0x2u; }
+  public static void Move(int x, int y) { SetCursorPos(x, y); Send(Mouse(1, 0)); }
+  public static void Click(int x, int y, string b, int count) {
+    Move(x, y); Thread.Sleep(30);
+    for (int n = 0; n < count; n++) { Send(Mouse(Down(b), 0)); Thread.Sleep(20); Send(Mouse(Down(b) * 2, 0)); Thread.Sleep(40); }
+  }
+  public static void Drag(int x, int y, int x2, int y2, string b) {
+    Move(x, y); Thread.Sleep(50); Send(Mouse(Down(b), 0)); Thread.Sleep(80);
+    for (int s = 1; s <= 20; s++) { Move(x + (x2 - x) * s / 20, y + (y2 - y) * s / 20); Thread.Sleep(15); }
+    Thread.Sleep(80); Send(Mouse(Down(b) * 2, 0));
+  }
+  public static void Scroll(int x, int y, int dx, int dy) {
+    Move(x, y); Thread.Sleep(30);
+    if (dy != 0) Send(Mouse(0x800, -dy * 120));
+    if (dx != 0) Send(Mouse(0x1000, dx * 120));
+  }
+  static uint Ext(int vk) { return (vk >= 0x21 && vk <= 0x28) || vk == 0x2D || vk == 0x2E || vk == 0x5B || vk == 0x5C || vk == 0x5D ? 1u : 0u; }
+  public static void Keys(int[] vks) {
+    foreach (var vk in vks) { Send(Key((ushort)vk, 0, Ext(vk))); Thread.Sleep(15); }
+    for (int i = vks.Length - 1; i >= 0; i--) { Send(Key((ushort)vks[i], 0, Ext(vks[i]) | 2u)); Thread.Sleep(15); }
+  }
+  public static void Type(string text) {
+    foreach (char c in text.Replace("\r\n", "\n")) {
+      if (c == '\n') { Keys(new[] { 0x0D }); continue; }
+      if (c == '\t') { Keys(new[] { 0x09 }); continue; }
+      Send(Key(0, c, 4), Key(0, c, 6)); Thread.Sleep(8);
+    }
+  }
+}
+'@
+[DocketScreen]::Aware()
+function Save-Shot($s) {
+  $src = New-Object Drawing.Bitmap ([int]$s.w), ([int]$s.h)
+  $g = [Drawing.Graphics]::FromImage($src); $g.CopyFromScreen([int]$s.x, [int]$s.y, 0, 0, $src.Size); $g.Dispose()
+  if ($s.tw -ne $s.w -or $s.th -ne $s.h) {
+    $dst = New-Object Drawing.Bitmap ([int]$s.tw), ([int]$s.th)
+    $g = [Drawing.Graphics]::FromImage($dst); $g.InterpolationMode = 'HighQualityBicubic'; $g.DrawImage($src, 0, 0, [int]$s.tw, [int]$s.th); $g.Dispose(); $src.Dispose(); $src = $dst
+  }
+  $fmt = if ($s.file -like '*.jpg') { [Drawing.Imaging.ImageFormat]::Jpeg } else { [Drawing.Imaging.ImageFormat]::Png }
+  $src.Save($s.file, $fmt); $src.Dispose()
+}
+function Test-Password {
+  # A classic Windows password box, then UI Automation (browsers and newer programs say IsPassword themselves)
+  if ([DocketScreen]::PasswordEdit()) { return $true }
+  try { Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes; return [bool][Windows.Automation.AutomationElement]::FocusedElement.Current.IsPassword } catch { return $false }
+}
+if ($r.before) { Save-Shot $r.before }
+switch ($r.op) {
+  'screens' { '{"ok":true,"screens":' + [DocketScreen]::Monitors() + '}'; break }
+  'shot' { Save-Shot $r; '{"ok":true}'; break }
+  'move' { [DocketScreen]::Move($r.x, $r.y); '{"ok":true}'; break }
+  'click' { [DocketScreen]::Click($r.x, $r.y, [string]$r.button, [int]$r.count); '{"ok":true}'; break }
+  'drag' { [DocketScreen]::Drag($r.x, $r.y, $r.x2, $r.y2, [string]$r.button); '{"ok":true}'; break }
+  'scroll' { [DocketScreen]::Scroll($r.x, $r.y, $r.dx, $r.dy); '{"ok":true}'; break }
+  'type' { if (Test-Password) { '{"error":"password"}' } else { [DocketScreen]::Type([string]$r.text); '{"ok":true}' }; break }
+  'keys' { if ($r.guard -and (Test-Password)) { '{"error":"password"}' } else { [DocketScreen]::Keys([int[]]$r.codes); '{"ok":true}' }; break }
+  default { '{"error":"unknown request"}' }
+}
+} catch { @{ error = $_.Exception.Message } | ConvertTo-Json -Compress }
+`;
+
+const MAC_SCREEN = String.raw`ObjC.import('AppKit'); ObjC.import('CoreGraphics'); ObjC.import('Carbon');
+function run(argv) {
+  const r = JSON.parse(argv[0]);
+  const app = Application.currentApplication(); app.includeStandardAdditions = true;
+  const q = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
+  const post = (e) => { $.CGEventPost(0, e); delay(0.02); };
+  const mouse = (type, x, y, button, clicks) => {
+    const e = $.CGEventCreateMouseEvent(null, type, $.CGPointMake(x, y), button);
+    if (clicks) $.CGEventSetIntegerValueField(e, 1, clicks); // kCGMouseEventClickState: 2 makes a double click
+    post(e);
+  };
+  const BTN = { left: [1, 2, 0, 6], right: [3, 4, 1, 7], middle: [25, 26, 2, 27] }; // down, up, button number, dragged
+  const shot = (s) => {
+    app.doShellScript('screencapture -x -t ' + (s.file.endsWith('.jpg') ? 'jpg' : 'png') + ' -R' + [s.x, s.y, s.w, s.h].join(',') + ' ' + q(s.file));
+    app.doShellScript('sips -z ' + s.th + ' ' + s.tw + ' ' + q(s.file) + ' >/dev/null');
+  };
+  const secure = () => !!$.IsSecureEventInputEnabled(); // a password field has the keyboard
+  try {
+    if (r.before) shot(r.before);
+    if (r.op === 'screens') {
+      const list = $.NSScreen.screens, main = list.objectAtIndex(0).frame, out = [];
+      for (let i = 0; i < list.count; i++) {
+        const s = list.objectAtIndex(i), f = s.frame;
+        out.push({ x: f.origin.x, y: main.size.height - f.origin.y - f.size.height, w: f.size.width, h: f.size.height, primary: i === 0, scale: s.backingScaleFactor });
+      }
+      return JSON.stringify({ ok: true, screens: out });
+    }
+    if (r.op === 'shot') { shot(r); return '{"ok":true}'; }
+    if (r.op === 'move') { mouse(5, r.x, r.y, 0); return '{"ok":true}'; }
+    if (r.op === 'click') {
+      const b = BTN[r.button] || BTN.left; mouse(5, r.x, r.y, 0);
+      for (let n = 1; n <= r.count; n++) { mouse(b[0], r.x, r.y, b[2], n); mouse(b[1], r.x, r.y, b[2], n); }
+      return '{"ok":true}';
+    }
+    if (r.op === 'drag') {
+      const b = BTN[r.button] || BTN.left; mouse(5, r.x, r.y, 0); mouse(b[0], r.x, r.y, b[2], 1);
+      for (let s = 1; s <= 20; s++) mouse(b[3], r.x + (r.x2 - r.x) * s / 20, r.y + (r.y2 - r.y) * s / 20, b[2]);
+      mouse(b[1], r.x2, r.y2, b[2], 1); return '{"ok":true}';
+    }
+    if (r.op === 'scroll') { mouse(5, r.x, r.y, 0); post($.CGEventCreateScrollWheelEvent2(null, 1, 2, -r.dy, -r.dx, 0)); return '{"ok":true}'; }
+    if (r.op === 'type') { if (secure()) return '{"error":"password"}'; Application('System Events').keystroke(r.text); return '{"ok":true}'; }
+    if (r.op === 'keys') {
+      if (r.guard && secure()) return '{"error":"password"}';
+      const FLAG = { 55: 0x100000, 56: 0x20000, 59: 0x40000, 58: 0x80000 }; // cmd, shift, ctrl, option
+      const key = (k, down, flags) => { const e = $.CGEventCreateKeyboardEvent(null, k, down); $.CGEventSetFlags(e, flags); post(e); };
+      let flags = 0;
+      for (const k of r.codes) { flags |= FLAG[k] || 0; key(k, true, flags); }
+      for (const k of r.codes.slice().reverse()) { flags &= ~(FLAG[k] || 0); key(k, false, flags); }
+      return '{"ok":true}';
+    }
+    return '{"error":"unknown request"}';
+  } catch (e) { return JSON.stringify({ error: String(e.message || e) }); }
+}
+`;
+
+// The badge shown on the screen itself while a session controls it, on top of every window, with a Stop button that
+// prints "stop" (the person may be watching the other program, not Docket). It never takes the keyboard from the
+// program being worked on, and closes when Docket's process (owner) is gone. Windows only for now: on a Mac the
+// indicator is Docket's own page.
+export function screenBadgeCommand(script, text, platform = process.platform, owner = process.pid) {
+  if (platform !== 'win32') return null;
+  return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, Buffer.from(String(text), 'utf8').toString('base64'), String(owner)] };
+}
+export const SCREEN_BADGE = { file: 'screen-badge.ps1', text: String.raw`param([string]$Text, [int]$Owner)
+$t = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Text))
+Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+Add-Type -WarningAction SilentlyContinue -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition @'
+using System; using System.Drawing; using System.Windows.Forms;
+public class DocketBadge : Form {
+  public DocketBadge(string text) {
+    FormBorderStyle = FormBorderStyle.None; ShowInTaskbar = false; TopMost = true; StartPosition = FormStartPosition.Manual;
+    BackColor = Color.FromArgb(196, 64, 24);
+    var row = new FlowLayoutPanel(); row.AutoSize = true; row.WrapContents = false; row.BackColor = BackColor;
+    var label = new Label(); label.Text = text; label.ForeColor = Color.White; label.AutoSize = true; label.Font = new Font("Segoe UI", 10f, FontStyle.Bold); label.Margin = new Padding(0, 7, 10, 0);
+    var stop = new Button(); stop.Text = "Stop"; stop.AutoSize = true; stop.FlatStyle = FlatStyle.Flat; stop.BackColor = Color.White; stop.ForeColor = Color.Black; stop.Font = new Font("Segoe UI", 10f);
+    stop.Click += delegate { Console.Out.WriteLine("stop"); Console.Out.Flush(); };
+    row.Controls.Add(label); row.Controls.Add(stop); Controls.Add(row);
+    row.Location = new Point(10, 4); ClientSize = new Size(row.PreferredSize.Width + 14, row.PreferredSize.Height + 8);
+  }
+  protected override bool ShowWithoutActivation { get { return true; } }
+  protected override CreateParams CreateParams { get { var p = base.CreateParams; p.ExStyle |= 0x08000000 | 0x80 | 0x8; return p; } } // no activate, tool window, topmost
+  protected override void OnShown(EventArgs e) { base.OnShown(e); var a = Screen.PrimaryScreen.WorkingArea; Location = new Point(a.Left + (a.Width - Width) / 2, a.Top + 6); }
+}
+'@
+$f = New-Object DocketBadge $t
+# Gone with the Docket that showed it, even one that crashed.
+$timer = New-Object Windows.Forms.Timer; $timer.Interval = 2000
+$timer.add_Tick({ if (-not (Get-Process -Id $Owner -ErrorAction SilentlyContinue)) { $f.Close() } }); $timer.Start()
+[Windows.Forms.Application]::Run($f)
+` };

@@ -1,7 +1,7 @@
 // A parent's "checked and agree" to a child that already said it is ready to close goes into the child's chat as a
 // note and runs no turn (#755); to a child whose last turn did not say so, it starts a turn as before. Runs a
 // throwaway Docket (its own ports, state and company list in a temp folder) whose Grok is the stand-in agent in
-// fixtures/fake-acp-agent.mjs, which calls Docket's tools when told to.
+// test-fixtures/fake-acp-agent.mjs, which calls Docket's tools when told to.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -55,7 +55,7 @@ before(async () => {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_REPORT_DEBOUNCE: '{"quietMs":0,"maxMs":0}', PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
-      PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs') },
+      PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });
   await waitFor('the test Docket to start', () => api('/api/clients?quick=1'), 30000);
 });
@@ -63,9 +63,9 @@ before(async () => {
 after(async () => {
   const runner = await fetch(`http://127.0.0.1:${RUNNER_PORT}/health`).then((r) => r.json()).catch(() => null);
   server?.kill();
-  if (runner?.pid) try { process.kill(runner.pid); } catch {}
+  if (runner?.pid) stopTree(runner.pid);
   await sleep(300);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
 
 test('agree-done to a child already marked done is a note, no turn; otherwise a turn', async () => {

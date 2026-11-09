@@ -1,6 +1,6 @@
 // Sessions of one company message each other with no approval, whatever brand each runs on. Runs a
 // throwaway Docket (its own ports, state and company list in a temp folder) whose Grok is the stand-in agent
-// in fixtures/fake-acp-agent.mjs, and drives Grok sessions that call Docket's tools the way Grok does.
+// in test-fixtures/fake-acp-agent.mjs, and drives Grok sessions that call Docket's tools the way Grok does.
 // Grok sessions here run in the "Ask before acting" mode, so any approval step would show as a permission card.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -54,7 +54,7 @@ before(async () => {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_REPORT_DEBOUNCE: '{"quietMs":0,"maxMs":0}', PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
-      PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs') },
+      PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });
   await waitFor('the test Docket to start', () => api('/api/clients?quick=1'), 30000);
 });
@@ -62,9 +62,9 @@ before(async () => {
 after(async () => {
   const runner = await fetch(`http://127.0.0.1:${RUNNER_PORT}/health`).then((r) => r.json()).catch(() => null);
   server?.kill();
-  if (runner?.pid) try { process.kill(runner.pid); } catch {}
+  if (runner?.pid) stopTree(runner.pid);
   await sleep(300);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
 
 test('Grok sessions of one company start, message, report to and read each other with no approval', async () => {
@@ -78,8 +78,10 @@ test('Grok sessions of one company start, message, report to and read each other
   await waitFor('the kid to answer', async () => (await texts(kid)).some((t) => t.startsWith('got: do the kid work')));
   const report = await waitFor('the session report in the parent', async () => (await texts(parent.id)).find((t) => t.includes('<session-report>') || t.includes('finished a turn')));
   assert.match(report, /"Kid" \(id [\w-]+\) finished a turn\. Its latest reply begins: got: do the kid work/);
-  assert.match(report, /portal__get_session_report/, 'tool names in the report are the ones Grok calls');
-  assert.doesNotMatch(report, /mcp__portal__/);
+  // Since #741 the report names no tools, only the rules that say what to do with it; any tool name it ever
+  // carries again must be the one Grok calls.
+  assert.match(report, /Handle them as "When a session you started says it is done"/);
+  assert.doesNotMatch(report, /mcp__portal__/, 'tool names in the report are the ones Grok calls');
 
   // To a running Grok session: delivered, marked as from a session, with the sender named.
   assert.equal(await call(parent.id, 'send_to_session', { id: kid, message: 'ping-1' }), 'Sent.');

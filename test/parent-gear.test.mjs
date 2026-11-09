@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { parentHeldGear, belowTop } from '../gears.mjs';
 import { shiftUpFor } from '../shift-up.mjs';
 import { reportIsNews, lowGearNote } from '../reports.mjs';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -60,7 +60,7 @@ test('the rules say when a lower start gear fits and what the parent then does',
   assert.match(held, /Only your parent raises you/);
 });
 
-// ---------- in a throwaway Docket, with the stand-in Grok agent (fixtures/fake-acp-agent.mjs) ----------
+// ---------- in a throwaway Docket, with the stand-in Grok agent (test-fixtures/fake-acp-agent.mjs) ----------
 const [PORT, RUNNER_PORT] = await freePorts(2);
 const URL_ = `http://127.0.0.1:${PORT}`;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'docket-801-'));
@@ -100,7 +100,7 @@ before(async () => {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_REPORT_DEBOUNCE: '{"quietMs":0,"maxMs":0}', PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
-      PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs') },
+      PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });
   await waitFor('the test Docket to start', () => api('/api/clients?quick=1'), 30000);
 });
@@ -108,9 +108,9 @@ before(async () => {
 after(async () => {
   const runner = await fetch(`http://127.0.0.1:${RUNNER_PORT}/health`).then((r) => r.json()).catch(() => null);
   server?.kill();
-  if (runner?.pid) try { process.kill(runner.pid); } catch {}
+  if (runner?.pid) stopTree(runner.pid);
   await sleep(300);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
 
 test('a child started on a lower gear stays there and its report names the gear; one on the parent\'s gear does not', async () => {

@@ -2,6 +2,29 @@
 
 A page on your computer for starting, resuming and watching AI coding sessions, so your work does not depend on any one AI company's desktop app. It runs on Windows 10 or 11 and on macOS.
 
+## Why Docket
+
+Cursor, OpenCode and similar tools are AI coding agents: one person, one editor or terminal, one conversation at a time. Docket works one level above them. It doesn't replace your AI. It runs the AI tools you already use (Claude Code, Codex, Grok) and gives you one place to run all your work with them.
+
+- **Every session in one place.** Dozens of sessions side by side, grouped by project, each marked with what it needs from you: a question, a merge, a problem. No more hunting through a pile of terminal windows.
+- **Sessions that hand off work.** A session can start child sessions for separate pieces of a job, check what they did and close them when they're done. Each one runs on the model the work needs, so routine steps don't cost top-model prices.
+- **A desk for each client or team.** Each desk has its own sign-in, memory, past sessions and billing. Work for one client never leaks into another, and reaching across desks always asks you first.
+- **Work keeps going without you.** Schedules start sessions on a timetable, the autopilot answers routine questions under rules you set, and sessions keep running while Docket restarts or updates itself.
+- **More than code.** Sessions get a private browser with your saved sign-ins, a Files list for the reports and exports they make, and links to GitHub, Jira and Azure DevOps.
+- **Your computer, your accounts.** Docket runs on your own computer, and each desk bills to its own AI account.
+
+### Docket next to Cursor and OpenCode
+
+| | Docket | Cursor | OpenCode |
+|---|---|---|---|
+| **What it is** | A workspace for running many AI sessions | An AI code editor | An AI coding agent in the terminal |
+| **Sessions at once** | Many, side by side, with parent and child sessions | Mostly one per window | One per terminal |
+| **Separate clients** | One desk each, with its own sign-in, memory and billing | No | No |
+| **Runs unattended** | Schedules and autopilot | Background agents | No |
+| **Editing code by hand** | No, use your editor | Yes, a full editor | No |
+
+They work well together: Docket runs and organizes the work, and you open the results in Cursor or any other editor when you want to edit by hand.
+
 ## What you need
 
 - **Node.js** 20 or newer (the LTS version from nodejs.org), and **Git**. The Windows installer below brings its own of both.

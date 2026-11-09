@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { newLinkScan, scanLinkText, branchesInCommand, ticketKeys, adoBase, parseAdoPrUrl, adoPR, adoPRsForBranch, adoWorkItemIds, adoItemKeyFrom, adoCategory, adoPRWorkItemIds, adoWorkItems, jiraTicket, jiraTickets, ticketFinished, jiraMe, ticketUnread, jiraFromClaudeJson, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
   filesIssue, parseIssueUrl, branchIssue, githubTicket, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, ghDerivedDefault, foldersInCommand, sessionBranches, sessionMadePr } from '../links.mjs';
 
-const fixture = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'session-links.jsonl'), 'utf8');
+const fixture = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'test-fixtures', 'session-links.jsonl'), 'utf8');
 
 test('branches come from gitBranch and the session\'s own git commands, never from text it read or wrote', () => {
   const scan = scanLinkText(newLinkScan(), fixture);

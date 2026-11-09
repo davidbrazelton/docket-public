@@ -100,7 +100,7 @@ export function gearModelMap(client, brand = 'claude') {
 // slashes read the same in cmd and in Git Bash). Claude Code caches its answer for CLAUDE_CODE_API_KEY_HELPER_TTL_MS.
 export function printTokenCommand(lite, url) {
   const exe = String(lite).replace(/\\/g, '/');
-  // A stand-in written in JavaScript (the tests' fixtures/fake-lite.mjs) is run with node.
+  // A stand-in written in JavaScript (the tests' test-fixtures/fake-lite.mjs) is run with node.
   const run = /\.m?js$/i.test(exe) ? `"${process.execPath.replace(/\\/g, '/')}" "${exe}"` : `"${exe}"`;
   return `${run} --base-url ${url} auth print-token`;
 }

@@ -1,5 +1,5 @@
 // The setup wizard's computer check on a made-up user folder: a throwaway Docket whose user folder (USERPROFILE,
-// HOME) is a temp folder holding made-up Claude Code history and a signed-in Codex setup (fixtures/fake-codex.mjs reads
+// HOME) is a temp folder holding made-up Claude Code history and a signed-in Codex setup (test-fixtures/fake-codex.mjs reads
 // auth.json). The check suggests the working folder the history points to, and offers the Codex setup for reuse.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -41,7 +41,7 @@ before(async () => {
       PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
       PORTAL_CLAUDE_EXE: path.join(tmp, 'no-such-claude.exe'),
-      PORTAL_CODEX_EXE: path.join(HERE, 'fixtures', 'fake-codex.mjs'), PORTAL_GROK_EXE: path.join(tmp, 'no-such-grok.exe') },
+      PORTAL_CODEX_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-codex.mjs'), PORTAL_GROK_EXE: path.join(tmp, 'no-such-grok.exe') },
   });
   for (const until = Date.now() + 30000; ; await sleep(150)) {
     if (await fetch(URL_ + '/api/clients?quick=1').then((r) => r.ok).catch(() => false)) break;
@@ -52,9 +52,9 @@ before(async () => {
 after(async () => {
   const pid = await runnerPid();
   server?.kill();
-  if (pid) try { process.kill(pid); } catch {}
+  if (pid) stopTree(pid);
   await sleep(300);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
 
 test('the computer check suggests the working folder from the history, and offers the signed-in Codex setup', async () => {

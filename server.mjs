@@ -15,6 +15,7 @@ import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, wokeByItself, noteWoke, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
 import { netError, refused, netText, withRetries, noConversation, startMode, continueNudge, firstMessage, reportText, firstStore } from './first-start.mjs';
+import { KINDS as PILOT_KINDS, cleanRules as cleanPilotRules, ruleFor as pilotRuleFor, mayAnswer as pilotMayAnswer, logLine as pilotLogLine, DEFAULT_RULES as PILOT_DEFAULT_RULES, stricter as stricterLevel } from './pilot.mjs';
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting, keptReason, markUnreadReason } from './needs-you.mjs';
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, restartWaiter } from './runner-idle.mjs';
@@ -47,6 +48,7 @@ import { homeInUse, freeHome } from './home-in-use.mjs';
 import { workFolders, existingHomes } from './work-folders.mjs';
 import { sourceHomes, findGroups, planRun, writeReport, readReports, reportPaths, copyRun, checkCopies, undoRun } from './bring-in.mjs';
 import { moveDesk } from './move-desk.mjs';
+import { createScreenControl, SCREEN_TOOLS } from './screen.mjs';
 import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, treeListCommand, parseTreeList, descendants, leftBehind, killCommand, commandLineCommand, relaunchesApp,
   startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, findLite } from './platform.mjs';
 import { cleanGateway, gatewayFor, loginOf, claudeRouteOf, claudeGateway, visibleGears, usableGear, modelFor, gearModelMap, liteArgs, liteCommand, loginLink, loginDone, pkceUnsupported, whoamiUser, tokenFrom, gatewayRefused, gatewayHost } from './gateway.mjs';
@@ -63,6 +65,7 @@ import { scanPlanSystem, switchWarning, conversionBrief, systemName } from './pl
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
 import { START_OFFER, startTally, startOfferKind, startOfferWords } from './start-offer.mjs';
+import { ruleText, PARENT_ONLY } from './session-rules.mjs';
 import { SETUP_OFFER, scanFile, measureUse, measureFiles, assess, quickStart, costPerToken, checkDue, setupOfferKind, headlines, setupBrief, itemTable, kTokens, dollars } from './setup-size.mjs';
 import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport, installId, today, sentToday, limitReached, countSend, limitMessage, DAILY_LIMIT } from './feedback.mjs';
 import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
@@ -81,7 +84,8 @@ import { newSigninFail, messagedSince, signinResumeCheck, dropsMark, signinNote,
 import WebSocket, { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 import { REMOTE_HOURS, ASK_WAIT_MS, newSecret, checkCode, stepOf, otpUri, makeCertificate, fingerprintOf, checkCodeOf, sameCheck, isOfficeAddress, officeAddresses,
-  remoteRoute, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedTls, pinnedRequest, connectError } from './remote.mjs';
+  remoteRoute, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedTls, pinnedRequest, connectError,
+  PILOT_KEY_DAYS, isPilotKey, grantPilotKey, findPilotKey, livePilotKeys, revokePilotKey, pilotKeyView, pilotKeyRoute, pilotItemsFor } from './remote.mjs';
 import { z } from 'zod';
 import { deskCheck, deskCheckText } from './desk-check.mjs';
 import { createSharedMcp, freePort } from './shared-mcp.mjs';
@@ -535,10 +539,14 @@ function withHome(client, fn) {
 
 // ---------- browser connections ----------
 const sockets = new Set();
+// The autopilot's watch on what waits on the person (see the autopilot section): armed while a pilot is set or a
+// feed is open, it looks again shortly after anything the pages hear.
+const pilotWatch = { armed: false, timer: null, look: null };
 // To this computer's pages, and (for the linked desk only) to another computer connected through Remote Desks.
 function broadcast(msg) {
   toPages(msg);
   relayToRemotes(msg);
+  if (pilotWatch.armed && !pilotWatch.timer) pilotWatch.timer = setTimeout(() => { pilotWatch.timer = null; pilotWatch.look?.(); }, 300);
 }
 function toPages(msg) {
   const s = JSON.stringify(msg);
@@ -636,11 +644,14 @@ function summary(s) {
     kidNews: !!s.kidNews, // a report it took in quietly that the person has not opened: the ring's halo
     unreadWhy: s.unread ? s.unreadWhy || null : null, // which path turned it orange: the row's reason (#671)
     asksYou: !!s.pendingAsks?.size || liveAsks(s), // a question form open, or its latest reply ends by asking: "question"
+    cardOpen: openCards(s) > 0, // a session offer, proposal or handoff card waits on the person: "card" (#823)
     unreadSaid: s.unread ? s.unreadSaid || null : null, // the label the session declared for that turn
     needsSignin: state.sessions[s.id]?.needsSignin || null, // { site, url } while it waits on a private browser sign-in: the 🌐 blinks (#678)
     said: liveSaid(s), // the start of its last reply: the hover card (#691)
   };
 }
+// How many cards (session offers, proposals, handoffs) wait on the person's click.
+const openCards = (s) => { const rec = state.sessions[s.id]; return (rec?.cards || []).filter((c) => isOpenCard(c.ev)).length + (rec?.handoffs || []).filter((h) => isOpenCard(h.ev)).length; };
 // Whether a live session's latest reply waits on the user's answer and nothing was sent after it.
 const awaitingMemo = new WeakMap(); // reply event -> endsWaiting(its text)
 function liveAwaiting(s) {
@@ -693,9 +704,8 @@ function endTurnMark(s, err) {
     logEvent(`quiet turn refused: ${sessionTag(s)}`, `${why}; asked for: ${reason}`);
   }
   if (started) {
-    const k = kidsOf(s), rec = state.sessions[s.id];
-    const cards = (rec?.cards || []).filter((c) => isOpenCard(c.ev)).length + (rec?.handoffs || []).filter((h) => isOpenCard(h.ev)).length;
-    const why = kidStartRefusal({ started, error: err, said, asks: !!s.pendingAsks?.size || liveAsks(s), cards, working: k.working });
+    const k = kidsOf(s);
+    const why = kidStartRefusal({ started, error: err, said, asks: !!s.pendingAsks?.size || liveAsks(s), cards: openCards(s), working: k.working });
     if (!why) { logEvent(`not unread: ${sessionTag(s)}`, `the turn only started ${started} child session${started === 1 ? '' : 's'} (${k.working} working)`); return false; }
     logEvent(`started a child, still unread: ${sessionTag(s)}`, why);
   }
@@ -1453,6 +1463,14 @@ function withPlanRules(s, r) {
   ls.planRules = 'given';
   return { ...r, content: [...r.content, { type: 'text', text: `This session started without Docket's plan rules, so here they are:\n\n${optionalPrompt('plans.md')}` }] };
 }
+// A child session started without prompts/sessions.md (session-rules.mjs, #800): the first session it starts or offers
+// itself brings those rules in the reply, since that session's reports point at them.
+function withSessionRules(s, r) {
+  const ls = live.get(s.id);
+  if (!ls?.slimRules || r.isError) return r;
+  ls.slimRules = false;
+  return { ...r, content: [...r.content, { type: 'text', text: `This session started as a child, without Docket's rules for sessions it starts, so here they are:\n\n${fs.readFileSync(path.join(ROOT, 'prompts', 'sessions.md'), 'utf8').trim()}` }] };
+}
 // The card that offers a plan (#605): once, in a session that has just started its second child session with no plan.
 function offerPlan(s) {
   const rec = state.sessions[s.id], client = clientById(s.client);
@@ -1869,11 +1887,11 @@ function portalToolDefs(parent) {
           if (startGear && !findGear(childBrand, startGear)) return { content: [{ type: 'text', text: `${startGear} is not a gear of ${BRANDS[childBrand]?.name || childBrand}. Its gears: ${gearsOf(childBrand).map((g) => g.key).join(', ')}.` }], isError: true };
           if (initiation === 'own_initiative') {
             const p = proposeSession(parent, { title, prompt, cwd, brand, startGear });
-            return { content: [{ type: 'text', text: `Proposed "${title}"${brand ? ` on ${BRANDS[brand].name}` : ''} as a card the user can start (proposal id ${p.id}). Carry on; do not wait for it.` }] };
+            return withSessionRules(parent, { content: [{ type: 'text', text: `Proposed "${title}"${brand ? ` on ${BRANDS[brand].name}` : ''} as a card the user can start (proposal id ${p.id}). Carry on; do not wait for it.` }] });
           }
           if (initiation === 'offer') {
             const choice = await offerSession(parent, { title, prompt, cwd, brand, startGear });
-            if (choice.started) return { content: [{ type: 'text', text: `The user chose a new session: started "${title}" (id ${choice.started}). Do not also do this work here. (Card ${choice.id})` }] };
+            if (choice.started) return withSessionRules(parent, { content: [{ type: 'text', text: `The user chose a new session: started "${title}" (id ${choice.started}). Do not also do this work here. (Card ${choice.id})` }] });
             return { content: [{ type: 'text', text: `The user chose to do it here. Do the work in this session. (Card ${choice.id})` }] };
           }
           const child = startChild(parent, { title, prompt, cwd, engine: brand, startGear });
@@ -1881,7 +1899,7 @@ function portalToolDefs(parent) {
           const gear = findGear(child.engine, child.gear), held = heldGearOf(child);
           const heldNote = held ? ` It stays on ${held.name}, the lower gear you chose: when it reports, check the actual diff, test output or files, not only its summary, and if the result is weak or wrong send the work again with send_to_session and gear set to ${topGearOf(child.engine).key}.` : '';
           const planNote = planStartNote({ on: plansOn(client), own: !!sessionPlans(client, parent.id).own, childStarts: state.sessions[parent.id]?.childStarts || 0 });
-          return { content: [{ type: 'text', text: `Started session "${title}" (id ${child.id})${brand ? ` on ${BRANDS[brand].name}` : ''}${gear ? `, in Shift on ${gear.name}` : ''}. It appears in the portal list under this session.${heldNote}${planNote ? `\n\n${planNote}` : ''}` }] };
+          return withSessionRules(parent, { content: [{ type: 'text', text: `Started session "${title}" (id ${child.id})${brand ? ` on ${BRANDS[brand].name}` : ''}${gear ? `, in Shift on ${gear.name}` : ''}. It appears in the portal list under this session.${heldNote}${planNote ? `\n\n${planNote}` : ''}` }] });
         }),
       tool('propose_handoff',
         "Hand this work off to a fresh session that takes this one's place: same folder, same desk, under the same parent session (or top level). Shows the user a card: Continue in new session / Keep going here. Use it when your profile's rules call for handing off to a new session; pass the handoff block as the brief. Does not wait for the choice.",
@@ -2253,7 +2271,97 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: open.map((id) => line(id)).join('\n') || 'No open sessions.' }] };
         }),
       ...(plansOnIn(clientById(parent.client), parent.id) ? planToolDefs(parent) : []),
+      ...screenToolDefs(parent),
+      ...(state.pilot?.session === parent.id ? pilotToolDefs(parent) : []),
   ];
+}
+
+// ---------- screen and mouse control (#822): screen.mjs runs it, platform.mjs has the scripts ----------
+// state.screenControl: { [desk id]: true } for the desks whose sessions may see and act on this computer's screen.
+// Off unless turned on in ☰ > Settings > Screen control, here (a remote computer cannot turn it on). The tools are
+// listed only to sessions started while it is on, and every call checks it again, so turning it off refuses at once.
+const screenOn = (desk) => !!state.screenControl?.[desk];
+const SCREEN_LAST = 'A last resort, for a desktop program or a system dialog with no better way in (Docket\'s tools, a command, the Playwright browser): it is slow, and it acts as the user would. ';
+const imagePoint = { x: z.number().describe('Across, in the last screen_shot image\'s pixels'), y: z.number().describe('Down, in the last screen_shot image\'s pixels') };
+// The tools' inputs, also checked on the computer a remote call reaches.
+const SCREEN_INPUTS = {
+  screen_shot: {
+    monitor: z.number().int().min(1).optional().describe('Only this monitor (1 is the first in the list a screenshot gives). Leave out monitor and region for every monitor'),
+    region: z.array(z.number()).length(4).optional().describe('Only this part: [x, y, width, height] in the last screenshot\'s pixels, to look closer'),
+  },
+  mouse_move: imagePoint,
+  mouse_click: { ...imagePoint, button: z.enum(['left', 'right', 'middle']).optional().describe('Default left'), double: z.boolean().optional().describe('A double click') },
+  mouse_drag: { ...imagePoint, to_x: z.number().describe('Where to let go, across'), to_y: z.number().describe('Where to let go, down'), button: z.enum(['left', 'right', 'middle']).optional() },
+  mouse_scroll: { ...imagePoint, direction: z.enum(['up', 'down', 'left', 'right']).optional().describe('Default down'), amount: z.number().int().min(1).max(50).optional().describe('Wheel notches, default 3') },
+  key_type: { text: z.string().describe('The text, typed into whatever has the keyboard; a new line presses Enter') },
+  key_press: { keys: z.string().describe('A key or combination: enter, tab, esc, ctrl+s, ctrl+shift+esc, alt+f4, cmd+v (Mac), f5, up') },
+};
+const SCREEN_ABOUT = {
+  screen_shot: 'See the screen: every monitor, one monitor, or a region of the last screenshot. Answers an image scaled for you and the monitors; the mouse tools take points in the latest image\'s pixels. Take one before acting, and again to see what an action did.',
+  mouse_move: 'Move the mouse to a point in the last screenshot.',
+  mouse_click: 'Click a point in the last screenshot (left, right or middle, or a double click). Docket saves a picture of the screen first, for its log.',
+  mouse_drag: 'Press at one point of the last screenshot, move to another and let go.',
+  mouse_scroll: 'Turn the mouse wheel over a point of the last screenshot.',
+  key_type: 'Type text into whatever has the keyboard (click it first). Refused when that is a password field: the user types passwords.',
+  key_press: 'Press a key or a combination, like enter, ctrl+s or alt+tab.',
+};
+function screenToolDefs(parent) {
+  const desk = z.string().optional().describe('A remote desk, by name: act on the computer that desk runs on (Remote Desks, connected, with screen control on there too). Leave it out for this computer');
+  return SCREEN_TOOLS.map((name) => {
+    const t = tool(name, SCREEN_LAST + SCREEN_ABOUT[name] + ' Every action is logged, and the user can press Stop at any time.', { ...SCREEN_INPUTS[name], desk }, async (args) => {
+      try { return { content: await screenCall(parent, name, args) }; }
+      catch (e) { return { content: [{ type: 'text', text: e.message }], isError: true }; }
+    });
+    return screenOn(parent.client) ? t : Object.assign(t, { hidden: true });
+  });
+}
+async function screenCall(parent, name, { desk, ...args }) {
+  if (!screenOn(parent.client)) throw new Error('Screen control is off for this desk, so the screen tools are refused. The user turns it on in ☰ > Settings > Screen control.');
+  if (!desk) return screen.act({ key: parent.id, session: parent.id, title: parent.title, desk: parent.client }, name, args);
+  const d = remoteOn() && remoteDesks().find((x) => x.id === desk || x.name.toLowerCase() === String(desk).trim().toLowerCase());
+  if (!d) throw new Error(`There is no remote desk named ${desk}${remoteOn() ? '' : ' (Remote Desks is hidden on this computer)'}.`);
+  // The pilot, with no connection open, uses its pilot key (#827) when the key was granted with the screen tools.
+  const usesKey = !remoteConns.get(d.id) && d.pilotKey?.screen && pilotOn() && state.pilot?.session === parent.id;
+  const conn = usesKey ? { token: d.pilotKey.key } : remoteConns.get(d.id);
+  if (!conn) throw new Error(`${d.name} is not connected. The user connects it in ☰ > Remote Desks with a code from the authenticator app.`);
+  let r;
+  try { r = await remoteCall(d, conn, 'POST', '/api/screen/act', { name, args, session: parent.id, title: parent.title, turn: screen.turnOf(parent.id) }, 120e3); }
+  catch (e) { throw new Error(connectError(e, d.name)); }
+  if (r.status === 401 && usesKey) { forgetPilotKey(d, 'revoked or expired on that computer'); throw new Error(`The pilot key for ${d.name} was revoked or has expired there.`); }
+  if (r.status === 401) { dropRemoteConn(d.id, 'time up'); throw new Error(`The connection to ${d.name} has ended. The user connects again with a new code.`); }
+  if (r.status !== 200 || !Array.isArray(r.json?.content)) throw new Error(r.json?.error || `${d.name} answered ${r.status}`);
+  if (r.json.isError) throw new Error(r.json.content[0]?.text || 'It did not work');
+  return r.json.content;
+}
+// A call from a session on another computer, to this computer's screen (the remote route 'screen').
+async function remoteScreenCall(desk, who, b) {
+  const fail = (text) => ({ content: [{ type: 'text', text }], isError: true });
+  if (!screenOn(desk.id)) return fail(`Screen control is off for ${desk.name} on ${os.hostname()}. Someone at that computer turns it on in ☰ > Settings > Screen control.`);
+  if (!SCREEN_TOOLS.includes(b?.name)) return fail('No such screen tool');
+  const args = z.object(SCREEN_INPUTS[b.name]).safeParse(b.args || {});
+  if (!args.success) return fail('Invalid input: ' + args.error.message);
+  const title = `${String(b.title || 'A session').slice(0, 80)} (from ${who.name})`;
+  try { return { content: await screen.act({ key: `remote:${who.id}:${b.session}`, session: String(b.session || ''), title, desk: desk.id, from: who.name, turn: Number(b.turn) || 0 }, b.name, args.data) }; }
+  catch (e) { return fail(e.message); }
+}
+// The page's side: GET /api/screen?client= (the setting and who is in control), POST /api/screen { client, on },
+// POST /api/screen/stop?client= (the Stop control; a remote may use it and GET), POST /api/screen/log (show the log).
+async function screenRoutes(req, res, url, p) {
+  if (p === '/api/screen') {
+    const b = req.method === 'POST' ? await readBody(req) : {};
+    const id = b.client || url.searchParams.get('client');
+    if (req.method === 'POST') {
+      if (!clientById(id)) return json(res, 400, { error: 'No such desk' });
+      state.screenControl = { ...state.screenControl, [id]: !!b.on };
+      if (!b.on) { delete state.screenControl[id]; screen.stop('Screen control turned off', id); }
+      saveState();
+      logEvent(`screen control ${b.on ? 'on' : 'off'}`, clientById(id).name);
+    }
+    return json(res, 200, { on: screenOn(id), works: process.platform === 'win32' || process.platform === 'darwin', active: screen.active().filter((a) => !id || a.desk === id) });
+  }
+  if (p === '/api/screen/stop' && req.method === 'POST') return json(res, 200, { stopped: screen.stop('the Stop button in Docket', url.searchParams.get('client') || undefined) });
+  if (p === '/api/screen/log' && req.method === 'POST') { fs.mkdirSync(screen.logDir(), { recursive: true }); showFile(screen.logDir(), 'open', folderOpenCommand(screen.logDir())); return json(res, 200, { ok: true }); }
+  return false;
 }
 // The helper proves it was started by this Docket with a token kept on this computer.
 let toolToken = null;
@@ -2297,6 +2405,13 @@ for (const sc of scheduler.list()) for (const r of sc.runs || []) {
 // Rows are kept per session in data/usage-index.json and stay after Claude Code
 // deletes old logs. Only sessions whose logs (or prices) changed are read again.
 const DATA_DIR = process.env.PORTAL_DATA || path.join(ROOT, 'data');
+// Screen and mouse control (#822); see screenToolDefs.
+let screenDesks = new Set(); // the desks the pages were last told have a session in control
+const screen = createScreenControl({ dataDir: DATA_DIR, changed: (list) => {
+  const now = new Set(list.map((a) => a.desk));
+  for (const d of new Set([...screenDesks, ...now])) broadcast({ t: 'screen', client: d, active: list.filter((a) => a.desk === d) });
+  screenDesks = now;
+} });
 const PRICING_FILE = path.join(ROOT, 'pricing.json');
 const USAGE_INDEX = path.join(DATA_DIR, 'usage-index.json');
 const USAGE_CSV = path.join(DATA_DIR, 'ai-usage-raw.csv');
@@ -2399,7 +2514,9 @@ setInterval(checkSharedMcp, 30000).unref?.();
 let usage = {};
 try { usage = JSON.parse(fs.readFileSync(USAGE_INDEX, 'utf8')); } catch {}
 let usageWriteTimer = null;
+let usageVer = 0; // goes up on every change to the record, so listCosts knows when to work its figures out again
 function saveUsageSoon() {
+  usageVer++;
   clearTimeout(usageWriteTimer);
   usageWriteTimer = setTimeout(() => {
     try {
@@ -3067,6 +3184,59 @@ async function familyCost(client, id) {
   return { own: own.cost, ownAgent: own.agent, ownUser: own.user, childTotal: sum.cost, childAgent: sum.agent, childUser: sum.user,
     total: all.cost, agent: all.agent, user: all.user, children: children.sort((a, b) => b.cost - a.cost) };
 }
+// The session list's cost figures (👁 > Cost, #806), ever and on `day` (the page's calendar day), each as
+// [ever, today, ...]: s, each listed session's own cost; f, a session with sessions under it: itself and all of them,
+// all the way down, archived and deleted ones too, then how many are under it, how many archived and how many deleted;
+// g, each group ('' for No group): its members' cost, how many, how many archived and how many deleted. The same rows,
+// parent links and members as recordedCost, familyCost and groupCost, so the figures match Details > Cost. Worked out
+// again only once the usage record (which the end of each turn brings up to date) or the day changes, or after a minute.
+const listCostCache = new Map(); // client id -> { key, at, out }
+async function listCosts(client, day) {
+  const key = `${usageVer}|${day}`, hit = listCostCache.get(client.id);
+  if (hit && hit.key === key && Date.now() - hit.at < 60000) return hit.out;
+  const own = new Map();
+  for (const [id, u] of Object.entries(usage)) {
+    if (u.client !== client.id || !u.rows?.length) continue;
+    let ever = 0, today = 0;
+    for (const r of u.rows) { ever += r.Cost || 0; if (r.Date === day) today += r.Cost || 0; }
+    own.set(id, [ever, today]);
+  }
+  const rows = [...(await history(client)), ...[...live.values()].filter((s) => s.client === client.id).map(summary)];
+  const byId = new Map(rows.filter((r) => !wasDeleted(r.id)).map((r) => [r.id, r]));
+  for (const x of goneSessions(client, new Set(byId.keys()))) byId.set(x.id, { ...x, gone: true });
+  const kids = new Map();
+  for (const r of byId.values()) if (r.parentId && r.parentId !== r.id && byId.has(r.parentId)) (kids.get(r.parentId) || kids.set(r.parentId, []).get(r.parentId)).push(r);
+  const memo = new Map(), path = new Set();
+  const family = (id) => { // a loop in the parent links stops where it comes back round
+    if (memo.has(id)) return memo.get(id);
+    path.add(id);
+    const o = own.get(id) || [0, 0], f = [o[0], o[1], 0, 0, 0];
+    for (const k of kids.get(id) || []) {
+      if (path.has(k.id)) continue;
+      const x = family(k.id);
+      f[0] += x[0]; f[1] += x[1]; f[2] += 1 + x[2]; f[3] += (k.archived && !k.gone ? 1 : 0) + x[3]; f[4] += (k.gone ? 1 : 0) + x[4];
+    }
+    path.delete(id); memo.set(id, f);
+    return f;
+  };
+  const cents = (n) => Math.round(n * 1e4) / 1e4;
+  const out = { day, s: {}, f: {}, g: {} };
+  let n = 0;
+  for (const r of byId.values()) {
+    if (++n % 200 === 0) await new Promise((res) => setImmediate(res));
+    const o = own.get(r.id);
+    const gid = (r.gone ? r.groupId : effectiveGroup(client, r.id)) || '';
+    const g = out.g[gid] ||= [0, 0, 0, 0, 0];
+    if (o) { g[0] += o[0]; g[1] += o[1]; }
+    g[2]++; if (r.gone) g[4]++; else if (r.archived) g[3]++;
+    if (r.gone) continue;
+    if (o) out.s[r.id] = o.map(cents);
+    if (kids.has(r.id)) { const f = family(r.id); out.f[r.id] = [cents(f[0]), cents(f[1]), f[2], f[3], f[4]]; }
+  }
+  for (const g of Object.values(out.g)) { g[0] = cents(g[0]); g[1] = cents(g[1]); }
+  listCostCache.set(client.id, { key, at: Date.now(), out });
+  return out;
+}
 
 // Look at every session of every client, a few at a time so the portal stays responsive.
 let sweeping = false;
@@ -3415,7 +3585,8 @@ function startChild(parent, { title, prompt, cwd, attachments = [], settings = {
   }
   return child;
 }
-function updateCard(s, ev) { broadcast({ t: 'card', id: s.id, ev }); }
+// Its row is sent again too, so cardOpen follows the answer: the list's reason and a parent's card strip (#831).
+function updateCard(s, ev) { broadcast({ t: 'card', id: s.id, ev }); const l = live.get(s.id); if (l) pushSession(l); }
 // A title suggestion card, from the chat of the running session or from the saved cards of one that is not running.
 const titleCard = (s, id, sid) => s?.events.find((e) => e.k === 'title-suggestion' && e.id === sid) || savedCard(id, 'title-suggestion', sid);
 
@@ -3467,7 +3638,7 @@ function settleProposal(id, how, note, startedId) {
   updateCard({ id: p.parentId }, p.ev);
   return true;
 }
-function startProposal(id) {
+function startProposal(id, by = '') {
   const p = proposals.get(id);
   if (!p || p.ev.state !== 'open') throw new Error('That proposal is no longer open');
   const parent = live.get(p.parentId) || { id: p.parentId, client: p.client, cwd: p.cwd };
@@ -3475,7 +3646,7 @@ function startProposal(id) {
   settleProposal(id, 'started', '', child.id);
   touchSession(p.client, child.id); // the person pressed Start
   // Tell the proposer, so it does not start the same work again with start_session.
-  noticeToSession(p.client, p.parentId, `The user started your proposal "${p.title || 'Untitled'}" as session ${child.id}; do not start this work again. Its finished turns will come to you as session reports. Nothing to do now; reply in one line at most.`, { byPerson: true }).catch(() => {});
+  noticeToSession(p.client, p.parentId, `${by === 'pilot' ? "Docket's autopilot" : 'The user'} started your proposal "${p.title || 'Untitled'}" as session ${child.id}; do not start this work again. Its finished turns will come to you as session reports. Nothing to do now; reply in one line at most.`, { byPerson: true }).catch(() => {});
   return child;
 }
 // ---------- handing a session off to a fresh one (matching rules in handoff.mjs) ----------
@@ -4432,14 +4603,14 @@ function proposeToCompany(s, to, { title, brief, folder }) {
   broadcast({ t: 'inbox', client: to.id });
   return item;
 }
-function startInbox(clientId, id) {
+function startInbox(clientId, id, by = '') {
   const to = clientById(clientId);
   const it = inboxOf(clientId).find((x) => x.id === id);
   if (!to || !it || it.state !== 'open') throw new Error('That card is no longer open');
   const child = startSession({ clientId: to.id, cwd: it.cwd, title: it.title });
   state.sessions[child.id].titleBy = 'you';
   state.sessions[child.id].crossFrom = { client: it.from, session: it.fromSession };
-  sendToSession(child, { text: it.brief, attachments: [], context: `(From Docket: this work was handed over from the desk "${it.fromName}" and the user pressed Start in ${to.name}'s list. It runs on ${to.name}'s own sign-in and is billed to ${to.name}. Nothing you write here goes back to ${it.fromName}.)` });
+  sendToSession(child, { text: it.brief, attachments: [], context: `(From Docket: this work was handed over from the desk "${it.fromName}" and ${by === 'pilot' ? "Docket's autopilot" : 'the user'} pressed Start in ${to.name}'s list. It runs on ${to.name}'s own sign-in and is billed to ${to.name}. Nothing you write here goes back to ${it.fromName}.)` });
   settleInbox(inboxOf(clientId), id, 'started', child.id);
   saveState();
   logCrossing('start', { from: it.from, to: to.id, session: it.fromSession, title: it.fromTitle, text: `${it.title}\n(started as ${child.id})` });
@@ -4454,6 +4625,272 @@ function dismissInbox(clientId, id) {
   broadcast({ t: 'inbox', client: clientId });
 }
 
+// ---------- the autopilot (#821; the rules are in pilot.mjs) ----------
+// A pilot session (Grok first, any brand) answers what waits on the person, across every desk on this computer, under
+// rules the person keeps here. state.pilot: { on, session } (the switch in ☰ > Settings > Autopilot, and the session
+// marked as pilot). Only that session gets the pilot tools, and with the switch off they refuse every call. Whatever
+// the pilot answers is marked answered by pilot on the card and in the chat, and kept in its log.
+// The rules: data/pilot-rules.json (per computer; written with the safe defaults the first time the switch goes on).
+const PILOT_RULES_FILE = path.resolve(process.env.PORTAL_PILOT_RULES || path.join(DATA_DIR, 'pilot-rules.json'));
+const PILOT_LOG = path.join(DATA_DIR, 'pilot-log.jsonl');
+const PILOT_OFF = 'The autopilot is switched off (☰ > Settings > Autopilot), so every pilot tool refuses until the user turns it on.';
+const pilotFeeds = new Set(); // open /api/pilot/events responses
+let pilotSeen = new Map(); // id -> item, as last looked
+let pilotWoken = false; // the pilot was told of new items and has not called pilot_pending since
+const remotePilot = new Map(); // remote desk id -> { items, error }: what waits on a remote desk this computer holds a pilot key for (#827)
+const pilotOn = () => !!state.pilot?.on;
+function pilotRules() {
+  try { return cleanPilotRules(JSON.parse(fs.readFileSync(PILOT_RULES_FILE, 'utf8'))); } catch { return cleanPilotRules(null); }
+}
+function writePilotRulesIfMissing() {
+  if (fs.existsSync(PILOT_RULES_FILE)) return;
+  fs.mkdirSync(path.dirname(PILOT_RULES_FILE), { recursive: true });
+  fs.writeFileSync(PILOT_RULES_FILE, JSON.stringify({ ...PILOT_DEFAULT_RULES, desks: {} }, null, 2) + '\n');
+}
+function pilotLog(line) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.appendFileSync(PILOT_LOG, JSON.stringify(pilotLogLine(line)) + '\n'); } catch {}
+  broadcast({ t: 'pilot', pilot: pilotBrief() });
+}
+function pilotLogTail(n = 50) {
+  try { return fs.readFileSync(PILOT_LOG, 'utf8').trim().split('\n').slice(-n).reverse().map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; }
+}
+// What the page's indicator needs: on, the pilot session, and flying (on, with a pilot set).
+function pilotBrief() {
+  const id = state.pilot?.session || null, rec = id ? state.sessions[id] : null;
+  return { on: pilotOn(), session: id, title: id ? (live.get(id)?.title || rec?.title || 'Untitled') : '', desk: rec?.client || (id && live.get(id)?.client) || null, flying: pilotOn() && !!id };
+}
+// Everything waiting on the person, across desks, each with a stable id (kind:its own id), its desk and session, and
+// what the rules let the pilot do with it (may: allow | deny | ask). The pilot's own session is left out: it never
+// answers for itself. Kept apart from the pilot so anything else that wants "what's waiting on me" can share it (#804).
+function waitingOnPerson({ rules = pilotRules() } = {}) {
+  const me = state.pilot?.session, items = [];
+  const at = (desk, session, title) => ({ desk, deskName: companyName(desk), session, title: title || (session ? sessionTitle(clientById(desk) || { id: desk }, session) : '') });
+  for (const s of live.values()) {
+    if (s.id === me || s.status === 'ended') continue;
+    const base = at(s.client, s.id, s.title || 'Untitled');
+    for (const [key, ask] of s.pendingAsks || []) {
+      const ev = ask.ev;
+      if (ev?.k === 'permission') {
+        const kind = ev.tool === 'AskUserQuestion' ? 'question' : ev.tool === 'ExitPlanMode' ? 'plan' : 'permission';
+        items.push({ id: `${kind}:${key}`, kind, ...base, tool: ev.tool, input: ev.input, since: ask.at || null,
+          what: kind === 'question' ? (ev.input?.questions || []).map((q) => q.question).join(' / ') : kind === 'plan' ? clip(ev.input?.plan, 300) : `${ev.tool}: ${ev.label || ev.title || ''}`,
+          ...(kind === 'question' ? { questions: (ev.input?.questions || []).map((q) => ({ question: q.question, multiSelect: !!q.multiSelect, options: (q.options || []).map((o) => o.label) })) } : {}) });
+      } else if (ev?.k === 'offer') items.push({ id: `offer:${ev.id}`, kind: 'offer', ...base, what: ev.title, brief: clip(ev.brief, 600) });
+      else if (ev?.k === 'cross') items.push({ id: `cross:${ev.id}`, kind: 'cross', ...base, what: `${ev.kind === 'ask' ? 'Ask' : 'Hand work to'} ${ev.toName}${ev.title ? `: ${ev.title}` : ''}`, brief: clip(ev.text, 600) });
+    }
+    // An open pull request from a session that finished and waits on the person: they say merge.
+    const pr = stateSnaps.get(s.id)?.pr;
+    if (pr && (pr.status === 'open' || pr.status === 'conflict') && s.unread && s.status === 'idle')
+      items.push({ id: `merge:${s.id}:${pr.number || 0}`, kind: 'merge', ...base, what: `Pull request #${pr.number}${pr.title ? ` ${pr.title}` : ''}`, url: pr.url || '' });
+  }
+  for (const p of proposals.values()) if (p.ev.state === 'open' && p.parentId !== me)
+    items.push({ id: `card:${p.ev.id}`, kind: 'card', ...at(p.client, p.parentId), what: p.title || 'Untitled', brief: clip(p.prompt, 600) });
+  for (const h of handoffs.values()) if (h.ev.state === 'open' && h.sessionId !== me)
+    items.push({ id: `handoff:${h.ev.id}`, kind: 'handoff', ...at(h.client, h.sessionId), what: h.title, brief: clip(h.brief, 600) });
+  for (const [desk, list] of Object.entries(state.inbox || {})) for (const it of list) if (it.state === 'open')
+    items.push({ id: `inbox:${it.id}`, kind: 'inbox', ...at(desk, null, `From ${it.fromName}`), what: it.title, brief: clip(it.brief, 600) });
+  for (const [id, rec] of Object.entries(state.sessions)) if (rec.needsSignin && id !== me && rec.client)
+    items.push({ id: `signin:${id}`, kind: 'signin', ...at(rec.client, id), what: `Sign in to ${rec.needsSignin.site}` });
+  for (const a of remoteAsks.values()) if (!a.pilot) items.push({ id: `remote:${a.id}`, kind: 'remote', ...at(remoteCfg().desk, null, 'Remote Desks'), what: `${a.name} (${a.ip}) asks to use this desk` });
+  for (const it of items) { const r = pilotRuleFor(rules, it); it.may = r.level; it.why = r.why; it.answers = PILOT_KINDS[it.kind].answers; }
+  // Remote desks this computer holds a pilot key for (#827): what waits there, as last looked. The stricter of the
+  // rules there (remoteMay, as that computer gave it) and the rules here counts.
+  for (const { items: there } of remotePilot.values()) for (const it of there) {
+    if (!PILOT_KINDS[it.kind]) continue;
+    const r = pilotRuleFor(rules, it), may = stricterLevel(it.remoteMay, r.level);
+    items.push({ ...it, may, why: may === r.level ? r.why : `${it.remoteWhy} (the rules on the computer with the desk)`, answers: PILOT_KINDS[it.kind].answers });
+  }
+  return items;
+}
+// The pilot answers one item by id. Checked against the rules here, never left to the pilot; every try is logged.
+// answers: a question form's picks, keyed by question text. Returns { ok, why }.
+// from, desk: a pilot on another computer answering with a pilot key (#827): only that desk's items, and this
+// computer's own switch does not count (the key is the person's say-so); the rules here still do.
+async function pilotAnswer(id, answer, { answers, from, desk } = {}) {
+  if (!from && !pilotOn()) return { ok: false, why: PILOT_OFF };
+  if (!from && id.startsWith('r:')) await refreshRemotePilot();
+  const item = waitingOnPerson().find((x) => x.id === id && (!from || (x.desk === desk && x.kind !== 'remote' && !x.there)));
+  if (!item) return { ok: false, why: 'Nothing with that id is waiting now (answered meanwhile, or gone). Call pilot_pending for the list as it is now.' };
+  const may = pilotMayAnswer(pilotRules(), item, answer, item.remoteMay);
+  if (may.ok && item.kind === 'question' && answer === 'answer' && !(answers && typeof answers === 'object' && Object.keys(answers).length))
+    Object.assign(may, { ok: false, why: 'A question form needs answers: { "question text": "the option label" }.' });
+  const tried = { item, answer, ok: may.ok, why: may.why, from };
+  if (!may.ok) { pilotLog(tried); logEvent(`autopilot refused: ${item.kind}`, `${item.id} ${answer}: ${may.why}`); return { ok: false, why: may.why }; }
+  if (item.there) return answerThere(item, answer, answers, tried);
+  const key = id.slice(item.kind.length + 1), s = item.session ? live.get(item.session) : null;
+  const card = (k, cid) => s?.pendingAsks?.get(cid)?.ev || savedCard(item.session, k, cid);
+  let done = false;
+  try {
+    switch (item.kind) {
+      case 'permission': case 'plan': done = !!s && answerPermission(s, key, answer !== 'deny', answer === 'always', undefined, 'pilot'); break;
+      case 'question': done = !!s && answerPermission(s, key, answer === 'answer', false, answers, 'pilot'); break;
+      case 'offer': { const ev = card('offer', key); if (ev) ev.by = 'pilot'; done = !!s && answerOffer(s, key, answer); break; }
+      case 'cross': { const ev = card('cross', key); if (ev) ev.by = 'pilot'; done = answerCrossing(s, key, answer === 'send'); break; }
+      case 'card': { const p = proposals.get(key); if (p) p.ev.by = 'pilot';
+        if (answer === 'start') { startProposal(key, 'pilot'); done = true; } else done = settleProposal(key, 'dismissed'); break; }
+      case 'handoff': { const h = handoffs.get(key); if (h) h.ev.by = 'pilot';
+        if (answer === 'continue') await continueHandoff(key); else keepHandoffHere(key); done = true; break; }
+      case 'inbox': { const it = (state.inbox?.[item.desk] || []).find((x) => x.id === key); if (it) it.by = 'pilot';
+        if (answer === 'start') startInbox(item.desk, key, 'pilot'); else dismissInbox(item.desk, key); done = true; break; }
+      case 'merge': {
+        const target = await sessionToMessage(item.desk, item.session);
+        sendToSession(target, { text: 'merge', from: 'pilot', context: `(From Docket: "merge" was sent by Docket's autopilot, not typed by the user: the user's autopilot rules let it approve merges. ${item.what}.)` });
+        done = true; break;
+      }
+      case 'signin': setSigninNeed(item.session, item.desk, null, 'dismissed by the autopilot'); done = true; break;
+      case 'remote': { const a = remoteAsks.get(key); if (a) { a.resolve(answer === 'allow'); done = true; } break; }
+    }
+  } catch (e) { tried.ok = false; tried.why = e.message; pilotLog(tried); return { ok: false, why: e.message }; }
+  if (!done) { tried.ok = false; tried.why = 'It was no longer waiting.'; pilotLog(tried); return { ok: false, why: tried.why }; }
+  const said = answer === 'answer' ? `answered ${Object.entries(answers).map(([q, a]) => `${clip(q, 60)}: ${a}`).join('; ')}` : answer;
+  const by = from ? `pilot on ${from}` : 'pilot';
+  if (s && item.kind !== 'merge') addEvent(s, { k: 'note', text: `Answered by ${by} (${said}): ${clip(item.what, 200)}` });
+  logEvent(`answered by ${by}: ${item.kind}`, `${item.id} ${said} (${companyName(item.desk)})`);
+  pilotLog({ ...tried, answer: said });
+  return { ok: true, why: may.why };
+}
+// Looks at what waits now: new items go to the feeds, and the pilot is woken once (until it next calls
+// pilot_pending) when one of them is something its rules let it answer. Runs shortly after anything the pages hear,
+// and every 15 seconds for what they do not (a pull request found open).
+function pilotLook() {
+  const p = state.pilot || {};
+  pilotWatch.armed = !!p.session || pilotFeeds.size > 0;
+  if (!pilotWatch.armed) { pilotSeen = new Map(); return; }
+  // A session just marked as pilot gets its tools when it next starts; one running is started again once idle.
+  const ps = p.session ? live.get(p.session) : null;
+  if (ps?.pilotReload && ps.status === 'idle' && !ps.pendingAsks?.size && !ps.reloading && !ps.resting && !runningTasks(ps)) {
+    ps.pilotReload = false;
+    reloadSession(ps, ["Docket's autopilot tools (pilot_pending, pilot_answer): the user marked this session as the pilot"]);
+  }
+  const now = new Map(waitingOnPerson().map((i) => [i.id, i]));
+  const added = [...now.values()].filter((i) => !pilotSeen.has(i.id)), gone = [...pilotSeen.keys()].filter((id) => !now.has(id));
+  pilotSeen = now;
+  for (const i of added) pilotFeed('pending', i);
+  for (const id of gone) pilotFeed('settled', { id });
+  const forPilot = added.filter((i) => i.may !== 'ask');
+  if (pilotOn() && p.session && forPilot.length && !pilotWoken && !ps?.reloading) {
+    pilotWoken = true;
+    const rec = state.sessions[p.session];
+    noticeToSession(rec?.client || ps?.client, p.session, `${forPilot.length} new item${forPilot.length === 1 ? '' : 's'} waiting that your autopilot rules let you answer: ${forPilot.slice(0, 5).map((i) => `${i.id} (${i.kind}, ${i.deskName}: ${clip(i.what, 80)})`).join('; ')}. Call mcp__portal__pilot_pending for the full list, then pilot_answer.`)
+      .catch((e) => { pilotWoken = false; logEvent('autopilot: could not wake the pilot', e.message); });
+  }
+}
+pilotWatch.look = pilotLook;
+setInterval(pilotLook, 15000);
+// The autopilot's reach into remote desks with a pilot key (#827): what waits there (remotePilot), looked at every
+// 15 seconds while the autopilot flies, and before pilot_pending lists.
+const pilotKeyCall = (d, method, pathAndQuery, body, timeout = 30000) => remoteCall(d, { token: d.pilotKey.key }, method, pathAndQuery, body, timeout);
+function forgetPilotKey(d, why) {
+  if (!d.pilotKey) return;
+  delete d.pilotKey; d.pilotKeyGone = { at: Date.now(), why }; saveState();
+  remotePilot.delete(d.id);
+  logEvent('remote desk: pilot key ended', `${d.name}: ${why}`);
+  broadcast({ t: 'clients' });
+}
+let remotePilotBusy = null;
+function refreshRemotePilot() {
+  return remotePilotBusy ||= (async () => {
+    const flying = pilotOn() && !!state.pilot?.session && remoteOn();
+    for (const d of remoteDesks()) {
+      if (!flying || !d.pilotKey) { remotePilot.delete(d.id); continue; }
+      if (d.pilotKey.expires <= Date.now()) { forgetPilotKey(d, 'its time ran out'); continue; }
+      let r;
+      try { r = await pilotKeyCall(d, 'GET', '/remote/pilot/pending', undefined, 15000); }
+      catch (e) { remotePilot.set(d.id, { items: [], error: connectError(e, d.name) }); continue; }
+      if (r.status === 401) { forgetPilotKey(d, 'revoked or expired on that computer'); continue; }
+      if (r.status !== 200 || !Array.isArray(r.json?.items)) { remotePilot.set(d.id, { items: [], error: r.json?.error || `${d.name} answered ${r.status}` }); continue; }
+      remotePilot.set(d.id, { error: '', items: r.json.items.map(({ may, why, answers, ...i }) => ({ ...i, id: `r:${d.id}:${i.id}`, there: i.id, desk: d.id, deskName: d.name, remoteMay: may, remoteWhy: why })) });
+    }
+  })().catch((e) => logEvent('autopilot: could not look at remote desks', e.message)).finally(() => { remotePilotBusy = null; });
+}
+setInterval(() => { if (remotePilot.size || (pilotOn() && state.pilot?.session && remoteDesks().some((d) => d.pilotKey))) refreshRemotePilot().then(pilotLook); }, 15000);
+// An answer to an item on a remote desk, passed on with the pilot key; that computer checks its own rules again.
+async function answerThere(item, answer, answers, tried) {
+  const d = remoteDeskById(item.desk);
+  const fail = (why) => { pilotLog({ ...tried, ok: false, why }); return { ok: false, why }; };
+  if (!d?.pilotKey) return fail(`There is no pilot key for ${item.deskName} now.`);
+  let r;
+  try { r = await pilotKeyCall(d, 'POST', '/remote/pilot/answer', { id: item.there, answer, answers }); }
+  catch (e) { return fail(connectError(e, d.name)); }
+  if (r.status === 401) { forgetPilotKey(d, 'revoked or expired on that computer'); return fail(`The pilot key for ${d.name} was revoked or has expired there.`); }
+  if (r.status !== 200 || !r.json?.ok) return fail(r.json?.why || r.json?.error || `${d.name} answered ${r.status}`);
+  logEvent(`answered by pilot: ${item.kind}`, `${item.id} ${answer} (${d.name}, on that computer)`);
+  pilotLog({ ...tried, ok: true, answer });
+  refreshRemotePilot().then(pilotLook);
+  return { ok: true, why: tried.why };
+}
+function pilotFeed(event, data) {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of pilotFeeds) res.write(msg);
+}
+// The switch and the pilot, from ☰ > Settings > Autopilot.
+function setPilot({ on, session }) {
+  const p = state.pilot ||= { on: false, session: null };
+  if (session !== undefined) {
+    const id = session ? String(session) : null;
+    if (id && !live.has(id) && !state.sessions[id]) throw new Error('No session with that id');
+    if (id !== p.session) {
+      const was = p.session ? live.get(p.session) : null;
+      if (was) was.pilotReload = false;
+      p.session = id;
+      const s = id ? live.get(id) : null;
+      if (s && s.status !== 'ended') s.pilotReload = true; // started again once idle, to load the pilot tools
+      logEvent('autopilot: pilot set', id ? sessionTag(s || { id, title: state.sessions[id]?.title }) : 'none');
+    }
+  }
+  if (on !== undefined) {
+    p.on = !!on;
+    if (p.on) writePilotRulesIfMissing();
+    logEvent(`autopilot ${p.on ? 'on' : 'off'}`);
+  }
+  pilotWoken = false;
+  saveState();
+  pilotWatch.armed = !!p.session || pilotFeeds.size > 0;
+  broadcast({ t: 'pilot', pilot: pilotBrief() });
+  setTimeout(pilotLook, 0);
+  return pilotBrief();
+}
+// What ☰ > Settings > Autopilot shows: the switch, the pilot, the sessions that could be it, the rules file, what
+// waits now and the log.
+function pilotView() {
+  const sessions = [...live.values()].filter((s) => s.status !== 'ended')
+    .map((s) => ({ id: s.id, title: s.title || 'Untitled', desk: companyName(s.client), brand: s.engine || 'claude' }));
+  let waiting = [];
+  try { waiting = waitingOnPerson().map(({ id, kind, deskName, title, what, may }) => ({ id, kind, desk: deskName, title, what: clip(what, 160), may })); } catch {}
+  return { ...pilotBrief(), sessions, rulesFile: PILOT_RULES_FILE, rules: pilotRules(), log: pilotLogTail(), waiting };
+}
+// The pilot's tools: offered only to the session marked as pilot (see portalToolDefs).
+function pilotToolDefs(parent) {
+  const refuse = (text) => ({ content: [{ type: 'text', text }], isError: true });
+  const notPilot = () => state.pilot?.session !== parent.id ? 'This session is no longer the pilot.' : !pilotOn() ? PILOT_OFF : '';
+  return [
+    tool('pilot_pending',
+      "Docket's autopilot: list everything waiting on the user across every desk on this computer, and on remote desks this computer holds a pilot key for (their ids start r:) (permission prompts, question forms, plan approvals, New session / Do it here cards, suggested session cards, handoff cards, work handed over from another desk, Send / Don't send cards, open pull requests waiting for merge, sign-ins, Remote Desks connections). Each has an id for pilot_answer, its desk and session, what it is, the answers it takes, and may: allow (you may answer it), deny (you may only decline it) or ask (it stays with the user; leave it). Docket checks the rules again on every answer.",
+      { kind: z.string().optional().describe('Only this kind (permission, question, plan, offer, card, handoff, inbox, cross, merge, signin, remote)'), desk: z.string().optional().describe('Only this desk (its id or name)'), all: z.boolean().optional().describe('Also list the items that stay with the user (may: ask)') },
+      async ({ kind, desk, all }) => {
+        const why = notPilot(); if (why) return refuse(why);
+        pilotWoken = false;
+        await refreshRemotePilot();
+        const want = String(desk || '').toLowerCase();
+        const items = waitingOnPerson().filter((i) => (!kind || i.kind === kind) && (!want || String(i.desk).toLowerCase() === want || i.deskName.toLowerCase() === want));
+        const shown = all ? items : items.filter((i) => i.may !== 'ask'), held = items.length - shown.length;
+        const text = (shown.length ? JSON.stringify(shown.map(({ input, ...i }) => i), null, 1) : 'Nothing waiting that your rules let you answer.')
+          + (held && !all ? `\n\n${held} more stay${held === 1 ? 's' : ''} with the user (may: ask); pass all: true to see them.` : '')
+          + [...remotePilot.entries()].filter(([, r]) => r.error).map(([id, r]) => `\n\nThe remote desk ${remoteDeskById(id)?.name || id} could not be looked at: ${r.error}`).join('')
+          + remoteDesks().filter((d) => d.pilotKeyGone && !d.pilotKey).map((d) => `\n\nThe pilot key for the remote desk ${d.name} has ended (${d.pilotKeyGone.why}); the user asks for a new one in ☰ > Remote Desks.`).join('');
+        return { content: [{ type: 'text', text }] };
+      }),
+    tool('pilot_answer',
+      'Docket\'s autopilot: answer one item from pilot_pending by its id. It is recorded and shown as "answered by pilot", never as the user. Answers by kind: permission allow | always | deny; question answer (with answers) | skip; plan allow | deny; offer new | here; card start | dismiss; handoff continue | here; inbox start | dismiss; cross send | stop; merge merge; signin dismiss; remote allow | deny. Docket refuses an answer its rules do not allow, and hard stops (merges, money, secrets, sign-ins, deleting, outside services, other desks and computers) stay with the user unless the rules file names them.',
+      { id: z.string().describe('The item id from pilot_pending'), answer: z.string().describe('One of the answers its kind takes'), answers: z.record(z.string(), z.string()).optional().describe('For a question form with answer "answer": the option label picked for each question, keyed by question text (several labels for a multi-select joined with ", ")') },
+      async ({ id, answer, answers }) => {
+        const why = notPilot(); if (why) return refuse(why);
+        const r = await pilotAnswer(id, answer, { answers });
+        return r.ok ? { content: [{ type: 'text', text: `Answered ${id}: ${answer}. Shown to the user as answered by pilot.` }] } : refuse(`Not answered: ${r.why}`);
+      }),
+  ];
+}
+
 // Instructions only some sessions read: prompts/optional/<name>.
 function optionalPrompt(name) {
   try { return fs.readFileSync(path.join(ROOT, 'prompts', 'optional', name), 'utf8').trim(); } catch { return ''; }
@@ -4461,14 +4898,13 @@ function optionalPrompt(name) {
 // A desk sends real work to child sessions on its own unless it turned that off (splitWork false: the Switches on
 // the Inspector, or the setup wizard), with prompts/optional/split-work.md. Starting one when the user asks stays for every desk.
 const splitOn = (client) => client?.splitWork !== false;
-// Everything Docket adds to a session's instructions, in order.
-const sessionRules = (s) => [APPEND_PROMPT, promptAppends(), splitOn(clientById(s.client)) ? optionalPrompt('split-work.md') : '', shiftRules(s), planRules(s)].filter(Boolean).join('\n\n');
-// Extra instructions every session reads when it starts: prompts/*.md, in name order.
-function promptAppends() {
-  const dir = path.join(ROOT, 'prompts');
-  try { return fs.readdirSync(dir).filter((n) => n.endsWith('.md')).sort().map((n) => fs.readFileSync(path.join(dir, n), 'utf8').trim()).join('\n\n'); }
-  catch { return ''; }
-}
+// Everything Docket adds to a session's instructions, in order. A child session (one with a parent) gets the slimmer
+// set (session-rules.mjs, #800).
+// s.slimRules records it, so the first session it starts itself hands it the rest (withSessionRules).
+const sessionRules = (s) => {
+  s.slimRules = !!s.parentId;
+  return [APPEND_PROMPT, ruleText(path.join(ROOT, 'prompts'), { child: s.slimRules, split: splitOn(clientById(s.client)) }), shiftRules(s), planRules(s)].filter(Boolean).join('\n\n');
+};
 
 const APPEND_PROMPT = `You are running inside Docket, the user's session portal, a page on their computer that shows many sessions side by side.
 You also have a private browser (the mcp__playwright__ tools). It starts with the sign-ins the user saved for this client. If a site needs a sign-in it does not have, call mcp__portal__needs_signin with the site (the globe button in the portal then blinks so the user can sign in there) and say so in your reply; never type their passwords.
@@ -4482,7 +4918,7 @@ When you create or update a file the user should look at (a report, page, spread
 // ticking the brand again picks it back up, but no new session runs on it.
 // A Grok session runs `grok agent stdio` through engines/acp.mjs in the runner.
 const GROK_EXE = process.env.PORTAL_GROK_EXE || path.join(os.homedir(), '.grok', 'bin', process.platform === 'win32' ? 'grok.exe' : 'grok');
-// A stand-in agent written in JavaScript (the tests' fixtures/fake-acp-agent.mjs) is run with node.
+// A stand-in agent written in JavaScript (the tests' test-fixtures/fake-acp-agent.mjs) is run with node.
 const grokCommand = (args) => /\.m?js$/i.test(GROK_EXE) ? [process.execPath, [GROK_EXE, ...args]] : [GROK_EXE, args];
 // A Codex session runs `codex app-server` through engines/codex.mjs.
 // shortTools: the brand names Docket's tools server__tool rather than the Claude way (forEngine).
@@ -4676,7 +5112,8 @@ function askPermission(s, toolName, input, opts) {
   });
 }
 // answers: the person's picks for an AskUserQuestion form, keyed by question text (skip = deny, so Claude asks in the chat).
-function answerPermission(s, reqId, allow, always, answers) {
+// by: 'pilot' when the autopilot answered (#821): the card says so, and so does a denial the session reads.
+function answerPermission(s, reqId, allow, always, answers, by = '') {
   const ask = s.pendingAsks?.get(reqId);
   if (!ask) return false;
   const isForm = ask.ev.tool === 'AskUserQuestion';
@@ -4685,13 +5122,14 @@ function answerPermission(s, reqId, allow, always, answers) {
   recordWait(s, ask);
   ask.ev.state = isForm ? (allow ? 'answered' : 'skipped') : allow ? (always ? 'always' : 'allowed') : 'denied';
   if (isForm && allow) ask.ev.answers = Object.fromEntries(Object.entries(answers).map(([q, a]) => [String(q), String(a)]));
+  if (by) ask.ev.by = by;
   broadcast({ t: 'permission', id: s.id, ev: ask.ev });
   ask.resolve(isForm
     ? (allow ? { behavior: 'allow', updatedInput: { ...ask.input, answers: ask.ev.answers } }
       : { behavior: 'deny', message: 'The user chose to answer in the chat instead of the form. Ask these questions again as plain text in your reply and wait for their answer.' })
     : allow
     ? { behavior: 'allow', updatedInput: ask.input, ...(always && ask.suggestions ? { updatedPermissions: ask.suggestions } : {}) }
-    : { behavior: 'deny', message: 'The user declined this.' });
+    : { behavior: 'deny', message: by === 'pilot' ? "Docket's autopilot declined this, under the rules the user set for it." : 'The user declined this.' });
   if (!s.pendingAsks.size) setStatus(s, 'running');
   return true;
 }
@@ -4897,6 +5335,7 @@ function sendFirst(s) {
 // news: what makes this turn's report only news for its parent (turnNewsFor in reports.mjs), '' for none.
 // reported: the children whose finished turns this report carries, not counted as working in the state line.
 function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false, report = false, news = '', reported = [] }) {
+  if (!system && !from) screen.release(s.id); // a Stop on screen control holds until the person writes again
   if (holdsMessage(state.paused, { system, from })) { // waits for Resume all
     state.paused.held.push({ id: s.id, client: s.client, text, attachments, context, system, from, byPerson, report, news });
     saveState();
@@ -5472,7 +5911,7 @@ function findCutOffs() {
 // - the library list changed: run npm install first;
 // - only the page changed: open pages reload themselves (version below).
 const RESTART_CODE = 75;
-const APP_FILES = ['server.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'first-start.mjs', 'signin-resume.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs'];
+const APP_FILES = ['server.mjs', 'pilot.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'first-start.mjs', 'signin-resume.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs'];
 const PAGE_FILES = ['index.html', 'view.html', 'usage.html', 'plans.html'];
 const LIB_FILES = ['package.json', 'package-lock.json'];
 // While a restart waits for a quiet moment this app keeps serving the pages it started with, which go with
@@ -7593,8 +8032,8 @@ function docketTexts() {
   const md = (d) => { try { return fs.readdirSync(d).filter((n) => n.endsWith('.md')).sort(); } catch { return []; } };
   return [
     { name: 'Docket\'s own instructions', note: 'written in server.mjs', text: APPEND_PROMPT },
-    ...md(dir).map((n) => ({ name: `prompts/${n}`, path: path.join(dir, n), note: 'every session', text: fs.readFileSync(path.join(dir, n), 'utf8').trim() })),
-    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'parent-gear.md' ? 'only Shift child sessions held on a lower gear their parent chose, instead of model-shifting.md' : n === 'split-work.md' ? 'only desks that split work into sessions (Switches)' : n === 'plans.md' ? "only sessions that use a plan, on desks with Docket's own plans" : n === 'setup-slim.md' ? "the first message of a session started from the setup check card, with the desk's numbers in it" : 'only some sessions',
+    ...md(dir).map((n) => ({ name: `prompts/${n}`, path: path.join(dir, n), note: PARENT_ONLY.includes(n) ? 'every session except child sessions' : 'every session', text: fs.readFileSync(path.join(dir, n), 'utf8').trim() })),
+    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'parent-gear.md' ? 'only Shift child sessions held on a lower gear their parent chose, instead of model-shifting.md' : n === 'split-work.md' ? 'only desks that split work into sessions (Switches), and not child sessions' : n === 'child.md' ? 'only child sessions (started by another session), in place of sessions.md, desks.md and split-work.md' : n === 'plans.md' ? "only sessions that use a plan, on desks with Docket's own plans" : n === 'setup-slim.md' ? "the first message of a session started from the setup check card, with the desk's numbers in it" : 'only some sessions',
       text: optionalPrompt(n) })),
   ];
 }
@@ -7970,6 +8409,7 @@ function relayToRemotes(msg) {
 setInterval(() => { // connections past their time end, sockets and all
   for (const [t, r] of remoteTokens) if (r.expires <= Date.now()) { logEvent('remote: connection ended (time up)', `${r.name} ${r.ip}`); dropRemote(t); }
   for (const step of remoteUsedSteps) if (step < stepOf() - 4) remoteUsedSteps.delete(step);
+  for (const r of remoteCfg().pilotKeys || []) if (r.expires <= Date.now()) dropPilotKey(r.id, 'time up');
 }, 60e3).unref();
 // Passes an allowed request to this Docket's own page server, as if from this computer's page.
 function forwardLocal(method, pathAndQuery, body) {
@@ -7984,6 +8424,42 @@ function forwardLocal(method, pathAndQuery, body) {
     if (data) r.write(data);
     r.end();
   });
+}
+// Shows the Allow card on this computer's pages and waits: true (Allow), false (Don't allow) or null (no answer in
+// time, or the other computer gave up). ask.pilot: a pilot key is asked for, not a connection.
+function askAllowHere(ask, desk, res) {
+  return new Promise((resolve) => {
+    ask.resolve = resolve; remoteAsks.set(ask.id, ask);
+    broadcast({ t: 'remote-ask', ask: { id: ask.id, name: ask.name, ip: ask.ip, at: ask.at, desk: desk.name, pilot: ask.pilot } });
+    setTimeout(() => resolve(null), ASK_WAIT_MS);
+    res.on('close', () => resolve(null)); // the other computer gave up waiting
+  }).finally(() => { remoteAsks.delete(ask.id); broadcast({ t: 'remote-asked', id: ask.id }); });
+}
+// A request made with a pilot key (#827): only what pilotKeyRoute lets it, only on the linked desk. Answers go
+// through the autopilot's own checks here (this computer's rules and hard stops), whether or not this computer's own
+// autopilot is on: the key is the person's say-so for that other pilot.
+async function pilotKeyRequest(req, res, p, desk, key, ip) {
+  const cfg = remoteCfg();
+  const rec = findPilotKey(cfg.pilotKeys, key, desk.id);
+  if (!rec) return json(res, 401, { error: 'That pilot key was revoked or has expired on this computer.', pilotKey: 'gone' });
+  const route = pilotKeyRoute(req.method, p, rec);
+  if (!route) return json(res, 403, { error: `A pilot key only lists and answers what waits on this desk${rec.screen ? ', and uses the screen tools' : ''}.` });
+  if (!rec.used || rec.used < Date.now() - 10 * 60e3) setTimeout(saveState, 0); // kept, roughly, for the list here
+  rec.used = Date.now(); rec.usedIp = ip;
+  const b = req.method === 'POST' ? await readBody(req) : {};
+  if (route.kind === 'revoke') { dropPilotKey(rec.id, `given back by ${rec.name}`); return json(res, 200, { ok: true }); }
+  if (route.kind === 'screen') return json(res, 200, await remoteScreenCall(desk, { id: rec.id, name: rec.name }, b));
+  if (route.kind === 'pending') return json(res, 200, { desk: { id: desk.id, name: desk.name }, items: pilotItemsFor(waitingOnPerson(), desk.id) });
+  return json(res, 200, await pilotAnswer(String(b.id || ''), String(b.answer || ''), { answers: b.answers, from: rec.name, desk: desk.id }));
+}
+function dropPilotKey(id, why) {
+  const cfg = remoteCfg(), rec = (cfg.pilotKeys || []).find((r) => r.id === id);
+  if (!rec) return false;
+  cfg.pilotKeys = revokePilotKey(cfg.pilotKeys, id);
+  saveState();
+  broadcastRemoteHere();
+  logEvent('remote: pilot key ended', `${rec.name}: ${why}`);
+  return true;
 }
 async function remoteHostRequest(req, res) {
   const ip = req.socket.remoteAddress;
@@ -8002,14 +8478,7 @@ async function remoteHostRequest(req, res) {
     remoteUsedSteps.add(step);
     if ([...remoteAsks.values()].some((a) => a.ip === ip)) return json(res, 409, { error: 'A connection from this computer is already waiting for Allow' });
     const ask = { id: 'ra_' + randomUUID().slice(0, 8), name: String(b.name || '').slice(0, 60) || 'Another computer', ip, at: now };
-    const allowed = await new Promise((resolve) => {
-      ask.resolve = resolve; remoteAsks.set(ask.id, ask);
-      broadcast({ t: 'remote-ask', ask: { id: ask.id, name: ask.name, ip, at: now, desk: desk.name } });
-      setTimeout(() => resolve(null), ASK_WAIT_MS);
-      res.on('close', () => resolve(null)); // the other computer gave up waiting
-    });
-    remoteAsks.delete(ask.id);
-    broadcast({ t: 'remote-asked', id: ask.id });
+    const allowed = await askAllowHere(ask, desk, res);
     if (!allowed) {
       logEvent(`remote: connection ${allowed === false ? 'refused' : 'not answered'}`, `${ask.name} ${ip}`);
       return json(res, 403, { error: allowed === false ? 'Someone on that computer clicked Don\'t allow.' : 'Nobody clicked Allow on that computer in time. Try again with a new code.' });
@@ -8021,9 +8490,30 @@ async function remoteHostRequest(req, res) {
     logEvent('remote: connected', `${conn.name} ${ip}, desk ${desk.name}`);
     return json(res, 200, { token, expires: conn.expires, desk: { id: desk.id, name: desk.name } });
   }
+  const bearer = String(req.headers.authorization || '').replace(/^Bearer /, '');
+  if (isPilotKey(bearer)) return pilotKeyRequest(req, res, p, desk, bearer, ip);
   const who = remoteTokenOf(req);
   if (!who) return json(res, 401, { error: 'Not connected: enter a new code', expired: true });
   if (req.method === 'POST' && p === '/remote/bye') { dropRemote(who.token); logEvent('remote: disconnected by the other computer', who.name); return json(res, 200, { ok: true }); }
+  // A pilot key (#827), asked for over this connection: someone here clicks Allow, as for the connection itself.
+  if (req.method === 'POST' && p === '/remote/pilot-key') {
+    const b = await readBody(req);
+    if ([...remoteAsks.values()].some((a) => a.ip === ip)) return json(res, 409, { error: 'Something from this computer is already waiting for Allow there' });
+    const ask = { id: 'ra_' + randomUUID().slice(0, 8), name: who.name, ip, at: Date.now(), pilot: { screen: b.screen === true, days: PILOT_KEY_DAYS } };
+    const allowed = await askAllowHere(ask, desk, res);
+    if (!allowed) {
+      logEvent(`remote: pilot key ${allowed === false ? 'refused' : 'not answered'}`, `${who.name} ${ip}`);
+      return json(res, 403, { error: allowed === false ? 'Someone on that computer clicked Don\'t allow.' : 'Nobody clicked Allow on that computer in time. Ask again.' });
+    }
+    const { key, record } = grantPilotKey({ name: who.name, ip, desk: desk.id, screen: ask.pilot.screen, days: ask.pilot.days });
+    const cfg2 = remoteCfg();
+    cfg2.pilotKeys = [...livePilotKeys(cfg2.pilotKeys), record];
+    writePilotRulesIfMissing();
+    saveState();
+    broadcastRemoteHere();
+    logEvent('remote: pilot key granted', `${who.name} ${ip}, desk ${desk.name}${record.screen ? ', with the screen tools' : ''}, until ${new Date(record.expires).toISOString().slice(0, 10)}`);
+    return json(res, 200, { key, id: record.id, expires: record.expires, screen: record.screen });
+  }
   const route = remoteRoute(req.method, p);
   if (!route) return json(res, 403, { error: 'That can\'t be done from another computer' });
   let body = req.method === 'POST' ? await readBody(req) : undefined;
@@ -8035,6 +8525,7 @@ async function remoteHostRequest(req, res) {
     if (body && p === '/api/groups') delete body.folder; // a start folder is this computer's to choose
   }
   if (route.kind === 'session' && !(await sessionOnDesk(route.id, desk.id))) return json(res, 403, { error: 'That session is not on the linked desk' });
+  if (route.kind === 'screen') return json(res, 200, await remoteScreenCall(desk, who, body));
   // A message from the other computer reaches the session with a note saying where it came from.
   if (body && (p === '/api/sessions' || /^\/api\/sessions\/[\w-]+\/send$/.test(p))) body = remoteMessage(body, who.name, os.hostname());
   const r = await forwardLocal(req.method, p + url.search, body);
@@ -8067,8 +8558,8 @@ function remoteControlView() {
   try { if (cfg.secret || cfg.on) check = checkCodeOf(fingerprintOf(remoteCert().cert)); } catch {}
   return { on: !!cfg.on, desk: cfg.desk, authenticator: !!cfg.secret, port: REMOTE_PORT, hours: REMOTE_HOURS, running: !!remoteHttps, error: remoteHostError,
     addresses: officeAddresses(os.networkInterfaces()).map((a) => `${a}:${REMOTE_PORT}`), check,
-    connections: remoteHereView(),
-    asks: [...remoteAsks.values()].map(({ id, name, ip, at }) => ({ id, name, ip, at, desk: clientById(cfg.desk)?.name })) };
+    connections: remoteHereView(), pilotKeys: livePilotKeys(cfg.pilotKeys).map(pilotKeyView),
+    asks: [...remoteAsks.values()].map(({ id, name, ip, at, pilot }) => ({ id, name, ip, at, pilot, desk: clientById(cfg.desk)?.name })) };
 }
 // The page's controls for this computer's side (☰ > Remote Desks). Returns false when the request is not one of them.
 async function remoteControlRoutes(req, res, p) {
@@ -8081,7 +8572,10 @@ async function remoteControlRoutes(req, res, p) {
   if (p === '/api/remote-control') {
     if (b.desk !== undefined) {
       if (b.desk && !clientById(b.desk)) return json(res, 400, { error: 'Unknown desk' });
-      if (b.desk !== cfg.desk) for (const t of [...remoteTokens.keys()]) dropRemote(t); // a new desk means new connections
+      if (b.desk !== cfg.desk) { // a new desk means new connections and new pilot keys
+        for (const t of [...remoteTokens.keys()]) dropRemote(t);
+        for (const r of cfg.pilotKeys || []) dropPilotKey(r.id, 'the desk for remote control changed');
+      }
       cfg.desk = b.desk || null;
     }
     if (b.on !== undefined) {
@@ -8103,7 +8597,8 @@ async function remoteControlRoutes(req, res, p) {
     if (!remotePendingSecret) return json(res, 400, { error: 'Show the code to scan first' });
     if (checkCode(remotePendingSecret, b.code) === null) return json(res, 400, { error: 'That code does not match. Check the app added "Docket" and type the code it shows now.' });
     cfg.secret = remotePendingSecret; remotePendingSecret = null;
-    for (const t of [...remoteTokens.keys()]) dropRemote(t); // a new authenticator ends the old connections
+    for (const t of [...remoteTokens.keys()]) dropRemote(t); // a new authenticator ends the old connections and pilot keys
+    for (const r of cfg.pilotKeys || []) dropPilotKey(r.id, 'the authenticator was set up again');
     saveState();
     return json(res, 200, remoteControlView());
   }
@@ -8112,6 +8607,10 @@ async function remoteControlRoutes(req, res, p) {
     if (!a) return json(res, 404, { error: 'That request has already ended' });
     a.resolve(b.allow === true);
     return json(res, 200, { ok: true });
+  }
+  if (p === '/api/remote-control/pilot-keys/revoke') {
+    dropPilotKey(String(b.id || ''), 'revoked here');
+    return json(res, 200, remoteControlView());
   }
   if (p === '/api/remote-control/disconnect') {
     for (const [t, r] of remoteTokens) if (r.id === b.id) { dropRemote(t); logEvent('remote: disconnected here', r.name); }
@@ -8127,7 +8626,8 @@ const remoteDesks = () => (state.remoteDesks ||= []);
 const remoteDeskById = (id) => remoteDesks().find((d) => d.id === id);
 function remoteDeskView(d) {
   const c = remoteConns.get(d.id);
-  return { id: d.id, name: d.name, address: d.address, check: checkCodeOf(d.pin), connected: !!c, expires: c?.expires || null, deskName: c?.deskName || d.deskName || '' };
+  return { id: d.id, name: d.name, address: d.address, check: checkCodeOf(d.pin), connected: !!c, expires: c?.expires || null, deskName: c?.deskName || d.deskName || '',
+    pilot: d.pilotKey ? { expires: d.pilotKey.expires, screen: !!d.pilotKey.screen } : null, pilotGone: !d.pilotKey && d.pilotKeyGone?.why || '' };
 }
 function dropRemoteConn(id, why) {
   const c = remoteConns.get(id); if (!c) return;
@@ -8228,7 +8728,7 @@ async function remoteDeskRoutes(req, res, p) {
     broadcast({ t: 'clients' });
     return json(res, 200, remoteDeskView(d));
   }
-  const m = p.match(/^\/api\/remote-desks\/(\w+)\/(connect|disconnect|remove)$/);
+  const m = p.match(/^\/api\/remote-desks\/(\w+)\/(connect|disconnect|remove|pilot-key|pilot-key-revoke)$/);
   const d = m && remoteDeskById(m[1]);
   if (!d) return json(res, 404, { error: 'Unknown remote desk' });
   const conn = remoteConns.get(d.id);
@@ -8253,6 +8753,27 @@ async function remoteDeskRoutes(req, res, p) {
     broadcast({ t: 'clients' });
     return json(res, 200, remoteDeskView(d));
   }
+  // A pilot key (#827): asked for over the connection, and someone at that computer clicks Allow. Kept here in the
+  // saved state, never shown on a page or to a session; revoking it here gives it back there too.
+  if (m[2] === 'pilot-key') {
+    if (!conn) return json(res, 409, { error: `Connect to ${d.name} first: a pilot key is asked for over a connection, and someone there clicks Allow.` });
+    let r;
+    try { r = await remoteCall(d, conn, 'POST', '/remote/pilot-key', { screen: b.screen === true }, ASK_WAIT_MS + 20e3); }
+    catch (e) { return json(res, 502, { error: connectError(e, d.name) }); }
+    if (r.status !== 200 || !isPilotKey(r.json?.key)) return json(res, 400, { error: r.json?.error || `${d.name} gave no pilot key` });
+    d.pilotKey = { key: r.json.key, id: r.json.id, expires: r.json.expires, screen: !!r.json.screen };
+    delete d.pilotKeyGone;
+    saveState();
+    logEvent('remote desk: pilot key granted', `${d.name}${d.pilotKey.screen ? ', with the screen tools' : ''}`);
+    refreshRemotePilot().then(pilotLook);
+    return json(res, 200, remoteDeskView(d));
+  }
+  if ((m[2] === 'pilot-key-revoke' || m[2] === 'remove') && d.pilotKey) {
+    pilotKeyCall(d, 'POST', '/remote/pilot/revoke', {}, 5000).catch(() => {});
+    delete d.pilotKey; delete d.pilotKeyGone; remotePilot.delete(d.id); saveState();
+    logEvent('remote desk: pilot key revoked here', d.name);
+  }
+  if (m[2] === 'pilot-key-revoke') { delete d.pilotKeyGone; saveState(); return json(res, 200, remoteDeskView(d)); }
   if (conn) { remoteCall(d, conn, 'POST', '/remote/bye', {}, 5000).catch(() => {}); dropRemoteConn(d.id, m[2] === 'remove' ? 'removed' : 'disconnected here'); }
   if (m[2] === 'remove') { state.remoteDesks = remoteDesks().filter((x) => x.id !== d.id); saveState(); broadcast({ t: 'clients' }); return json(res, 200, { ok: true }); }
   return json(res, 200, remoteDeskView(d));
@@ -8340,6 +8861,27 @@ const server = http.createServer(async (req, res) => {
       if (!args.success) return json(res, 200, { content: [{ type: 'text', text: 'Invalid input: ' + args.error.message }], isError: true });
       try { return json(res, 200, await t.handler(args.data, {})); }
       catch (e) { return json(res, 200, { content: [{ type: 'text', text: e.message }], isError: true }); }
+    }
+    // The autopilot's live feed (#821): server-sent events, "pending" for each new item waiting on the person and
+    // "settled" when one goes, so a pilot outside Docket wakes without polling. Needs the tools token, like /api/tools.
+    if (req.method === 'GET' && p === '/api/pilot/events') {
+      if ((req.headers['x-docket-token'] || url.searchParams.get('token')) !== getToolToken()) return json(res, 403, { error: 'Forbidden' });
+      res.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-store', connection: 'keep-alive' });
+      res.write(`event: hello\ndata: ${JSON.stringify(pilotBrief())}\n\n`);
+      for (const i of waitingOnPerson()) res.write(`event: pending\ndata: ${JSON.stringify(i)}\n\n`);
+      pilotFeeds.add(res); pilotWatch.armed = true;
+      const beat = setInterval(() => res.write(': still here\n\n'), 25000);
+      req.on('close', () => { clearInterval(beat); pilotFeeds.delete(res); });
+      return;
+    }
+    // ☰ > Settings > Autopilot: the switch, the pilot, the rules file, what waits now and the log.
+    if (p === '/api/pilot') {
+      if (req.method === 'GET') return json(res, 200, pilotView());
+      if (req.method === 'POST') {
+        const b = await readBody(req);
+        try { setPilot({ on: b.on === undefined ? undefined : !!b.on, session: b.session }); } catch (e) { return json(res, 400, { error: e.message }); }
+        return json(res, 200, pilotView());
+      }
     }
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
@@ -8570,6 +9112,7 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST') { state.autoContinue = !!(await readBody(req)).on; saveState(); }
       return json(res, 200, { on: autoContinueOn() });
     }
+    if (p.startsWith('/api/screen') && await screenRoutes(req, res, url, p) !== false) return;
     if (p === '/api/auto-pause') {
       if (req.method === 'POST') { state.autoPause = !!(await readBody(req)).on; saveState(); }
       return json(res, 200, { on: autoPauseOn(), watching: !!powerWatch });
@@ -8905,6 +9448,13 @@ const server = http.createServer(async (req, res) => {
         cost += r.Cost || 0; agent += r.AgentSeconds || 0; wait += r.WaitSeconds || 0; user += r.UserSeconds || 0; added += r.LinesAdded || 0; removed += r.LinesRemoved || 0;
       }
       return json(res, 200, { client: client.id, day, cost, budget: client.budget || null, agent, wait, user, added, removed });
+    }
+    // The session list's cost figures (👁 > Cost): ?client=&day=YYYY-MM-DD, the page's own calendar day, as above.
+    if (req.method === 'GET' && p === '/api/usage/list') {
+      const client = clientById(url.searchParams.get('client'));
+      if (!client) return json(res, 404, { error: 'Unknown client' });
+      const asked = url.searchParams.get('day') || '';
+      return json(res, 200, await listCosts(client, /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : new Date().toLocaleDateString('en-CA')));
     }
     if (req.method === 'GET' && p === '/api/usage/report') return json(res, 200, usageReport()); // the Usage page
     // Session activity (#805). today: the footer's working line for one desk, from memory (?client=&day=YYYY-MM-DD).

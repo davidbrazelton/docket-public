@@ -1,5 +1,5 @@
 // The Remote Desks master switch, on a throwaway Docket (its own ports, state and company list in a temp folder)
-// whose Grok is the stand-in agent in fixtures/fake-acp-agent.mjs. Hidden by default: the page's remote requests answer
+// whose Grok is the stand-in agent in test-fixtures/fake-acp-agent.mjs. Hidden by default: the page's remote requests answer
 // 404, open pages are told it is off and remote control does not run. A session calls remote_desks to show it; every
 // restart hides it again, and neither the restart nor hiding changes the saved remote setup.
 import { test, before, after } from 'node:test';
@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 import net from 'node:net';
 import WebSocket from 'ws';
 
@@ -67,7 +67,7 @@ function startDocket() {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_REMOTE_PORT: String(REMOTE_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: STATE, PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
-      PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs') },
+      PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });
   return waitFor('the test Docket to start', async () => (await api('/api/clients?quick=1')).status === 200, 30000);
 }
@@ -88,9 +88,9 @@ before(async () => {
 after(async () => {
   const runner = await fetch(`http://127.0.0.1:${RUNNER_PORT}/health`).then((r) => r.json()).catch(() => null);
   server?.kill();
-  if (runner?.pid) try { process.kill(runner.pid); } catch {}
+  if (runner?.pid) stopTree(runner.pid);
   await sleep(300);
-  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5 });
+  fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10 });
 });
 
 test('hidden at every start; a session shows it until the next restart; the remote setup is never changed', async () => {

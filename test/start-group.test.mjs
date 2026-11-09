@@ -1,5 +1,5 @@
 // Tests for the new-session draft's group picker: the group picked before starting is the one the session lands in.
-// The rule on its own (start-group.mjs), then end to end on a throwaway Docket whose Grok is fixtures/fake-acp-agent.mjs.
+// The rule on its own (start-group.mjs), then end to end on a throwaway Docket whose Grok is test-fixtures/fake-acp-agent.mjs.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts } from './free-port.mjs';
+import { freePorts, stopTree } from './free-port.mjs';
 import { startGroup } from '../start-group.mjs';
 
 const isGroup = (gid) => gid === 'g_1';
@@ -52,7 +52,7 @@ before(async () => {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
     env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
-      PORTAL_GROK_EXE: path.join(HERE, 'fixtures', 'fake-acp-agent.mjs') },
+      PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });
   await waitFor('the test Docket to start', () => api('/api/clients?quick=1'));
 });
@@ -60,7 +60,7 @@ before(async () => {
 after(async () => {
   const pid = await runnerPid();
   server?.kill();
-  if (pid) try { process.kill(pid); } catch {}
+  if (pid) stopTree(pid);
   await sleep(300);
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
 });
