@@ -6,6 +6,7 @@ import os from 'node:os';
 import { LAYERS, GROK_COMPAT, readGrokCompat } from './switches.mjs';
 import { readMarket, marketFile, pluginsIn, bringsText, sourceLine } from './plugin-sources.mjs';
 import { addReplyLine, compactionOf, priceReplies, sessionLogFiles } from './costs.mjs';
+import { FORMS_CHOICES } from './forms-offer.mjs';
 
 // ---------- the Timeline: one session's record file, entry by entry ----------
 // Categories, in the order the filter shows them. Hooks that ran without printing anything leave
@@ -589,6 +590,9 @@ export function buildProfile(client, { isDefaultHome, docket = [], docketTools =
     { title: 'How sessions split work', brand: null, note: 'Docket\'s instructions in prompts/optional/split-work.md, for every brand. Off: a session still starts another when the user asks for one.',
     items: [{ name: 'Send work to child sessions', detail: 'a session the user started sends real work (a build, a fix) to its own child session on its own, and stays free to talk',
       toggle: { kind: 'split', key: 'split', on: client.splitWork !== false, note: '' } }] },
+    { title: 'How sessions ask you', brand: null, note: 'How often a session asks you to choose with a form (Claude\'s question form) instead of in plain text. Never and Often add Docket\'s instructions in prompts/optional/forms-never.md or forms-often.md; Never also turns down any form that still comes.',
+    items: [{ name: 'Question forms', detail: FORMS_CHOICES.map(([, l, d]) => `${l}: ${d}`).join(' '),
+      toggle: { kind: 'forms', key: 'forms', value: ['never', 'often'].includes(client.questionForms) ? client.questionForms : 'default', options: FORMS_CHOICES.map(([v, l]) => [v, l]), note: client.questionForms ? '' : 'Default unless changed' } }] },
     { title: 'When the sign-in runs out', brand: null, note: 'A turn that fails because the desk\'s sign-in ran out (an expired AWS SSO token, say) marks its session. Off: once you sign in again, each such session offers Send again instead.',
     items: [{ name: 'Resume sessions after signing in again', detail: 'once this desk (or the gateway it shares) is signed in again, each session whose turn failed on the sign-in carries on by itself, one at a time, with a note in its chat. Not when you sent it something since, it is archived, Docket is paused, or the failure is over 12 hours old',
       toggle: { kind: 'resume', key: 'resume', on: client.resumeAfterSignIn !== false, note: client.resumeAfterSignIn === false ? '' : 'on by default' } }] },

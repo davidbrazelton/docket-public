@@ -66,7 +66,8 @@ import { scanPlanSystem, switchWarning, conversionBrief, systemName } from './pl
 import { createIndex } from './search.mjs';
 import { fileReplies, tally, offerKind, CACHE_OFFER } from './cache-offer.mjs';
 import { START_OFFER, startTally, startOfferKind, startOfferWords } from './start-offer.mjs';
-import { ruleText, PARENT_ONLY } from './session-rules.mjs';
+import { ruleText, PARENT_ONLY, FORMS } from './session-rules.mjs';
+import { formsOfferDue } from './forms-offer.mjs';
 import { SETUP_OFFER, scanFile, measureUse, measureFiles, assess, quickStart, costPerToken, checkDue, setupOfferKind, headlines, setupBrief, itemTable, kTokens, dollars } from './setup-size.mjs';
 import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport, installId, today, sentToday, limitReached, countSend, limitMessage, DAILY_LIMIT } from './feedback.mjs';
 import { changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
@@ -94,6 +95,7 @@ import { createSharedMcp, freePort } from './shared-mcp.mjs';
 import { KEEP_DAYS, OUTPUT_FOLDER } from './output-limits.mjs';
 import { deskServerArgs, mcpUrl, savedFiles } from './desk-browser.mjs';
 import { outputUseRows, addRows, readLog, outputFolders, OUTPUT_LOG } from './big-output-use.mjs';
+import { STEP_TOOLS, stepKey, usualFor, addRun, estimateNote, loadHistory, saveHistory, seedHistory, trimHistory } from './step-times.mjs';
 import {
   query, listSessions, getSessionMessages, renameSession, tool, createSdkMcpServer,
 } from '@anthropic-ai/claude-agent-sdk';
@@ -864,7 +866,9 @@ function sdkStatus(s, status) {
 }
 
 function upsertTask(s, key, patch) {
+  const was = s.tasks.get(key)?.status;
   const t = mergeTask(s.tasks, key, patch);
+  if (was === 'running' && t.status !== 'running') recordStep(s, t);
   updateBusy(s);
   broadcast({ t: 'task', id: s.id, task: t });
   pushSession(s);
@@ -1151,8 +1155,9 @@ function convertMessage(s, msg, { live: isLive, textCounter }) {
         // Its own id, so the streamed text blocks of the same message keep theirs (it never streams as text).
         out.push({ k: 'text', id: `${mid}:n${content.indexOf(b)}`, text: narrationText(b) });
       } else if (b.type === 'tool_use') {
-        out.push({ k: 'tool', id: b.id, name: b.name, label: toolLabel(b.name, b.input), input: b.input, status: 'running' });
-        if (isLive && (TASK_TOOLS.has(b.name) || b.name.startsWith('mcp__playwright__'))) upsertTask(s, b.id, { tool: b.name, label: toolLabel(b.name, b.input), start: Date.now(), ...(b.input?.run_in_background ? { wantsBackground: true } : {}) });
+        const step = stepUsual(s, b.name, b.input);
+        out.push({ k: 'tool', id: b.id, name: b.name, label: toolLabel(b.name, b.input), input: b.input, status: 'running', ...(step.usual ? { usual: step.usual } : {}) });
+        if (isLive && (TASK_TOOLS.has(b.name) || b.name.startsWith('mcp__playwright__'))) upsertTask(s, b.id, { tool: b.name, label: toolLabel(b.name, b.input), start: Date.now(), ...step, ...(b.input?.run_in_background ? { wantsBackground: true } : {}) });
       }
     }
   } else if (msg.type === 'user') {
@@ -2065,10 +2070,15 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: 'This turn will end quietly. Finish with your usual short reply.' }] };
         }),
       tool('mark_turn',
-        'Say why this turn needs the user, for the short label on your row in the session list: "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default), including a reply that lists things left for the user before the session can close. Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. Call it at most once per turn, near the end.',
-        { label: z.enum(['done', 'question', 'reply']).describe('What this turn needs from the user') },
-        async ({ label }) => {
+        'Say why this turn needs the user, for the short label on your row in the session list: "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default), including a reply that lists things left for the user before the session can close. Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. "merge" with pr only when the turn ends on a plain ask to merge that one pull request you made ("Say merge and I will merge pull request #146."): Docket then shows a Merge button under your reply that sends "merge" as the user\'s message, so you still do the merge. Never "merge" for several pull requests, a merge order, a draft, a conflict, failing or running checks, or anything else for the user to do or decide first: use "reply" and let them answer in words. Call it at most once per turn, near the end.',
+        {
+          label: z.enum(['done', 'question', 'reply', 'merge']).describe('What this turn needs from the user'),
+          pr: z.number().int().positive().optional().describe('With "merge": the number of the one pull request the user can merge with a click'),
+        },
+        async ({ label, pr }) => {
+          if (label === 'merge' && !pr) return { content: [{ type: 'text', text: 'Not marked: "merge" needs pr, the number of the one pull request to merge. For anything other than a plain ask to merge one pull request, use "reply".' }], isError: true };
           parent.turnSaid = label;
+          if (label === 'merge') return { content: [{ type: 'text', text: `A Merge button for pull request #${pr} shows under your reply while Docket sees it open, not a draft, without a conflict and with checks passed or none. A click sends "merge" as the user's message.` }] };
           // Done while its own jobs still run: settle them in this turn, or the turn would be held for them (#713).
           if (label === 'done' && runningTasks(parent)) return { content: [{ type: 'text', text: doneWithJobsReply(runningJobs(parent.tasks)) }] };
           return { content: [{ type: 'text', text: `Your row will say "${label}" unless Docket knows a stronger reason.` }] };
@@ -2636,6 +2646,37 @@ async function myProfileRoutes(req, res, p) {
 // Rows are kept per session in data/usage-index.json and stay after Claude Code
 // deletes old logs. Only sessions whose logs (or prices) changed are read again.
 const DATA_DIR = process.env.PORTAL_DATA || path.join(ROOT, 'data');
+// How long steps usually take, per repo and command (#847, step-times.mjs): kept as they finish, seeded once from
+// past transcripts, and shown on a running step's row and in Tasks running when it usually takes over 15 seconds.
+const STEP_TIMES_FILE = path.join(DATA_DIR, 'step-times.json');
+const stepHist = loadHistory(STEP_TIMES_FILE), repoCache = new Map();
+let stepSave = null;
+const saveSteps = () => { stepSave ||= setTimeout(() => { stepSave = null; trimHistory(stepHist); try { saveHistory(STEP_TIMES_FILE, stepHist); } catch (e) { console.log('[step times]', e.message); } }, 30000); };
+setInterval(() => repoCache.clear(), 3600000); // a remote added or changed is picked up within the hour
+process.on('exit', () => { if (stepSave) { clearTimeout(stepSave); try { saveHistory(STEP_TIMES_FILE, stepHist); } catch {} } }); // a restart keeps the runs not yet saved
+if (!stepHist.seeded) setTimeout(() => {
+  seedHistory(stepHist, [DEFAULT_HOME, ...CLIENTS.map((c) => c.home)], { cache: repoCache, log: (m) => console.log('[step times]', m) })
+    .then((r) => { logEvent('step times seeded', `${r.runs} runs from ${r.files} transcripts`); saveSteps(); })
+    .catch((e) => console.log('[step times]', e.message));
+}, 20000);
+// The step a command call is, and how long it usually takes ({ ms, runs, failed }, or none under 15 seconds).
+function stepUsual(s, name, input) {
+  if (!STEP_TOOLS.has(name) || !input?.command) return {};
+  const key = stepKey(input.command, s.cwd, repoCache);
+  const usual = key && usualFor(stepHist, key);
+  return { stepKey: key || undefined, usual: usual || undefined };
+}
+// A command step that just ended goes into the history: its length, and whether it succeeded. A call sent to the
+// background ends with its notification, not with the call's answer; a step Docket lost track of ('unknown') is left out.
+// It counts from when its chat row started (the call streaming in), which is a few seconds before the task heard of it.
+function recordStep(s, t) {
+  if (!t.stepKey || !t.start || t.status === 'running' || t.status === 'unknown' || (t.wantsBackground && !t.background)) return;
+  const end = typeof t.end === 'number' ? t.end : Date.parse(t.end);
+  const start = Math.min(t.start, s.events.findLast((e) => e.k === 'tool' && e.id === t.id)?.at || Infinity);
+  if (!(end >= start)) return;
+  addRun(stepHist, t.stepKey, { ms: end - start, ok: t.status === 'completed', status: t.status, at: end });
+  saveSteps();
+}
 // Screen and mouse control (#822); see screenToolDefs.
 let screenDesks = new Set(); // the desks the pages were last told have a session in control
 const screen = createScreenControl({ dataDir: DATA_DIR, changed: (list) => {
@@ -2998,6 +3039,28 @@ function checkStartOffers() {
 }
 setTimeout(() => { try { checkStartOffers(); } catch {} }, 95000);
 setInterval(() => { try { checkStartOffers(); } catch {} }, SETUP_CHECK_MINUTES * 60000);
+
+// ---------- the question-forms card (#850, forms-offer.mjs): once per desk, a while after this update arrives ----------
+// state.formsOffer: { from: when this computer first ran it, desks: id -> { answer: never|default|often|dismiss|inspector, at } }.
+state.formsOffer ||= {};
+if (!state.formsOffer.from) { state.formsOffer.from = Date.now(); saveState(); }
+state.formsOffer.desks ||= {};
+let formsOffers = [];
+function checkFormsOffers() {
+  const { from, desks } = state.formsOffer;
+  const out = setupDesks().filter((c) => formsOfferDue({ from, answer: desks[c.id], chosen: formsOf(c) !== 'default',
+    sessions: Object.values(state.sessions).filter((r) => r.client === c.id && !r.parentId && r.createdAt >= from).length }))
+    .map((c) => ({ client: c.id, name: c.name }));
+  if (JSON.stringify(out) !== JSON.stringify(formsOffers)) { formsOffers = out; broadcast({ t: 'forms-offers', offers: out }); }
+  return out;
+}
+function formsOfferAnswered(client, answer) {
+  state.formsOffer.desks[client.id] = { answer, at: Date.now() };
+  saveState();
+  if (formsOffers.some((o) => o.client === client.id)) { formsOffers = formsOffers.filter((o) => o.client !== client.id); broadcast({ t: 'forms-offers', offers: formsOffers }); }
+}
+setTimeout(() => { try { checkFormsOffers(); } catch {} }, 100000);
+setInterval(() => { try { checkFormsOffers(); } catch {} }, SETUP_CHECK_MINUTES * 60000);
 
 // A company's Grok sessions, by the id their usage is filed under: the Docket session that ran them (state.sessions[id].grokIds),
 // else Grok's own id for a session run outside Docket. Each holds its Grok folders and Grok's title for it.
@@ -4113,7 +4176,9 @@ async function noticeToSession(clientId, id, text, { byPerson = false } = {}) {
 // The Summary button in the send box (#724): the session says where its work stands, as an outline. Top is this
 // session only; Deep also reads the open sessions under it (children, their children, and so on), read only: it
 // reads what they already wrote and never wakes, messages or resumes them. The chat shows it as Docket's message.
-const SUMMARY_RULES = `Answer where things stand. **Do no new work** - no edits, commits, builds, or writes to outside services.
+// heading: "Summary" or "Deep summary", the reply's first line (#849). deep: questions from sessions under this
+// one stay text, never in the form.
+const summaryRules = (heading, deep) => `Answer where things stand. **Do no new work** - no edits, commits, builds, or writes to outside services.
 Read-only calls only to check a fact you are about to state; prefer "unconfirmed" over a sweep.
 
 **Outline, not prose.** Bullets throughout. One line each, under about 15 words. No paragraphs, no
@@ -4130,7 +4195,7 @@ sentence, never a restatement of the point that follows.
 - **Release date:** assumed Friday, confirm at next stop.
 \`\`\`
 
-Four sections, these headings, this order:
+Open with the heading \`# ${heading}\` on its own line, then four sections, these headings, this order:
 
 ## What this is
 
@@ -4154,15 +4219,17 @@ No history of the session. What a stranger needs to know before reading the next
 
 ## Questions for you
 
-Only questions whose answer changes what happens next. Each as:
+Only questions whose answer changes what happens next. Numbered, so the user can answer "1: yes, 2: B". Each as:
 
-- **The question in one sentence.**
-  - the two or three facts needed to answer it, one bullet each
-  - options, one marked recommended
-  - what happens once answered
+1. **The question in one sentence.**
+   - the two or three facts needed to answer it, one bullet each
+   - options, one marked recommended
+   - what happens once answered
 
 Assume anything assumable, say so under Where it stands, and drop the question. Nothing left means
-\`None.\` - never manufacture one to fill the section.
+\`None.\` - never manufacture one to fill the section.${deep ? `
+A question waiting in a session under this one is its own numbered line: "[title](#session:<id>) is waiting on
+you: the question".` : ''}
 
 ## Next steps
 
@@ -4176,15 +4243,22 @@ Standing rules apply: no em dashes, hyphens instead. Issue and pull request ment
 the number, the title and the status. No number that looks measured without measuring it. Another
 session's claim is a lead - keep the "unconfirmed" wording.
 
-No substantial work to wrap means one sentence saying so. Three empty headings are worse than
-nothing.`;
+No substantial work to wrap means the heading and one sentence saying so. Empty headings are worse than
+nothing.
+
+**Then the question form.** After the written summary, if any of your questions has clear options, call
+AskUserQuestion with those questions, in their numbered order, at most 4: each option as given, the
+recommended one first with "(Recommended)" at the end of its label. Questions without clear options, and
+any past the fourth, stay as text only.${deep ? ` Only this session's own questions go in the form; questions
+from sessions under it stay as their numbered line.` : ''} No questions means no form. The form does not
+lift "do no new work": end the summary turn there; the answer arrives as the next turn, which can work.`;
 function summaryText(kids) {
   if (!kids) return `Summary: the user pressed Summary. Say where this session's work stands.
 
 Source is this conversation, plus your Docket plan's open items if they are already in context. Do
 not go looking for one.
 
-${SUMMARY_RULES}`;
+${summaryRules('Summary', false)}`;
   const list = kids.map((k) => `${'  '.repeat(k.depth - 1)}- "${k.title}" (id ${k.id}, ${k.status})`).join('\n');
   return `Deep summary: the user pressed Deep summary. Say where the work of this session and the ${kids.length} session${kids.length === 1 ? '' : 's'} under it stands, in one outline.
 
@@ -4199,7 +4273,7 @@ or set_parent. What a session says is its report, not proof: keep its claims "un
 checked them. Fold it all into the one outline below, and say which session each point came from,
 linking it as [title](#session:<id>).
 
-${SUMMARY_RULES}`;
+${summaryRules('Deep summary', true)}`;
 }
 // The open sessions under id, as the session list shows them: [{ id, title, status, depth }].
 async function summaryKids(client, id) {
@@ -5130,12 +5204,16 @@ function optionalPrompt(name) {
 // A desk sends real work to child sessions on its own unless it turned that off (splitWork false: the Switches on
 // the Inspector, or the setup wizard), with prompts/optional/split-work.md. Starting one when the user asks stays for every desk.
 const splitOn = (client) => client?.splitWork !== false;
+// How often a desk's sessions ask with a form (AskUserQuestion), from the Switches on the Inspector or the one-time card
+// (#850): never (plain text, and Docket turns a form down in askPermission), default (Claude's own way), or often.
+const formsOf = (client) => (FORMS.includes(client?.questionForms) ? client.questionForms : 'default');
+const FORMS_NEVER_DENY = 'This desk asks questions in plain text, not with a form, so Docket turned this form down. Ask the same questions in plain text in your reply, with their options, and wait for the answer.';
 // Everything Docket adds to a session's instructions, in order. A child session (one with a parent) gets the slimmer
 // set (session-rules.mjs, #800).
 // s.slimRules records it, so the first session it starts itself hands it the rest (withSessionRules).
 const sessionRules = (s) => {
   s.slimRules = !!s.parentId;
-  return [APPEND_PROMPT, ruleText(path.join(ROOT, 'prompts'), { child: s.slimRules, split: splitOn(clientById(s.client)) }), shiftRules(s), planRules(s)].filter(Boolean).join('\n\n');
+  return [APPEND_PROMPT, ruleText(path.join(ROOT, 'prompts'), { child: s.slimRules, split: splitOn(clientById(s.client)), forms: formsOf(clientById(s.client)) }), shiftRules(s), planRules(s)].filter(Boolean).join('\n\n');
 };
 
 const APPEND_PROMPT = `You are running inside Docket, the user's session portal, a page on their computer that shows many sessions side by side.
@@ -5331,6 +5409,11 @@ function cleanSettings(b = {}) {
 // Questions a session asks before acting (every mode except Bypass permissions can ask).
 // They show in the chat as Allow / Deny; the session waits, marked as needing the person.
 function askPermission(s, toolName, input, opts) {
+  // A desk set to ask in plain text (questionForms never, #850) turns a form down before it shows.
+  if (toolName === 'AskUserQuestion' && formsOf(clientById(s.client)) === 'never') {
+    addEvent(s, { k: 'note', text: 'Docket turned down a question form: this desk asks in plain text (Inspector > Switches).' });
+    return Promise.resolve({ behavior: 'deny', message: FORMS_NEVER_DENY });
+  }
   return new Promise((resolve) => {
     const reqId = opts.reqId || randomUUID();
     const ev = { k: 'permission', id: reqId, tool: toolName, title: opts.title || '', label: toolLabel(toolName, input), input, state: 'pending' };
@@ -7660,6 +7743,8 @@ function cleanCompany(c, taken) {
   // splitWork: false when its sessions should not send work to child sessions on their own (splitOn); set in the
   // setup wizard and on the profile page, kept when not sent. On is the default and is not written.
   const splitWork = (c.splitWork !== undefined ? c.splitWork : before.splitWork) !== false;
+  // questionForms: never or often (formsOf, #850); default is not written. Kept when not sent.
+  const forms = FORMS.find((f) => f !== 'default' && f === (c.questionForms !== undefined ? c.questionForms : before.questionForms)) || '';
   // resumeAfterSignIn: false when its sessions should not carry on by themselves once its sign-in is back (#719).
   const resumeSignIn = (c.resumeAfterSignIn !== undefined ? c.resumeAfterSignIn : before.resumeAfterSignIn) !== false;
   // configReload: 'ask' when a session whose Claude config changed waits for Reload; Automatic (not written) reloads it at its next idle moment.
@@ -7731,7 +7816,7 @@ function cleanCompany(c, taken) {
   for (const [label, dir, sub] of [['Claude home', home, 'claude-home'], ['Grok home', grokHome, 'grok-home'], ['Codex home', codexHome, 'codex-home']]) {
     if (dir && isInside(dir, ROOT)) return { error: `${name}: the ${label} folder ${dir} is inside Docket's own folder (${ROOT}). It holds the sign-in, so it must be somewhere else, like ${path.join(homeRoots().claude, `${name}-desk`, sub)}` };
   }
-  return { id, name, home, folder: folder || home, ...(hidden ? { hidden: true } : {}), ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(planSwitch ? { planSwitch } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(resumeSignIn ? {} : { resumeAfterSignIn: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
+  return { id, name, home, folder: folder || home, ...(hidden ? { hidden: true } : {}), ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(planSwitch ? { planSwitch } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(forms ? { questionForms: forms } : {}), ...(resumeSignIn ? {} : { resumeAfterSignIn: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
 }
 function saveCompanies(list) {
   for (const c of list) {
@@ -8271,7 +8356,7 @@ function docketTexts() {
   return [
     { name: 'Docket\'s own instructions', note: 'written in server.mjs', text: APPEND_PROMPT },
     ...md(dir).map((n) => ({ name: `prompts/${n}`, path: path.join(dir, n), note: PARENT_ONLY.includes(n) ? 'every session except child sessions' : 'every session', text: fs.readFileSync(path.join(dir, n), 'utf8').trim() })),
-    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'parent-gear.md' ? 'only Shift child sessions held on a lower gear their parent chose, instead of model-shifting.md' : n === 'split-work.md' ? 'only desks that split work into sessions (Switches), and not child sessions' : n === 'child.md' ? 'only child sessions (started by another session), in place of sessions.md, desks.md and split-work.md' : n === 'plans.md' ? "only sessions that use a plan, on desks with Docket's own plans" : n === 'setup-slim.md' ? "the first message of a session started from the setup check card, with the desk's numbers in it" : 'only some sessions',
+    ...md(path.join(dir, 'optional')).map((n) => ({ name: `prompts/optional/${n}`, path: path.join(dir, 'optional', n), note: n === 'model-shifting.md' ? 'only sessions on Shift' : n === 'parent-gear.md' ? 'only Shift child sessions held on a lower gear their parent chose, instead of model-shifting.md' : n === 'split-work.md' ? 'only desks that split work into sessions (Switches), and not child sessions' : n === 'forms-never.md' ? 'only desks set to ask with forms Never (Switches)' : n === 'forms-often.md' ? 'only desks set to ask with forms Often (Switches)' : n === 'child.md' ? 'only child sessions (started by another session), in place of sessions.md, desks.md and split-work.md' : n === 'plans.md' ? "only sessions that use a plan, on desks with Docket's own plans" : n === 'setup-slim.md' ? "the first message of a session started from the setup check card, with the desk's numbers in it" : 'only some sessions',
       text: optionalPrompt(n) })),
   ];
 }
@@ -8524,6 +8609,10 @@ async function profileRoutes(req, res, url, p) {
         save({ configReload: value === 'ask' ? 'ask' : undefined });
       } else if (kind === 'split') {
         save({ splitWork: on ? undefined : false });
+      } else if (kind === 'forms') {
+        if (!FORMS.includes(value)) return json(res, 400, { error: 'Question forms is never, default or often' });
+        save({ questionForms: value === 'default' ? undefined : value });
+        formsOfferAnswered(client, 'inspector');
       } else if (kind === 'resume') {
         save({ resumeAfterSignIn: on ? undefined : false });
       } else if (kind === 'plans') {
@@ -9071,6 +9160,12 @@ const server = http.createServer(async (req, res) => {
     if (await remoteDeskRoutes(req, res, p) !== false) return;
     const remoteDesk = await remoteDeskFor(req, url, p);
     if (remoteDesk) return await remoteProxy(remoteDesk, req, res, url, p); // awaited, so an error is answered below
+    if (p === '/api/hooks/step-estimate' && req.method === 'POST') { // plugin/hooks/step-estimate.mjs
+      const b = await readBody(req), s = live.get(b.session);
+      if (!b.session || req.headers['x-docket-token'] !== hookToken(String(b.session))) return json(res, 403, { error: 'Forbidden' });
+      const key = s && stepKey(String(b.command || ''), b.cwd || s.cwd, repoCache), usual = key && usualFor(stepHist, key);
+      return json(res, 200, usual ? { note: estimateNote(usual) } : {});
+    }
     if (p === '/api/hooks/shift-up' && req.method === 'POST') { // plugin/hooks/shift-first-edit.mjs
       const b = await readBody(req), s = live.get(b.session);
       if (!b.session || req.headers['x-docket-token'] !== hookToken(String(b.session))) return json(res, 403, { error: 'Forbidden' });
@@ -9266,6 +9361,20 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/start-check') return json(res, 200, checkStartOffers()); // look again now
+    // The question-forms card (#850): the open cards, and an answer to one ({ client, answer: never|default|often|dismiss }).
+    // Dismiss keeps Default; any answer ends the card for that desk.
+    if (req.method === 'GET' && p === '/api/forms-offers') return json(res, 200, formsOffers);
+    if (req.method === 'POST' && p === '/api/forms-offers/answer') {
+      const b = await readBody(req);
+      const client = clientById(b.client);
+      if (!client) return json(res, 404, { error: 'Unknown desk' });
+      if (![...FORMS, 'dismiss'].includes(b.answer)) return json(res, 400, { error: 'The answer is never, default, often or dismiss' });
+      if (b.answer !== 'dismiss') saveCompanies(CLIENTS.map((c) => (c.id !== client.id ? c : b.answer === 'default' ? (({ questionForms, ...rest }) => rest)(c) : { ...c, questionForms: b.answer })));
+      formsOfferAnswered(client, b.answer);
+      logEvent('forms card', `${client.name}: ${b.answer}`);
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && p === '/api/forms-check') return json(res, 200, checkFormsOffers()); // look again now
     if (req.method === 'POST' && p === '/api/setup-check') { // ?client=: check that desk in full now
       const client = clientById(url.searchParams.get('client'));
       if (!client) return json(res, 404, { error: 'Unknown desk' });

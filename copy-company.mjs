@@ -322,7 +322,7 @@ export function copyGroups(groups = [], newId = () => 'g' + randomUUID().slice(0
 export const groupAction = (p) => String(p).match(/^\/api\/groups\/(g_?[A-Za-z0-9]+)\/(rename|folder|archive|restore|delete)$/);
 
 // The Docket desk settings a copy takes from its source (the "Docket desk settings" item).
-export const DOCKET_KEYS = ['links', 'docketHooks', 'defaultEngine', 'startGear', 'saveBeforeCompact', 'promptCacheTtl', 'handoffPattern', 'budget', 'color', 'splitWork', 'resumeAfterSignIn', 'planSystem', 'planFolder'];
+export const DOCKET_KEYS = ['links', 'docketHooks', 'defaultEngine', 'startGear', 'saveBeforeCompact', 'promptCacheTtl', 'handoffPattern', 'budget', 'color', 'splitWork', 'questionForms', 'resumeAfterSignIn', 'planSystem', 'planFolder'];
 
 // The new desk's entry, before cleanCompany checks it. conn: per brand { mode: 'same' | 'new' | 'off' }, Claude's
 // with kind ('claude' account or 'bedrock'), email, awsProfile and awsRegion for a new connection. A same connection

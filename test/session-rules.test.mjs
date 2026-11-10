@@ -53,7 +53,7 @@ test('the text is the files in order, joined by blank lines', () => {
 
 test('the server builds rules from session-rules.mjs, a child by its parent, and hands sessions.md to a child that starts one', () => {
   const server = fs.readFileSync(path.join(root, 'server.mjs'), 'utf8');
-  assert.ok(server.includes("import { ruleText, PARENT_ONLY } from './session-rules.mjs'"));
+  assert.ok(server.includes("import { ruleText, PARENT_ONLY, FORMS } from './session-rules.mjs'"));
   assert.ok(server.includes('s.slimRules = !!s.parentId'));
   const start = server.slice(server.indexOf("tool('start_session',"), server.indexOf("tool('propose_handoff',"));
   assert.equal((start.match(/withSessionRules\(parent,/g) || []).length, 3, 'started, offered-and-started, and proposed');

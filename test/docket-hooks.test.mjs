@@ -11,6 +11,7 @@ import { check } from '../plugin/hooks/bash-cmdline-guard.mjs';
 import { isOff } from '../plugin/hooks/off.mjs';
 import { check as artifactCheck } from '../plugin/hooks/artifact-new-guard.mjs';
 import { TEMPLATE } from '../plugin/hooks/compact-summary.mjs';
+import { hookOutput as stepEstimateOutput } from '../plugin/hooks/step-estimate.mjs';
 
 const PLUGIN = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'plugin');
 const GUARD = path.join(PLUGIN, 'hooks', 'bash-cmdline-guard.mjs');
@@ -24,7 +25,7 @@ const globex = { hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'comma
 
 test('the plugin lists its hooks by their script names', () => {
   const list = pluginHooks(PLUGIN);
-  assert.deepEqual(list.map((h) => [h.name, h.event, h.matcher]), [['bash-cmdline-guard', 'PreToolUse', 'Bash'], ['shift-first-edit', 'PreToolUse', 'Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|search_replace|write|run_terminal_command'], ['artifact-new-guard', 'PreToolUse', 'Artifact'], ['big-output', 'PostToolUse', 'Bash|Read|Grep|mcp__.*'], ['compact-summary', 'PreCompact', '']]);
+  assert.deepEqual(list.map((h) => [h.name, h.event, h.matcher]), [['bash-cmdline-guard', 'PreToolUse', 'Bash'], ['shift-first-edit', 'PreToolUse', 'Edit|Write|NotebookEdit|MultiEdit|Bash|PowerShell|search_replace|write|run_terminal_command'], ['step-estimate', 'PreToolUse', 'Bash|PowerShell'], ['artifact-new-guard', 'PreToolUse', 'Artifact'], ['big-output', 'PostToolUse', 'Bash|Read|Grep|mcp__.*'], ['compact-summary', 'PreCompact', '']]);
   assert.ok(fs.existsSync(path.join(PLUGIN, '.claude-plugin', 'plugin.json')));
 });
 
@@ -110,4 +111,10 @@ test('compact-summary prints the summary template, short, and nothing when turne
   assert.equal(on.stdout.trim(), TEMPLATE);
   const off = spawnSync(process.execPath, [script], { input, encoding: 'utf8', env: { ...process.env, DOCKET_ENGINE: 'claude', DOCKET_HOOKS_OFF: 'compact-summary' } });
   assert.equal(off.stdout, '');
+});
+
+test('step-estimate: the app note becomes additional context, and no note says nothing', () => {
+  assert.equal(stepEstimateOutput({}), null);
+  assert.equal(stepEstimateOutput(null), null);
+  assert.deepEqual(stepEstimateOutput({ note: 'usually 2m' }), { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: 'usually 2m' } });
 });

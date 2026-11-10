@@ -98,6 +98,10 @@ test('the profile shows a checkbox for each switch, with what it is now', () => 
   assert.deepEqual(items('switches', 'How sessions split').map((i) => [i.toggle.kind, i.toggle.on]), [['split', true]]);
   const off = buildProfile({ ...client, splitWork: false }, { isDefaultHome: false });
   assert.equal(off.sections.find((s) => s.id === 'switches').groups.find((g) => g.title.startsWith('How sessions split')).items[0].toggle.on, false);
+  // question forms (#850): Default unless the desk set never or often
+  assert.deepEqual(items('switches', 'How sessions ask').map((i) => [i.toggle.kind, i.toggle.value, i.toggle.options.map(([v]) => v).join()]), [['forms', 'default', 'never,default,often']]);
+  const often = buildProfile({ ...client, questionForms: 'often' }, { isDefaultHome: false });
+  assert.equal(often.sections.find((s) => s.id === 'switches').groups.find((g) => g.title.startsWith('How sessions ask')).items[0].toggle.value, 'often');
   // carrying on after signing in again (#719): on unless the desk set resumeAfterSignIn false
   assert.deepEqual(items('switches', 'When the sign-in').map((i) => [i.toggle.kind, i.toggle.on]), [['resume', true]]);
   const noResume = buildProfile({ ...client, resumeAfterSignIn: false }, { isDefaultHome: false });
@@ -108,5 +112,5 @@ test('the profile shows a checkbox for each switch, with what it is now', () => 
   assert.equal(ask.sections.find((s) => s.id === 'switches').groups.find((g) => g.title.startsWith('When a running session')).items[0].toggle.value, 'ask');
   // no Grok home: no Grok switches
   const noGrok = buildProfile({ ...client, grokHome: undefined }, { isDefaultHome: false });
-  assert.deepEqual(noGrok.sections.find((s) => s.id === 'switches').groups.map((g) => g.title), ['Plans', 'How sessions split work', 'When the sign-in runs out', 'When a running session\'s config changes', 'Settings layers Claude sessions load']);
+  assert.deepEqual(noGrok.sections.find((s) => s.id === 'switches').groups.map((g) => g.title), ['Plans', 'How sessions split work', 'How sessions ask you', 'When the sign-in runs out', 'When a running session\'s config changes', 'Settings layers Claude sessions load']);
 });

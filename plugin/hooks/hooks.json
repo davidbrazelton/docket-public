@@ -25,6 +25,17 @@
         ]
       },
       {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/step-estimate.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Telling the session how long this command usually takes"
+          }
+        ]
+      },
+      {
         "matcher": "Artifact",
         "hooks": [
           {

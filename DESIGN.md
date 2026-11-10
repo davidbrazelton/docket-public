@@ -19,6 +19,7 @@ Every button, toggle and menu in Docket is one of five kinds. The kind says what
 - **One look for "on".** A link or filter that is on always has the soft tint in the main color. Before this, "on" looked different almost everywhere (a raised tile, a filled icon, a coloured icon, a ticked checkbox).
 - **Filters show their state on the border too**, so a list that is filtered can be told from one that is not without reading the button.
 - **One main action.** Solid main color is kept for + New session, so it never competes with anything else.
+- **Cards in the chat are their own place.** A card that waits on one answer (Start on a suggested session, Merge on the Merge card under a plain merge ask) gets one solid button for that answer, and goes away or turns into a one-line record once answered. Its other choices are actions, and a way to see more (View PR) is a link.
 
 ## Shape and size
 

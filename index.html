@@ -573,6 +573,7 @@ aside.tasks.hidden { display: none; }
 .task .sub { grid-column: 2 / 4; font-size: 12px; color: var(--muted); margin-top: -4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task .end { display: flex; align-items: center; }
 .task .dur { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.usual.over { color: var(--warn); }
 .tag { font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px; color: var(--muted); }
 .tag.plan-tag { color: var(--accent); border-color: var(--accent); font-variant-numeric: tabular-nums; }
 .plan-head { padding: 6px 14px 2px; font-size: 13px; font-weight: 600; }
@@ -755,13 +756,13 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 /* The one-time offer of 👁 > Reason tags > Icon as session dot (#720): the same card, with an icon tile, a × and a
    sample of rows on the panel color so the icons show in their real colors. */
 /* The one-time card about 👁 > Cost (#806) is the same card again, its sample rows with a cost left of the time. */
-:is(#reasonOffer, #costOffer) .t { padding-right: 18px; }
-:is(#reasonOffer, #costOffer) .ic { grid-row: span 2; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--on-accent) 18%, transparent); display: grid; place-items: center; }
+:is(#reasonOffer, #costOffer, #formsOffer) .t { padding-right: 18px; }
+:is(#reasonOffer, #costOffer, #formsOffer) .ic { grid-row: span 2; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--on-accent) 18%, transparent); display: grid; place-items: center; }
 #reasonOffer .ic svg { width: 22px; height: 22px; }
 #costOffer .ic { font-size: 20px; font-weight: 700; }
-:is(#reasonOffer, #costOffer) .x { position: absolute; top: 6px; right: 8px; border: none; padding: 0 6px; font-size: 16px; line-height: 1.4; opacity: .8; color: inherit; }
-:is(#reasonOffer, #costOffer) .x:hover { opacity: 1; background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
-:is(#reasonOffer, #costOffer) .x:focus-visible { outline: 2px solid var(--on-accent); outline-offset: 2px; }
+:is(#reasonOffer, #costOffer, #formsOffer) .x { position: absolute; top: 6px; right: 8px; border: none; padding: 0 6px; font-size: 16px; line-height: 1.4; opacity: .8; color: inherit; }
+:is(#reasonOffer, #costOffer, #formsOffer) .x:hover { opacity: 1; background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
+:is(#reasonOffer, #costOffer, #formsOffer) .x:focus-visible { outline: 2px solid var(--on-accent); outline-offset: 2px; }
 :is(#reasonOffer, #costOffer) .ro-sample { grid-column: 1 / -1; margin-top: 6px; background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px; font-size: 13px; }
 :is(#reasonOffer, #costOffer) .ro-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; }
 #costOffer .ro-row.child { padding-left: 28px; position: relative; }
@@ -776,7 +777,12 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 #reasonOffer .ro-cap { font-size: 11px; color: var(--muted); padding: 2px 10px 0; }
 #reasonOffer .ro-opt { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 4px; cursor: pointer; }
 #reasonOffer .ro-opt input { accent-color: var(--on-accent); margin: 0; }
-:is(#reasonOffer, #costOffer) .ro-hint { grid-column: 1 / -1; font-size: 11px; opacity: .85; }
+:is(#reasonOffer, #costOffer, #formsOffer) .ro-hint { grid-column: 1 / -1; font-size: 11px; opacity: .85; }
+/* The one-time question-forms card (#850): the same card, with its three choices as a short list. */
+#formsOffer .ic { font-size: 18px; font-weight: 700; }
+#formsOffer ul { grid-column: 1 / -1; margin: 2px 0 0; padding-left: 18px; font-size: 13px; }
+#formsOffer .b { grid-column: 1 / -1; flex-wrap: wrap; }
+#formsOffer .b button { white-space: nowrap; }
 .key h4 { margin: 8px 0 2px; font-size: 12px; color: var(--text); }
 .key h4:first-child { margin-top: 0; }
 .key-row { display: grid; grid-template-columns: 96px 1fr 210px; gap: 10px; align-items: baseline; }
@@ -1012,6 +1018,12 @@ a.pv-tab { padding: 3px 5px; }
 .files-more summary { padding: 6px 14px; font-size: 12px; color: var(--muted); cursor: pointer; }
 .file-card { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 4px 0; }
 .file-card .note { text-align: left; padding: 4px 14px 2px; }
+/* The Merge card under a plain ask to merge one pull request (#853) */
+.merge-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 10px; background: var(--panel); padding: 10px 12px; }
+.merge-ask .ma-t { flex: 1; min-width: 180px; overflow-wrap: anywhere; }
+.merge-ask .ma-t small { display: block; color: var(--muted); }
+.merge-ask .ma-link { padding: 5px 10px; border-radius: 8px; color: var(--text); text-decoration: none; }
+.merge-ask .ma-link:hover { background: var(--panel-2); }
 .side-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--panel-2); border-radius: 8px; padding: 3px; }
 .side-tabs button { border: none; padding: 4px 8px; font-size: 13px; color: var(--muted); }
 .side-tabs button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; } /* links: the open tab gets the soft tint (DESIGN.md) */
@@ -1531,6 +1543,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
 <div class="install-offer" id="setupOffer" role="dialog" aria-labelledby="setupOfferTitle" hidden></div>
 <div class="install-offer" id="startOffer" role="dialog" aria-labelledby="startOfferTitle" hidden></div>
+<div class="install-offer" id="formsOffer" role="dialog" aria-labelledby="formsOfferTitle" hidden></div>
 </div>
 <div class="upd-pop" id="updPop" role="dialog" aria-labelledby="updPopTitle" hidden></div>
 <div class="upd-note" id="updNote" role="status" aria-live="polite" hidden></div>
@@ -1973,6 +1986,10 @@ const HELP = [
     ['setup-later', 'Not now', 'Ask again in 30 days, or sooner if the setup grows noticeably'],
     ['start-apply', 'Turn splitting off', "This desk's new sessions do the work in place, and start a session only when you ask for one. Turn it back on in the desk's Inspector, under Switches"],
     ['start-usage', 'See AI Usage', "This desk's last week in Gauges > AI Usage, with the start cost of each session"],
+    ['fo-never', 'Never', 'This desk\'s sessions ask in plain text, and Docket turns down any question form. Change it any time in the desk\'s Inspector, under Switches'],
+    ['fo-default', 'Default', 'Keep Claude\'s own way: a form now and then, mostly when it is blocked on a decision. Change it any time in the desk\'s Inspector, under Switches'],
+    ['fo-often', 'Often', 'Choices between real options come as a form, with one recommended. Change it any time in the desk\'s Inspector, under Switches'],
+    ['fo-no', 'Close', 'Keep Default, and do not ask again on this desk'],
     ['start-later', 'Not now', 'Ask again in 30 days if most child sessions are still short'],
     ['plan-yes', 'OK', 'Keep Docket\'s plans on for this desk. Change it later in the desk\'s Inspector, under Switches'],
     ['ro-on', 'Turn it on', 'Draw the reason icon in place of the dot on rows that need you, on this desk. Ticked, the word stays on the right too; unticked, there is no column. Change it any time in 👁 > Reason tags'],
@@ -2125,6 +2142,18 @@ const md = (t) => (window.marked && window.DOMPurify) ? DOMPurify.sanitize(marke
 const ago = (ms) => { const s = Math.round((Date.now() - ms) / 1000); if (s < 60) return 'now'; if (s < 3600) return Math.floor(s / 60) + 'm'; if (s < 86400) return Math.floor(s / 3600) + 'h'; return Math.floor(s / 86400) + 'd'; };
 // A time as this computer shows it (Docket keeps UTC): today's time, or the date and time for an earlier day.
 const stamp = (ms) => { if (!ms) return ''; const d = new Date(ms); const day = d.toDateString() === new Date().toDateString() ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' '; return day + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+// How long a step usually takes in its repo (#847): "usually ~2m 30s (12 runs)", or, once it has run twice that and a
+// minute over, "well past its usual ~2m 30s". u: { ms, runs, failed } from the server; refreshed every second by tick.
+const roughTime = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `~${s < 20 ? s : Math.round(s / 5) * 5}s`; if (s < 3600) { const r = Math.round(s / 10) * 10, x = r % 60; return `~${Math.floor(r / 60)}m${x ? ` ${x}s` : ''}`; } const m = Math.round(s / 60); return `~${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`; };
+const usualOver = (elapsed, ms) => elapsed > 2 * ms && elapsed - ms > 60000;
+const usualText = (u, elapsed) => usualOver(elapsed, u.ms) ? `well past its usual ${roughTime(u.ms)}` : `usually ${roughTime(u.ms)} (${u.runs} run${u.runs === 1 ? '' : 's'})`;
+const usualTip = (u) => `The median of the last ${u.runs} successful run${u.runs === 1 ? '' : 's'} of this command in this repo, on this computer${u.failed ? `; ${u.failed} failed or stopped run${u.failed === 1 ? '' : 's'} not counted` : ''}`;
+const usualHtml = (u, start) => u && start ? `<span class="usual${usualOver(Date.now() - start, u.ms) ? ' over' : ''}" data-start="${start}" data-usual="${u.ms}" data-runs="${u.runs}" title="${esc(usualTip(u))}">${usualText(u, Date.now() - start)}</span>` : '';
+function tickUsual(el) {
+  const u = { ms: Number(el.dataset.usual), runs: Number(el.dataset.runs) }, elapsed = Date.now() - Number(el.dataset.start);
+  el.textContent = usualText(u, elapsed);
+  el.classList.toggle('over', usualOver(elapsed, u.ms));
+}
 const dur = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? s + 's' : s < 3600 ? Math.floor(s / 60) + 'm ' + (s % 60) + 's' : Math.floor(s / 3600) + 'h ' + Math.floor(s % 3600 / 60) + 'm'; };
 
 const S = {
@@ -3187,6 +3216,7 @@ async function loadPRs(client, ids) {
       if (r[id]?.worktree) S.worktree[id] = r[id].worktree; else delete S.worktree[id];
     }
     if (client === S.client) { renderList(); renderTasks(); }
+    if (client === S.client && ids.includes(S.selected)) { const stick = atBottom(); mergeAsk(); scrollDown(stick); } // its pull request's state decides the Merge card
   } catch {}
 }
 function refreshPRs() { // the open session plus what is visible in the list
@@ -8216,13 +8246,14 @@ const HOOK_SPLIT_TIP = 'How this turn\'s time split: hooks is the time synchrono
 function stepsWhen(evs) {
   evs = evs.filter(Boolean);
   const run = S.live[S.selected]?.status === 'running' && evs.find((e) => e.status === 'running' && e.at);
-  if (run) return `<span class="st-when" title="This step has been running this long"><span class="dur" data-start="${run.at}" data-live>${dur(Date.now() - run.at)}</span></span>`;
+  if (run) return `<span class="st-when" title="This step has been running this long"><span class="dur" data-start="${run.at}" data-live>${dur(Date.now() - run.at)}</span>${run.usual ? ' · ' + usualHtml(run.usual, run.at) : ''}</span>`;
   const end = Math.max(0, ...evs.map((e) => e.endAt || 0)), start = Math.min(...evs.map((e) => e.at || Infinity));
   if (!end) return '';
   // Time synchronous hooks held these steps up shows apart, and not in how long they took (#743).
   const hooks = Math.min(end - start, evs.reduce((n, e) => n + (e.hookMs || 0), 0)), hk = hooks >= 1000 ? dur(hooks) : '';
   const took = end - start - hooks >= 1000 ? dur(end - start - hooks) : '';
-  const tipText = `${took ? `Took ${took}${hk ? `, and hooks held it up ${hk} more` : ''}; the` : hk ? `Hooks held it up ${hk}; the` : 'The'} last step finished at ${stamp(end)}`;
+  const usual = evs.length === 1 && evs[0].usual ? `; it usually takes ${roughTime(evs[0].usual.ms)} (${usualTip(evs[0].usual)})` : '';
+  const tipText = `${took ? `Took ${took}${hk ? `, and hooks held it up ${hk} more` : ''}; the` : hk ? `Hooks held it up ${hk}; the` : 'The'} last step finished at ${stamp(end)}${usual}`;
   return `<span class="st-when" title="${esc(tipText)}">${took ? took + ' · ' : ''}${hk ? 'hooks ' + hk + ' · ' : ''}${stamp(end)}<span class="ago" data-end="${end}"></span></span>`;
 }
 // The chat's newest step line, while its turn is still running, also says how long ago it finished; only that one, so
@@ -8273,6 +8304,7 @@ function renderEvents(force, keep) {
   for (const id of openTools || []) { const x = $('events').querySelector(`details.tool[data-tool="${CSS.escape(id)}"]`); if (x) x.open = true; }
   stepsView();
   weave();
+  mergeAsk();
   if (!keep || stick) scrollDown(true); else t.scrollTop = top;
   checkJump();
   if (S.events.some((e) => e.login)) showSignin();
@@ -8334,6 +8366,40 @@ function finBand(t) {
   if (!p.textContent.trim()) p.remove();
 }
 // end of done turns
+// ---------- merge ask (#853)
+// A turn that ended on a plain ask to merge one pull request (mark_turn "merge" with its number) gets a Merge card under
+// its last reply, while nothing was sent after it and Docket sees that pull request as the session's only one, open, not
+// a draft, without a conflict, with checks passed or none. A click sends "merge" as the person's message, so the session
+// still does the merge. Anything sent after the ask (the button, or words typed) removes the card, and a reload keeps it
+// gone since the chat then holds that message.
+S.mergeSent = new Set(); // asks answered by the button, before the message shows in the chat
+function mergeAskOf(id, evs) {
+  let ask = null, ended = false;
+  for (const ev of evs) {
+    if (ev.k === 'user') ask = null;
+    else if (ev.k === 'tool' && /mark_turn$/.test(ev.name || '')) { ask = ev.input?.label === 'merge' && ev.input.pr ? ev : null; ended = false; }
+    else if (ev.k === 'result') ended = true;
+  }
+  if (!ask || !ended || S.mergeSent.has(`${id}:${ask.id}`)) return null;
+  const mine = (S.prs[id] || []).filter((p) => p.mine && ['open', 'conflict', 'draft'].includes(prState(p)));
+  const pr = mine.length === 1 && Number(mine[0].number) === Number(ask.input.pr) ? mine[0] : null;
+  return pr && prState(pr) === 'open' && !['fail', 'pending'].includes(pr.checks) ? { ask, pr } : null;
+}
+function mergeAsk() {
+  const box = $('events');
+  box.querySelector('.merge-ask')?.remove();
+  const m = mergeAskOf(S.selected, S.events);
+  if (!m) return;
+  const { ask, pr } = m;
+  box.insertAdjacentHTML('beforeend', `<div class="merge-ask" data-merge-ask="${esc(ask.id)}"><div class="ma-t"><b>#${esc(pr.number)}</b> ${esc(pr.title || 'Pull request')}<small>${pr.checks === 'pass' ? 'Checks passed' : 'No checks'} · the session does the merge</small></div><button class="primary" data-merge-go title="Send &quot;merge&quot; to the session as your message">Merge</button>${pr.url ? `<a class="ma-link" href="${esc(pr.url)}" target="_blank" rel="noopener" title="Open the pull request on GitHub">View PR</a>` : ''}</div>`);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-merge-go]'); if (!b) return;
+  S.mergeSent.add(`${S.selected}:${b.closest('[data-merge-ask]').dataset.mergeAsk}`);
+  b.closest('.merge-ask').remove();
+  send('merge');
+});
+// end of merge ask
 function appendEvent(ev) {
   if (ev.k === 'result' && ev.quiet) { renderEvents(false, true); tlSoon(); return; } // the turn just ended folds
   const stick = atBottom();
@@ -8341,6 +8407,7 @@ function appendEvent(ev) {
   $('events').insertAdjacentHTML('beforeend', atHtml(ev));
   if (ev.k === 'tool' || ev.k === 'text') stepsView(); // a new reply makes the one before a bookkeeping step narration (#799)
   if (ev.k === 'result') markFinished($('events'));
+  mergeAsk(); // stays under the last reply, or goes once something is sent
   scrollDown(stick);
   if (ev.login) showSignin();
   tlSoon();
@@ -8757,7 +8824,7 @@ function renderTasks() {
     const held = canFree && t.status === 'running';
     return `<div class="task" title="${esc(t.label)}"${held ? ` data-row-task="${esc(t.id)}" data-session="${S.selected}"` : ''}><span class="ic ${ic[0]}">${ic[1]}</span>
       <span class="lb">${esc(t.label)}${s?.stalled?.id === t.id && t.status === 'running' ? `<span class="tag stalled" title="${esc(stalledTip(s.stalled))}">stalled ${s.stalled.minutes}m</span>` : ''}${t.background ? '<span class="tag">background</span>' : ''}${t.recovered ? '<span class="tag" title="Docket lost track of this and found it again in the session&#39;s files">recovered</span>' : ''}</span><span class="end"><span class="dur" data-start="${t.start}" ${t.end || t.status !== 'running' ? '' : 'data-live'}>${d === null ? '' : dur(d)}</span>${held ? ROW_MORE : ''}</span>
-      ${t.progress || t.summary ? `<span class="sub">${esc(t.progress || t.summary)}</span>` : ''}</div>`;
+      ${t.progress || t.summary || (t.usual && t.status === 'running') ? `<span class="sub">${t.usual && t.status === 'running' ? usualHtml(t.usual, t.start) + (t.progress || t.summary ? ' · ' : '') : ''}${esc(t.progress || t.summary || '')}</span>` : ''}</div>`;
   };
   const prs = (S.prs[S.selected] || []).slice().sort((a, b) => PR_ORDER.indexOf(prState(a)) - PR_ORDER.indexOf(prState(b)));
   const files = (S.files[S.selected] || []).filter((f) => f.exists); // a file gone from disk is left out
@@ -9096,6 +9163,7 @@ function tick() {
     $('cStatus').textContent = $('cStatus').title = quiet > 120000 ? `running · quiet ${dur(quiet)}` : 'running';
   }
   for (const el of document.querySelectorAll('.dur[data-live]')) el.textContent = dur(Date.now() - Number(el.dataset.start));
+  for (const el of document.querySelectorAll('.usual[data-usual]')) tickUsual(el);
   markLatestStep();
 }
 
@@ -9797,6 +9865,8 @@ function connect() {
       showSetupOffer(m.offers);
     } else if (m.t === 'start-offers') {
       showStartOffer(m.offers);
+    } else if (m.t === 'forms-offers') {
+      showFormsOffer(m.offers);
     } else if (m.t === 'update') {
       showUpdate(m.update);
     } else if (m.t === 'places') {
@@ -10513,6 +10583,42 @@ $('startOffer').onclick = async (e) => {
 };
 for (const id of ['cacheOffer', 'planOffer', 'setupOffer']) new MutationObserver(() => showStartOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 api('/api/start-offers').then(showStartOffer).catch(() => {});
+// The one-time question-forms card (#850): the server lists each desk whose card is due (a day after this update came,
+// and a few new sessions on the desk since); the card asks about one desk at a time, the one on view first, and waits
+// while another corner card, the setup wizard, the tour or a dialog is up. Any button or × answers it for good on that
+// desk; × keeps Default.
+let formsOfferList = [];
+function showFormsOffer(list) {
+  if (list) formsOfferList = list;
+  const el = $('formsOffer');
+  const o = formsOfferList.find((x) => x.client === S.client) || formsOfferList[0];
+  const busy = POPOUT || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer'].some((id) => !$(id).hidden);
+  if (!o || busy) { if (!el.hidden) el.hidden = true; return; }
+  if (!el.hidden && el.dataset.client === o.client) return; // already showing it: keep the keyboard where it is
+  el.dataset.client = o.client;
+  el.innerHTML = `<button class="x" data-fo="dismiss" aria-label="Close"${tip('fo-no')}>×</button><span class="ic" aria-hidden="true">?</span>
+    <div class="t" id="formsOfferTitle">How should sessions ask you to choose?</div>
+    <div class="d">On ${esc(o.name)}: when a session needs you to pick between options, it can ask in the chat or with a form.</div>
+    <ul><li><b>Never</b>: always in plain text; Docket turns down any form.</li>
+    <li><b>Default</b> (recommended): Claude's own way, a form now and then when it is blocked on a decision.</li>
+    <li><b>Often</b>: every choice between real options comes as a form, with one recommended.</li></ul>
+    <div class="ro-hint">Change it any time in the desk's Inspector, under Switches.</div>
+    <div class="b"><button data-fo="never"${tip('fo-never')}>Never</button><button data-fo="often"${tip('fo-often')}>Often</button><button class="primary" data-fo="default"${tip('fo-default')}>Default</button></div>`;
+  el.hidden = false;
+}
+$('formsOffer').onclick = async (e) => {
+  const b = e.target.closest('button[data-fo]'), el = $('formsOffer');
+  if (!b) return;
+  const client = el.dataset.client, answer = b.dataset.fo;
+  for (const x of el.querySelectorAll('button')) x.disabled = true;
+  try { await api('/api/forms-offers/answer', { client, answer }); }
+  catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return tell(err.message); }
+  formsOfferList = formsOfferList.filter((o) => o.client !== client);
+  el.hidden = true;
+  showFormsOffer();
+};
+for (const id of ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showFormsOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+api('/api/forms-offers').then(showFormsOffer).catch(() => {});
 
 // The card after the update that brought Docket's plans (#180): once for each desk on this computer with no plan system
 // chosen yet (planSystem ''), the desk on view first. Plans are on for such a desk (#605), so it says so: OK saves
@@ -10531,7 +10637,7 @@ function reasonOfferSample(words) { // declared, not const: the page's start may
 }
 function showReasonOffer() {
   const el = $('reasonOffer');
-  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer'].some((id) => !$(id).hidden);
+  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer'].some((id) => !$(id).hidden);
   if (busy || S.reasonDot || deskStore.get('reasonDotOffer', false)) { if (!el.hidden) el.hidden = true; return; } // only a real change: the cost card watches this one, and this one it
   if (!el.hidden && el.dataset.client === S.client) return; // already showing it: keep the keyboard where it is
   el.dataset.client = S.client;
@@ -10558,7 +10664,7 @@ $('reasonOffer').onclick = (e) => {
   el.hidden = true;
 };
 // It waits for the others: each one closing (or the wizard, the tour or a dialog) looks again.
-for (const id of ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 // The one-time card about 👁 > Cost (#806): once per computer, after the update that brings it or on a new install.
 // Never where a cost display is on already, and never on top of another corner card, the setup wizard, the tour or a
 // dialog: it waits until they close. Not now, × and Turn it on all mark it seen (costOffer), so it does not come back.
@@ -10570,7 +10676,7 @@ function costOfferSample() { // declared, not const: the page's start may call s
 }
 function showCostOffer() {
   const el = $('costOffer');
-  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer'].some((id) => !$(id).hidden);
+  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer'].some((id) => !$(id).hidden);
   if (busy || store.get('costOffer', false) || S.costRows !== 'off' || S.costGroups) { if (!el.hidden) el.hidden = true; return; } // only a real change, as above
   if (!el.hidden) return; // already showing it: keep the keyboard where it is
   el.innerHTML = `<button class="x" data-co="no" aria-label="Close"${tip('co-no')}>×</button><span class="ic" aria-hidden="true">$</span>
@@ -10591,7 +10697,7 @@ $('costOffer').onclick = (e) => {
   if (viewOpen()) renderViewMenu();
   loadCosts(); renderList();
 };
-for (const id of ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showCostOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showCostOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 function showPlanOffer() {
   const el = $('planOffer');
   // A switch of plan system waiting on its conversion session (#700) comes first: it ends only with Finish or Cancel.
