@@ -890,3 +890,58 @@ $timer = New-Object Windows.Forms.Timer; $timer.Interval = 2000
 $timer.add_Tick({ if (-not (Get-Process -Id $Owner -ErrorAction SilentlyContinue)) { $f.Close() } }); $timer.Start()
 [Windows.Forms.Application]::Run($f)
 ` };
+
+// ---------- the profile folder (profile-sync.mjs) ----------
+// The cloud folders a profile can be kept in, in the order ☰ > Profile > Keep my profile in a folder suggests them: Google Drive
+// for desktop first, then OneDrive, Dropbox and iCloud Drive. Each service's own app moves the file; Docket only sees a
+// folder. exists(path): whether a folder is there; list(dir): the names in a folder ([] when it can't be read).
+// Windows: Google Drive streams to a drive letter (G: unless another was taken) with My Drive at its top, or mirrors to
+// ~\My Drive; OneDrive sets %OneDrive% (and %OneDriveCommercial% for a work account); Dropbox is ~\Dropbox, or
+// ~\Dropbox (Company) for a team; iCloud for Windows uses ~\iCloudDrive. macOS: each lives in ~/Library/CloudStorage
+// (GoogleDrive-<account>/My Drive, OneDrive-<name>, Dropbox), older Dropbox in ~/Dropbox, iCloud in Mobile Documents.
+export function cloudFolders({ platform = process.platform, home, env = process.env, exists, list = () => [] }) {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  const out = [];
+  const add = (kind, name, dir) => { if (dir && !out.some((x) => x.path.toLowerCase() === dir.toLowerCase()) && exists(dir)) out.push({ kind, name, path: dir }); };
+  const named = (dir, re) => list(dir).filter((n) => re.test(n)).sort().map((n) => p.join(dir, n));
+  if (platform === 'win32') {
+    for (const l of 'GHIJKLMNOPQRSTUVWXYZDEF') add('google', 'Google Drive', `${l}:\\My Drive`);
+    add('google', 'Google Drive', p.join(home, 'My Drive'));
+    for (const k of ['OneDrive', 'OneDriveConsumer', 'OneDriveCommercial']) add('onedrive', k === 'OneDriveCommercial' ? 'OneDrive (work)' : 'OneDrive', env[k]);
+    for (const d of named(home, /^OneDrive( - .+)?$/)) add('onedrive', p.basename(d) === 'OneDrive' ? 'OneDrive' : 'OneDrive (work)', d);
+    for (const d of named(home, /^Dropbox( \(.+\))?$/)) add('dropbox', 'Dropbox', d);
+    add('icloud', 'iCloud Drive', p.join(home, 'iCloudDrive'));
+    return out;
+  }
+  const cs = p.join(home, 'Library', 'CloudStorage');
+  for (const d of named(cs, /^GoogleDrive-/)) add('google', 'Google Drive', p.join(d, 'My Drive'));
+  for (const d of named(cs, /^OneDrive/)) add('onedrive', ['OneDrive', 'OneDrive-Personal'].includes(p.basename(d)) ? 'OneDrive' : 'OneDrive (work)', d);
+  for (const d of named(cs, /^Dropbox/)) add('dropbox', 'Dropbox', d);
+  add('dropbox', 'Dropbox', p.join(home, 'Dropbox'));
+  add('icloud', 'iCloud Drive', p.join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs'));
+  return out;
+}
+
+// A folder path written on another computer, as this one might have it, best guess first, for a profile import to try
+// in turn (the first that exists wins; when none does, the person is asked, with the first as the suggestion).
+// from: { platform, home } of the computer that wrote it. A path in that home goes to the same place in this home
+// (C:\Users\pat\Work\x <-> /Users/pat/Work/x); one elsewhere on a Windows drive goes to the same folder in this home on
+// a Mac (C:\Projects\x -> ~/Projects/x); a Mac one outside the home goes on the C: drive (/opt/x -> C:\opt\x).
+export function profilePathCandidates(file, { from, platform = process.platform, home }) {
+  const fromWin = from?.platform === 'win32', p = platform === 'win32' ? path.win32 : path.posix;
+  const src = String(file || '').trim();
+  if (!src) return [];
+  const norm = fromWin ? src.replace(/\//g, '\\') : src;
+  const out = [];
+  const add = (x) => { if (x && !out.includes(x)) out.push(x); };
+  const fromHome = !from?.home ? '' : fromWin ? from.home.replace(/\//g, '\\').replace(/\\+$/, '') : from.home.replace(/\/+$/, '');
+  const sep = fromWin ? '\\' : '/', low = (s) => fromWin ? s.toLowerCase() : s;
+  const inHome = fromHome && (low(norm) === low(fromHome) || low(norm).startsWith(low(fromHome) + sep));
+  const parts = (rest) => rest.split(sep).filter(Boolean);
+  if (inHome) add(p.join(home, ...parts(norm.slice(fromHome.length))));
+  if (fromWin === (platform === 'win32') && p.isAbsolute(norm)) add(src); // as written: C:/Work stays C:/Work
+  const drive = /^[A-Za-z]:\\(.*)$/.exec(norm);
+  if (!inHome && fromWin && platform !== 'win32' && drive) add(p.join(home, ...parts(drive[1])));
+  if (!inHome && !fromWin && platform === 'win32' && norm.startsWith('/')) add(p.join('C:\\', ...parts(norm)));
+  return out;
+}

@@ -66,7 +66,7 @@ export function docketFacts({ version = '', commit = '', clients = [], live = []
     brands,
     features: {
       stopStuckSteps: state.stallStop !== false, continueAfterCrash: state.autoContinue !== false, pauseOnSleep: state.autoPause !== false,
-      updates: state.updates?.mode === 'auto' ? 'automatic' : 'manual', remoteConnection: !!state.remoteControl?.on, paused: !!state.paused,
+      remoteConnection: !!state.remoteControl?.on, paused: !!state.paused,
     },
     sessionsOpen: sessions.length, sessionsWorking: sessions.filter((s) => s.status === 'running').length,
   };

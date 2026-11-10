@@ -11,15 +11,8 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // sessions: [{ ended, busy, held, asks (a Map or a count), lastAt, scheduled }]; jobs: the app's own runs still going.
 // scheduled (the app knows it): a scheduled task's run, counted as a scheduled task while it works.
 export function notQuiet(sessions, now = Date.now(), { jobs = 0 } = {}) {
-  const open = sessions.filter((r) => !r.ended);
   const count = { scheduled: 0, asking: 0, replying: 0, background: 0, recent: 0 };
-  for (const r of open) {
-    if (r.scheduled && (r.busy || r.held || askCount(r))) count.scheduled++;
-    else if (askCount(r)) count.asking++;
-    else if (r.busy) count.replying++;
-    else if (r.held) count.background++;
-    else if (now - (r.lastAt || 0) < QUIET_MS) count.recent++;
-  }
+  for (const r of sessions) { const k = busyKind(r, now); if (k) count[k]++; }
   return [
     count.replying && `${plural(count.replying, 'session', 'sessions')} replying`,
     count.asking && `${plural(count.asking, 'session', 'sessions')} waiting on an answer`,
@@ -29,6 +22,20 @@ export function notQuiet(sessions, now = Date.now(), { jobs = 0 } = {}) {
     jobs && `${plural(jobs, 'Docket job', 'Docket jobs')} running`,
   ].filter(Boolean).join(', ');
 }
+
+// Which of notQuiet's counts one session falls in, or '' when it holds nothing.
+function busyKind(r, now) {
+  if (r.ended) return '';
+  if (r.scheduled && (r.busy || r.held || askCount(r))) return 'scheduled';
+  if (askCount(r)) return 'asking';
+  if (r.busy) return 'replying';
+  if (r.held) return 'background';
+  if (now - (r.lastAt || 0) < QUIET_MS) return 'recent';
+  return '';
+}
+const HOW = { scheduled: 'scheduled task running', asking: 'waiting on an answer', replying: 'replying', background: 'background work running', recent: 'active in the last minute' };
+// What one session is doing that holds the restart, in words for the update arrow's list; '' when nothing.
+export const busyHow = (r, now = Date.now()) => HOW[busyKind(r, now)] || '';
 
 export function restartBlocked(sessions, now = Date.now()) {
   return !!notQuiet(sessions, now);

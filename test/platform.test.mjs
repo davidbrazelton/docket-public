@@ -6,7 +6,48 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, treeListCommand, parseTreeList, descendants, killCommand, commandLineCommand, relaunchesApp, leftBehind,
-  keyCodes, fitShot, shotArea, toScreen, screenScript, screenCommand, screenBadgeCommand, SCREEN_BADGE } from '../platform.mjs';
+  keyCodes, fitShot, shotArea, toScreen, screenScript, screenCommand, screenBadgeCommand, SCREEN_BADGE, cloudFolders, profilePathCandidates } from '../platform.mjs';
+
+test('cloudFolders on Windows: Google Drive on any drive letter first, then OneDrive, Dropbox and iCloud Drive', () => {
+  const there = new Set(['H:\\My Drive', 'C:\\Users\\pat\\OneDrive', 'C:\\Users\\pat\\OneDrive - Acme', 'C:\\Users\\pat\\Dropbox', 'C:\\Users\\pat\\iCloudDrive']);
+  const list = (d) => d === 'C:\\Users\\pat' ? ['Documents', 'Dropbox', 'OneDrive - Acme', 'OneDrive'] : [];
+  const env = { OneDrive: 'C:\\Users\\pat\\OneDrive', OneDriveCommercial: 'C:\\Users\\pat\\OneDrive - Acme' };
+  assert.deepEqual(cloudFolders({ platform: 'win32', home: 'C:\\Users\\pat', env, exists: (d) => there.has(d), list }), [
+    { kind: 'google', name: 'Google Drive', path: 'H:\\My Drive' },
+    { kind: 'onedrive', name: 'OneDrive', path: 'C:\\Users\\pat\\OneDrive' },
+    { kind: 'onedrive', name: 'OneDrive (work)', path: 'C:\\Users\\pat\\OneDrive - Acme' },
+    { kind: 'dropbox', name: 'Dropbox', path: 'C:\\Users\\pat\\Dropbox' },
+    { kind: 'icloud', name: 'iCloud Drive', path: 'C:\\Users\\pat\\iCloudDrive' }]);
+  assert.deepEqual(cloudFolders({ platform: 'win32', home: 'C:\\Users\\pat', env: {}, exists: (d) => d === 'C:\\Users\\pat\\My Drive' }),
+    [{ kind: 'google', name: 'Google Drive', path: 'C:\\Users\\pat\\My Drive' }], 'Drive mirrored to the home folder');
+  assert.deepEqual(cloudFolders({ platform: 'win32', home: 'C:\\Users\\pat', env: {}, exists: () => false }), []);
+});
+
+test('cloudFolders on a Mac: each service in ~/Library/CloudStorage, Google Drive first', () => {
+  const cs = '/Users/pat/Library/CloudStorage';
+  const there = new Set([`${cs}/GoogleDrive-pat@acme.com/My Drive`, `${cs}/OneDrive-Personal`, `${cs}/OneDrive-Acme`, `${cs}/Dropbox`, '/Users/pat/Library/Mobile Documents/com~apple~CloudDocs']);
+  const list = (d) => d === cs ? ['OneDrive-Personal', 'Dropbox', 'GoogleDrive-pat@acme.com', 'OneDrive-Acme'] : [];
+  assert.deepEqual(cloudFolders({ platform: 'darwin', home: '/Users/pat', env: {}, exists: (d) => there.has(d), list }).map((x) => `${x.name}: ${x.path}`), [
+    `Google Drive: ${cs}/GoogleDrive-pat@acme.com/My Drive`,
+    `OneDrive (work): ${cs}/OneDrive-Acme`,
+    `OneDrive: ${cs}/OneDrive-Personal`,
+    `Dropbox: ${cs}/Dropbox`,
+    'iCloud Drive: /Users/pat/Library/Mobile Documents/com~apple~CloudDocs']);
+  assert.deepEqual(cloudFolders({ platform: 'darwin', home: '/Users/pat', env: {}, exists: (d) => d === '/Users/pat/Dropbox' }).map((x) => x.path), ['/Users/pat/Dropbox'], 'older Dropbox');
+});
+
+test('profilePathCandidates: Windows and Mac paths both ways, the home folder mapped to this one', () => {
+  const win = { platform: 'win32', home: 'C:\\Users\\pat' }, mac = { platform: 'darwin', home: '/Users/pat' };
+  assert.deepEqual(profilePathCandidates('C:\\Users\\pat\\Work\\x', { from: win, platform: 'darwin', home: '/Users/pat' }), ['/Users/pat/Work/x']);
+  assert.deepEqual(profilePathCandidates('C:/Projects/x', { from: win, platform: 'darwin', home: '/Users/pat' }), ['/Users/pat/Projects/x'], 'C:/Projects/x <-> ~/Projects/x');
+  assert.deepEqual(profilePathCandidates('/Users/pat/Projects/x', { from: mac, platform: 'win32', home: 'C:\\Users\\pat' }), ['C:\\Users\\pat\\Projects\\x']);
+  assert.deepEqual(profilePathCandidates('/opt/x', { from: mac, platform: 'win32', home: 'C:\\Users\\pat' }), ['C:\\opt\\x']);
+  assert.deepEqual(profilePathCandidates('c:\\users\\PAT\\w', { from: win, platform: 'win32', home: 'C:\\Users\\sam' }), ['C:\\Users\\sam\\w', 'c:\\users\\PAT\\w'], 'another user name: this home first, Windows ignores case');
+  assert.deepEqual(profilePathCandidates('D:\\Data', { from: win, platform: 'win32', home: 'C:\\Users\\sam' }), ['D:\\Data']);
+  assert.deepEqual(profilePathCandidates('D:/Data', { from: win, platform: 'win32', home: 'C:\\Users\\sam' }), ['D:/Data'], 'kept as written on the same platform');
+  assert.deepEqual(profilePathCandidates('/Users/pat/x', { from: mac, platform: 'darwin', home: '/Users/pat' }), ['/Users/pat/x']);
+  assert.deepEqual(profilePathCandidates('', { from: mac, platform: 'darwin', home: '/Users/pat' }), []);
+});
 
 test('vsCodePaths: Code.exe for the user, for everyone, and beside a code.cmd on the PATH, on Windows', () => {
   const env = { LOCALAPPDATA: 'C:\\Users\\pat\\AppData\\Local', ProgramFiles: 'C:\\Program Files',

@@ -10,7 +10,7 @@ Every button, toggle and menu in Docket is one of five kinds. The kind says what
 | **Action** | does something | a thin grey border (`--line`) | Terminal ▾ · ⏸ Pause all · ⟳ Reload all |
 | **Main action** | the one most important action on screen | solid main color (`button.primary`) | + New session, and nothing else in the bar or the list head |
 | **Filter** | changes what the list shows | a thin grey border; when on, a soft tint, a main-color border and main-color text | the ✦ Needs attention control with its Keep period · 👁 View · ❝ Search inside chats · Order · the toggle chips in the 👁 menu (✓ when on) |
-| **Indicator** | shows status | no border, muted (`--muted`); AI brand icons and 🌐 faded until signed in, then the main color | AI brand icons · 🌐 Sites · 📡 Remote · the CPU, memory and file space gauges |
+| **Indicator** | shows status | no border, muted (`--muted`); AI brand icons and 🌐 faded until signed in, then the main color | AI brand icons · 🌐 Sites · 📡 Remote · the CPU, memory and file space gauges · the update arrow (an indicator you can press: in the main color, since it shows only when an update is ready, with a soft tint when pointed at or open) |
 
 ## Why
 

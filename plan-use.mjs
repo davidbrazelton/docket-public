@@ -36,3 +36,13 @@ export function planStartNote({ on, own = false, childStarts = 0 }) {
 
 // What the session is told when the user picks "Use a plan for this work" (the session menu or the card).
 export const USE_PLAN_TEXT = 'The user asks to keep the work in this session in a Docket plan. Make one now with mcp__portal__plan_create: a title, a goal, and one task per piece of the work (each with a kind, one of build, test, decision or research, and a brief a fresh session can act on and what done looks like). If child sessions are already doing pieces of it, add their pieces as tasks and tell each child its task id, so it can claim it. The reply of plan_create says how to work the plan.';
+
+// A session that coordinates a plan, however it came to (plan_create, the session menu, a takeover, a handoff), has
+// no use for the card that offers one (#839): its open plan-offer cards ({ ev } as saved on the session's record)
+// close as 'planned'. Returns the cards' evs that changed.
+export function closePlanOffers(cards = [], own = false) {
+  if (!own) return [];
+  const evs = cards.map((c) => c.ev).filter((ev) => ev?.k === 'plan-offer' && ev.state === 'open');
+  for (const ev of evs) ev.state = 'planned';
+  return evs;
+}

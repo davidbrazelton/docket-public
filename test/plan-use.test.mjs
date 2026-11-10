@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT } from '../plan-use.mjs';
+import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT, closePlanOffers } from '../plan-use.mjs';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const server = fs.readFileSync(path.join(root, 'server.mjs'), 'utf8');
@@ -102,4 +102,23 @@ test('the session menu has Use a plan for this work only on a plans-on desk, for
   const facts = page.slice(page.indexOf('function sessionMenuFacts'), page.indexOf('function openSessionMenu'));
   assert.match(facts, /plansOn: plansOnDesk\(S\.client\)/);
   assert.match(page, /const plansOnDesk = \(id\) => \{ const c = S\.clients\.find\(\(x\) => x\.id === id\); return !!c && !c\.remote && !\['none', 'folder'\]\.includes\(c\.planSystem\); \};/);
+});
+
+test('a session that makes its own plan has its open plan-offer cards closed, however the plan came (#839)', () => {
+  const open = { k: 'plan-offer', id: 'planoffer_a', state: 'open' }, dismissed = { k: 'plan-offer', id: 'planoffer_b', state: 'dismissed' };
+  const other = { k: 'offer', id: 'o1', state: 'open' };
+  const cards = [{ ev: open }, { ev: dismissed }, { ev: other }];
+  assert.deepEqual(closePlanOffers(cards, false), [], 'no plan of its own: nothing closes');
+  assert.equal(open.state, 'open');
+  assert.deepEqual(closePlanOffers(cards, true), [open], 'only the open plan-offer changes');
+  assert.equal(open.state, 'planned');
+  assert.equal(dismissed.state, 'dismissed');
+  assert.equal(other.state, 'open', 'other cards stay as they are');
+  assert.deepEqual(closePlanOffers(cards, true), [], 'already closed');
+  // Wired where a plan gets a coordinator (plansChanged covers plan_create and plan_take_over), on a handoff, and for
+  // cards saved open before this, at start; the page says so on the closed card.
+  assert.match(server, /broadcast\(\{ t: 'plans', client: client\.id \}\);\r?\n  closePlanOffersOf\(client, plan\?\.coordinator\);/);
+  assert.match(server, /closePlanOffersOf\(client, next\.id\);/);
+  assert.match(server, /for \(const p of plansOf\(c\)\.list\(\)\) closePlanOffersOf\(c, p\.coordinator\)/);
+  assert.match(page, /st === 'planned' \? 'This session made a plan'/);
 });

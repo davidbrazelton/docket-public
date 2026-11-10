@@ -252,3 +252,18 @@ test('a handoff passes the old session\'s unfinished tasks to the new one, and l
   assert.equal(s.update(p.id, 'T1', { state: 'done' }, 'new').task.state, 'done');
   assert.deepEqual(s.passTasks(p.id, ['T1'], 'old', 'new'), []);
 });
+test("the badge's breakdown counts each state, the dropped tasks and the tasks counted as their own plans (#841)", () => {
+  const s = createPlanStore({ dir: tmp() });
+  const top = s.create({ title: 'Top', tasks: [{ kind: 'build', title: 'A' }, { kind: 'build', title: 'B' }, { kind: 'build', title: 'C' }, { kind: 'build', title: 'D' }], coordinator: 'c1' });
+  s.claim(top.id, 'T1', 'w1'); s.update(top.id, 'T1', { state: 'done' }, 'w1');
+  s.update(top.id, 'T3', { state: 'dropped', note: 'not needed' }, 'c1');
+  s.claim(top.id, 'T2', 'w2');
+  const sub = s.create({ title: 'Sub', tasks: [{ kind: 'build', title: 'x' }, { kind: 'build', title: 'y' }, { kind: 'build', title: 'z' }], coordinator: 'w2', parent: { plan: top.id, task: 'T2' } });
+  s.claim(sub.id, 'T2.1', 'w3');
+  s.update(sub.id, 'T2.3', { state: 'dropped', note: 'not needed' }, 'w2');
+  assert.deepEqual(s.rollup(top.id), { done: 1, total: 4 });
+  const b = s.breakdown(top.id);
+  assert.deepEqual(b.states, { done: 1, claimed: 1, open: 2, dropped: 2 });
+  assert.deepEqual({ ...b, states: undefined }, { states: undefined, made: 4, first: 'T1', last: 'T4', dropped: 1, subs: ['T2'], subTotal: 2 });
+  assert.equal(s.breakdown('p-none'), null);
+});

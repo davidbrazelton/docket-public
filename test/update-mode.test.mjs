@@ -1,31 +1,7 @@
-// Tests for update-mode.mjs: whether updates are pulled by themselves, and what the update card shows. Run with: npm test
+// Tests for update-mode.mjs: why files changed, and when typing holds an update. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_QUIET_MS } from '../update-mode.mjs';
-
-const waiting = { from: 'aaaaaaa', to: 'bbbbbbb', files: ['server.mjs'] };
-
-test('only auto pulls by itself; no answer yet waits like manual', () => {
-  assert.equal(pullsByItself('auto'), true);
-  assert.equal(pullsByItself('manual'), false);
-  assert.equal(pullsByItself(undefined), false);
-  assert.equal(pullsByItself('sometimes'), false);
-});
-
-test('a mode is auto or manual; anything else counts as not chosen', () => {
-  assert.equal(cleanMode('auto'), 'auto');
-  assert.equal(cleanMode('manual'), 'manual');
-  assert.equal(cleanMode('Auto'), null);
-  assert.equal(cleanMode(null), null);
-});
-
-test('the card: asks the first time, offers Update now in manual, nothing in auto or with no update', () => {
-  assert.equal(updatePrompt({ waiting, mode: undefined }), 'first');
-  assert.equal(updatePrompt({ waiting, mode: 'manual' }), 'manual');
-  assert.equal(updatePrompt({ waiting, mode: 'auto' }), null);
-  assert.equal(updatePrompt({ waiting: null, mode: undefined }), null);
-  assert.equal(updatePrompt({ waiting: null, mode: 'manual' }), null);
-});
+import { changeReason, typingNow, TYPING_QUIET_MS } from '../update-mode.mjs';
 
 test('why files changed: Docket\'s own pull (auto or Update now) vs a change made outside it', () => {
   assert.equal(changeReason({ pulledBy: 'auto', from: 'a', to: 'b' }).short, 'taking in an update (auto)');

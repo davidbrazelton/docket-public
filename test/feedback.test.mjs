@@ -20,7 +20,7 @@ const live = [
   { id: 's2', client: 'init', title: 'Initech notes', cwd: '/Users/bob/initech', status: 'idle' },
   { id: 's3', client: 'init', title: 'old', status: 'ended' },
 ];
-const state = { stallStop: false, autoPause: true, updates: { mode: 'auto' }, remoteControl: { on: true, secret: 'remote-secret-123', desk: 'acme' }, sessions: { s1: { title: 'Fix the payroll export' } },
+const state = { stallStop: false, autoPause: true, remoteControl: { on: true, secret: 'remote-secret-123', desk: 'acme' }, sessions: { s1: { title: 'Fix the payroll export' } },
   feedback: { repo: 'acme/secret-repo', token: 'github_pat_SECRETTOKEN0123456789' }, installId: '0a1b2c3d' };
 const page = {
   view: 'session', inGroup: true, viewport: { w: 1280, h: 800 }, screen: { w: 1920, h: 1080 }, dpr: 1.5, platform: 'Windows',
@@ -43,7 +43,7 @@ test('a report carries every field the issue lists', () => {
   assert.deepEqual(f.viewport, { w: 1280, h: 800 }); assert.equal(f.dpr, 1.5);
   assert.equal(f.ua, page.ua, 'the raw user agent goes as it is');
   assert.deepEqual(f.brands, ['claude', 'codex']);
-  assert.deepEqual(f.features, { stopStuckSteps: false, continueAfterCrash: true, pauseOnSleep: true, updates: 'automatic', remoteConnection: true, paused: false });
+  assert.deepEqual(f.features, { stopStuckSteps: false, continueAfterCrash: true, pauseOnSleep: true, remoteConnection: true, paused: false });
   assert.equal(f.sessionsOpen, 2); assert.equal(f.sessionsWorking, 1);
   assert.equal(f.desks, 3); assert.equal(f.remoteDesks, 1);
   assert.match(r.title, /^Feedback: Let me pin a session$/);

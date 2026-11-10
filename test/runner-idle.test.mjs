@@ -2,7 +2,7 @@
 // as Pause all counts them. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { restartBlocked, notQuiet, restartWaiter, QUIET_MS } from '../runner-idle.mjs';
+import { restartBlocked, notQuiet, busyHow, restartWaiter, QUIET_MS } from '../runner-idle.mjs';
 import { holdsRunner, RUNNER_RESTART_NOTE } from '../pause.mjs';
 
 const now = 10 * QUIET_MS;
@@ -105,11 +105,27 @@ test('Update now anyway skips the wait', () => {
   assert.equal(timers.count, 0);
 });
 
-test('the page offers Update when quiet and Update now anyway, and shows the wait', async () => {
+test('busyHow names what one session is doing, for the update arrow\'s list', () => {
+  assert.equal(busyHow(quiet, now), '');
+  assert.equal(busyHow({ ...quiet, busy: true }, now), 'replying');
+  assert.equal(busyHow({ ...quiet, busy: true, asks: 2 }, now), 'waiting on an answer');
+  assert.equal(busyHow({ ...quiet, held: true }, now), 'background work running');
+  assert.equal(busyHow({ ...quiet, held: true, scheduled: true }, now), 'scheduled task running');
+  assert.equal(busyHow({ ...quiet, lastAt: now - 1000 }, now), 'active in the last minute');
+  assert.equal(busyHow({ ...quiet, busy: true, ended: true }, now), '');
+});
+
+test('the update arrow: no card and no modes; nothing busy updates at once, busy asks, waiting offers Update now', async () => {
   const fs = await import('node:fs');
   const page = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(page, /data-upd="quiet"[^>]*>Update when quiet</);
-  assert.match(page, /data-upd="anyway-now"[^>]*>Update now anyway</);
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
+  assert.doesNotMatch(page, /id="updateOffer"|has-update|updmode|About · update waiting/);
+  assert.doesNotMatch(server, /\/api\/update\/mode|updates\??\.mode ===/);
+  assert.match(page, /<span class="spacer"><\/span>\s*<button class="ghost upd-btn" id="updBtn"/, 'first of the right-aligned controls');
+  assert.match(page, /if \(u\.busyNow\) return updPop\('busy', u\);\s*takeUpdate\(false\);/, 'nothing busy: no extra step');
+  assert.match(page, /data-upd="now"[^>]*>Update now<\/button><button class="primary" data-upd="wait"[^>]*>Wait for them</);
   assert.match(page, /Update waiting for sessions to finish/);
-  assert.match(page, /if \(busy\) return showQuietChoice\(busy\);\s*return takeUpdate\(false\);/, 'nothing busy: no extra step');
+  assert.match(page, /data-upd="restart"[^>]*>Update now</);
+  assert.match(page, /prefers-reduced-motion: reduce\) \{ header\.top \.upd-btn\.waiting svg \{ animation: none/);
+  assert.match(page, /\['about', 'About', \[\['update', 'Check for updates'\]\]\]/);
 });

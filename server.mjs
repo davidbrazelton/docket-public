@@ -18,7 +18,7 @@ import { netError, refused, netText, withRetries, noConversation, startMode, con
 import { KINDS as PILOT_KINDS, cleanRules as cleanPilotRules, ruleFor as pilotRuleFor, mayAnswer as pilotMayAnswer, logLine as pilotLogLine, DEFAULT_RULES as PILOT_DEFAULT_RULES, stricter as stricterLevel } from './pilot.mjs';
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting, keptReason, markUnreadReason } from './needs-you.mjs';
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
-import { notQuiet, restartWaiter } from './runner-idle.mjs';
+import { notQuiet, busyHow, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
 import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE, lowGearNote } from './reports.mjs';
 import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from './keep-warm.mjs';
@@ -31,6 +31,7 @@ import { transcriptTimes, asyncHookEvents, covered, turnSplit } from './chat-tim
 import { createSampler, turnLine, appendLine } from './turn-times.mjs';
 import { KEEP_DAYS as ACTIVITY_KEEP_DAYS, stateOf, createTally, slotKey, slotStart, dayOf as localDay, turnSpans, createRebuild, mergeRebuilt, runOnce, rollUp, today as activityToday } from './activity.mjs';
 import { DOCKET_BLOCK, SESSION_BLOCK, messageFrom, lastTyped, mergeTouches } from './touches.mjs';
+import { narrationText } from './narration.mjs';
 import { GEARS, gearsOf, findGear, topGearOf, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear, parentHeldGear, belowTop } from './gears.mjs';
 import { shiftUpFor, coordinatorHold } from './shift-up.mjs';
 import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines, priceReply, usageLeft, SHORT_TURNS } from './costs.mjs';
@@ -50,7 +51,7 @@ import { sourceHomes, findGroups, planRun, writeReport, readReports, reportPaths
 import { moveDesk } from './move-desk.mjs';
 import { createScreenControl, SCREEN_TOOLS } from './screen.mjs';
 import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, treeListCommand, parseTreeList, descendants, leftBehind, killCommand, commandLineCommand, relaunchesApp,
-  startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, findLite } from './platform.mjs';
+  startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, findLite, cloudFolders, profilePathCandidates } from './platform.mjs';
 import { cleanGateway, gatewayFor, loginOf, claudeRouteOf, claudeGateway, visibleGears, usableGear, modelFor, gearModelMap, liteArgs, liteCommand, loginLink, loginDone, pkceUnsupported, whoamiUser, tokenFrom, gatewayRefused, gatewayHost } from './gateway.mjs';
 import { groupProcesses, folderSize, cpuPercent, diskKeeper, breakdown, sharedServers } from './machine-use.mjs';
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
@@ -59,7 +60,7 @@ import { start as startCodex } from './engines/codex.mjs';
 import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES, PLAN_RULES_VERSION, reviewDue, planOpen } from './plans.mjs';
 import { REVIEW_EVERY_MS, reviewSent, nextReview, reviewText } from './plan-review.mjs';
 import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT } from './plan-use.mjs';
-import { planStartNote } from './plan-use.mjs';
+import { planStartNote, closePlanOffers } from './plan-use.mjs';
 import { createFolderReader, readMarkers, markerPlan, cleanPlanFolder, planFolderProblem } from './plan-folder.mjs';
 import { scanPlanSystem, switchWarning, conversionBrief, systemName } from './plan-switch.mjs';
 import { createIndex } from './search.mjs';
@@ -68,13 +69,14 @@ import { START_OFFER, startTally, startOfferKind, startOfferWords } from './star
 import { ruleText, PARENT_ONLY } from './session-rules.mjs';
 import { SETUP_OFFER, scanFile, measureUse, measureFiles, assess, quickStart, costPerToken, checkDue, setupOfferKind, headlines, setupBrief, itemTable, kTokens, dollars } from './setup-size.mjs';
 import { docketFacts, buildReport, cleanDestination, destinationInfo, sendReport, installId, today, sentToday, limitReached, countSend, limitMessage, DAILY_LIMIT } from './feedback.mjs';
-import { cleanMode, pullsByItself, updatePrompt, changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
+import { changeReason, typingNow, TYPING_RETRY_MS, TYPING_HOLD } from './update-mode.mjs';
 import { readEntries, searchEntries, lastUserMessages, readEntry, saveDue, saveShare, cleanSaveShare, SAVE_PROMPT, RECALL_NOTE, COMPACT_AT_BREAK, BREAK_COMPACT, breakCompactDue } from './recall.mjs';
 import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPrUrl, adoPRsForBranch, adoPRById, adoWorkItemIds, adoItemKey, isAdoItemKey, adoItemKeyFrom, adoPRWorkItemIds, adoWorkItems, jiraTickets, jiraMe, ticketUnread, jiraFromClaudeJson, linkTtl, githubRepo, ghStatus, ghBranchQuery, ghBranchAnswer,
   parseIssueUrl, branchIssue, githubTicket, CLOSES, CHECKS, closesOf, ghUnreadable, ghAccounts, ghAccountOrder, ghPick, ghNote, sessionBranches, sessionMadePr,
   prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe, ticketFinished } from './links.mjs';
 import { currentBranch } from './git-head.mjs';
 import { restDue, restMinutes } from './rest.mjs';
+import { PROFILE_FILE, SETTINGS, PAGE_SETTINGS, localItems, hashOf, noteChanges, profileFile, readProfile, profilePlan, planSummary } from './profile-sync.mjs';
 import { ARTIFACT_URL, artifactPublished } from './artifacts.mjs';
 import { copyPlan, runCopy, copyGroups, groupAction, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
 import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
@@ -1145,6 +1147,9 @@ function convertMessage(s, msg, { live: isLive, textCounter }) {
       if (b.type === 'text' && b.text) {
         const n = textCounter ? (textCounter[mid] = (textCounter[mid] ?? -1) + 1) : out.length;
         out.push({ k: 'text', id: `${mid}:${n}`, text: b.text });
+      } else if (narrationText(b)) {
+        // Its own id, so the streamed text blocks of the same message keep theirs (it never streams as text).
+        out.push({ k: 'text', id: `${mid}:n${content.indexOf(b)}`, text: narrationText(b) });
       } else if (b.type === 'tool_use') {
         out.push({ k: 'tool', id: b.id, name: b.name, label: toolLabel(b.name, b.input), input: b.input, status: 'running' });
         if (isLive && (TASK_TOOLS.has(b.name) || b.name.startsWith('mcp__playwright__'))) upsertTask(s, b.id, { tool: b.name, label: toolLabel(b.name, b.input), start: Date.now(), ...(b.input?.run_in_background ? { wantsBackground: true } : {}) });
@@ -1490,6 +1495,15 @@ async function usePlan(client, id, card) {
   await noticeToSession(client.id, id, USE_PLAN_TEXT, { byPerson: true });
   if (ev) { ev.state = 'used'; saveState(); const s = live.get(id); if (s) updateCard(s, ev); }
 }
+// The session now coordinates a plan: its open "Keep these sessions in a plan?" cards close (#839).
+function closePlanOffersOf(client, id) {
+  const rec = id && state.sessions[id];
+  if (!rec?.cards || !sessionPlans(client, id).own) return;
+  const evs = closePlanOffers(rec.cards, true);
+  if (!evs.length) return;
+  saveState();
+  const s = live.get(id); if (s) for (const ev of evs) updateCard(s, ev);
+}
 function dismissPlanOffer(id, card) {
   const ev = savedCard(id, 'plan-offer', card);
   if (!ev || ev.state !== 'open') throw new Error('That card is no longer open');
@@ -1540,6 +1554,7 @@ const stateText = (t) => t.state === 'waiting_outside' ? `waiting outside Docket
 // for that turn's report and go in the same wake-up (readyReports).
 function plansChanged(client, plan, nowReady = [], actor = '') {
   broadcast({ t: 'plans', client: client.id });
+  closePlanOffersOf(client, plan?.coordinator);
   if (!plan?.coordinator || plan.coordinator === actor || !nowReady.length) return;
   const by = actor && live.get(actor);
   const item = { kind: 'plan', planId: plan.id, title: plan.title, tasks: nowReady.map((t) => ({ id: t.id, title: t.title + userTag(t) })),
@@ -1577,7 +1592,7 @@ setInterval(() => { try { reviewTick(); } catch (e) { console.log('[plan review]
 function plansSummary(client) {
   if (!plansOn(client)) return { on: false, plans: [] };
   const store = plansOf(client), all = store.list();
-  return { on: true, plans: all.map((p) => ({ id: p.id, title: p.title, file: p.file, coordinator: p.coordinator, parent: p.parent, ...store.rollup(p.id, all), needsReview: reviewDue(p),
+  return { on: true, plans: all.map((p) => ({ id: p.id, title: p.title, file: p.file, coordinator: p.coordinator, parent: p.parent, ...store.rollup(p.id, all), breakdown: store.breakdown(p.id, all), needsReview: reviewDue(p),
     holders: [...new Set(p.tasks.filter((t) => t.holder && t.state !== 'done' && t.state !== 'dropped').map((t) => t.holder))] })) };
 }
 function planDetail(client, id) {
@@ -2399,6 +2414,222 @@ const scheduler = createScheduler({
 for (const sc of scheduler.list()) for (const r of sc.runs || []) {
   const rec = r.sessionId && state.sessions[r.sessionId];
   if (rec && !rec.runAt) rec.runAt = r.at;
+}
+
+// ---------- the profile: desks, schedules and settings between computers (profile-sync.mjs, #837) ----------
+// ☰ > Profile > Export and Import read and write docket-profile.json; Keep my profile in… keeps it in a folder a cloud
+// service's own app (Google Drive for desktop, OneDrive, Dropbox, iCloud Drive) copies between computers. Docket signs
+// in to none of them. state.profile: { folder, machine, meta, ids, paths, pending }, where machine is this computer's
+// own id, meta when each item last changed (noteChanges), ids the desks matched by name, and paths the folder paths
+// the person answered for paths written on another computer.
+const profileState = () => (state.profile ||= { machine: randomUUID(), meta: {}, ids: {}, paths: {} });
+const machineName = () => os.hostname();
+// state.pageSettings: the page's own settings (main color, theme, sound), which the page sends when they change.
+// pageRev counts the changes, so a page knows when one came from another computer.
+function settingsNow() {
+  return { stallStop: stallStopOn(), autoContinue: autoContinueOn(), autoPause: autoPauseOn(), restMinutes: restMinutesNow(), ...(state.pageSettings || {}) };
+}
+function setSetting(k, v) {
+  if (k === 'restMinutes') state.restMinutes = restMinutes(v);
+  else if (PAGE_SETTINGS.includes(k)) {
+    if (JSON.stringify(state.pageSettings?.[k]) === JSON.stringify(v)) return;
+    (state.pageSettings ||= {})[k] = v; state.pageRev = (state.pageRev || 0) + 1; broadcast({ t: 'page-settings' }); }
+  else if (SETTINGS[k]) state[k] = !!v;
+}
+function profileItemsNow() {
+  return localItems({ desks: CLIENTS, settings: settingsNow(),
+    schedules: scheduler.list().map((s) => ({ schedule: s, prompt: scheduler.detail(s.id)?.prompt || '' })) });
+}
+// Notes what changed here since the last look, and gives the items.
+function profileLook() {
+  const ps = profileState(), items = profileItemsNow();
+  const r = noteChanges(ps.meta, items, { machine: machineName(), now: new Date().toISOString() });
+  if (r.changed) { ps.meta = r.meta; saveState(); }
+  return items;
+}
+const isDir = (d) => { try { return fs.statSync(d).isDirectory(); } catch { return false; } };
+// This computer's path for one written on the record's computer: the answer given before, else the first guess that
+// exists here, else { ask } with the best guess for the person to confirm or change.
+function profilePlace(p, rec) {
+  const known = profileState().paths[p];
+  if (known) return { path: known };
+  const guesses = profilePathCandidates(p, { from: rec, home: os.homedir() });
+  const found = guesses.find(isDir);
+  return found ? { path: found } : { ask: guesses[0] || p };
+}
+// Applies a plan's changes; answers: { 'key|field': path } for the paths asked about. Gives the problems, in words.
+function applyProfile(changes, answers = {}) {
+  const ps = profileState(), problems = [], done = [];
+  const fix = (c) => {
+    for (const a of c.ask || []) {
+      const v = String(answers[`${c.key}|${a.field}`] ?? a.suggest ?? '').trim();
+      const ks = a.field.split('.'), last = ks.pop(); let x = c.item; for (const k of ks) x = x[k];
+      x[last] = v; if (v) ps.paths[a.from] = v;
+    }
+    return c.item;
+  };
+  const deskChanges = changes.filter((c) => c.kind === 'desk' && c.action !== 'agree');
+  if (deskChanges.length) {
+    let list = [...CLIENTS];
+    const taken = (id) => list.some((c) => c.id === id);
+    for (const c of deskChanges) {
+      if (c.action === 'remove') {
+        if ([...live.values()].some((x) => x.client === c.id)) { problems.push(`${c.name} still has sessions running here, so it stays`); continue; }
+        list = list.filter((x) => x.id !== c.id); done.push(c); continue;
+      }
+      const item = fix(c), before = list.find((x) => x.id === c.id);
+      const r = cleanCompany(item, taken);
+      if (r.error) { problems.push(r.error); continue; }
+      const out = before ? { ...r, id: c.id } : { ...r, id: taken(c.id) ? r.id : c.id };
+      // A desk whose id is taken here by another desk gets its own, and the file's id is mapped to it.
+      if (!before && out.id !== c.id) { ps.ids[c.id] = out.id; c.id = out.id; c.key = 'desk:' + out.id; }
+      list = before ? list.map((x) => (x.id === c.id ? out : x)) : [...list, out];
+      done.push(c);
+    }
+    if (!list.some((c) => !c.hidden)) problems.push('Every desk would be hidden, so the desks were left as they were');
+    else if (done.some((c) => c.kind === 'desk')) saveCompanies(list);
+  }
+  for (const c of changes.filter((x) => x.kind === 'schedule' && x.action !== 'agree')) {
+    try {
+      if (c.action === 'remove') { scheduler.remove(c.id); done.push(c); continue; }
+      const it = fix(c);
+      if (!clientById(it.client)) { problems.push(`The schedule ${c.name} is for a desk this computer does not have`); continue; }
+      if (scheduler.get(c.id)) scheduler.update(c.id, { title: it.title, cron: it.cron || undefined, fireAt: it.fireAt || undefined, folder: it.folder || '', prompt: it.prompt });
+      else scheduler.add({ id: c.id, client: it.client, title: it.title, cron: it.cron || undefined, fireAt: it.fireAt || undefined, folder: it.folder || null, prompt: it.prompt });
+      if (!!scheduler.get(c.id).enabled !== !!it.enabled) scheduler.setEnabled(c.id, it.enabled);
+      done.push(c);
+    } catch (e) { problems.push(`${c.name}: ${e.message}`); }
+  }
+  for (const c of changes.filter((x) => x.kind === 'setting' && x.action !== 'agree')) { setSetting(c.id, c.item.value); done.push(c); }
+  // What was applied (or found the same) now counts as that change, so it is not sent back as a new one.
+  const items = profileItemsNow(), now = new Date().toISOString();
+  for (const c of [...done, ...changes.filter((x) => x.action === 'agree')]) {
+    const at = c.rec?.at || now, by = c.rec?.by || machineName();
+    ps.meta[c.key] = c.action === 'remove' || !items[c.key] ? { at, by, hash: '', gone: true, synced: c.rec ? at : undefined }
+      : { at, by, hash: hashOf(items[c.key].item), ...(c.rec ? { synced: at } : {}) };
+  }
+  saveState();
+  if (done.length) logEvent('profile applied', done.map((c) => `${c.action} ${c.kind} ${c.name}`).join(', '));
+  return problems;
+}
+
+// Keeping the profile in a folder: every few seconds, note what changed here, read the file when it changed, take in
+// what is newer there (item by item), and write the file when this computer has something newer. A change whose paths
+// are not found here, and an item changed on both sides, wait in pending for the person (the page asks).
+const profilePath = () => state.profile?.folder ? path.join(state.profile.folder, PROFILE_FILE) : null;
+let profileSeen = '', profileWritten = '';
+function profileSync({ force = false } = {}) {
+  const file = profilePath();
+  if (!file) return;
+  const ps = profileState();
+  const items = profileLook();
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') { ps.error = `Could not read ${file}: ${e.message}`; return; } }
+  let file0 = { items: {} };
+  if (text) {
+    const r = readProfile(text);
+    if (r.error) { ps.error = `${file}: ${r.error}`; return; } // a cloud app partway through writing it: next time
+    file0 = r.profile;
+  }
+  ps.error = '';
+  if (text && (text !== profileSeen || force)) {
+    profileSeen = text;
+    if (text !== profileWritten) ps.lastRead = new Date().toISOString();
+    const plan = profilePlan({ local: items, incoming: file0.items, mode: 'sync', meta: ps.meta, ids: ps.ids, place: profilePlace });
+    ps.ids = plan.ids;
+    const ready = plan.changes.filter((c) => !c.ask.length);
+    if (ready.length) applyProfile(ready);
+    const waiting = { changes: plan.changes.filter((c) => c.ask.length), conflicts: plan.conflicts };
+    const had = JSON.stringify(planSummary(ps.pending || { changes: [] })), now = JSON.stringify(planSummary(waiting));
+    ps.pending = waiting.changes.length || waiting.conflicts.length ? waiting : undefined;
+    if (had !== now) broadcast({ t: 'profile' });
+  }
+  // Write what this computer has that is newer than the file's.
+  const out = profileFile({ items: profileItemsNow(), meta: ps.meta, machine: machineName(), platform: process.platform, home: os.homedir(), now: new Date().toISOString(), keep: file0.items });
+  // An item changed on both sides keeps the other computer's version in the file until the person picks one here.
+  for (const c of ps.pending?.conflicts || []) if (file0.items[c.key]) out.items[c.key] = file0.items[c.key];
+  for (const [key, rec] of Object.entries(out.items)) if (ps.meta[key] && rec.at === ps.meta[key].at) ps.meta[key].synced = rec.at;
+  if (text && hashOf(out.items) === hashOf(file0.items)) return; // the same, whatever order each computer lists them in
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const body = JSON.stringify(out, null, 2) + '\n';
+    fs.writeFileSync(file + '.tmp', body); fs.renameSync(file + '.tmp', file);
+    profileSeen = profileWritten = body; ps.lastWrite = out.savedAt; saveState();
+  } catch (e) { ps.error = `Could not write ${file}: ${e.message}`; }
+}
+setInterval(() => { try { profileSync(); } catch (e) { logEvent('profile sync failed', e?.stack || e); } }, 5000);
+setTimeout(() => { try { profileSync({ force: true }); } catch (e) { logEvent('profile sync failed', e?.stack || e); } }, 3000);
+// What ☰ > Profile shows: the folder kept in, the cloud folders found, and anything waiting on the person.
+function profileView() {
+  const ps = profileState();
+  const found = cloudFolders({ home: os.homedir(), exists: isDir, list: (d) => { try { return fs.readdirSync(d); } catch { return []; } } });
+  return { folder: ps.folder || '', file: profilePath(), machine: machineName(), lastRead: ps.lastRead || null, lastWrite: ps.lastWrite || null, error: ps.error || '',
+    suggestions: found.map((x) => ({ ...x, path: path.join(x.path, 'Docket') })), pending: ps.pending ? planSummary(ps.pending) : null };
+}
+async function myProfileRoutes(req, res, p) {
+  const ps = profileState();
+  if (req.method === 'GET' && p === '/api/my-profile') return json(res, 200, profileView());
+  // The file to save: every desk, schedule and setting, with no sign-ins, keys or tokens. dropped: the variables left out.
+  if (req.method === 'GET' && p === '/api/my-profile/export') {
+    const items = profileLook();
+    const dropped = CLIENTS.flatMap((c) => { const env = Object.keys(c.env || {}); const kept = Object.keys(items['desk:' + c.id]?.item.env || {}); return env.filter((k) => !kept.includes(k)).map((k) => `${c.name}: ${k}`); });
+    const profile = profileFile({ items, meta: ps.meta, machine: machineName(), platform: process.platform, home: os.homedir(), now: new Date().toISOString() });
+    for (const [k, r] of Object.entries(profile.items)) if (r.gone) delete profile.items[k]; // what was removed here matters only to a synced folder
+    return json(res, 200, { profile, dropped });
+  }
+  // { text, mode: merge | replace }: what importing it would change, changing nothing. Then the same with answers
+  // ({ 'key|field': path }) applies it.
+  if (req.method === 'POST' && (p === '/api/my-profile/preview' || p === '/api/my-profile/import')) {
+    const b = await readBody(req);
+    const r = readProfile(b.text || '');
+    if (r.error) return json(res, 400, { error: r.error });
+    const mode = b.mode === 'replace' ? 'replace' : 'merge';
+    const plan = profilePlan({ local: profileLook(), incoming: r.profile.items, mode, ids: ps.ids, place: profilePlace });
+    if (p.endsWith('/preview')) return json(res, 200, { ...planSummary(plan), by: r.profile.by || '', savedAt: r.profile.savedAt || null });
+    if (mode === 'replace' && !Object.keys(r.profile.items).some((k) => k.startsWith('desk:')))
+      return json(res, 400, { error: 'That profile has no desks, so Replace would remove them all. Use Merge.' });
+    ps.ids = plan.ids;
+    const problems = applyProfile(plan.changes, b.answers || {});
+    return json(res, 200, { applied: plan.changes.length, problems });
+  }
+  // { folder }: keep the profile there from now on ('' stops). The folder is made if it is not there.
+  if (req.method === 'POST' && p === '/api/my-profile/folder') {
+    const folder = String((await readBody(req)).folder || '').trim().replace(/^"(.*)"$/, '$1');
+    if (folder && !path.isAbsolute(folder)) return json(res, 400, { error: 'Give the folder\'s full path' });
+    if (folder) { try { fs.mkdirSync(folder, { recursive: true }); } catch (e) { return json(res, 400, { error: `Could not make ${folder}: ${e.message}` }); } }
+    if (folder !== (ps.folder || '')) {
+      // A new folder starts afresh: what was agreed with the old one says nothing about the new one.
+      for (const m of Object.values(ps.meta)) delete m.synced;
+      delete ps.pending; profileSeen = profileWritten = '';
+    }
+    if (folder) ps.folder = folder; else delete ps.folder;
+    saveState(); logEvent('profile folder', folder || '(none)');
+    profileSync({ force: true });
+    return json(res, 200, profileView());
+  }
+  // { answers: { 'key|field': path }, choices: { key: 'mine' | 'theirs' } }: the person's word on what waits.
+  if (req.method === 'POST' && p === '/api/my-profile/resolve') {
+    const b = await readBody(req), pend = ps.pending;
+    if (!pend) return json(res, 200, profileView());
+    const take = [...pend.changes];
+    const now = new Date().toISOString();
+    for (const c of pend.conflicts) {
+      const choice = b.choices?.[c.key];
+      if (choice === 'theirs') take.push({ ...c, action: c.theirs ? (c.mine ? 'change' : 'add') : 'remove', item: c.theirs, ask: c.ask || [] });
+      // Newer now, so it is written; and the other computer's version counts as seen, so it is not asked about again.
+      else if (choice === 'mine' && ps.meta[c.key]) Object.assign(ps.meta[c.key], { at: now, by: machineName(), synced: c.rec?.at || c.at });
+    }
+    const problems = applyProfile(take, b.answers || {});
+    delete ps.pending; saveState();
+    profileSync({ force: true });
+    return json(res, 200, { ...profileView(), problems });
+  }
+  // The page's own settings: GET { values, rev }; POST { key, value } when one changes in the page.
+  if (p === '/api/my-profile/page-settings') {
+    if (req.method === 'POST') { const b = await readBody(req); if (PAGE_SETTINGS.includes(b.key)) { setSetting(b.key, b.value ?? null); saveState(); } }
+    return json(res, 200, { values: state.pageSettings || {}, rev: state.pageRev || 0 });
+  }
+  return false;
 }
 
 // ---------- usage rows and the CSV (data/ai-usage-raw.csv, a usage tracker's columns) ----------
@@ -3754,6 +3985,7 @@ function moveHandoffPlans(client, oldId, next) {
   }
   if (!changed) return { context: '' };
   broadcast({ t: 'plans', client: client.id });
+  closePlanOffersOf(client, next.id);
   logEvent('handoff plans', `${oldId} -> ${next.id}: ${[...coordinated.map((p) => p.id), ...held.map((h) => `${h.plan}/${h.tasks.join(',')}`)].join(' ')}`);
   return { context };
 }
@@ -5911,7 +6143,7 @@ function findCutOffs() {
 // - the library list changed: run npm install first;
 // - only the page changed: open pages reload themselves (version below).
 const RESTART_CODE = 75;
-const APP_FILES = ['server.mjs', 'pilot.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'first-start.mjs', 'signin-resume.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs'];
+const APP_FILES = ['server.mjs', 'pilot.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'first-start.mjs', 'signin-resume.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs', 'profile-sync.mjs'];
 const PAGE_FILES = ['index.html', 'view.html', 'usage.html', 'plans.html'];
 const LIB_FILES = ['package.json', 'package-lock.json'];
 // While a restart waits for a quiet moment this app keeps serving the pages it started with, which go with
@@ -5946,7 +6178,7 @@ function run(cmd, args, env) {
 }
 // Docket's own pull sets ownPull ('auto' or 'now'); any other change came from outside, most often a pull run
 // in this folder by hand or by a session. That is still taken in (the new code is already on disk, and old code
-// running against new files is worse), even in manual mode, but the log and the ☰ menu say so.
+// running against new files is worse), but the log and the ☰ menu say so.
 let ownPull = null;
 let startHead = '';
 async function takeChanges() {
@@ -5960,7 +6192,7 @@ async function takeChanges() {
   if (why.moved) { updateStatus.waiting = null; noteUpdate('updated', why.detail, false); await readCommit(); broadcast({ t: 'update', update: updateInfo() }); }
   if (files.some((f) => APP_FILES.includes(f) || LIB_FILES.includes(f))) {
     restartWait.want({ why, whyDetail }); // restarts at once when nothing is working, else once it is quiet
-    if (anyway) restartWait.now(); // Update now anyway
+    if (anyway) restartWait.now(); // Update now, from the arrow's popover
     broadcast({ t: 'update', update: updateInfo() });
     return;
   }
@@ -5977,26 +6209,32 @@ async function takeChanges() {
 // A restart cuts nothing in the runner, but it does cut what runs in this app (an ask_desk run, a tool call a
 // session is making to Docket), and every open page reconnects. So, like the runner's own restart, it waits for a
 // quiet moment (runner-idle.mjs): no reply in progress, no question waiting, no background commands or subagents,
-// no ask_desk run, nothing said for a minute. It looks every 5 seconds and never forces it; Update now anyway (the card, ☰ > About) skips the wait.
+// no ask_desk run, nothing said for a minute. It looks every 5 seconds and never forces it; Update now (the update arrow in the top bar) skips the wait.
 // A scheduled run is a session like any other, so one mid-run holds it too. So does typing in a session: a
 // restart reloads every open page, which would cut into what is being typed.
 // lastTyping: the last time a page said you were typing in a session (POST /api/typing-now, at most every 5
 // seconds while you type).
 let lastTyping = 0;
+const quietRows = () => [...live.values()].filter((s) => s.status !== 'ended').map((s) => ({
+  s,
+  busy: ['starting', 'running', 'requires_action'].includes(s.status) || !!s.compacting,
+  held: holdsRunner(s, runningTasks(s)),
+  asks: s.pendingAsks?.size || 0,
+  lastAt: s.lastActivity,
+  scheduled: !!state.sessions[s.id]?.scheduleId,
+}));
 function restartHolds() {
   if (!reattachDone) return 'still reconnecting to the running sessions';
   if (typingNow(lastTyping, Date.now())) return 'you are typing in a session';
-  const sessions = [...live.values()].filter((s) => s.status !== 'ended').map((s) => ({
-    busy: ['starting', 'running', 'requires_action'].includes(s.status) || !!s.compacting,
-    held: holdsRunner(s, runningTasks(s)),
-    asks: s.pendingAsks?.size || 0,
-    lastAt: s.lastActivity,
-    scheduled: !!state.sessions[s.id]?.scheduleId,
-  }));
-  return notQuiet(sessions, Date.now(), { jobs: appJobs });
+  return notQuiet(quietRows(), Date.now(), { jobs: appJobs });
+}
+// The sessions holding the restart, by name, for the update arrow's popover: [{ title, desk, how }].
+function busyList() {
+  const now = Date.now();
+  return quietRows().map((r) => ({ title: r.s.title || 'Untitled', desk: clientById(r.s.client)?.name || '', how: busyHow(r, now) })).filter((x) => x.how);
 }
 let restarting = false, exiting = false;
-let updateAnyway = false; // Update now anyway: the pull it asked for restarts without waiting
+let updateAnyway = false; // Update now (the arrow's popover): the pull it asked for restarts without waiting
 const restartWait = restartWaiter({
   check: restartHolds,
   log: (why) => logEvent('waiting for a quiet moment to restart', why),
@@ -6087,14 +6325,15 @@ async function restartDocket() {
 // are some, fast-forward this folder to them; takeChanges above then takes them in, as after a pull by hand.
 // It never pulls over local work: a folder on another git branch, with edits not in a git commit, or with
 // git commits GitHub doesn't have is left alone, and ☰ > About says why.
-// Only in auto mode (state.updates.mode) does it pull by itself; otherwise it notes the update as waiting
-// and the page offers Update now (and, before a mode is chosen, asks which mode to use).
+// It always pulls by itself (a state.updates.mode saved by an older Docket is ignored); while you type it holds
+// the update as waiting, and the page's update arrow offers Update now.
 // The repo can be private on a personal GitHub account while this computer's default git sign-in is another
 // account, so the fetch signs in with `gh auth token --user <owner>` (the account in the origin address, or
 // DOCKET_GITHUB_USER), handed to git for that one command only. gh's active account is never switched.
 const UPDATE_BRANCH = 'master';
+// The version this app started on, for the arrow's "from → to" (package.json on disk changes with a pull before the restart).
+const RUNNING_VERSION = (() => { try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch { return ''; } })();
 const updateStatus = { checking: false, commit: '', waiting: null, ...(state.updates?.last || {}) }; // last: { at, result, detail }; waiting: { from, to, files }
-const updateMode = () => cleanMode(state.updates?.mode);
 const updateMinutes = () => (Number.isFinite(state.updates?.minutes) ? state.updates.minutes : 5);
 let updateTimer = null;
 // typingHeld: the last check found an update and held it because you are typing (lastTyping, above), so the
@@ -6130,7 +6369,7 @@ async function githubSignIn() {
 }
 // One check at a time: asking while one runs (Check now during the timer's) waits for that one.
 let updateRun = null;
-// pull: take a waiting update now (Update now), whatever the mode; it waits for a check already running first.
+// pull: take a waiting update now (Update now), even while you type; it waits for a check already running first.
 const checkForUpdate = async (pull = false) => {
   if (pull && updateRun) await updateRun;
   return (updateRun ||= lookForUpdate(pull).finally(() => { updateRun = null; broadcast({ t: 'update', update: updateInfo() }); }));
@@ -6151,12 +6390,10 @@ async function lookForUpdate(pull) {
     const dirty = (await git(['status', '--porcelain', '--untracked-files=no'])).out.trim();
     if (dirty) return noteUpdate('skipped', `This folder has edits that are not in a git commit:\n${dirty}`);
     const files = (await git(['diff', '--name-only', head, theirs])).out.split('\n').map((x) => x.trim()).filter(Boolean);
-    if (!pull && !pullsByItself(updateMode())) {
-      updateStatus.waiting = { from: head.slice(0, 7), to: theirs.slice(0, 7), files };
-      return noteUpdate('update waiting', `${head.slice(0, 7)} → ${theirs.slice(0, 7)}: ${files.join(', ')}`);
-    }
-    if (!pull && typingNow(lastTyping, Date.now())) { // auto, but you are typing: Update now is never held
-      updateStatus.waiting = { from: head.slice(0, 7), to: theirs.slice(0, 7), files };
+    const toVersion = (await git(['show', `${theirs}:package.json`])).out.match(/"version":\s*"([^"]+)"/)?.[1] || '';
+    const what = { from: head.slice(0, 7), to: theirs.slice(0, 7), files, fromVersion: RUNNING_VERSION, toVersion };
+    if (!pull && typingNow(lastTyping, Date.now())) { // you are typing: Update now is never held
+      updateStatus.waiting = what;
       typingHeld = true; scheduleUpdates(TYPING_RETRY_MS);
       return noteUpdate('held', `${head.slice(0, 7)} → ${theirs.slice(0, 7)}: ${TYPING_HOLD}.`);
     }
@@ -6165,7 +6402,8 @@ async function lookForUpdate(pull) {
     const m = await git(['merge', '--ff-only', theirs]);
     if (m.code !== 0) { ownPull = null; return noteUpdate('failed', `The pull did not go through: ${m.out.trim()}`); }
     startHead = theirs; // Docket's own pull: not a change from outside
-    const how = by === 'now' ? 'Pulled on Update now' : 'Pulled by itself (Updates: automatic)';
+    updateStatus.taken = what; // what the arrow says while the restart waits
+    const how = by === 'now' ? 'Pulled on Update now' : 'Pulled by itself';
     noteUpdate('updated', `${how}: ${head.slice(0, 7)} → ${theirs.slice(0, 7)}: ${files.join(', ')}`, by === 'now' ? 'updated (Update now)' : 'updated (auto)');
     // Take it in now rather than counting on the folder watch alone.
     for (const x of files) if (x in startHashes) changedFiles.add(x);
@@ -6188,10 +6426,10 @@ function updateInfo() {
   let version = ''; try { version = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version; } catch {}
   // what is waiting to be deleted, so nothing on that list is silently forgotten
   const toDelete = (state.cleanup || []).map((x) => ({ path: x.path, at: x.at, recycle: !!x.recycle }));
-  const { checking, commit, at, result, detail, waiting } = updateStatus, mode = updateMode();
-  const w = restartWait.pending, restartWaiting = w || restarting ? { since: w?.since || Date.now(), why: w ? w.why : '', restarting } : null;
-  // busyNow: what is working right now, so Update now can offer to wait for it
-  return { version, commit, branch: UPDATE_BRANCH, minutes: updateMinutes(), checking, at, result, detail, mode, waiting, prompt: updatePrompt({ waiting, mode }), toDelete, restartWaiting, busyNow: restartHolds() };
+  const { checking, commit, at, result, detail, waiting, taken } = updateStatus;
+  const w = restartWait.pending, restartWaiting = w || restarting ? { since: w?.since || Date.now(), why: w ? w.why : '', restarting, taken: taken || null } : null;
+  // busyNow: what is working right now, so Update now can offer to wait for it; busyList: those sessions by name
+  return { version, commit, branch: UPDATE_BRANCH, minutes: updateMinutes(), checking, at, result, detail, waiting, toDelete, restartWaiting, busyNow: restartHolds(), busyList: busyList() };
 }
 readCommit();
 git(['rev-parse', 'HEAD']).then((r) => { if (r.code === 0 && !startHead) startHead = r.out.trim(); }); // the commit this app started on
@@ -9113,6 +9351,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { on: autoContinueOn() });
     }
     if (p.startsWith('/api/screen') && await screenRoutes(req, res, url, p) !== false) return;
+    if (p.startsWith('/api/my-profile') && await myProfileRoutes(req, res, p) !== false) return;
     if (p === '/api/auto-pause') {
       if (req.method === 'POST') { state.autoPause = !!(await readBody(req)).on; saveState(); }
       return json(res, 200, { on: autoPauseOn(), watching: !!powerWatch });
@@ -9187,14 +9426,6 @@ const server = http.createServer(async (req, res) => {
       updateAnyway = !!(await readBody(req)).anyway;
       await checkForUpdate(true);
       if (updateStatus.result !== 'updated') { if (updateAnyway) restartWait.now(); updateAnyway = false; } // nothing new pulled: an update already waiting goes now
-      return json(res, 200, updateInfo());
-    }
-    if (req.method === 'POST' && p === '/api/update/mode') { // { mode: 'auto' | 'manual' }; auto takes a waiting update at once
-      const mode = cleanMode((await readBody(req)).mode);
-      if (!mode) return json(res, 400, { error: 'Give mode auto or manual' });
-      state.updates = { ...state.updates, mode }; saveState();
-      if (mode === 'auto' && updateStatus.waiting) checkForUpdate();
-      broadcast({ t: 'update', update: updateInfo() });
       return json(res, 200, updateInfo());
     }
     if (req.method === 'POST' && p === '/api/update/settings') { // { minutes }: how often to check, 0 = never
@@ -9986,6 +10217,8 @@ server.listen(PORT, '127.0.0.1', () => {
   // The restart check: paused automatically before a shutdown, so carry on now that Docket is back.
   reattached.then(findCutOffs);
   setTimeout(() => fillAllTouches(), 15000); // once per desk, after the start is over
+  // Cards saved open before #839 in sessions that already coordinate a plan.
+  for (const c of CLIENTS) if (plansOn(c)) try { for (const p of plansOf(c).list()) closePlanOffersOf(c, p.coordinator); } catch (e) { console.log('[plan offers]', e.message); }
   setTimeout(() => checkAllDesks(), 20000); // the Desk check, so it is fresh after every update
   reattached.then(() => { if (autoPauseOn() && autoPaused(state.paused)) setTimeout(() => resumeAll('restart').catch((e) => logEvent('resume after restart failed', e.message)), 10000); });
 });

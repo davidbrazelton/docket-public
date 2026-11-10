@@ -103,12 +103,9 @@ Docket opens at http://localhost:4400 (only this computer can open it). The firs
 
 ## Updates
 
-Docket updates itself from this repo. Every 5 minutes it checks GitHub for new git commits on `master`; this repo is public, so no GitHub sign-in is needed. The first time an update arrives, a card in the lower-right corner asks how you want updates:
+Docket updates itself from this repo. Every 5 minutes it checks GitHub for new git commits on `master`; this repo is public, so no GitHub sign-in is needed. When one arrives, Docket pulls it into its folder and restarts itself once no session is busy; sessions keep working. Until then a down arrow shows in the top bar: click it to update now.
 
-- **Automatic:** Docket pulls the update into its folder and restarts itself. Sessions keep working.
-- **Manual:** it only says an update is waiting; **Update now** in the card or the ☰ menu takes it.
-
-Change it any time in **☰ > Settings > Updates**. The ☰ menu shows the version and when it last checked. Docket never updates over your own changes: if you edit files in the Docket folder, it skips the update and the menu says why.
+The ☰ menu shows the version and when it last checked. Docket never updates over your own changes: if you edit files in the Docket folder, it skips the update and the menu says why.
 
 ## License
 

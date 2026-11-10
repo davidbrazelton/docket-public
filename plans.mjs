@@ -417,5 +417,24 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
     }
     return { done, total };
   }
-  return { dir, read, list, create, addTasks, claim, update, setCoordinator, passTasks, setGoal, markReviewed, rollup, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
+  // What lies behind rollup's two numbers, for the plan badge's hover (#841): the smallest pieces by state (dropped
+  // ones too, which rollup leaves out), and this plan's own tasks: how many were made, which were dropped, and which
+  // count as their own plan's tasks instead of themselves.
+  function breakdown(id, all = list()) {
+    const p = all.find((x) => x.id === id); if (!p) return null;
+    const states = {};
+    const walk = (q, seen) => {
+      if (!q || seen.has(q.id)) return; seen.add(q.id);
+      for (const t of q.tasks) {
+        const sub = t.state !== 'dropped' && t.plan && rollup(t.plan, all).total ? all.find((x) => x.id === t.plan) : null;
+        if (sub) walk(sub, seen); else states[t.state] = (states[t.state] || 0) + 1;
+      }
+    };
+    walk(p, new Set());
+    const subs = p.tasks.filter((t) => t.state !== 'dropped' && t.plan && rollup(t.plan, all).total);
+    return { states, made: p.tasks.length, first: p.tasks[0]?.id || '', last: p.tasks.at(-1)?.id || '',
+      dropped: p.tasks.filter((t) => t.state === 'dropped').length,
+      subs: subs.map((t) => t.id), subTotal: subs.reduce((n, t) => n + rollup(t.plan, all).total, 0) };
+  }
+  return { dir, read, list, create, addTasks, claim, update, setCoordinator, passTasks, setGoal, markReviewed, rollup, breakdown, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
 }
