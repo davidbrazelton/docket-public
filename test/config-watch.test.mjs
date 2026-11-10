@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { configFiles, readPrint, configChanges, reloadDecision, rulesNote, reloadNote } from '../config-watch.mjs';
+import { configFiles, readPrint, configChanges, reloadDecision, rulesNote, reloadNote, screenChange } from '../config-watch.mjs';
 
 function setup() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'docket-cfg-'));
@@ -159,4 +159,12 @@ test('a print taken with the timestamps in (before #575) does not reload on a ti
   const old = { [path.resolve(mk)]: { kind: 'marketplaces', label: 'plugin marketplaces', h: 'raw-file-hash', json: { official: { source: { repo: 'o' }, lastUpdated: '1' } } } };
   t.write(mk, { official: { source: { repo: 'o' }, lastUpdated: '2' } });
   assert.deepEqual(configChanges(old, t.print()).reload, []);
+});
+
+test('a session whose desk switched screen control since it started is reloaded with a note saying why (#877)', () => {
+  assert.equal(screenChange(undefined, true), null); // has not asked for its tools yet
+  assert.equal(screenChange(true, true), null);
+  assert.equal(screenChange(false, false), null);
+  assert.equal(screenChange(false, true), 'Screen control turned on for this desk: screen tools added');
+  assert.equal(screenChange(true, false), 'Screen control turned off for this desk: screen tools removed');
 });

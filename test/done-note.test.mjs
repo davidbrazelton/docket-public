@@ -74,6 +74,8 @@ test('agree-done to a child already marked done is a note, no turn; otherwise a 
   const kid = (await api('/api/sessions', { client: 't1', parentId: parent, title: 'Kid', text: 'do the kid work', engine: 'grok', settings: { permissionMode: 'bypassPermissions' } })).id;
   await waitFor('the kid to answer', async () => (await texts(kid)).some((t) => t.startsWith('got: do the kid work')));
 
+  // state is another name for label (#864): the same call works either way.
+  assert.match(await call(kid, 'mark_turn', { state: 'question' }), /will say "question"/);
   // The kid says it is ready to close: its turn is marked done.
   assert.match(await call(kid, 'mark_turn', { label: 'done' }), /will say "done"/);
   const before = await turns(kid);

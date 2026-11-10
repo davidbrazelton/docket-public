@@ -15,12 +15,12 @@ import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, wokeByItself, noteWoke, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
 import { netError, refused, netText, withRetries, noConversation, startMode, continueNudge, firstMessage, reportText, firstStore } from './first-start.mjs';
-import { KINDS as PILOT_KINDS, cleanRules as cleanPilotRules, ruleFor as pilotRuleFor, mayAnswer as pilotMayAnswer, logLine as pilotLogLine, DEFAULT_RULES as PILOT_DEFAULT_RULES, stricter as stricterLevel } from './pilot.mjs';
+import { KINDS as PILOT_KINDS, cleanRules as cleanPilotRules, ruleFor as pilotRuleFor, mayAnswer as pilotMayAnswer, logLine as pilotLogLine, DEFAULT_RULES as PILOT_DEFAULT_RULES, stricter as stricterLevel, pilotDeskEntry, pilotSessionRefusal } from './pilot.mjs';
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting, keptReason, markUnreadReason } from './needs-you.mjs';
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, busyHow, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE, lowGearNote } from './reports.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnLabelOf, BEFORE_REPLY, turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE, lowGearNote } from './reports.mjs';
 import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from './keep-warm.mjs';
 import { WAITS, CONDITIONS, parseWait, waitWhat, prVerdict, sessionVerdict, portVerdict, portAnswers, timeoutLine, nextLook, waitInline, kindOf, checksOf, stateLine, branchPr } from './waits.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
@@ -31,7 +31,7 @@ import { transcriptTimes, asyncHookEvents, covered, turnSplit } from './chat-tim
 import { createSampler, turnLine, appendLine } from './turn-times.mjs';
 import { KEEP_DAYS as ACTIVITY_KEEP_DAYS, stateOf, createTally, slotKey, slotStart, dayOf as localDay, turnSpans, createRebuild, mergeRebuilt, runOnce, rollUp, today as activityToday } from './activity.mjs';
 import { DOCKET_BLOCK, SESSION_BLOCK, messageFrom, lastTyped, mergeTouches } from './touches.mjs';
-import { narrationText } from './narration.mjs';
+import { narrationText, thinTurn, THIN_NOTE } from './narration.mjs';
 import { GEARS, gearsOf, findGear, topGearOf, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear, parentHeldGear, belowTop } from './gears.mjs';
 import { shiftUpFor, coordinatorHold } from './shift-up.mjs';
 import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines, priceReply, usageLeft, SHORT_TURNS } from './costs.mjs';
@@ -40,7 +40,7 @@ import { defaultCodexHome, codexSessions, codexRows } from './codex-usage.mjs';
 import { connectionOf, parseAwsConfig, kindOfKey } from './connection.mjs';
 import { sessionTimeline, sessionSkills, buildProfile, parseMcpList, TIMELINE_CATS } from './profile.mjs';
 import { hooksFor, hooksOffFor, cleanDocketHooks } from './docket-hooks.mjs';
-import { configFiles, readPrint, configChanges, reloadDecision, rulesNote, reloadNote } from './config-watch.mjs';
+import { configFiles, readPrint, configChanges, reloadDecision, rulesNote, reloadNote, screenChange } from './config-watch.mjs';
 import { LAYERS, cleanSettingSources, writePluginOn, GROK_COMPAT, writeGrokCompat } from './switches.mjs';
 import { sourceFrom, cloneCommands, noPrompts, plainError, readMarket, isClone, hostOf, CLONES } from './plugin-sources.mjs';
 import { makeGrokHome, writeGrokHooks, signedInFrom, grokAccount, deviceLink, isInside, HOOK_FILE as GROK_HOOK_FILE } from './grok-home.mjs';
@@ -57,10 +57,10 @@ import { groupProcesses, folderSize, cpuPercent, diskKeeper, breakdown, sharedSe
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
 import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexAccount, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
-import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES, PLAN_RULES_VERSION, reviewDue, planOpen } from './plans.mjs';
+import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES, PLAN_RULES_VERSION, reviewDue, planOpen, phaseGroups } from './plans.mjs';
 import { REVIEW_EVERY_MS, reviewSent, nextReview, reviewText } from './plan-review.mjs';
 import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT } from './plan-use.mjs';
-import { planStartNote, closePlanOffers } from './plan-use.mjs';
+import { planStartNote, closePlanOffers, inConversion, secondPlanRefusal, ownPlanOf } from './plan-use.mjs';
 import { createFolderReader, readMarkers, markerPlan, cleanPlanFolder, planFolderProblem } from './plan-folder.mjs';
 import { scanPlanSystem, switchWarning, conversionBrief, systemName } from './plan-switch.mjs';
 import { createIndex } from './search.mjs';
@@ -910,7 +910,7 @@ setInterval(() => { for (const s of live.values()) if (s.status !== 'ended' && !
 // A foreground step stuck mid-turn (see stalledSteps in tasks.mjs): the row shows it, and once past its
 // full limit Docket stops the turn the way the Stop button does and tells the session what happened, so
 // the person's queued messages are not left unread behind a step that will never answer. The person can
-// turn the stopping off in ☰ > Settings; the tag stays either way.
+// turn the stopping off in ☰ > Docket settings; the tag stays either way.
 const stallStopOn = () => state.stallStop !== false;
 function checkStalls(s) {
   const steps = stalledSteps(s.tasks, { status: s.status, queuedAt: s.queuedAt || 0 });
@@ -1011,7 +1011,7 @@ function startAgain(s, note) {
 
 // ---------- resting idle sessions (the rules are in rest.mjs) ----------
 // An idle session keeps its claude process, its connected services and any browser in memory while it is open. Past
-// ☰ > Settings > Rest idle sessions (state.restMinutes, default 60) Docket ends that process but keeps the session in
+// ☰ > Docket settings > Rest idle sessions (state.restMinutes, default 60) Docket ends that process but keeps the session in
 // the list, with its chat, marked resting; the next message to it (typed, send_to_session, a schedule, a report)
 // starts it again with resume (wakeSession). It counts as not running, so after an app restart it is a saved session.
 const restMinutesNow = () => restMinutes(state.restMinutes);
@@ -1133,6 +1133,9 @@ function resultText(content) {
   return '';
 }
 
+// What the thin-reply check needs of a message's blocks (#863), without tool inputs or whole signatures.
+const slimBlocks = (content) => (Array.isArray(content) ? content : []).map((b) => b.type === 'thinking' ? { type: b.type, thinking: b.thinking || '', signature: String(b.signature || '').slice(0, 64) } : b.type === 'text' ? { type: b.type, text: b.text } : { type: b.type });
+
 // Who a message read back from a saved transcript came from (DOCKET_BLOCK, SESSION_BLOCK, messageFrom): touches.mjs.
 // Turn one Messages-API style message (live or from a saved transcript) into page events.
 function convertMessage(s, msg, { live: isLive, textCounter }) {
@@ -1250,6 +1253,7 @@ function handleSdkMessage(s, m) {
     case 'assistant': {
       if (!m.parent_tool_use_id && (s.freshStart || state.sessions[s.id]?.firstPending)) gotThrough(s); // Claude Code has its first message
       for (const b of m.message?.content || []) if (b.type === 'tool_use') shiftUpForWork(s, b.name, b.input, b.id).catch(() => {});
+      if (!s.pingTurn) (s.turnBlocks ||= []).push(...slimBlocks(m.message?.content)); // for the thin-reply check when it ends (#863)
       for (const ev of s.pingTurn ? [] : convertMessage(s, m, { live: true, textCounter: s.textCounter })) {
         if (ev.k === 'text') {
           const existing = s.events.find((x) => x.k === 'text' && x.id === ev.id);
@@ -1315,8 +1319,10 @@ function handleSdkMessage(s, m) {
       const turnTools = s.events.filter((e) => e.k === 'tool' && e.at >= Date.now() - (m.duration_ms || 0)).map((e) => [e.at, e.endAt]);
       const split = hookSplit(s, m.duration_ms); // how hooks held the turn up, for its Done line (#743)
       if (!s.pingTurn) logTurnTime(s, m, err, split, turnTools);
+      const thin = !err && thinTurn(s.turnBlocks || []); s.turnBlocks = []; // its answer was saved only as a short or empty narration (#863)
+      if (thin && state.sessions[s.id]) { state.sessions[s.id].thinNote = true; saveState(); logEvent(`thin reply: ${sessionTag(s)}`, 'a narration block held more of the answer than the reply'); }
       const endedQuietly = !quiet && endTurnMark(s, err); // its Done line says so, and the chat folds the turn (#672)
-      addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err, ...(endedQuietly ? { quiet: true } : {}), ...(split || {}) });
+      addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err, ...(endedQuietly ? { quiet: true } : {}), ...(thin ? { thin: true } : {}), ...(split || {}) });
       s.reportNews = err ? '' : endedQuietly ? 'quiet' : s.turnNews || ''; s.turnNews = ''; s.costSeen = m.total_cost_usd || 0; // what its report is, for a held turn too (#734)
       s.stats = statsFor(clientById(s.client), sessionFile(clientById(s.client), s.id)) || s.stats;
       setTimeout(() => refreshUsage(clientById(s.client), s.id), s.engine === 'grok' ? 3000 : 1000); // Grok writes usage.json just after the turn
@@ -1440,7 +1446,9 @@ function crossingTools(parent) {
 // desks never share a plan. Only sessions that use a plan carry its full rules and tools (planUseOf, plan-use.mjs).
 const plansOn = (client) => !!client && plansOnFor(client.planSystem);
 // A session converting a desk onto Docket's plans (#700) has the plan tools before the desk switches: it makes them.
-const plansOnIn = (client, id) => plansOn(client) || (!!id && !!client?.planSwitch && plansOnFor(client.planSwitch.to) && client.planSwitch.session === id);
+// So do the sessions it starts, one per plan file (#858).
+const converting = (client, id) => !!client && inConversion(id, client.planSwitch, (x) => parentOf(client, x));
+const plansOnIn = (client, id) => plansOn(client) || converting(client, id);
 const planStores = new Map();
 function plansOf(client) {
   const dir = path.resolve(DATA_DIR, 'plans', client.id);
@@ -1449,9 +1457,11 @@ function plansOf(client) {
 }
 // A session's title when Docket knows one ('' rather than Untitled).
 const knownTitle = (client, id) => { const t = id ? sessionTitle(client, id) : ''; return t === 'Untitled' ? '' : t; };
-// The plan a session coordinates, and the tasks it holds (not yet done) in any plan of its desk.
+// The plan a session coordinates (owns: all of them, several only for a conversion session, #858), and the tasks it
+// holds (not yet done) in any plan of its desk.
 function sessionPlans(client, id, all = plansOf(client).list()) {
-  return { own: all.find((p) => p.coordinator === id) || null,
+  const owns = all.filter((p) => p.coordinator === id);
+  return { own: owns[0] || null, owns,
     holds: all.flatMap((p) => p.tasks.filter((t) => t.holder === id && t.state !== 'done' && t.state !== 'dropped').map((t) => ({ plan: p, task: t }))) };
 }
 // "p-ab12/T3" (or "p-ab12/T3.2" in a plan under a task) or a plan id and a task id.
@@ -1464,7 +1474,7 @@ function planUseOf(s) {
   const client = clientById(s?.client);
   if (!plansOnIn(client, s.id) || !s.id) return 'none';
   const all = plansOf(client).list(), mine = sessionPlans(client, s.id, all), pid = parentOf(client, s.id);
-  return planUse({ on: true, own: !!mine.own, holds: mine.holds.length > 0, parentOwns: !!pid && all.some((p) => p.coordinator === pid) });
+  return planUse({ on: true, own: !!mine.own, holds: mine.holds.length > 0, parentOwns: !!pid && all.some((p) => p.coordinator === pid), converting: converting(client, s.id) });
 }
 // A session that started without the full plan rules gets them once, in the reply of the first plan tool it calls.
 function withPlanRules(s, r) {
@@ -1517,10 +1527,10 @@ function dismissPlanOffer(id, card) {
   const s = live.get(id); if (s) updateCard(s, ev);
 }
 // Which plan a tool means when it names none. Workers: the plan of the session that started them (their
-// coordinator). Readers: their own plan first.
+// coordinator). Readers: their own plan first. A conversion session with several plans names the one it means (#858).
 function planFor(client, s, given, { want = 'read', task } = {}) {
   if (given) return given;
-  const all = plansOf(client).list(), mine = sessionPlans(client, s.id, all);
+  const all = plansOf(client).list(), found = sessionPlans(client, s.id, all), mine = { ...found, own: found.owns.length === 1 ? found.own : null };
   const ofParent = () => { const pid = parentOf(client, s.id); return pid ? all.find((p) => p.coordinator === pid)?.id : ''; };
   if (want === 'claim') return ofParent() || mine.own?.id || '';
   if (want === 'update') return mine.holds.find((h) => h.task.id === task)?.plan.id || mine.own?.id || ofParent() || '';
@@ -1538,14 +1548,20 @@ function planText(client, p) {
   // The user's steps at a glance (#652), before the full list.
   const mine = userSteps(p), ready0 = readyTasks(p);
   if (mine.length) lines.push('', `The user's steps (${mine.length} left): ${mine.map((t) => `${t.id} ${t.title} (${ready0.includes(t) ? 'their turn now' : stateText(t)})`).join('; ')}`);
-  lines.push('');
-  for (const t of p.tasks) {
-    const sub = t.plan && all.find((x) => x.id === t.plan), sr = sub && store.rollup(sub.id, all);
-    lines.push(`[${t.state === 'done' ? 'x' : t.state === 'dropped' ? '-' : ' '}] ${t.id}${t.kind ? ` (${t.kind})` : ''} ${t.title}${t.forUser ? ' · the user\'s step' : ''} · ${stateText(t)}${t.holder ? ` · held by ${holderText(client, t)}` : ''}${t.after.length ? ` · after ${t.after.join(', ')}` : ''}`);
-    if (t.brief) lines.push(`    Brief: ${t.brief.replace(/\n/g, '\n    ')}`);
-    if (t.note) lines.push(`    Note: ${t.note.replace(/\n/g, '\n    ')}`);
-    for (const l of t.links) lines.push(`    Link: ${l}`);
-    if (sub) lines.push(`    Its own plan: ${sub.id} "${sub.title}", ${sr.done} of ${sr.total} done`);
+  // A plan with phases (#869) lists its tasks under them, in phase order, each with its own progress.
+  const phases = store.phaseRollup(p.id, all);
+  if (phases.length) lines.push('', `Phases: ${phases.filter((g) => g.name).map((g) => `${g.name} (${g.done} of ${g.total} done)`).join('; ')}`);
+  for (const g of phaseGroups(p)) {
+    lines.push('');
+    if (phases.length) { const r = phases.find((x) => x.name === g.name); lines.push(`${g.name ? `Phase: ${g.name}` : 'In no phase'} · ${r.done} of ${r.total} done${g.tasks.length ? '' : ' · no tasks yet'}`); }
+    for (const t of g.tasks) {
+      const sub = t.plan && all.find((x) => x.id === t.plan), sr = sub && store.rollup(sub.id, all);
+      lines.push(`[${t.state === 'done' ? 'x' : t.state === 'dropped' ? '-' : ' '}] ${t.id}${t.kind ? ` (${t.kind})` : ''} ${t.title}${t.forUser ? ' · the user\'s step' : ''} · ${stateText(t)}${t.holder ? ` · held by ${holderText(client, t)}` : ''}${t.after.length ? ` · after ${t.after.join(', ')}` : ''}`);
+      if (t.brief) lines.push(`    Brief: ${t.brief.replace(/\n/g, '\n    ')}`);
+      if (t.note) lines.push(`    Note: ${t.note.replace(/\n/g, '\n    ')}`);
+      for (const l of t.links) lines.push(`    Link: ${l}`);
+      if (sub) lines.push(`    Its own plan: ${sub.id} "${sub.title}", ${sr.done} of ${sr.total} done`);
+    }
   }
   const ready = ready0.filter((t) => !t.forUser), yours = ready0.filter((t) => t.forUser);
   lines.push('', ready.length ? `Free to start now: ${ready.map((t) => t.id).join(', ')}` : whyNoneReady(p));
@@ -1593,9 +1609,11 @@ function reviewTick() {
   }
 }
 setInterval(() => { try { reviewTick(); } catch (e) { console.log('[plan review]', e.message); } }, REVIEW_EVERY_MS).unref?.();
-// The page's view of a desk's plans: each with its progress and the sessions in it.
+// The page's view of a desk's plans: each with its progress and the sessions in it. A desk converting onto Docket's
+// plans shows the plans its conversion session makes before Finish the switch, so the user can check them first.
+const plansShown = (client) => plansOn(client) || (!!client?.planSwitch && plansOnFor(client.planSwitch.to));
 function plansSummary(client) {
-  if (!plansOn(client)) return { on: false, plans: [] };
+  if (!plansShown(client)) return { on: false, plans: [] };
   const store = plansOf(client), all = store.list();
   return { on: true, plans: all.map((p) => ({ id: p.id, title: p.title, file: p.file, coordinator: p.coordinator, parent: p.parent, ...store.rollup(p.id, all), breakdown: store.breakdown(p.id, all), needsReview: reviewDue(p),
     holders: [...new Set(p.tasks.filter((t) => t.holder && t.state !== 'done' && t.state !== 'dropped').map((t) => t.holder))] })) };
@@ -1603,7 +1621,9 @@ function plansSummary(client) {
 function planDetail(client, id) {
   const store = plansOf(client), all = store.list(), p = all.find((x) => x.id === id);
   if (!p) return null;
-  return { ...p, ...store.rollup(p.id, all), needsReview: reviewDue(p), coordinatorTitle: p.coordinatorTitle || knownTitle(client, p.coordinator),
+  // phases: the names in order (from the plan file); phaseProgress: [{ name, done, total }] in that order, with name ''
+  // last for tasks in no phase (#869). Each task carries its phase name, '' when it has none.
+  return { ...p, ...store.rollup(p.id, all), phaseProgress: store.phaseRollup(p.id, all), needsReview: reviewDue(p), coordinatorTitle: p.coordinatorTitle || knownTitle(client, p.coordinator),
     parentTitle: p.parent ? all.find((x) => x.id === p.parent.plan)?.title || '' : '',
     tasks: p.tasks.map((t) => {
       const sub = t.plan && all.find((x) => x.id === t.plan);
@@ -1652,20 +1672,29 @@ async function folderSummary(client) {
 }
 // ---------- switching plan system (#700, plan-switch.mjs) ----------
 // What a desk plans with today: the outside system's markers, plan files and hooks, its plan folder, and Docket's own plans.
-async function planSwitchFound(client) {
+// scope: one project or folder (a full path) to convert alone, or '' for the whole desk.
+async function planSwitchFound(client, scope = '') {
   const store = plansOf(client), all = store.list();
   const docketPlans = all.map((p) => ({ id: p.id, title: p.title, file: p.file, ...store.rollup(p.id, all) }));
   const ids = new Set([...Object.keys(state.sessions).filter((id) => state.sessions[id]?.client === client.id), ...[...live.values()].filter((s) => s.client === client.id).map((s) => s.id)]);
   const sessions = [...ids].map((id) => { const s = live.get(id); return { id, title: knownTitle(client, id), working: !!s && !!workingNow(s, runningTasks(s)) }; });
   const r = client.planFolder?.path ? folderReader(client) : null; // the plan folder's tree, whatever the plan system is now
   const folderTree = r ? await r.get().catch(() => null) : null;
-  return scanPlanSystem(client, { docketPlans, sessions, folderTree });
+  return scanPlanSystem(client, { docketPlans, sessions, folderTree, scope });
 }
 function savePlanSystem(client, patch) {
   saveCompanies(CLIENTS.map((c) => { if (c.id !== client.id) return c; const out = { ...c, ...patch }; for (const k of Object.keys(patch)) if (patch[k] === undefined) delete out[k]; return out; }));
   dropFolderReader(client); profileCache.delete(client.id);
 }
-async function planSwitchAction(client, { to = '', action = '' } = {}) {
+// A scope the page sent: a folder that is there, as a full path, or ''.
+function switchScope(scope) {
+  const f = String(scope || '').trim();
+  if (!f) return '';
+  if (!path.isAbsolute(f)) throw new Error('Give the project folder as a full path');
+  try { if (!fs.statSync(f).isDirectory()) throw 0; } catch { throw new Error(`No folder ${f}`); }
+  return path.resolve(f);
+}
+async function planSwitchAction(client, { to = '', action = '', scope = '' } = {}) {
   const from = client.planSystem || '', ps = client.planSwitch;
   if (action === 'finish' || action === 'cancel') {
     if (!ps) throw new Error(`${client.name} has no plan switch waiting.`);
@@ -1681,16 +1710,17 @@ async function planSwitchAction(client, { to = '', action = '' } = {}) {
   }
   if (action !== 'convert') throw new Error('Unknown plan switch action');
   if (ps && live.has(ps.session)) throw new Error(`${client.name} is already converting its plans, in session ${ps.session}. Finish or cancel that switch first.`);
-  const found = await planSwitchFound(client);
+  const only = plansOnFor(to) ? switchScope(scope) : ''; // one project or folder, onto Docket's plans only
+  const found = await planSwitchFound(client, only);
   const brief = conversionBrief({ desk: client.name, from, to, found, convertTo: to === 'folder' ? client.planFolder?.path || '' : '' });
-  const s = startSession({ clientId: client.id, cwd: client.folder, title: `Convert ${client.name}'s plans to ${systemName(to)}`.slice(0, 60) });
+  const s = startSession({ clientId: client.id, cwd: client.folder, title: `Convert ${only ? path.basename(only) : `${client.name}'s plans`} to ${systemName(to)}`.slice(0, 60) });
   state.sessions[s.id].titleBy = 'you';
   // Saved before the session's tools are listed, so a conversion onto Docket's plans has the plan tools (plansOnIn).
   savePlanSystem(client, { planSwitch: { to, from, session: s.id, at: Date.now() } });
   saveState();
-  sendToSession(s, { text: brief, attachments: [], context: `(From Docket: the user chose to convert this desk's plans before switching its plan system. The desk stays on ${systemName(from)} until they press Finish the switch on Docket's card for it.)` });
+  sendToSession(s, { text: brief, attachments: [], from: 'brief', context: `(From Docket: the user chose to convert this desk's plans before switching its plan system. The desk stays on ${systemName(from)} until they press Finish the switch on Docket's card for it.)` });
   touchSession(client.id, s.id);
-  logEvent('plan switch', `${client.name}: converting ${systemName(from)} to ${systemName(to)} in ${sessionTag(s)}`);
+  logEvent('plan switch', `${client.name}: converting ${only ? `${only} ` : ''}${systemName(from)} to ${systemName(to)} in ${sessionTag(s)}`);
   return { ok: true, session: s.id, planSystem: from };
 }
 // One plan with its items, its parent and the plans under it; or the whole tree for the Plan tree window.
@@ -1721,29 +1751,31 @@ function planToolDefs(parent) {
     brief: d(z.string().optional(), 'What to do and what done looks like, complete enough for a fresh session'),
     after: d(z.array(z.union([z.string(), z.number()])).optional(), 'The tasks this one waits on: ids like "T1", or the place in this same list (1 for the first task given here)'),
     links: d(z.array(z.string()).optional(), 'Tickets, issues, pull requests or files this task is about, as web addresses or full paths'),
-    for_user: d(z.boolean().optional(), 'True for a step only the user can do (a sign-in, a decision, money, a merge they asked to give): one step per task. No session claims it; the coordinator tells the user when it is their turn and marks it done'),
+    for_user: d(z.boolean().optional(), 'True for a step no session could do (a decision, money, a merge they asked to give): one step per task. A check is not one, even one needing a sign-in (its session asks for that), nor other people\'s work (waiting_outside). No session claims it; the coordinator gathers the due ones into one message to the user and marks each done'),
+    phase: d(z.string().optional(), 'The phase this task belongs to: one of the plan\'s phases, by name'),
     replaces: d(z.string().optional(), 'Only in plan_add_tasks: the id of a task this one takes the place of (wrong kind, or rethought). That task is dropped, and tasks waiting on it wait on this one instead'),
   });
   const planArg = z.string().optional();
   const pa = (text) => d(planArg, text);
   return [
     tool('plan_create',
-      say("Attach a new plan to this session, making it the plan's coordinator: a title, a goal, and its tasks in order. A session working a task in another plan gets a plan that hangs off that task (both files name each other); with no task held, the new plan is a master plan. One plan per session: add to it with plan_add_tasks.",
+      say("Attach a new plan to this session, making it the plan's coordinator: a title, a goal, and its tasks in order. A session working a task in another plan gets a plan that hangs off that task (both files name each other); with no task held, the new plan is a master plan. One plan per session: add to it with plan_add_tasks. A session converting the desk's plans (or started by the one that is) may make one plan per plan file it converts, and hang one under a task of a plan made in the conversion with for_task.",
         'Make a plan for the work in this session (title, goal, tasks in order); its reply says how to work it.'),
       {
         title: d(z.string(), 'The plan\'s title, under 60 characters'),
         goal: d(z.string().optional(), 'What the whole plan achieves, a few sentences'),
         tasks: d(z.array(taskSpec), 'The tasks, in the order they should be done'),
-        for_task: d(z.string().optional(), 'Only when this session holds more than one task: the one this plan is for, as "<plan id>/<task id>"'),
+        phases: d(z.array(z.string()).optional(), 'For a plan of more than about eight tasks: the names of its phases, in the order the work happens; each task names its own with phase'),
+        for_task: d(z.string().optional(), 'Only when this session holds more than one task, or converts plans and this plan hangs under a task of another plan made in the conversion (an index plan): the task this plan is for, as "<plan id>/<task id>"'),
       },
-      async ({ title, goal, tasks, for_task }) => coordinate(() => {
-        const mine = sessionPlans(client, parent.id);
-        if (mine.own) return reply(`This session already coordinates plan ${mine.own.id} ("${mine.own.title}"). Add tasks to it with plan_add_tasks.`, true);
+      async ({ title, goal, tasks, phases, for_task }) => coordinate(() => {
+        const mine = sessionPlans(client, parent.id), refused = secondPlanRefusal({ owns: mine.owns, converting: converting(client, parent.id) });
+        if (refused) return reply(refused, true);
         let up = null;
         if (for_task) up = taskRef(for_task);
         else if (mine.holds.length === 1) up = { plan: mine.holds[0].plan.id, task: mine.holds[0].task.id };
         else if (mine.holds.length > 1) return reply(`This session holds ${mine.holds.map((h) => `${h.plan.id}/${h.task.id}`).join(', ')}. Say which one this plan is for with for_task.`, true);
-        const p = store.create({ title, goal, tasks, coordinator: parent.id, coordinatorTitle: parent.title, parent: up });
+        const p = store.create({ title, goal, tasks, phases, coordinator: parent.id, coordinatorTitle: parent.title, parent: up });
         logEvent('plan made', `${p.id} "${p.title}" by ${sessionTag(parent)}${up ? `, for ${up.plan}/${up.task}` : ''}`);
         plansChanged(client, p);
         return reply(`Made plan ${p.id}${up ? `, hanging off task ${up.task} of plan ${up.plan}` : ' (a master plan)'}.${coordinatorNote(parent)}\n\n${planText(client, store.read(p.id))}`);
@@ -1752,22 +1784,38 @@ function planToolDefs(parent) {
       say("Add tasks to the plan this session coordinates.", 'Add tasks to the plan this session coordinates.'),
       { tasks: d(z.array(taskSpec), 'The new tasks; "after" may name existing tasks (T2) or places in this list'), plan_id: pa('Plan id; defaults to the plan this session coordinates') },
       async ({ tasks, plan_id: plan }) => run(() => {
-        const id = plan || sessionPlans(client, parent.id).own?.id;
-        if (!id) return reply('This session coordinates no plan. Make one with plan_create.', true);
+        const { id, error } = ownPlanOf(sessionPlans(client, parent.id).owns, plan);
+        if (!id) return reply(error, true);
         const r = store.addTasks(id, tasks, parent.id);
         plansChanged(client, r.plan);
-        return reply(`Added ${r.added.map((t) => `${t.id} ${t.title}`).join('; ')} to plan ${id}.`);
+        return reply(`Added ${r.added.map((t) => `${t.id} ${t.title}${t.phase ? ` (phase ${t.phase})` : ''}`).join('; ')} to plan ${id}.`);
       })),
     tool('plan_set_goal',
       say("Change the goal of the plan this session coordinates (coordinator only). Keep the goal saying what done looks like for the whole plan: change it when tasks added or replaced move the finish line.",
         'Change the goal of the plan this session coordinates.'),
       { goal: d(z.string(), 'The new goal, a few sentences: what the whole plan achieves and what done looks like'), plan_id: pa('Plan id; defaults to the plan this session coordinates') },
       async ({ goal, plan_id: plan }) => run(() => {
-        const id = plan || sessionPlans(client, parent.id).own?.id;
-        if (!id) return reply('This session coordinates no plan. Make one with plan_create.', true);
+        const { id, error } = ownPlanOf(sessionPlans(client, parent.id).owns, plan);
+        if (!id) return reply(error, true);
         const p = store.setGoal(id, goal, parent.id);
         plansChanged(client, p);
         return reply(`Changed the goal of plan ${id}:\n${p.goal}`);
+      })),
+    tool('plan_set_phases',
+      say("Add, rename or reorder the phases of the plan this session coordinates (coordinator only). phases is the whole list in its new order; renames changes names and moves their tasks along. A phase that still has tasks cannot be left out: move them first with plan_update_task and phase.",
+        'Add, rename or reorder the phases of the plan this session coordinates.'),
+      {
+        phases: d(z.array(z.string()).optional(), 'Every phase, in the order the work happens, with new names already in; leave out to keep the order and only rename'),
+        renames: d(z.array(z.object({ from: z.string(), to: z.string() })).optional(), 'Phases to rename: from the old name to the new one; their tasks follow'),
+        plan_id: pa('Plan id; defaults to the plan this session coordinates'),
+      },
+      async ({ phases, renames, plan_id: plan }) => run(() => {
+        const { id, error } = ownPlanOf(sessionPlans(client, parent.id).owns, plan);
+        if (!id) return reply(error, true);
+        if (phases === undefined && !renames?.length) return reply('Give phases (the whole list in order), renames, or both.', true);
+        const p = store.setPhases(id, { phases, renames }, parent.id);
+        plansChanged(client, p);
+        return reply(p.phases.length ? `Plan ${id}'s phases, in order: ${store.phaseRollup(id).map((g) => `${g.name || 'in no phase'} (${g.done} of ${g.total} done)`).join('; ')}.` : `Plan ${id} has no phases now.`);
       })),
     tool('plan_next_task',
       say("Claim the next task that is free to start (open, and everything it waits on done) in a plan, for this session. Two sessions never get the same task. Use it when the coordinator asked you to take the next task; the plan defaults to the plan of the session that started you.",
@@ -1792,7 +1840,7 @@ function planToolDefs(parent) {
         return reply(`${r.already ? 'You already hold' : 'You now hold'} ${r.task.id} "${r.task.title}" in plan ${id}.${r.task.brief ? `\nBrief: ${r.task.brief}` : ''}`);
       })),
     tool('plan_update_task',
-      say("Change a task you hold, or (as the plan's coordinator) any task in your plan: set its state, add a short note, attach links (tickets, issues, pull requests, files). States: done; waiting_on_user (needs the user's answer); waiting_outside (waits on something outside Docket that is not the user: a colleague, a vendor, a date; say what in waits_on); sent_back (the coordinator checked it and the holder must fix it); claimed (back to work); open (let it go so another session can take it); dropped (coordinator only, with a one-line note saying why: the task stays in the plan crossed out, keeps its number, and counts as neither open nor done; it cannot be undone). Only the coordinator moves a task out of done: sent_back after checking it, or, for a task set done by mistake, dropped or open with a one-line note saying why (the plan keeps it as 'Corrected from done: ...'). A task made before kinds existed can have its kind filled in once with kind; a kind already set never changes. The coordinator can make a task the user's step, or give it back to sessions, with for_user.",
+      say("Change a task you hold, or (as the plan's coordinator) any task in your plan: set its state, add a short note, attach links (tickets, issues, pull requests, files). States: done; waiting_on_user (needs the user's answer); waiting_outside (waits on something outside Docket that is not the user: a colleague, a vendor, a date; say what in waits_on); sent_back (the coordinator checked it and the holder must fix it); claimed (back to work); open (let it go so another session can take it); dropped (coordinator only, with a one-line note saying why: the task stays in the plan crossed out, keeps its number, and counts as neither open nor done; it cannot be undone). Only the coordinator moves a task out of done: sent_back after checking it, or, for a task set done by mistake, dropped or open with a one-line note saying why (the plan keeps it as 'Corrected from done: ...'). A task made before kinds existed can have its kind filled in once with kind; a kind already set never changes. The coordinator can make a task the user's step, or give it back to sessions, with for_user, and move a task to another phase with phase.",
         'Set a plan task\'s state, note or links.'),
       {
         task_id: d(z.string(), 'Task id like "T2" or "T3.1", or "<plan id>/T2"'),
@@ -1800,19 +1848,20 @@ function planToolDefs(parent) {
         note: d(z.string().optional(), 'One or two lines: what was done, or what is missing'),
         links: d(z.array(z.string()).optional(), 'Web addresses or full paths to attach'),
         kind: d(z.string().optional(), 'Only for a task with no kind yet (made before kinds existed): build, test, decision or research. Refused once a kind is set'),
-        waits_on: d(z.string().optional(), 'With state waiting_outside (required then): what the task waits on outside Docket, in a few words, e.g. "Quo to issue the Hub\'s phone number"'),
-        for_user: d(z.boolean().optional(), 'Coordinator only: true makes this task the user\'s step (no session claims it), false gives it back to sessions'),
+        waits_on: d(z.string().optional(), 'With state waiting_outside (required then): what the task waits on outside Docket, such as other people\'s work, in a few words, e.g. "Quo to issue the Hub\'s phone number"'),
+        for_user: d(z.boolean().optional(), 'Coordinator only: true makes this task the user\'s step (only for what no session could do: a decision, money, something they asked to do themselves; no session claims it), false gives it back to sessions'),
+        phase: d(z.string().optional(), 'Coordinator only: move the task to this phase of the plan; an empty string takes it out of any phase'),
         plan_id: pa('Plan id; defaults to the plan where this session holds that task, then its own plan'),
       },
-      async ({ task_id: task, state: st, note, links, kind, waits_on: waitsOn, for_user: forUser, plan_id: plan }) => run(() => {
+      async ({ task_id: task, state: st, note, links, kind, waits_on: waitsOn, for_user: forUser, phase, plan_id: plan }) => run(() => {
         const ref = taskRef(task, plan), id = planFor(client, parent, ref.plan, { want: 'update', task: ref.task });
         if (!id) return reply('Give the plan id: this session holds no such task and coordinates no plan.', true);
-        const r = store.update(id, ref.task, { state: st, note, links, kind, waitsOn, forUser }, parent.id, parent.title);
+        const r = store.update(id, ref.task, { state: st, note, links, kind, waitsOn, forUser, phase }, parent.id, parent.title);
         plansChanged(client, r.plan, r.nowReady, parent.id);
         const all = store.list(), done = r.plan.tasks.some((t) => t.state === 'done') && r.plan.tasks.every((t) => t.state === 'done' || t.state === 'dropped');
         const up = done && r.plan.parent && `Every task in this plan is done, so task ${r.plan.parent.task} of plan ${r.plan.parent.plan} may be done too.`;
         const coord = r.plan.coordinator;
-        return reply([`${r.task.id}${r.task.kind ? ` (${r.task.kind})` : ''} "${r.task.title}"${userTag(r.task)} is now ${stateText(r.task)}.`,
+        return reply([`${r.task.id}${r.task.kind ? ` (${r.task.kind})` : ''} "${r.task.title}"${userTag(r.task)} is now ${stateText(r.task)}${phase !== undefined ? (r.task.phase ? `, in the phase ${r.task.phase}` : ', in no phase') : ''}.`,
           freedReply({ nowReady: r.nowReady.map((t) => ({ ...t, title: t.title + userTag(t) })), isCoordinator: coord === parent.id, coordinatorTitle: coord ? r.plan.coordinatorTitle || knownTitle(client, coord) || 'the coordinator' : '' }),
           up || '', `Plan progress: ${store.rollup(id, all).done} of ${store.rollup(id, all).total} done.`].filter(Boolean).join('\n'));
       })),
@@ -1822,7 +1871,7 @@ function planToolDefs(parent) {
       async ({ plan_id: plan }) => run(() => {
         const id = planFor(client, parent, plan);
         const p = id && store.read(id);
-        return p ? reply(planText(client, p)) : reply(id ? `No plan ${id} on this desk.` : 'This session has no plan and holds no task. plan_list shows the desk\'s plans.', true);
+        return p ? reply(planText(client, p)) : reply(id ? `No plan ${id} on this desk.` : sessionPlans(client, parent.id).owns.length > 1 ? 'This session coordinates several plans: give the plan id. plan_list shows them.' : 'This session has no plan and holds no task. plan_list shows the desk\'s plans.', true);
       })),
     tool('plan_list',
       say("List this desk's plans: id, title, coordinator, progress, and which plan each one hangs off.", "List this desk's plans."),
@@ -1836,8 +1885,8 @@ function planToolDefs(parent) {
         'Mark the review of your plan against the current plan rules done.'),
       { plan_id: pa('Plan id; defaults to the plan this session coordinates') },
       async ({ plan_id: plan }) => run(() => {
-        const id = plan || sessionPlans(client, parent.id).own?.id;
-        if (!id) return reply('This session coordinates no plan.', true);
+        const { id, error } = ownPlanOf(sessionPlans(client, parent.id).owns, plan);
+        if (!id) return reply(error, true);
         const p = store.markReviewed(id, parent.id);
         if (state.planReviews?.[id]) { delete state.planReviews[id]; saveState(); }
         logEvent('plan reviewed', `${id} by ${sessionTag(parent)}, rules version ${PLAN_RULES_VERSION}`);
@@ -1867,7 +1916,7 @@ function planToolDefs(parent) {
       { plan_id: d(z.string(), 'Plan id') },
       async ({ plan_id: plan }) => coordinate(() => {
         const mine = sessionPlans(client, parent.id).own;
-        if (mine && mine.id !== plan) return reply(`This session already coordinates plan ${mine.id}; a session coordinates one plan.`, true);
+        if (mine && mine.id !== plan && !converting(client, parent.id)) return reply(`This session already coordinates plan ${mine.id}; a session coordinates one plan.`, true);
         const p = store.setCoordinator(plan, parent.id, parent.title);
         plansChanged(client, p);
         return reply(`This session now coordinates plan ${p.id}.${coordinatorNote(parent)}\n\n${planText(client, p)}`);
@@ -1883,20 +1932,28 @@ function portalToolDefs(parent) {
   const split = splitOn(clientById(parent.client));
   return [
       tool('start_session',
-        `Start, offer or propose a separate session in the session portal, under the same client as this one and listed under it. ${split
+        `Start, offer or propose a separate session in the session portal, under the same client as this one and listed under it (in this session's group unless \`group\` names another). ${split
           ? 'Real work the user asks for, even in the first reply and in plain words like "build X", is started now (user_asked), so the user\'s session stays free to talk; a session that was itself started or sent work by another session does that work itself. A request for agents, subagents, parallel work or fanning out means sessions like this, one per piece (each code-writing piece in its own git worktree), not the Agent tool.'
           : 'Start one now (user_asked) when the user asks for the work to run in its own session, in parallel or in pieces (each code-writing piece in its own git worktree); other work they ask for is done in this session.'} See "Starting other sessions" in your instructions for when to use each initiation. Returns the session id (started), the user's choice (offer), or a proposal id (own_initiative).`,
         {
           title: z.string().describe('Short title for the new session, under 60 characters'),
           prompt: z.string().describe('Complete, self-contained brief for the new session: files or area, and what done looks like'),
           initiation: z.enum(['user_asked', 'offer', 'own_initiative']).describe(`user_asked = start now, ${split ? 'for real work the user asked for (no special words needed)' : 'when the user asked for the work in its own session'}; offer = only when the user asks you to suggest a session: ask New session / Do it here and wait; own_initiative = a proposal card for work the user did not ask for`),
-          folder: z.string().optional().describe("Working folder; defaults to this session's folder"),
+          folder: z.string().optional().describe("Working folder; defaults to this session's folder (or to the group's folder when `group` is given)"),
+          group: z.string().optional().describe("Only when the user names another group for it: that group's name as the session list shows it (any case; \"No group\" for none). The new session is listed in that group as its own row instead of under this one, still reports to this session, and works in that group's folder unless `folder` is given. Leave it out to keep it in this session's group"),
           brand: z.enum(Object.keys(BRANDS)).optional().describe("Which AI runs the new session (claude, grok or codex, which is OpenAI's Codex on a ChatGPT plan). Leave it out to use this session's own brand. Only a brand this desk has set up and signed in works; anything else returns an error"),
           start_gear: z.string().optional().describe(`The new session starts in Shift mode, on the gear this session is on now; this picks the gear it starts on instead, and it can still shift up and down afterwards. ${Object.entries(GEARS).map(([b, gs]) => `${BRANDS[b]?.name || b}: ${gs.map((g) => g.key).join(', ')}`).join('; ')}. Leave it out for open-ended work (investigating, designing, debugging an unknown cause, deciding). Pick a lower gear only when you have fully worked out the brief (the files, the change and what done looks like are spelled out, so the session only carries it out), or for clearly mechanical work. A session started below its top gear stays on that gear (it never shifts itself), each of its reports names the gear, and you check its result more closely; if it is weak or wrong, resend with send_to_session and gear set to the top gear`),
         },
-        async ({ title, prompt, initiation, folder, brand, start_gear: startGear }) => {
-          const cwd = folder || parent.cwd;
+        async ({ title, prompt, initiation, folder, brand, group: groupName, start_gear: startGear }) => {
           const client = clientById(parent.client);
+          // Another group, when the user named one: its id ('' for No group), and its folder unless one was given (#856).
+          const place = groupName === undefined ? {} : namedGroup(client, parent.id, groupName);
+          if (place.error) return { content: [{ type: 'text', text: place.error }], isError: true };
+          const { groupId } = place;
+          const cwd = folder || place.folder || parent.cwd;
+          if (!folder && place.folder) try { checkFolder(cwd); } catch (e) { return { content: [{ type: 'text', text: e.message }], isError: true }; }
+          const where = groupId === undefined ? 'It appears in the portal list under this session.'
+            : `It appears in the portal list in ${groupId ? `the group "${groupById(client.id, groupId).name}"` : 'No group'}, as its own row rather than under this session, and still reports to you.`;
           // A brand asked for must be set up and signed in for this company, so it never quietly runs on another.
           if (brand) {
             const bad = await brandProblem(client, brand);
@@ -1906,20 +1963,20 @@ function portalToolDefs(parent) {
           const childBrand = brand || keptEngine(client, parent.engine || state.sessions[parent.id]?.engine) || defaultEngineOf(client);
           if (startGear && !findGear(childBrand, startGear)) return { content: [{ type: 'text', text: `${startGear} is not a gear of ${BRANDS[childBrand]?.name || childBrand}. Its gears: ${gearsOf(childBrand).map((g) => g.key).join(', ')}.` }], isError: true };
           if (initiation === 'own_initiative') {
-            const p = proposeSession(parent, { title, prompt, cwd, brand, startGear });
-            return withSessionRules(parent, { content: [{ type: 'text', text: `Proposed "${title}"${brand ? ` on ${BRANDS[brand].name}` : ''} as a card the user can start (proposal id ${p.id}). Carry on; do not wait for it.` }] });
+            const p = proposeSession(parent, { title, prompt, cwd, brand, startGear, groupId });
+            return withSessionRules(parent, { content: [{ type: 'text', text: `Proposed "${title}"${brand ? ` on ${BRANDS[brand].name}` : ''}${groupId === undefined ? '' : groupId ? ` in the group "${groupById(client.id, groupId).name}"` : ' in No group'} as a card the user can start (proposal id ${p.id}). Carry on; do not wait for it.` }] });
           }
           if (initiation === 'offer') {
-            const choice = await offerSession(parent, { title, prompt, cwd, brand, startGear });
-            if (choice.started) return withSessionRules(parent, { content: [{ type: 'text', text: `The user chose a new session: started "${title}" (id ${choice.started}). Do not also do this work here. (Card ${choice.id})` }] });
+            const choice = await offerSession(parent, { title, prompt, cwd, brand, startGear, groupId });
+            if (choice.started) return withSessionRules(parent, { content: [{ type: 'text', text: `The user chose a new session: started "${title}" (id ${choice.started}).${groupId === undefined ? '' : ` ${where}`} Do not also do this work here. (Card ${choice.id})` }] });
             return { content: [{ type: 'text', text: `The user chose to do it here. Do the work in this session. (Card ${choice.id})` }] };
           }
-          const child = startChild(parent, { title, prompt, cwd, engine: brand, startGear });
+          const child = startChild(parent, { title, prompt, cwd, engine: brand, startGear, groupId });
           parent.startedKids = (parent.startedKids || 0) + 1; // the turn may end without orange: its ring shows the child (#777)
           const gear = findGear(child.engine, child.gear), held = heldGearOf(child);
           const heldNote = held ? ` It stays on ${held.name}, the lower gear you chose: when it reports, check the actual diff, test output or files, not only its summary, and if the result is weak or wrong send the work again with send_to_session and gear set to ${topGearOf(child.engine).key}.` : '';
           const planNote = planStartNote({ on: plansOn(client), own: !!sessionPlans(client, parent.id).own, childStarts: state.sessions[parent.id]?.childStarts || 0 });
-          return withSessionRules(parent, { content: [{ type: 'text', text: `Started session "${title}" (id ${child.id})${brand ? ` on ${BRANDS[brand].name}` : ''}${gear ? `, in Shift on ${gear.name}` : ''}. It appears in the portal list under this session.${heldNote}${planNote ? `\n\n${planNote}` : ''}` }] });
+          return withSessionRules(parent, { content: [{ type: 'text', text: `Started session "${title}" (id ${child.id})${brand ? ` on ${BRANDS[brand].name}` : ''}${gear ? `, in Shift on ${gear.name}` : ''}. ${where}${heldNote}${planNote ? `\n\n${planNote}` : ''}` }] });
         }),
       tool('propose_handoff',
         "Hand this work off to a fresh session that takes this one's place: same folder, same desk, under the same parent session (or top level). Shows the user a card: Continue in new session / Keep going here. Use it when your profile's rules call for handing off to a new session; pass the handoff block as the brief. Does not wait for the choice.",
@@ -1958,12 +2015,12 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: `Shifted to ${gear.name}. It applies from your next step.` }] };
         }),
       tool('remote_desks',
-        'Show or hide Docket\'s Remote Desks options on this computer (☰ > Remote Desks: using a desk here from another computer on the office network, or a desk on another computer from here). They are hidden until someone asks (or Alt+clicks ☰ > About in Docket, which needs no AI). Call it with on: true when the user asks to "show Docket remote desk options" (or to show, turn on or set up Remote Desks), and on: false when they ask to hide them. They stay shown until Docket is started again (its own restarts, to take in an update or from ☰ > Restart Docket, keep them shown); each new start hides them again, and the user asks again to show them. Hiding them also stops remote control and ends every remote connection; the remote setup itself is kept either way.',
+        'Show or hide Docket\'s Remote Desks options on this computer (☰ > Desks > Remote Desks: using a desk here from another computer on the office network, or a desk on another computer from here). They are hidden until someone asks (or Alt+clicks ☰ > About in Docket, which needs no AI). Call it with on: true when the user asks to "show Docket remote desk options" (or to show, turn on or set up Remote Desks), and on: false when they ask to hide them. They stay shown until Docket is started again (its own restarts, to take in an update or from ☰ > Restart Docket, keep them shown); each new start hides them again, and the user asks again to show them. Hiding them also stops remote control and ends every remote connection; the remote setup itself is kept either way.',
         { on: z.boolean().describe('true shows the Remote Desks options; false hides them') },
         async ({ on }) => {
           setRemoteFeatures(on);
           return { content: [{ type: 'text', text: on
-            ? 'Remote Desks options are shown on this computer now: ☰ > Remote Desks in Docket. Open pages show them without a reload. They stay shown until Docket is started again (its own restarts for an update keep them), which hides them again; the remote setup is kept.'
+            ? 'Remote Desks options are shown on this computer now: ☰ > Desks > Remote Desks in Docket. Open pages show them without a reload. They stay shown until Docket is started again (its own restarts for an update keep them), which hides them again; the remote setup is kept.'
             : 'Remote Desks options are hidden on this computer now. Remote control has stopped and every remote connection has ended; the remote setup is kept for when they are shown again.' }] };
         }),
       tool('rename_session',
@@ -2060,7 +2117,7 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: `Closed and archived "${report.title}". Say in your reply what it did and where the result is, linking it as [${report.title}](#session:${id}).${last}` }] };
         }),
       tool('report_quiet',
-        'End this turn without marking this session as needing the user: its row gets a soft blue halo saying there is news to read, instead of the orange dot. Only for a turn woken by session reports that only passes on news the user need not act on here: progress, a session finished with nothing left for the user, or a session waiting on the user in its own chat (its own row already needs them). Allowed whether or not any session you started is still working. Never when that news completes your own job (you closed your last open session, or mark_turn "done"): then the turn shows "done". See "When sessions you started report" in your instructions. Refused on a turn answering a message, and the turn then marks the user as usual. Set cancel to true if, later in the same turn, you find something the user should know or answer.',
+        'End this turn without marking this session as needing the user: its row gets a soft blue halo saying there is news to read, instead of the orange dot. Only for a turn woken by session reports that only passes on news the user need not act on here: progress, a session finished with nothing left for the user, or a session waiting on the user in its own chat (its own row already needs them). Allowed whether or not any session you started is still working. Never when that news completes your own job (you closed your last open session, or mark_turn with label "done"): then the turn shows "done". See "When sessions you started report" in your instructions. Refused on a turn answering a message, and the turn then marks the user as usual. Set cancel to true if, later in the same turn, you find something the user should know or answer. ' + BEFORE_REPLY,
         { reason: z.string().describe("One line: why the user need not look now (kept in Docket's log)"), cancel: z.boolean().optional().describe('True to take back an earlier report_quiet in this turn') },
         async ({ reason, cancel }) => {
           if (cancel) { parent.quietReason = ''; return { content: [{ type: 'text', text: 'Taken back: this turn will mark the user as usual.' }] }; }
@@ -2070,12 +2127,15 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: 'This turn will end quietly. Finish with your usual short reply.' }] };
         }),
       tool('mark_turn',
-        'Say why this turn needs the user, for the short label on your row in the session list: "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default), including a reply that lists things left for the user before the session can close. Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. "merge" with pr only when the turn ends on a plain ask to merge that one pull request you made ("Say merge and I will merge pull request #146."): Docket then shows a Merge button under your reply that sends "merge" as the user\'s message, so you still do the merge. Never "merge" for several pull requests, a merge order, a draft, a conflict, failing or running checks, or anything else for the user to do or decide first: use "reply" and let them answer in words. Call it at most once per turn, near the end.',
+        'Say why this turn needs the user, for the short label on your row in the session list: "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default), including a reply that lists things left for the user before the session can close. Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. "merge" with pr only when the turn ends on a plain ask to merge that one pull request you made ("Say merge and I will merge pull request #146."): Docket then shows a Merge button under your reply that sends "merge" as the user\'s message, so you still do the merge. Never "merge" for several pull requests, a merge order, a draft, a conflict, failing or running checks, or anything else for the user to do or decide first: use "reply" and let them answer in words. Pass it as label (state works too). Call it at most once per turn. ' + BEFORE_REPLY,
         {
-          label: z.enum(['done', 'question', 'reply', 'merge']).describe('What this turn needs from the user'),
+          label: z.enum(['done', 'question', 'reply', 'merge']).optional().describe('What this turn needs from the user'),
+          state: z.enum(['done', 'question', 'reply', 'merge']).optional().describe('Another name for label'),
           pr: z.number().int().positive().optional().describe('With "merge": the number of the one pull request the user can merge with a click'),
         },
-        async ({ label, pr }) => {
+        async (input) => {
+          const label = turnLabelOf(input), { pr } = input;
+          if (!label) return { content: [{ type: 'text', text: 'Not marked: give label, one of "done", "question", "reply" or "merge".' }], isError: true };
           if (label === 'merge' && !pr) return { content: [{ type: 'text', text: 'Not marked: "merge" needs pr, the number of the one pull request to merge. For anything other than a plain ask to merge one pull request, use "reply".' }], isError: true };
           parent.turnSaid = label;
           if (label === 'merge') return { content: [{ type: 'text', text: `A Merge button for pull request #${pr} shows under your reply while Docket sees it open, not a draft, without a conflict and with checks passed or none. A click sends "merge" as the user's message.` }] };
@@ -2297,15 +2357,27 @@ function portalToolDefs(parent) {
         }),
       ...(plansOnIn(clientById(parent.client), parent.id) ? planToolDefs(parent) : []),
       ...screenToolDefs(parent),
-      ...(state.pilot?.session === parent.id ? pilotToolDefs(parent) : []),
+      ...(pilotSession() === parent.id ? pilotToolDefs(parent) : []),
   ];
 }
 
 // ---------- screen and mouse control (#822): screen.mjs runs it, platform.mjs has the scripts ----------
 // state.screenControl: { [desk id]: true } for the desks whose sessions may see and act on this computer's screen.
-// Off unless turned on in ☰ > Settings > Screen control, here (a remote computer cannot turn it on). The tools are
+// Off unless turned on in ☰ > Desks > <desk> > Screen control, here (a remote computer cannot turn it on). The tools are
 // listed only to sessions started while it is on, and every call checks it again, so turning it off refuses at once.
 const screenOn = (desk) => !!state.screenControl?.[desk];
+// A session's tool list is fixed when it starts (s.screenTools: whether it had them), so one whose desk was switched
+// since is started again once idle (#877), as a session marked pilot is.
+function screenReloads() {
+  for (const s of [...live.values()]) {
+    const why = screenChange(s.screenTools, screenOn(s.client));
+    if (!why || state.paused) continue;
+    const d = reloadDecision({ engine: s.engine || 'claude', changes: [why], status: s.status, runningJobs: runningTasks(s),
+      heldTurn: !!s.heldTurn, asks: s.pendingAsks?.size || 0, reloading: !!(s.reloading || s.resting) });
+    if (d === 'reload') { s.screenTools = undefined; reloadSession(s, [why]); }
+  }
+}
+setInterval(screenReloads, 10000);
 const SCREEN_LAST = 'A last resort, for a desktop program or a system dialog with no better way in (Docket\'s tools, a command, the Playwright browser): it is slow, and it acts as the user would. ';
 const imagePoint = { x: z.number().describe('Across, in the last screen_shot image\'s pixels'), y: z.number().describe('Down, in the last screen_shot image\'s pixels') };
 // The tools' inputs, also checked on the computer a remote call reaches.
@@ -2341,14 +2413,14 @@ function screenToolDefs(parent) {
   });
 }
 async function screenCall(parent, name, { desk, ...args }) {
-  if (!screenOn(parent.client)) throw new Error('Screen control is off for this desk, so the screen tools are refused. The user turns it on in ☰ > Settings > Screen control.');
+  if (!screenOn(parent.client)) throw new Error(`Screen control is off for this desk, so the screen tools are refused. The user turns it on in ☰ > Desks > ${clientById(parent.client)?.name || 'this desk'} > Screen control.`);
   if (!desk) return screen.act({ key: parent.id, session: parent.id, title: parent.title, desk: parent.client }, name, args);
   const d = remoteOn() && remoteDesks().find((x) => x.id === desk || x.name.toLowerCase() === String(desk).trim().toLowerCase());
   if (!d) throw new Error(`There is no remote desk named ${desk}${remoteOn() ? '' : ' (Remote Desks is hidden on this computer)'}.`);
   // The pilot, with no connection open, uses its pilot key (#827) when the key was granted with the screen tools.
-  const usesKey = !remoteConns.get(d.id) && d.pilotKey?.screen && pilotOn() && state.pilot?.session === parent.id;
+  const usesKey = !remoteConns.get(d.id) && d.pilotKey?.screen && pilotOn() && pilotSession() === parent.id;
   const conn = usesKey ? { token: d.pilotKey.key } : remoteConns.get(d.id);
-  if (!conn) throw new Error(`${d.name} is not connected. The user connects it in ☰ > Remote Desks with a code from the authenticator app.`);
+  if (!conn) throw new Error(`${d.name} is not connected. The user connects it in ☰ > Desks > Remote Desks with a code from the authenticator app.`);
   let r;
   try { r = await remoteCall(d, conn, 'POST', '/api/screen/act', { name, args, session: parent.id, title: parent.title, turn: screen.turnOf(parent.id) }, 120e3); }
   catch (e) { throw new Error(connectError(e, d.name)); }
@@ -2361,7 +2433,7 @@ async function screenCall(parent, name, { desk, ...args }) {
 // A call from a session on another computer, to this computer's screen (the remote route 'screen').
 async function remoteScreenCall(desk, who, b) {
   const fail = (text) => ({ content: [{ type: 'text', text }], isError: true });
-  if (!screenOn(desk.id)) return fail(`Screen control is off for ${desk.name} on ${os.hostname()}. Someone at that computer turns it on in ☰ > Settings > Screen control.`);
+  if (!screenOn(desk.id)) return fail(`Screen control is off for ${desk.name} on ${os.hostname()}. Someone at that computer turns it on in ☰ > Desks > ${desk.name} > Screen control.`);
   if (!SCREEN_TOOLS.includes(b?.name)) return fail('No such screen tool');
   const args = z.object(SCREEN_INPUTS[b.name]).safeParse(b.args || {});
   if (!args.success) return fail('Invalid input: ' + args.error.message);
@@ -2381,6 +2453,7 @@ async function screenRoutes(req, res, url, p) {
       if (!b.on) { delete state.screenControl[id]; screen.stop('Screen control turned off', id); }
       saveState();
       logEvent(`screen control ${b.on ? 'on' : 'off'}`, clientById(id).name);
+      screenReloads();
     }
     return json(res, 200, { on: screenOn(id), works: process.platform === 'win32' || process.platform === 'darwin', active: screen.active().filter((a) => !id || a.desk === id) });
   }
@@ -2413,7 +2486,8 @@ const scheduler = createScheduler({
   startRun: ({ client, cwd, title, prompt, scheduleId, runAt }) => {
     // runAt: the date the session list shows on the schedule's row
     const s = startSession({ clientId: client, cwd, title, record: { scheduleId, runAt } });
-    sendToSession(s, { text: prompt, attachments: [] });
+    // Folds in the chat as the schedule's (#867): the person wrote it, but in the schedule, not here.
+    sendToSession(s, { text: prompt, attachments: [], from: 'brief', context: `(From Docket: this session runs the scheduled task "${title}" (id ${scheduleId}). The message above is the task's prompt, which the user wrote in the schedule.)` });
     return s.id;
   },
   isRunning: (id) => { const s = live.get(id); return !!s && !['idle', 'ended'].includes(s.status); },
@@ -2427,7 +2501,7 @@ for (const sc of scheduler.list()) for (const r of sc.runs || []) {
 }
 
 // ---------- the profile: desks, schedules and settings between computers (profile-sync.mjs, #837) ----------
-// ☰ > Profile > Export and Import read and write docket-profile.json; Keep my profile in… keeps it in a folder a cloud
+// ☰ > Docket settings > Profile > Export and Import read and write docket-profile.json; Keep my profile in… keeps it in a folder a cloud
 // service's own app (Google Drive for desktop, OneDrive, Dropbox, iCloud Drive) copies between computers. Docket signs
 // in to none of them. state.profile: { folder, machine, meta, ids, paths, pending }, where machine is this computer's
 // own id, meta when each item last changed (noteChanges), ids the desks matched by name, and paths the folder paths
@@ -2569,7 +2643,7 @@ function profileSync({ force = false } = {}) {
 }
 setInterval(() => { try { profileSync(); } catch (e) { logEvent('profile sync failed', e?.stack || e); } }, 5000);
 setTimeout(() => { try { profileSync({ force: true }); } catch (e) { logEvent('profile sync failed', e?.stack || e); } }, 3000);
-// What ☰ > Profile shows: the folder kept in, the cloud folders found, and anything waiting on the person.
+// What ☰ > Docket settings > Profile shows: the folder kept in, the cloud folders found, and anything waiting on the person.
 function profileView() {
   const ps = profileState();
   const found = cloudFolders({ home: os.homedir(), exists: isDir, list: (d) => { try { return fs.readdirSync(d); } catch { return []; } } });
@@ -3009,7 +3083,7 @@ async function startSetupSession(client) {
   state.sessions[s.id].titleBy = 'you';
   state.setupCheck[client.id] = { ...state.setupCheck[client.id], answer: { answer: 'started', at: Date.now(), slim: report.slim, start: report.start, session: s.id } };
   saveState();
-  sendToSession(s, { text: brief, attachments: [], context: "(From Docket: the user started this session from Docket's setup check card for this desk.)" });
+  sendToSession(s, { text: brief, attachments: [], from: 'brief', context: "(From Docket: the user started this session from Docket's setup check card for this desk.)" });
   touchSession(client.id, s.id);
   logEvent('setup check', `${client.name}: slimming session ${sessionTag(s)}`);
   return s;
@@ -3320,6 +3394,19 @@ function familyView(client, rows) {
   const up = (id) => parentOf(client, id);
   return { ids, open, openParent: (id) => openParent(id, up, open), family: (root) => openFamily(root, ids || [], up, open) };
 }
+// start_session's group (#856): a group of the desk by the name the list shows, any case, or "No group".
+// Returns { groupId, folder } (groupId undefined when it is the parent's own group, so the child follows it as usual),
+// or { error } naming the desk's groups.
+function namedGroup(client, parentId, name) {
+  const want = String(name || '').trim().toLowerCase();
+  const open = groupsOf(client.id).filter((g) => !g.archived);
+  const g = open.find((x) => x.name.trim().toLowerCase() === want);
+  if (!g && want !== 'no group') return { error: `There is no group "${String(name).trim()}" on this desk. Its groups: ${open.map((x) => `"${x.name}"`).join(', ') || 'none'}, and "No group". Ask the user which one they mean.` };
+  const groupId = g ? g.id : '';
+  return { groupId: (groupId || null) === effectiveGroup(client, parentId) ? undefined : groupId, folder: g?.folder || '' };
+}
+// A group saved on a card may have been deleted since: then the child follows its parent's group.
+const liveGroup = (clientId, gid) => gid === undefined || gid === '' || groupById(clientId, gid) ? gid : undefined;
 function effectiveGroup(client, id) {
   const seen = new Set();
   for (let cur = id; cur && !seen.has(cur); cur = parentOf(client, cur)) {
@@ -3837,7 +3924,7 @@ function saveCard(s, ev) {
 }
 const savedCard = (sessionId, k, id) => state.sessions[sessionId]?.cards?.find((c) => c.ev.k === k && c.ev.id === id)?.ev;
 for (const [id, rec] of Object.entries(state.sessions)) for (const { ev } of rec.cards || [])
-  if (ev.k === 'proposal') proposals.set(ev.id, { parentId: id, client: rec.client, title: ev.title, prompt: ev.brief, cwd: ev.cwd, brand: ev.brand, startGear: ev.startGear, ev });
+  if (ev.k === 'proposal') proposals.set(ev.id, { parentId: id, client: rec.client, title: ev.title, prompt: ev.brief, cwd: ev.cwd, brand: ev.brand, startGear: ev.startGear, groupId: ev.groupId, ev });
 // byUser: the person started it from the page, under that session (the new-session form with a parent),
 // rather than the parent's Claude with start_session. Everything else is the same; only who started it,
 // in what the child is told, differs, and the parent is told it now has this child.
@@ -3867,8 +3954,10 @@ function startChild(parent, { title, prompt, cwd, attachments = [], settings = {
   if (byUser && title) state.sessions[child.id].titleBy = 'you';
   saveState();
   const parentTitle = sessionTitle(client, parent.id);
+  // A child put in another group than its parent's is its own row there, but keeps its parent link and reports (#856).
+  const elsewhere = groupId !== undefined && (groupId || null) !== effectiveGroup(client, parent.id);
   const who = byUser ? `The user started this session from the portal, under the session "${parentTitle}" (id ${parent.id})`
-    : `This session was started by the session "${parentTitle}" (id ${parent.id}) and is listed under it`;
+    : `This session was started by the session "${parentTitle}" (id ${parent.id}) and is ${elsewhere ? `listed in ${groupId ? `the group "${groupById(client.id, groupId)?.name}"` : 'No group'}, apart from it` : 'listed under it'}`;
   sendToSession(child, { text: prompt, attachments, from: byUser ? '' : 'session', context: [`(From Docket: ${who}. When you finish a turn, that session gets a short report of your reply.)`, note].filter(Boolean).join('\n\n') });
   if (byUser) noticeToSession(client.id, parent.id, `The user started the session "${child.title || title || 'Untitled'}" (id ${child.id}) under this one from the portal. Its finished turns will come to you as session reports, and you can message it with mcp__portal__send_to_session. Nothing to do now; reply in one line at most.`, { byPerson: true }).catch(() => {});
   else { // the session started it: its second with no plan brings the card that offers one (#605)
@@ -3915,10 +4004,11 @@ function suggestTitle(s, title, reason) {
   return ev;
 }
 // brand: the AI the card starts the session on; left out, the parent's brand, as for any child. startGear: as for startChild.
-function proposeSession(parent, { title, prompt, cwd, brand, startGear }) {
+// groupId: the group the user named for it (start_session's group), else it follows the parent's.
+function proposeSession(parent, { title, prompt, cwd, brand, startGear, groupId }) {
   const id = 'prop_' + randomUUID().slice(0, 8);
-  const ev = { k: 'proposal', id, title, brief: prompt, cwd, state: 'open', ...(brand ? { brand } : {}), ...(startGear ? { startGear } : {}) };
-  proposals.set(id, { parentId: parent.id, client: parent.client, title, prompt, cwd, brand, startGear, ev });
+  const ev = { k: 'proposal', id, title, brief: prompt, cwd, state: 'open', ...(brand ? { brand } : {}), ...(startGear ? { startGear } : {}), ...(groupId !== undefined ? { groupId } : {}) };
+  proposals.set(id, { parentId: parent.id, client: parent.client, title, prompt, cwd, brand, startGear, groupId, ev });
   saveCard(parent, ev);
   addEvent(parent, ev);
   return ev;
@@ -3936,7 +4026,7 @@ function startProposal(id, by = '') {
   const p = proposals.get(id);
   if (!p || p.ev.state !== 'open') throw new Error('That proposal is no longer open');
   const parent = live.get(p.parentId) || { id: p.parentId, client: p.client, cwd: p.cwd };
-  const child = startChild(parent, { title: p.title, prompt: p.prompt, cwd: p.cwd, engine: p.brand, startGear: p.startGear });
+  const child = startChild(parent, { title: p.title, prompt: p.prompt, cwd: p.cwd, engine: p.brand, startGear: p.startGear, groupId: liveGroup(p.client, p.groupId) });
   settleProposal(id, 'started', '', child.id);
   touchSession(p.client, child.id); // the person pressed Start
   // Tell the proposer, so it does not start the same work again with start_session.
@@ -4067,11 +4157,11 @@ function archiveAfterHandoff(id, archive) {
 // An offer waits for the person: New session, or Do it here.
 // The card is saved (see saveCard). A restart of the app cuts the tool call off, and Docket's tool program sends
 // the same call again once the app is back: that finds the saved card and waits on it, rather than showing a second.
-function offerSession(parent, { title, prompt, cwd, brand, startGear }) {
+function offerSession(parent, { title, prompt, cwd, brand, startGear, groupId }) {
   return new Promise((resolve) => {
     let ev = state.sessions[parent.id]?.cards?.find((c) => c.ev.k === 'offer' && c.ev.state === 'pending' && c.ev.title === title && c.ev.brief === prompt)?.ev;
     const again = !!ev;
-    ev ||= { k: 'offer', id: 'offer_' + randomUUID().slice(0, 8), title, brief: prompt, cwd, state: 'pending', ...(brand ? { brand } : {}), ...(startGear ? { startGear } : {}) };
+    ev ||= { k: 'offer', id: 'offer_' + randomUUID().slice(0, 8), title, brief: prompt, cwd, state: 'pending', ...(brand ? { brand } : {}), ...(startGear ? { startGear } : {}), ...(groupId !== undefined ? { groupId } : {}) };
     parent.pendingAsks = parent.pendingAsks || new Map();
     parent.pendingAsks.set(ev.id, { ev, resolve: (choice) => resolve(settleOffer(parent, ev, choice)) });
     if (!again) saveCard(parent, ev);
@@ -4082,7 +4172,7 @@ function offerSession(parent, { title, prompt, cwd, brand, startGear }) {
   });
 }
 function settleOffer(parent, ev, choice) {
-  if (choice === 'new') { const child = startChild(parent, { title: ev.title, prompt: ev.brief, cwd: ev.cwd || parent.cwd, engine: ev.brand, startGear: ev.startGear }); ev.state = 'new'; ev.startedId = child.id; touchSession(parent.client, child.id); }
+  if (choice === 'new') { const child = startChild(parent, { title: ev.title, prompt: ev.brief, cwd: ev.cwd || parent.cwd, engine: ev.brand, startGear: ev.startGear, groupId: liveGroup(parent.client, ev.groupId) }); ev.state = 'new'; ev.startedId = child.id; touchSession(parent.client, child.id); }
   else ev.state = 'here';
   saveState();
   updateCard(parent, ev); // a page showing that chat redraws the card, running or not
@@ -4459,7 +4549,7 @@ function flushReports(parent) {
   const waiting = [...(parent.waitingChildren || [])].map(([id, title]) => `- "${title}" (id ${id}) is waiting on the user in its own chat.`);
   parent.waitingChildren?.clear();
   const line = (r) => r.kind === 'plan'
-    ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'them'} as the plan's rules say, unless the user said to wait${r.tasks.some((t) => t.title.endsWith(userTag({ forUser: true }))) ? "; for the user's step, tell the user in a line or two what to do now" : ''}.`
+    ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'every one of them'} now as the plan's rules say, unless the user said to wait${r.tasks.some((t) => t.title.endsWith(userTag({ forUser: true }))) ? "; gather the user's steps that are due into one message, saying in a line each what to decide or do" : ''}.`
     : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}.${r.jobs ? ' ' + leftoverJobsText(r.jobs) : ''}${r.gear ? ' ' + lowGearNote(r.gear, r.top) : ''} Its latest reply begins: ${r.text}`;
   const body = [...reports.map(line), ...waiting].join('\n');
   sendToSession(parent, { text: '', system: true, report: true, reported: reports.map((r) => r.childId).filter(Boolean), context: `<session-report>
@@ -4916,7 +5006,7 @@ function startInbox(clientId, id, by = '') {
   const child = startSession({ clientId: to.id, cwd: it.cwd, title: it.title });
   state.sessions[child.id].titleBy = 'you';
   state.sessions[child.id].crossFrom = { client: it.from, session: it.fromSession };
-  sendToSession(child, { text: it.brief, attachments: [], context: `(From Docket: this work was handed over from the desk "${it.fromName}" and ${by === 'pilot' ? "Docket's autopilot" : 'the user'} pressed Start in ${to.name}'s list. It runs on ${to.name}'s own sign-in and is billed to ${to.name}. Nothing you write here goes back to ${it.fromName}.)` });
+  sendToSession(child, { text: it.brief, attachments: [], from: 'brief', context: `(From Docket: this work was handed over from the desk "${it.fromName}" and ${by === 'pilot' ? "Docket's autopilot" : 'the user'} pressed Start in ${to.name}'s list. It runs on ${to.name}'s own sign-in and is billed to ${to.name}. Nothing you write here goes back to ${it.fromName}.)` });
   settleInbox(inboxOf(clientId), id, 'started', child.id);
   saveState();
   logCrossing('start', { from: it.from, to: to.id, session: it.fromSession, title: it.fromTitle, text: `${it.title}\n(started as ${child.id})` });
@@ -4933,18 +5023,26 @@ function dismissInbox(clientId, id) {
 
 // ---------- the autopilot (#821; the rules are in pilot.mjs) ----------
 // A pilot session (Grok first, any brand) answers what waits on the person, across every desk on this computer, under
-// rules the person keeps here. state.pilot: { on, session } (the switch in ☰ > Settings > Autopilot, and the session
-// marked as pilot). Only that session gets the pilot tools, and with the switch off they refuse every call. Whatever
-// the pilot answers is marked answered by pilot on the card and in the chat, and kept in its log.
+// rules the person keeps here. state.pilot: { on, session, desk } (the switch in ☰ > Docket settings > Autopilot, the session
+// marked as pilot, and the autopilot's own desk, #875). The pilot is a desk: the first time the switch goes on Docket
+// makes the Autopilot desk (or uses the one bound in Docket settings) and starts the pilot session there, and only a session
+// of that desk can be the pilot. Only that session gets the pilot tools, and with the switch off they refuse every
+// call. What waits on the autopilot's own desk stays with the person. Whatever the pilot answers is marked answered
+// by pilot on the card and in the chat, and kept in its log.
 // The rules: data/pilot-rules.json (per computer; written with the safe defaults the first time the switch goes on).
 const PILOT_RULES_FILE = path.resolve(process.env.PORTAL_PILOT_RULES || path.join(DATA_DIR, 'pilot-rules.json'));
 const PILOT_LOG = path.join(DATA_DIR, 'pilot-log.jsonl');
-const PILOT_OFF = 'The autopilot is switched off (☰ > Settings > Autopilot), so every pilot tool refuses until the user turns it on.';
+const PILOT_OFF = 'The autopilot is switched off (☰ > Docket settings > Autopilot), so every pilot tool refuses until the user turns it on.';
 const pilotFeeds = new Set(); // open /api/pilot/events responses
 let pilotSeen = new Map(); // id -> item, as last looked
 let pilotWoken = false; // the pilot was told of new items and has not called pilot_pending since
 const remotePilot = new Map(); // remote desk id -> { items, error }: what waits on a remote desk this computer holds a pilot key for (#827)
 const pilotOn = () => !!state.pilot?.on;
+// The autopilot's own desk (#875), and the pilot session only while it is a session of that desk: one saved before
+// #875 on another desk, or left on a desk that is no longer the autopilot's, is no pilot.
+const pilotDesk = () => clientById(state.pilot?.desk) || null;
+const sessionDeskOf = (id) => live.get(id)?.client || state.sessions[id]?.client || null;
+const pilotSession = () => { const id = state.pilot?.session; return id && pilotDesk() && sessionDeskOf(id) === pilotDesk().id ? id : null; };
 function pilotRules() {
   try { return cleanPilotRules(JSON.parse(fs.readFileSync(PILOT_RULES_FILE, 'utf8'))); } catch { return cleanPilotRules(null); }
 }
@@ -4962,12 +5060,12 @@ function pilotLogTail(n = 50) {
 }
 // What the page's indicator needs: on, the pilot session, and flying (on, with a pilot set).
 function pilotBrief() {
-  const id = state.pilot?.session || null, rec = id ? state.sessions[id] : null;
+  const id = pilotSession(), rec = id ? state.sessions[id] : null;
   return { on: pilotOn(), session: id, title: id ? (live.get(id)?.title || rec?.title || 'Untitled') : '', desk: rec?.client || (id && live.get(id)?.client) || null, flying: pilotOn() && !!id };
 }
 // Everything waiting on the person, across desks, each with a stable id (kind:its own id), its desk and session, and
-// what the rules let the pilot do with it (may: allow | deny | ask). The pilot's own session is left out: it never
-// answers for itself. Kept apart from the pilot so anything else that wants "what's waiting on me" can share it (#804).
+// what the rules let the pilot do with it (may: allow | deny | ask). The pilot's own session is left out, and the rest
+// of the autopilot's desk is listed as ask: the pilot never answers for itself. Kept apart from the pilot so anything else that wants "what's waiting on me" can share it (#804).
 function waitingOnPerson({ rules = pilotRules() } = {}) {
   const me = state.pilot?.session, items = [];
   const at = (desk, session, title) => ({ desk, deskName: companyName(desk), session, title: title || (session ? sessionTitle(clientById(desk) || { id: desk }, session) : '') });
@@ -4998,7 +5096,7 @@ function waitingOnPerson({ rules = pilotRules() } = {}) {
   for (const [id, rec] of Object.entries(state.sessions)) if (rec.needsSignin && id !== me && rec.client)
     items.push({ id: `signin:${id}`, kind: 'signin', ...at(rec.client, id), what: `Sign in to ${rec.needsSignin.site}` });
   for (const a of remoteAsks.values()) if (!a.pilot) items.push({ id: `remote:${a.id}`, kind: 'remote', ...at(remoteCfg().desk, null, 'Remote Desks'), what: `${a.name} (${a.ip}) asks to use this desk` });
-  for (const it of items) { const r = pilotRuleFor(rules, it); it.may = r.level; it.why = r.why; it.answers = PILOT_KINDS[it.kind].answers; }
+  for (const it of items) { const r = pilotRuleFor(rules, it, pilotDesk()?.id); it.may = r.level; it.why = r.why; it.answers = PILOT_KINDS[it.kind].answers; }
   // Remote desks this computer holds a pilot key for (#827): what waits there, as last looked. The stricter of the
   // rules there (remoteMay, as that computer gave it) and the rules here counts.
   for (const { items: there } of remotePilot.values()) for (const it of there) {
@@ -5017,7 +5115,7 @@ async function pilotAnswer(id, answer, { answers, from, desk } = {}) {
   if (!from && id.startsWith('r:')) await refreshRemotePilot();
   const item = waitingOnPerson().find((x) => x.id === id && (!from || (x.desk === desk && x.kind !== 'remote' && !x.there)));
   if (!item) return { ok: false, why: 'Nothing with that id is waiting now (answered meanwhile, or gone). Call pilot_pending for the list as it is now.' };
-  const may = pilotMayAnswer(pilotRules(), item, answer, item.remoteMay);
+  const may = pilotMayAnswer(pilotRules(), item, answer, item.remoteMay, pilotDesk()?.id);
   if (may.ok && item.kind === 'question' && answer === 'answer' && !(answers && typeof answers === 'object' && Object.keys(answers).length))
     Object.assign(may, { ok: false, why: 'A question form needs answers: { "question text": "the option label" }.' });
   const tried = { item, answer, ok: may.ok, why: may.why, from };
@@ -5059,11 +5157,11 @@ async function pilotAnswer(id, answer, { answers, from, desk } = {}) {
 // pilot_pending) when one of them is something its rules let it answer. Runs shortly after anything the pages hear,
 // and every 15 seconds for what they do not (a pull request found open).
 function pilotLook() {
-  const p = state.pilot || {};
-  pilotWatch.armed = !!p.session || pilotFeeds.size > 0;
+  const sid = pilotSession();
+  pilotWatch.armed = !!sid || pilotFeeds.size > 0;
   if (!pilotWatch.armed) { pilotSeen = new Map(); return; }
   // A session just marked as pilot gets its tools when it next starts; one running is started again once idle.
-  const ps = p.session ? live.get(p.session) : null;
+  const ps = sid ? live.get(sid) : null;
   if (ps?.pilotReload && ps.status === 'idle' && !ps.pendingAsks?.size && !ps.reloading && !ps.resting && !runningTasks(ps)) {
     ps.pilotReload = false;
     reloadSession(ps, ["Docket's autopilot tools (pilot_pending, pilot_answer): the user marked this session as the pilot"]);
@@ -5074,10 +5172,10 @@ function pilotLook() {
   for (const i of added) pilotFeed('pending', i);
   for (const id of gone) pilotFeed('settled', { id });
   const forPilot = added.filter((i) => i.may !== 'ask');
-  if (pilotOn() && p.session && forPilot.length && !pilotWoken && !ps?.reloading) {
+  if (pilotOn() && sid && forPilot.length && !pilotWoken && !ps?.reloading) {
     pilotWoken = true;
-    const rec = state.sessions[p.session];
-    noticeToSession(rec?.client || ps?.client, p.session, `${forPilot.length} new item${forPilot.length === 1 ? '' : 's'} waiting that your autopilot rules let you answer: ${forPilot.slice(0, 5).map((i) => `${i.id} (${i.kind}, ${i.deskName}: ${clip(i.what, 80)})`).join('; ')}. Call mcp__portal__pilot_pending for the full list, then pilot_answer.`)
+    const rec = state.sessions[sid];
+    noticeToSession(rec?.client || ps?.client, sid, `${forPilot.length} new item${forPilot.length === 1 ? '' : 's'} waiting that your autopilot rules let you answer: ${forPilot.slice(0, 5).map((i) => `${i.id} (${i.kind}, ${i.deskName}: ${clip(i.what, 80)})`).join('; ')}. Call mcp__portal__pilot_pending for the full list, then pilot_answer.`)
       .catch((e) => { pilotWoken = false; logEvent('autopilot: could not wake the pilot', e.message); });
   }
 }
@@ -5096,7 +5194,7 @@ function forgetPilotKey(d, why) {
 let remotePilotBusy = null;
 function refreshRemotePilot() {
   return remotePilotBusy ||= (async () => {
-    const flying = pilotOn() && !!state.pilot?.session && remoteOn();
+    const flying = pilotOn() && !!pilotSession() && remoteOn();
     for (const d of remoteDesks()) {
       if (!flying || !d.pilotKey) { remotePilot.delete(d.id); continue; }
       if (d.pilotKey.expires <= Date.now()) { forgetPilotKey(d, 'its time ran out'); continue; }
@@ -5109,7 +5207,7 @@ function refreshRemotePilot() {
     }
   })().catch((e) => logEvent('autopilot: could not look at remote desks', e.message)).finally(() => { remotePilotBusy = null; });
 }
-setInterval(() => { if (remotePilot.size || (pilotOn() && state.pilot?.session && remoteDesks().some((d) => d.pilotKey))) refreshRemotePilot().then(pilotLook); }, 15000);
+setInterval(() => { if (remotePilot.size || (pilotOn() && pilotSession() && remoteDesks().some((d) => d.pilotKey))) refreshRemotePilot().then(pilotLook); }, 15000);
 // An answer to an item on a remote desk, passed on with the pilot key; that computer checks its own rules again.
 async function answerThere(item, answer, answers, tried) {
   const d = remoteDeskById(item.desk);
@@ -5129,46 +5227,99 @@ function pilotFeed(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of pilotFeeds) res.write(msg);
 }
-// The switch and the pilot, from ☰ > Settings > Autopilot.
-function setPilot({ on, session }) {
+// The autopilot's desk, made the first time the switch goes on with none bound (#875): filled in the way ☰ > Desks >
+// Add a desk fills a new one (pilotDeskEntry), its Claude home made empty and its Grok home ready for Grok.
+function makePilotDesk() {
+  const r = cleanCompany(pilotDeskEntry(homeRoots(), CLIENTS), (id) => !!clientById(id));
+  if (r.error) throw new Error(`Could not make the Autopilot desk: ${r.error}`);
+  // madeFolders: the home folders Docket makes now, which Remove may later send to the Recycle Bin.
+  const made = [r.home, r.grokHome].filter((h) => h && !fs.existsSync(h));
+  if (made.length) r.madeFolders = made;
+  try { fs.mkdirSync(r.folder, { recursive: true }); } catch (err) { throw new Error(`Could not make the Autopilot desk's working folder ${r.folder}: ${err.message}`); }
+  saveCompanies([...CLIENTS, r]);
+  const d = clientById(r.id);
+  runDeskCheck(d).catch(() => {});
+  logEvent('autopilot: desk made', `${d.name}: ${d.home}`);
+  return d;
+}
+const PILOT_BRIEF = "You are Docket's autopilot on this computer. This desk is the autopilot's own, kept apart from the desks where work happens. Call mcp__portal__pilot_pending to see what waits on the user across the desks, and answer with mcp__portal__pilot_answer only what it marks may: allow (or decline what it marks deny). Leave everything marked ask for the user, including anything on this desk. Docket checks its rules again on every answer and wakes you when something new arrives that you may answer; until then, do nothing. Keep each reply to a line or two.";
+// The pilot session on the autopilot's desk: Grok when the desk has it, else the desk's own default brand. It is
+// marked as pilot before its tools are first asked for, so it has them from its first turn.
+function startPilotSession(d) {
+  const s = startSession({ clientId: d.id, title: 'Autopilot', engine: brandsOf(d).includes('grok') ? 'grok' : defaultEngineOf(d) });
+  state.sessions[s.id].titleBy = 'you';
+  state.pilot.session = s.id;
+  touchSession(d.id, s.id);
+  sendToSession(s, { text: PILOT_BRIEF, attachments: [], from: 'brief', context: "(From Docket: the user turned the autopilot on in ☰ > Docket settings > Autopilot, and Docket started this session on the autopilot's own desk as the pilot.)" });
+  logEvent('autopilot: pilot started', `${d.name}: ${sessionTag(s)}`);
+  return s;
+}
+function markPilot(p, id) {
+  if (id === p.session) return;
+  const was = p.session ? live.get(p.session) : null;
+  if (was) was.pilotReload = false;
+  p.session = id;
+  const s = id ? live.get(id) : null;
+  if (s && s.status !== 'ended') s.pilotReload = true; // started again once idle, to load the pilot tools
+  logEvent('autopilot: pilot set', id ? sessionTag(s || { id, title: state.sessions[id]?.title }) : 'none');
+}
+// The switch, the pilot and the autopilot's desk, from ☰ > Docket settings > Autopilot. desk: bind an existing desk as the
+// autopilot's. session: only a session of that desk; one from any other desk is refused with why. on: the first
+// time, the desk is made (unless one is bound) and the pilot session started there when none of it is running.
+// Returns a note to show when the pilot session could not be started.
+function setPilot({ on, session, desk }) {
   const p = state.pilot ||= { on: false, session: null };
+  let note = '';
+  if (desk !== undefined) {
+    const d = clientById(String(desk || ''));
+    if (!d) throw new Error('There is no desk with that id on this computer.');
+    if (d.id !== p.desk) { p.desk = d.id; logEvent('autopilot: desk bound', d.name); }
+  }
   if (session !== undefined) {
     const id = session ? String(session) : null;
     if (id && !live.has(id) && !state.sessions[id]) throw new Error('No session with that id');
-    if (id !== p.session) {
-      const was = p.session ? live.get(p.session) : null;
-      if (was) was.pilotReload = false;
-      p.session = id;
-      const s = id ? live.get(id) : null;
-      if (s && s.status !== 'ended') s.pilotReload = true; // started again once idle, to load the pilot tools
-      logEvent('autopilot: pilot set', id ? sessionTag(s || { id, title: state.sessions[id]?.title }) : 'none');
-    }
+    const d = pilotDesk(), sd = id && sessionDeskOf(id);
+    const why = id ? pilotSessionRefusal({ id, desk: sd, deskName: sd && companyName(sd) }, d && { id: d.id, name: d.name }) : '';
+    if (why) { logEvent('autopilot: pilot refused', `${id}: ${why}`); throw new Error(why); }
+    markPilot(p, id);
   }
+  // A pilot left on a desk that is not the autopilot's (bound away from, or saved before #875) is no pilot.
+  if (p.session && sessionDeskOf(p.session) !== p.desk) markPilot(p, null);
   if (on !== undefined) {
+    if (on) {
+      const d = pilotDesk() || makePilotDesk();
+      p.desk = d.id;
+      const running = p.session && live.get(p.session);
+      if (!running || running.status === 'ended') {
+        try { startPilotSession(d); } catch (e) { note = `The pilot session could not be started on ${d.name}: ${e.message}`; logEvent('autopilot: pilot not started', note); }
+      }
+    }
     p.on = !!on;
     if (p.on) writePilotRulesIfMissing();
     logEvent(`autopilot ${p.on ? 'on' : 'off'}`);
   }
   pilotWoken = false;
   saveState();
-  pilotWatch.armed = !!p.session || pilotFeeds.size > 0;
+  pilotWatch.armed = !!pilotSession() || pilotFeeds.size > 0;
   broadcast({ t: 'pilot', pilot: pilotBrief() });
   setTimeout(pilotLook, 0);
-  return pilotBrief();
+  return note;
 }
-// What ☰ > Settings > Autopilot shows: the switch, the pilot, the sessions that could be it, the rules file, what
-// waits now and the log.
+// What ☰ > Docket settings > Autopilot shows: the switch, the autopilot's desk and the desks that could be it, the pilot and
+// the sessions of that desk that could be it, the rules file, what waits now and the log.
 function pilotView() {
-  const sessions = [...live.values()].filter((s) => s.status !== 'ended')
+  const d = pilotDesk();
+  const sessions = !d ? [] : [...live.values()].filter((s) => s.status !== 'ended' && s.client === d.id)
     .map((s) => ({ id: s.id, title: s.title || 'Untitled', desk: companyName(s.client), brand: s.engine || 'claude' }));
   let waiting = [];
-  try { waiting = waitingOnPerson().map(({ id, kind, deskName, title, what, may }) => ({ id, kind, desk: deskName, title, what: clip(what, 160), may })); } catch {}
-  return { ...pilotBrief(), sessions, rulesFile: PILOT_RULES_FILE, rules: pilotRules(), log: pilotLogTail(), waiting };
+  try { waiting = waitingOnPerson().map(({ id, kind, deskName, title, what, may, why }) => ({ id, kind, desk: deskName, title, what: clip(what, 160), may, why })); } catch {}
+  return { ...pilotBrief(), pilotDesk: d ? { id: d.id, name: d.name } : null, desks: CLIENTS.map((c) => ({ id: c.id, name: c.name })),
+    sessions, rulesFile: PILOT_RULES_FILE, rules: pilotRules(), log: pilotLogTail(), waiting };
 }
 // The pilot's tools: offered only to the session marked as pilot (see portalToolDefs).
 function pilotToolDefs(parent) {
   const refuse = (text) => ({ content: [{ type: 'text', text }], isError: true });
-  const notPilot = () => state.pilot?.session !== parent.id ? 'This session is no longer the pilot.' : !pilotOn() ? PILOT_OFF : '';
+  const notPilot = () => pilotSession() !== parent.id ? (state.pilot?.session === parent.id ? "This session is not on the autopilot's own desk, so it is not the pilot." : 'This session is no longer the pilot.') : !pilotOn() ? PILOT_OFF : '';
   return [
     tool('pilot_pending',
       "Docket's autopilot: list everything waiting on the user across every desk on this computer, and on remote desks this computer holds a pilot key for (their ids start r:) (permission prompts, question forms, plan approvals, New session / Do it here cards, suggested session cards, handoff cards, work handed over from another desk, Send / Don't send cards, open pull requests waiting for merge, sign-ins, Remote Desks connections). Each has an id for pilot_answer, its desk and session, what it is, the answers it takes, and may: allow (you may answer it), deny (you may only decline it) or ask (it stays with the user; leave it). Docket checks the rules again on every answer.",
@@ -5183,7 +5334,7 @@ function pilotToolDefs(parent) {
         const text = (shown.length ? JSON.stringify(shown.map(({ input, ...i }) => i), null, 1) : 'Nothing waiting that your rules let you answer.')
           + (held && !all ? `\n\n${held} more stay${held === 1 ? 's' : ''} with the user (may: ask); pass all: true to see them.` : '')
           + [...remotePilot.entries()].filter(([, r]) => r.error).map(([id, r]) => `\n\nThe remote desk ${remoteDeskById(id)?.name || id} could not be looked at: ${r.error}`).join('')
-          + remoteDesks().filter((d) => d.pilotKeyGone && !d.pilotKey).map((d) => `\n\nThe pilot key for the remote desk ${d.name} has ended (${d.pilotKeyGone.why}); the user asks for a new one in ☰ > Remote Desks.`).join('');
+          + remoteDesks().filter((d) => d.pilotKeyGone && !d.pilotKey).map((d) => `\n\nThe pilot key for the remote desk ${d.name} has ended (${d.pilotKeyGone.why}); the user asks for a new one in ☰ > Desks > Remote Desks.`).join('');
         return { content: [{ type: 'text', text }] };
       }),
     tool('pilot_answer',
@@ -5634,8 +5785,9 @@ function sendFirst(s) {
   const kept = firsts.read(s.id);
   const msg = firstMessage({ kept, events: s.events, last: fresh.last });
   if (!msg) return false;
-  const text = (msg.message?.content || []).find((b) => b.type === 'text')?.text || '';
-  if (text && !s.events.some((e) => e.k === 'user')) addEvent(s, { k: 'user', text: text.split('\n\n(From Docket')[0] }); // the chat shows the brief it runs
+  // The chat shows the brief it runs, read as a saved chat reads it: folded when another session or Docket sent it (#867).
+  const ev = convertMessage(s, msg, { live: false }).find((e) => e.k === 'user');
+  if (ev && !s.events.some((e) => e.k === 'user')) addEvent(s, ev);
   addEvent(s, { k: 'note', text: `Its first message never reached Claude Code, so Docket started this session afresh${kept ? ' with that message' : ', with the first message its chat shows'}` });
   logEvent(`started afresh with its first message: ${sessionTag(s)}`, kept ? 'the kept first message' : fresh.last && msg === fresh.last ? 'the last message sent' : 'the first message in its chat');
   s.titleNoted = true; // the kept message has the title line already
@@ -5646,7 +5798,9 @@ function sendFirst(s) {
   if (fresh.last && fresh.last !== msg) s.input.push(fresh.last);
   return true;
 }
-// from: 'session' when another session wrote the text, so the page can tell it from what the person typed
+// from: 'session' when another session wrote the text, so the page can tell it from what the person typed; 'brief'
+// for a brief Docket wrote or brought in (another desk's handover, a scheduled task's prompt, a card's session),
+// which folds the same but otherwise goes as the person's own (not held by a pause, a turn the person started) (#867)
 // news: what makes this turn's report only news for its parent (turnNewsFor in reports.mjs), '' for none.
 // reported: the children whose finished turns this report carries, not counted as working in the state line.
 function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false, report = false, news = '', reported = [] }) {
@@ -5696,6 +5850,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   s.startedKids = 0; // start_session (user_asked) this turn: see endTurnMark (#777)
   s.closedKid = false; // close_session this turn: with no other child open, the job is done (#694)
   if (byPerson) s.autoWakes = 0; // a button the person pressed: wake-ups may continue
+  if (!system && state.sessions[s.id]?.thinNote) { blocks.push({ type: 'text', text: THIN_NOTE }); delete state.sessions[s.id].thinNote; saveState(); } // its last answer was cut short (#863)
   if (state.sessions[s.id]?.reloadNote) { blocks.push({ type: 'text', text: state.sessions[s.id].reloadNote }); delete state.sessions[s.id].reloadNote; saveState(); }
   const rules = rulesToReread(s);
   if (rules.length) blocks.push({ type: 'text', text: rulesNote(rules) });
@@ -5732,7 +5887,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
 // computer is about to sleep or shut down, and when it wakes: Docket runs pauseAll before and resumeAll
 // after. Back-ups for a warning that never came or came too late: the wake check (a 30 second timer that
 // finds 5+ minutes passed) and the restart check (an automatic pause still saved when Docket starts).
-// A pause the person made with the button is never ended by any of these. ☰ > Settings > Pause on sleep turns it off.
+// A pause the person made with the button is never ended by any of these. ☰ > Docket settings > Pause on sleep turns it off.
 const autoPauseOn = () => state.autoPause !== false;
 let wokeAt = 0, shutdownTimer = null;
 function onWake(source) {
@@ -5833,7 +5988,7 @@ async function machineBreakdown(m) {
 // ---------- Starting Docket after a restart ----------
 // A page pinned in the browser cannot start Docket, so the only time Docket can make sure it starts again after this
 // computer restarts is while it runs. At each start it checks (platform.mjs: startupState); the page offers the fix
-// (a banner, and ☰ > Settings > Starting Docket), and the install and remove scripts do the work, so the page and
+// (a banner, and ☰ > Docket settings > Starting Docket), and the install and remove scripts do the work, so the page and
 // the scripts never disagree. state.startup = { choice, at } keeps the person's answer: 'signin', 'shortcut' (no
 // banner; missing shortcuts are made again here) or 'none' (don't ask again).
 let startupNow = null;
@@ -8313,7 +8468,9 @@ async function loadTranscript(client, id) {
   const s = { id, tasks: new Map() };
   // A Claude transcript has no record of a turn's end, so its Done line is the time of the turn's last reply (no duration).
   let turnAt = 0;
-  const endTurn = () => { if (turnAt) { events.push({ k: 'result', at: turnAt }); turnAt = 0; } };
+  let turnBlocks = []; // the turn's assistant blocks, for the thin-reply check (#863)
+  const thinMark = () => { const t = thinTurn(turnBlocks); turnBlocks = []; return t ? { thin: true } : {}; };
+  const endTurn = () => { if (turnAt) { events.push({ k: 'result', at: turnAt, ...thinMark() }); turnAt = 0; } turnBlocks = []; };
   let inPing = false; // a keep-warm ping and its reply stay out of the chat (keep-warm.mjs)
   for (const { msg: m, at } of rows) {
     if (m.parent_tool_use_id) continue;
@@ -8321,8 +8478,9 @@ async function loadTranscript(client, id) {
     if (inPing) continue;
     if (m.type === 'docket_note') { events.push({ k: 'note', text: m.text }); continue; }
     if (m.type === 'docket_error' || (m.type === 'result' && (m.is_error || m.subtype !== 'success'))) { events.push({ k: 'error', text: m.text || m.result || m.subtype }); continue; }
-    if (m.type === 'result') { events.push({ k: 'result', ms: m.duration_ms, at }); continue; }
+    if (m.type === 'result') { events.push({ k: 'result', ms: m.duration_ms, at, ...thinMark() }); continue; }
     if (m.type === 'assistant' && at && !kept) turnAt = at;
+    if (m.type === 'assistant') turnBlocks.push(...slimBlocks(m.message?.content));
     for (const ev of convertMessage(s, m, { live: false })) {
       if (ev.k === 'tool_result') {
         const tev = [...events].reverse().find((e) => e.k === 'tool' && e.id === ev.id);
@@ -8534,9 +8692,10 @@ async function profileRoutes(req, res, url, p) {
       return json(res, 200, s.mcpAtStart ? { from: 'start', at: s.mcpAtStart.at, servers: s.mcpAtStart.servers.map(mcpRow) } : { from: 'none', servers: [] });
     }
   }
-  // Switching a desk's plan system (#700, plan-switch.mjs). GET ?to=: what the switch would leave behind, and whether to
-  // warn. POST { to, action }: switch (no conversion), convert (a session carries the old plans over, and the desk stays
-  // on its old system until the user presses Finish the switch on the page), finish, or cancel (stays as it is). The
+  // Switching a desk's plan system (#700, plan-switch.mjs). GET ?to=&scope=: what the switch would leave behind, and
+  // whether to warn. POST { to, action, scope }: switch (no conversion), convert (a session carries the old plans over,
+  // only those in the scope folder when one is given, and the desk stays on its old system until the user presses
+  // Finish the switch on the page), finish, or cancel (stays as it is). The
   // setup wizard asks before the desk exists, with the home and folder it is about to save.
   if (p === '/api/plan-switch-check' && req.method === 'POST') {
     const b = await readBody(req);
@@ -8552,7 +8711,8 @@ async function profileRoutes(req, res, url, p) {
     const from = client.planSystem || '';
     if (req.method === 'GET') {
       const to = url.searchParams.get('to') || '';
-      const found = await planSwitchFound(client);
+      let scope; try { scope = switchScope(url.searchParams.get('scope')); } catch (e) { return json(res, 400, { error: e.message }); }
+      const found = await planSwitchFound(client, scope);
       return json(res, 200, { from, to, ...switchWarning(found, from, to), found, pending: client.planSwitch || null });
     }
     if (req.method !== 'POST') return json(res, 405, { error: 'GET or POST' });
@@ -8888,7 +9048,7 @@ function remoteControlView() {
     connections: remoteHereView(), pilotKeys: livePilotKeys(cfg.pilotKeys).map(pilotKeyView),
     asks: [...remoteAsks.values()].map(({ id, name, ip, at, pilot }) => ({ id, name, ip, at, pilot, desk: clientById(cfg.desk)?.name })) };
 }
-// The page's controls for this computer's side (☰ > Remote Desks). Returns false when the request is not one of them.
+// The page's controls for this computer's side (☰ > Desks > Remote Desks). Returns false when the request is not one of them.
 async function remoteControlRoutes(req, res, p) {
   if (!p.startsWith('/api/remote-control')) return false;
   if (!remoteOn()) return json(res, 404, { error: 'Not found' }); // hidden
@@ -9018,7 +9178,7 @@ async function remoteProxy(d, req, res, url, p) {
   // Typing time is this computer's own measure; for a remote desk it is not kept anywhere.
   if (/^\/api\/sessions\/[\w-]+\/typing$/.test(p)) return json(res, 200, { ok: true });
   const conn = remoteConns.get(d.id);
-  if (!conn) return json(res, 409, { error: `${d.name} is not connected. Open ☰ > Remote Desks and connect with a code from your authenticator app.`, remote: 'connect', client: d.id });
+  if (!conn) return json(res, 409, { error: `${d.name} is not connected. Open ☰ > Desks > Remote Desks and connect with a code from your authenticator app.`, remote: 'connect', client: d.id });
   if (url.searchParams.has('client')) url.searchParams.set('client', conn.desk);
   const body = req.method === 'POST' ? renameClient(req.preBody ?? await readBody(req), d.id, conn.desk) : undefined;
   let r;
@@ -9066,7 +9226,7 @@ async function remoteDeskRoutes(req, res, p) {
     let r;
     try { r = await remoteCall(d, null, 'GET', '/remote/hello', undefined, 10000); }
     catch (e) { return json(res, 502, { error: connectError(e, d.name) + (e?.code === 'PIN_MISMATCH' ? '' : ` If Docket on ${d.name} has just started or restarted, Remote Desks may be hidden there: ask a session there to show the remote desk options, then connect again.`) }); }
-    if (r.status === 503) return json(res, 400, { error: `${r.json?.error || 'Remote control is off on that computer'}. Turn it on there (☰ > Remote Desks), then connect again.` });
+    if (r.status === 503) return json(res, 400, { error: `${r.json?.error || 'Remote control is off on that computer'}. Turn it on there (☰ > Desks > Remote Desks), then connect again.` });
     try { r = await remoteCall(d, null, 'POST', '/remote/hello', { code: String(b.code || ''), name: os.hostname() }, ASK_WAIT_MS + 20e3); }
     catch (e) { return json(res, 502, { error: connectError(e, d.name) }); }
     if (r.status !== 200 || !r.json?.token) return json(res, 400, { error: r.json?.error || `${d.name} refused the connection` });
@@ -9187,6 +9347,7 @@ const server = http.createServer(async (req, res) => {
       // coordinator started before that tool existed is asked to review its plan only after it starts again.
       const reviewTool = defs.some((t) => t.name === 'plan_review_done');
       if (req.method === 'GET' && state.sessions[sid] && !!state.sessions[sid].reviewTool !== reviewTool) { state.sessions[sid].reviewTool = reviewTool; saveState(); }
+      if (req.method === 'GET' && parent) parent.screenTools = screenOn(parent.client); // see screenReloads
       if (req.method === 'GET') return json(res, 200, defs.filter((t) => !t.hidden).map((t) => ({ name: t.name, description: t.description, inputSchema: z.toJSONSchema(z.object(t.inputSchema)) })));
       const t = defs.find((x) => x.name === b.name);
       if (!t) return json(res, 404, { error: `No tool named ${b.name}` });
@@ -9207,13 +9368,14 @@ const server = http.createServer(async (req, res) => {
       req.on('close', () => { clearInterval(beat); pilotFeeds.delete(res); });
       return;
     }
-    // ☰ > Settings > Autopilot: the switch, the pilot, the rules file, what waits now and the log.
+    // ☰ > Docket settings > Autopilot: the switch, the pilot, the rules file, what waits now and the log.
     if (p === '/api/pilot') {
       if (req.method === 'GET') return json(res, 200, pilotView());
       if (req.method === 'POST') {
         const b = await readBody(req);
-        try { setPilot({ on: b.on === undefined ? undefined : !!b.on, session: b.session }); } catch (e) { return json(res, 400, { error: e.message }); }
-        return json(res, 200, pilotView());
+        let note = '';
+        try { note = setPilot({ on: b.on === undefined ? undefined : !!b.on, session: b.session, desk: b.desk }); } catch (e) { return json(res, 400, { error: e.message }); }
+        return json(res, 200, { ...pilotView(), note });
       }
     }
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
@@ -9896,7 +10058,7 @@ const server = http.createServer(async (req, res) => {
     const plm = p.match(/^\/api\/plans\/(p-[a-z0-9]+)$/);
     if (plm && req.method === 'GET') {
       const client = clientById(url.searchParams.get('client'));
-      const d = client && plansOn(client) && planDetail(client, plm[1]);
+      const d = client && plansShown(client) && planDetail(client, plm[1]);
       return d ? json(res, 200, d) : json(res, 404, { error: 'No such plan on this desk' });
     }
     const fm = p.match(/^\/api\/sessions\/([\w-]+)\/files$/);

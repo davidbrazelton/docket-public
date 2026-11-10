@@ -12,7 +12,7 @@
 <style>
 :root {
   --bg: #e9e7e0; --panel: #fdfcf9; --panel-2: #f1efe9; --line: #e2e0d8; --text: #1f1e1b; --muted: #6b6a64;
-  --accent: #c2410c; --accent-soft: #fde7d9; --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --run: #2563eb; --signin: #ca8a04;
+  --accent: #c2410c; --accent-default: #c2410c; --accent-soft: #fde7d9; --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --run: #2563eb; --signin: #ca8a04;
   --on-accent: #fff; --on-warn: #fff; --on-bad: #fff; /* text on those colors, 4.5:1 or better */
   --user-bg: #ece9e1; --code-bg: #f1efe9; --shadow: 0 1px 2px rgba(0,0,0,.06);
   --head: #e5e2d9; --head-text: #45443f;
@@ -24,7 +24,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #121210; --panel: #1d1d1b; --panel-2: #272724; --line: #373633; --text: #f2f1ec; --muted: #a3a29a;
-    --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15;
+    --accent: #f97316; --accent-default: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15;
     --on-accent: #1f1e1b; --on-warn: #1f1e1b; --on-bad: #1f1e1b;
     --user-bg: #2c2b28; --code-bg: #2a2a27; --shadow: none;
     --head: #383733; --head-text: #d4d3cc;
@@ -35,7 +35,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #121210; --panel: #1d1d1b; --panel-2: #272724; --line: #373633; --text: #f2f1ec; --muted: #a3a29a;
-  --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15;
+  --accent: #f97316; --accent-default: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15;
     --on-accent: #1f1e1b; --on-warn: #1f1e1b; --on-bad: #1f1e1b;
   --user-bg: #2c2b28; --code-bg: #2a2a27; --shadow: none;
     --head: #383733; --head-text: #d4d3cc;
@@ -466,6 +466,8 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .note .spin { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: bootspin .8s linear infinite; }
 .err { border: 1px solid var(--bad); color: var(--bad); border-radius: 8px; padding: 8px 12px; white-space: pre-wrap; font-size: 13px; }
 .done-line { font-size: 12px; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 4px; }
+/* A turn whose answer was saved only as a short or empty narration block (#863): an indicator under it */
+.thin-line { font-size: 12px; color: var(--muted); font-style: italic; }
 /* A turn the session marked done (#726): its Done line in green with a check, and its ready-to-close sentence on its own
    line in a soft green band. Status, not a control: --ok only, no border. */
 .done-line.fin { color: var(--ok); border-top-color: color-mix(in srgb, var(--ok) 40%, var(--panel)); }
@@ -576,9 +578,107 @@ aside.tasks.hidden { display: none; }
 .usual.over { color: var(--warn); }
 .tag { font-size: 10px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px; color: var(--muted); }
 .tag.plan-tag { color: var(--accent); border-color: var(--accent); font-variant-numeric: tabular-nums; }
-.plan-head { padding: 6px 14px 2px; font-size: 13px; font-weight: 600; }
-.plan-head .plan-sub { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
-.plan-head a, .plan-task a { color: inherit; }
+.plan-task a { color: inherit; }
+/* The Plan section (#868): one line per step in plan order, phases as headings, chips in the session list's look */
+.plan + .plan { border-top: 1px solid var(--line); margin-top: 6px; }
+.plan-head { padding: 8px 14px 6px; font-size: 13px; }
+.plan-head .t { font-weight: 600; }
+.plan-head .plan-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; font-weight: 400; font-size: 11px; color: var(--muted); margin-top: 2px; }
+.plan-head a { color: inherit; }
+.plan-head .plan-sub .plink { margin: 0; }
+.plan-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: var(--panel-2); margin: 8px 0 4px; gap: 1px; }
+.plan-bar i { flex: 1; min-width: 1px; background: var(--line); cursor: pointer; }
+.plan-bar i.st-done { background: var(--ok); } .plan-bar i.st-claimed { background: var(--run); } .plan-bar i.st-waiting_outside { background: var(--muted); }
+.plan-bar i.st-waiting_on_user, .plan-bar i.st-sent_back { background: var(--warn); } .plan-bar i.st-dropped { background: var(--panel-2); }
+.plan-bar i.ps { margin-left: 3px; } .plan-bar i:hover { opacity: .7; }
+.plan-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: var(--muted); }
+.plan-legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
+/* Active and Done are filters (DESIGN.md): bordered; on, a soft tint with a main-color border */
+.plan-flts { display: flex; align-items: center; gap: 4px; padding: 0 14px 8px; }
+.plan-flts .div { width: 1px; height: 16px; background: var(--line); margin: 0 4px; }
+.plan-flt { font: inherit; font-size: 11px; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 8px; padding: 1px 8px; cursor: pointer; }
+.plan-flt:hover { color: var(--text); }
+.plan-flt[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.plan-flt .n { opacity: .75; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.plan-list { border-top: 1px solid var(--line); padding: 2px 0 4px; }
+.plan-list > .hint { padding: 10px 14px; }
+.plan-row { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 8px; padding: 4px 14px 4px 12px; border-left: 2px solid transparent; font-size: 13px; cursor: pointer; }
+.plan-row:hover { background: var(--panel-2); }
+.plan-row.mine { border-left-color: var(--accent); }
+.plan-row .ic { line-height: 18px; text-align: center; font-size: 12px; color: var(--muted); }
+.plan-row .ic.st-done { color: var(--ok); } .plan-row .ic.st-claimed { color: var(--run); } .plan-row .ic.st-waiting_on_user, .plan-row .ic.st-sent_back { color: var(--warn); }
+.plan-row .l1 { line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-row .l1 .id { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 5px; }
+.plan-row .l1 .tw { color: var(--muted); opacity: .6; margin-right: 3px; font-family: ui-monospace, Consolas, monospace; }
+.plan-row .end { display: flex; align-items: center; height: 18px; }
+.plan-row .l2 { grid-column: 2 / 4; font-size: 11px; line-height: 16px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-row.done .l1, .plan-row.user .l1 { color: var(--muted); }
+.plan-row.st-dropped .l1 { text-decoration: line-through; }
+.ptag { font-size: 10px; line-height: 15px; border: 1px solid var(--line); border-radius: 8px; padding: 0 5px; color: var(--muted); white-space: nowrap; }
+.ptag.you { border-style: dashed; }
+.plan-row.open { background: var(--panel-2); cursor: default; }
+.plan-row.open .l1 { white-space: normal; font-weight: 600; cursor: pointer; }
+.plan-row.open .ic { cursor: pointer; }
+.plan-row .det { grid-column: 2 / 4; display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 5px 8px; margin: 6px 0 4px; font-size: 12px; cursor: auto; }
+.plan-row .det .k { color: var(--muted); font-size: 11px; line-height: 20px; }
+.plan-row .det .v { min-width: 0; line-height: 20px; }
+.plan-row .why { grid-column: 1 / 3; }
+.plan-row .why.now { color: var(--warn); }
+.plan-row .why .ask { color: var(--text); margin-top: 2px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; }
+.plan-row .pnote { grid-column: 1 / 3; border-top: 1px solid var(--line); padding-top: 6px; overflow-wrap: anywhere; }
+.plan-row .pnote.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
+.plan-row .pnote ul { margin: 2px 0 0; padding-left: 16px; }
+.plan-row .more { grid-column: 1 / 3; justify-self: start; font: inherit; font-size: 11px; color: var(--muted); background: none; border: 0; padding: 0; cursor: pointer; }
+.plan-row .more:hover { color: var(--text); text-decoration: underline; }
+/* a session, a step waited on or a link, as a small chip */
+.plink { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; margin: 0 4px 3px 0; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); font: inherit; font-size: 11px; line-height: 18px; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+a.plink:hover, button.plink:hover { border-color: var(--muted); }
+button.plink { cursor: pointer; }
+.plink > span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.plink .gl { color: var(--muted); }
+.plink .pn { font-weight: 600; }
+.plink .tkb { margin-left: 0; line-height: 13px; }
+.plink .br-ic { color: var(--muted); }
+.plink.dep.ok { color: var(--ok); }
+.plink.sess { font-size: 12px; }
+.plink .dot { width: 7px; height: 7px; margin: 0; animation: none; box-shadow: none; }
+.plink .dot.asking::after { content: none; }
+.plan .here { font-size: 11px; color: var(--muted); margin-right: 4px; }
+/* a run of hidden steps, kept in its place (👁 > Gap lines) */
+.plan-gap { display: flex; align-items: center; gap: 6px; width: 100%; height: 18px; padding: 1px 14px 1px 34px; font: inherit; font-size: 11px; color: var(--muted); background: none; border: 0; cursor: pointer; }
+.plan-gap::before, .plan-gap::after { content: ''; height: 1px; background: var(--line); flex: 1; }
+.plan-gap::before { flex: 0 0 10px; }
+.plan-gap:hover { color: var(--text); }
+.plan-gap .ids { font-variant-numeric: tabular-nums; }
+.plan-gap.fold { color: var(--accent); }
+.plan-phase { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; column-gap: 8px; align-items: center; padding: 8px 14px 4px; border-top: 1px solid var(--line); cursor: pointer; user-select: none; }
+.plan-list > .plan-phase:first-child { border-top: 0; }
+.plan-phase:hover { background: var(--panel-2); }
+.plan-phase .car { color: var(--muted); font-size: 10px; text-align: center; transition: transform .12s; }
+.plan-phase.shut .car { transform: rotate(-90deg); }
+.plan-phase .pn { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plan-phase .pn .no { color: var(--muted); font-weight: 500; margin-right: 4px; }
+.plan-phase .pc { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.plan-phase .mini { width: 44px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+.plan-phase .mini i { display: block; height: 100%; background: var(--ok); }
+.plan-phase.complete .pn { color: var(--muted); font-weight: 500; }
+.plan-phase.complete .pc { color: var(--ok); }
+.plan-phase.nomatch { opacity: .55; }
+.plan-row.flash { animation: plan-flash 1s; }
+@keyframes plan-flash { from { background: var(--accent-soft); } }
+/* the Plan heading's 👁 and Expand all: links (DESIGN.md), flat, a grey tint when pointed at, a soft tint when open */
+.plan-ctl { display: flex; align-items: center; gap: 2px; margin: -4px -6px -4px 0; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.plan-eye-wrap { position: relative; display: flex; }
+.plan-ctl button { font: inherit; font-size: 11px; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; }
+.plan-ctl .plan-eye { min-width: 32px; height: 28px; padding: 0; font-size: 14px; }
+.plan-ctl .plan-all { height: 28px; padding: 0 6px; white-space: nowrap; }
+.plan-ctl > button:hover, .plan-ctl .plan-eye:hover { background: var(--panel-2); color: var(--text); }
+.plan-ctl .plan-eye[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+.tl-menu.plan-view-pop { left: auto; right: 0; min-width: 240px; cursor: default; }
+.plan-view-pop button { display: grid; grid-template-columns: 16px 1fr; gap: 0 6px; width: 100%; height: auto; padding: 5px 8px; text-align: left; font-size: 12px; color: var(--text); }
+.plan-view-pop button:hover { background: var(--pop-hover); }
+.plan-view-pop .tick { color: var(--accent); }
+.plan-view-pop .d { grid-column: 2; font-size: 11px; color: var(--muted); }
 .plan-task .ic.st-done { color: var(--ok, #2e9d5b); } .plan-task .ic.st-claimed { color: var(--accent); } .plan-task .ic.st-waiting_on_user, .plan-task .ic.st-sent_back { color: var(--warn); } .plan-task .ic.st-waiting_outside { color: var(--muted); }
 .plan-yours { font-size: 12px; padding: 2px 0 4px; color: var(--warn); } .plan-task .tag.you { color: var(--warn); border-color: var(--warn); margin-right: 4px; }
 .plan-task .lb.mine { font-weight: 600; } .plan-task[data-plan-open] { cursor: pointer; }
@@ -706,7 +806,7 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 .fb input[type=text] { width: 100%; color: var(--text); }
 .fb .fb-res { color: var(--text); } .fb .fb-res.bad { color: var(--warn, #b45309); } .fb .fb-res:empty { display: none; }
 .fb details pre { white-space: pre-wrap; word-break: break-word; font-size: 11px; margin: 6px 0 0; }
-/* ☰ > Remote Desks */
+/* ☰ > Desks > Remote Desks */
 .rd .rd-h { font-size: 14px; margin: 4px 0 8px; }
 .rd .rd-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
 .rd .rd-line input { width: 9em; }
@@ -734,6 +834,9 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 .install-offer .d { font-size: 13px; }
 .install-offer .d a { color: inherit; text-decoration: underline; }
 .ps-found { margin: 6px 0 8px; padding-left: 18px; line-height: 1.45; }
+.ps-scope { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ps-scope select { max-width: 100%; font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
+.ps-scope input { flex: 1 1 100%; }
 .install-offer .b { grid-column: 2; display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
 .install-offer .b button { border-color: currentColor; }
 .install-offer .b button:hover { background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
@@ -817,7 +920,7 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 .mu-fold[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
 .mu-arrow { display: inline-block; width: 1em; transition: transform .15s; } .mu-fold[aria-expanded="true"] .mu-arrow { transform: rotate(90deg); }
 .mu-note { margin-top: 8px; font-size: 12px; color: var(--muted); } .mu-note button { font-size: 12px; padding: 0 4px; }
-/* ☰ > Bring in past sessions */
+/* ☰ > Desks > desk > Bring in past sessions */
 .bi-run { display: flex; gap: 10px; align-items: center; } .bi-run span { flex: 1; }
 .bi-why { font-weight: normal; color: var(--muted); font-size: 12px; }
 .bi-group { border-top: 1px solid var(--line); padding: 6px 0; } .bi-group.none { opacity: .6; }
@@ -1158,7 +1261,7 @@ header.top .pilot-btn[hidden] { display: none; }
 .ctx { position: fixed; z-index: 20; min-width: 200px; background: var(--pop-bg); border: 1px solid var(--pop-line); border-radius: 8px; padding: 4px; box-shadow: var(--pop-shadow); }
 .ctx button { display: block; width: 100%; text-align: left; border: none; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
 .ctx hr { border: none; border-top: 1px solid var(--pop-line); margin: 4px 0; }
-/* ☰ > Profile: the import preview and the profile folder */
+/* ☰ > Docket settings > Profile: the import preview and the profile folder */
 .prof-list { margin-top: 8px; max-height: 50vh; overflow: auto; }
 .prof-modes { margin-top: 8px; display: grid; gap: 4px; }
 .prof-kind { font-weight: 600; margin: 8px 0 2px; }
@@ -1181,6 +1284,11 @@ header.top .pilot-btn[hidden] { display: none; }
 .ctx .sub-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ctx button:hover, .tl-menu button:hover, .ctx .sub-btn[aria-expanded="true"] { background: var(--pop-hover); }
 .ctx .sub-arrow { color: var(--muted); }
+/* Docket settings: an icon column (the default color square, 🔔, ◐), the same size for each, so the labels line up (#879) */
+.ctx .mi-l { display: flex; align-items: center; }
+.ctx .mi-ic { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; vertical-align: -3px; font-size: 15px; line-height: 1; flex: none; }
+.ctx .mi-ic.mi-glyph { font-size: 17px; }
+.ctx .mi-sq { width: 13px; height: 13px; border-radius: 3px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text) 25%, transparent); }
 .ctx.sub { z-index: 21; min-width: 220px; }
 .ctx.sub[hidden] { display: none; }
 .sub-wrap.inline .ctx.sub { position: static; box-shadow: none; border: none; border-left: 2px solid var(--line); border-radius: 0; margin: 0 0 4px 10px; padding: 0 0 0 4px; min-width: 0; }
@@ -1619,12 +1727,12 @@ const OS = osWords(isMac(globalThis.navigator));
 // controls built in code put ${tip(name)} in their tag. A row is [key, the name people see, the tip, and for a
 // toggle the tip while it is turned on]. test/tips.test.mjs fails if a clickable control has no tip.
 // The Suggest a feature button (#552) is not launched yet (#570): false hides the button, its Help rows and
-// ☰ > Settings > Feedback destination. The feature and /api/feedback stay in place; true turns it all back on.
+// ☰ > Docket settings > Feedback destination. The feature and /api/feedback stay in place; true turns it all back on.
 const FEEDBACK_ON = false;
 const STALL_TIP = 'When a step in a session (a browser step, a command) gives no answer past its limit (browser 3 min, commands 11 min, others 15 min; half that when you have sent a message behind it), Docket stops the turn the way Stop does and tells the session what happened. Off: the amber "stalled" tag still shows, and stopping is up to you.';
 const HELP = [
   ['Top bar', [
-    ['menu', '☰ Menu', 'The menu: this desk\'s settings, desks, the sessions you recently viewed, and the Tools, Gauges, Help, Settings and About groups'],
+    ['menu', '☰ Menu', 'The menu: the desks and everything each one has, the sessions you recently viewed, and the Gauges, Help, Docket settings and About groups'],
     ['back', '‹ Back', `Back to the session you viewed before (${OS.nav[0]}). Right-click for the steps behind, to jump several at once`],
     ['fwd', '› Forward', `Forward again to the session you went back from (${OS.nav[1]}). Right-click for the steps ahead`],
     ['company', 'Desk buttons', 'Switch to this desk\'s sessions. The orange number counts sessions that need you, plus cards from other desks waiting for Start. You can add more desks (☰ > Desks > + Add a desk): each keeps its own sign-in, settings and memory, so a new one is a safe place to try a plugin or framework while the desk you work in stays as it is.'],
@@ -1674,7 +1782,7 @@ const HELP = [
     ['new-group', '+ New group', 'Make a named group to sort sessions into'],
     ['show-empty', '👁 > Show empty groups', 'Show empty groups: list groups that have no sessions too', 'Groups with no sessions are listed too. Turn it off to hide them.'],
     ['group-head', 'A group header', 'Click to fold or unfold the group. Drag it to change the order. Right-click to rename it, set its start folder, archive or delete it.'],
-    ['today-spend', 'Today $… / $… · … agent · … you · +… / −…', 'What this desk has spent today at API prices, against its daily budget if it has one (set in ☰ > Desks). Amber from 80% of the budget, red at 100%. Then the time its sessions spent working (agent) and the time you spent typing to them (you), each added up over every session; the time they stood waiting on you is in the hover text. Last, the lines their file edits added (green) and removed (red) today, the same as the Lines column on the Usage page. Click to open Usage for today.'],
+    ['today-spend', 'Today $… / $… · … agent · … you · +… / −…', 'What this desk has spent today at API prices, against its daily budget if it has one (set in ☰ > Desks > its name > Desk settings). Amber from 80% of the budget, red at 100%. Then the time its sessions spent working (agent) and the time you spent typing to them (you), each added up over every session; the time they stood waiting on you is in the hover text. Last, the lines their file edits added (green) and removed (red) today, the same as the Lines column on the Usage page. Click to open Usage for today.'],
     ['activity', '● 3 ● 1 ● 9 and a line', 'This desk\'s live sessions by the color of their dot: blue working, orange waiting on you, green idle. Then a line of how many were working through today, midnight to now, in 5-minute steps. The hover text says today\'s peak and how long at least one was working. Click to open Usage › Activity, with the day by state and a week\'s busy hours.'],
     ['foot-more', '⋯', 'What a narrow list leaves out of the line above: the pieces that did not fit, then links to Usage › Activity and Usage for today. The line drops lines added and removed first, then the activity line, your time, the counts, agent time and the word Today; the dollar figure always stays.'],
     ['foot-go-activity', 'Open Usage › Activity', 'Opens Usage on its Activity part: when sessions worked, hour by hour'],
@@ -1847,9 +1955,9 @@ const HELP = [
     ['pv-window', 'Window', 'Show over the whole page'],
     ['pv-popout', 'Pop out', 'Open in its own browser window'],
     ['pv-tab', '↗', 'Open in a new tab'],
-    ['start-signin', 'Start Docket at sign-in', () => `Docket starts by itself, with no window, each time you sign in to this computer, and ${OS.mac ? 'Docket appears in your Applications folder' : 'Docket appears in the Start menu'} to open it. Change it later in ☰ > Settings > Starting Docket.`],
+    ['start-signin', 'Start Docket at sign-in', () => `Docket starts by itself, with no window, each time you sign in to this computer, and ${OS.mac ? 'Docket appears in your Applications folder' : 'Docket appears in the Start menu'} to open it. Change it later in ☰ > Docket settings > Starting Docket.`],
     ['start-shortcut', 'Just add a shortcut', () => `Docket does not start at sign-in. Instead a Docket shortcut ${OS.mac ? 'in your Applications folder and on the desktop' : 'in the Start menu, and Start Docket on the desktop,'} starts Docket if needed and opens it. Docket makes them again if they go missing.`],
-    ['start-never', "Don't ask again", 'Hide this on this computer. Change it later in ☰ > Settings > Starting Docket.'],
+    ['start-never', "Don't ask again", 'Hide this on this computer. Change it later in ☰ > Docket settings > Starting Docket.'],
     ['cfg-reload', 'Reload', 'Start this session\'s Claude process again, with the same conversation, so it loads the changed config. Now if it is idle; if it is working, once its turn and background commands end'],
     ['cut-continue', 'Continue', 'Tell the session to carry on where it was cut off, checking first what state things are in'],
     ['pv-reload', 'Reload', 'Read the file again to show its latest version'],
@@ -1861,13 +1969,15 @@ const HELP = [
     ['lb-next', '›', 'Next picture (→)'],
   ]],
   ['☰ menu', [
-    ['menu-desks', 'Desks', 'Manage the desks on this computer, or open any desk\'s settings'],
-    ['menu-profile', 'Desks > Desk Inspector', 'What every session on that desk starts with: its instructions, hooks, skills, connected services and switches'],
+    ['menu-desks', 'Desks', 'Manage, copy and share the desks on this computer, and one group for each desk with everything it has: its Inspector, its plan tree, its settings, its private browser sign-ins, screen control and Bring in Past Sessions'],
+    ['menu-desk', 'Desks > desk', 'Everything this one desk has: its Inspector, its plan tree (when it keeps plans in a folder), its settings, its private browser sign-ins, screen control and Bring in Past Sessions. The square is its own color; none means it uses the default color'],
+    ['menu-deskedit', 'Desks > desk > Desk settings', 'This desk\'s settings on the Desks screen, opened at it: name, color, brands, folders, budget, cache, variables, hooks and the rest'],
+    ['menu-profile', 'Desks > desk > Inspector', 'What every session on that desk starts with: its instructions, hooks, skills, connected services and switches'],
     ['menu-sessions', 'Sessions', 'Show the session list (on a narrow window it hides behind this menu)'],
-    ['menu-companies', 'Desks > Manage', 'Add, rename, reorder, hide or remove desks on this computer. Each desk\'s settings open under its name; a hidden desk keeps everything but leaves the buttons at the top until it is shown again'],
-    ['menu-remote', 'Remote Desks', 'Let another computer on the office network use one desk here, or use a desk on another computer from here. Each connection needs a code from an authenticator app and someone clicking Allow on the computer that has the desk'],
-    ['menu-bringin', 'Tools > Bring in Past Sessions', 'Claude Code sessions from before Docket, found on this computer outside this desk\'s Claude home (never in another desk\'s): pick which to copy in, so the session list, search and costs show them. The originals stay where they are; a report is saved first, and Undo sends the copies to the Recycle Bin'],
-    ['menu-copydesk', 'Tools > Copy a Desk', 'Make a new desk with a saved desk\'s setup (rules, skills, settings, hooks, plugins, MCP servers, groups), in homes of its own: pick the desk to copy, starting on this one. Its sessions, history and sign-ins are never copied, and the desk copied is not changed'],
+    ['menu-companies', 'Desks > Manage', 'Add, rename, reorder, hide or remove desks on this computer. Each desk\'s own group under ☰ > Desks opens its settings here too; a hidden desk keeps everything but leaves the buttons at the top until it is shown again'],
+    ['menu-remote', 'Desks > Remote Desks', 'Let another computer on the office network use one desk here, or use a desk on another computer from here. Each connection needs a code from an authenticator app and someone clicking Allow on the computer that has the desk'],
+    ['menu-bringin', 'Desks > desk > Bring in Past Sessions', 'Claude Code sessions from before Docket, found on this computer outside this desk\'s Claude home (never in another desk\'s): pick which to copy in, so the session list, search and costs show them. The originals stay where they are; a report is saved first, and Undo sends the copies to the Recycle Bin'],
+    ['menu-copydesk', 'Desks > Copy a Desk', 'Make a new desk with a saved desk\'s setup (rules, skills, settings, hooks, plugins, MCP servers, groups), in homes of its own: pick the desk to copy, starting on this one. Its sessions, history and sign-ins are never copied, and the desk copied is not changed'],
     ['bi-pick', 'Folder to bring in', 'Bring in this folder\'s sessions: each is copied into this desk\'s Claude home. Sessions already here are skipped'],
     ['bi-folder', 'Another Claude home', 'The full path of a Claude home folder Docket did not find by itself (the folder holding projects), such as one you once set as CLAUDE_CONFIG_DIR'],
     ['bi-look', 'Look there', 'Look for Claude Code sessions in that folder too (it is remembered for next time)'],
@@ -1877,13 +1987,12 @@ const HELP = [
     ['bi-undo', 'Undo…', 'Pick which copies this run made go to the Recycle Bin (the Trash on a Mac). The originals are never touched'],
     ['bi-undo-pick', 'Copy to undo', 'Send this copy to the Recycle Bin. Copies continued since they were brought in are not ticked: tick one to send it anyway, with what was added'],
     ['menu-history', 'Recently viewed', 'The last 200 sessions you viewed in this browser, day by day, so you can go back to one'],
-    ['menu-plantree', 'Plan tree', 'Every plan in this desk\'s plan folder, as a tree with progress, broken links and plans nothing links to (opens in its own window)'],
-    ['menu-color', 'Settings > Color', 'Pick Docket\'s main color'],
-    ['menu-tools', 'Tools', 'Bring in Past Sessions, and Copy a Desk'],
-    ['menu-myprofile', 'Profile', 'Take your desks, schedules and settings to another computer: export and import a file, or keep it in your own Google Drive, OneDrive, Dropbox or iCloud Drive folder'],
-    ['menu-pexport', 'Profile > Export profile', 'Save docket-profile.json: every desk, schedule and setting here. Never sign-ins, keys or tokens: each computer signs in again'],
-    ['menu-pimport', 'Profile > Import profile', 'Read a docket-profile.json saved on another computer. It shows what would change (desks, schedules, settings) first, with Merge or Replace, and asks about folders this computer does not have'],
-    ['menu-psync', 'Profile > Keep my profile in a folder', 'Keep docket-profile.json in a folder a cloud service copies between your computers, like Google Drive for desktop. Docket writes it when a desk, schedule or setting changes and takes in what the others change, item by item; the newer one wins, and it asks when both changed. Docket signs in to no cloud service'],
+    ['menu-plantree', 'Desks > desk > Plan tree', 'Every plan in this desk\'s plan folder (on a desk that keeps its plans in a folder), as a tree with progress, broken links and plans nothing links to (opens in its own window)'],
+    ['menu-color', 'Docket settings > Default color', 'Pick Docket\'s main color, for every desk without a color of its own. The square shows it. A desk with its own color (☰ > Desks > desk > Desk settings) keeps that while it is open, and the item says so'],
+    ['menu-myprofile', 'Docket settings > Profile', 'Take your desks, schedules and settings to another computer: export and import a file, or keep it in your own Google Drive, OneDrive, Dropbox or iCloud Drive folder'],
+    ['menu-pexport', 'Docket settings > Profile > Export profile', 'Save docket-profile.json: every desk, schedule and setting here. Never sign-ins, keys or tokens: each computer signs in again'],
+    ['menu-pimport', 'Docket settings > Profile > Import profile', 'Read a docket-profile.json saved on another computer. It shows what would change (desks, schedules, settings) first, with Merge or Replace, and asks about folders this computer does not have'],
+    ['menu-psync', 'Docket settings > Profile > Keep my profile in a folder', 'Keep docket-profile.json in a folder a cloud service copies between your computers, like Google Drive for desktop. Docket writes it when a desk, schedule or setting changes and takes in what the others change, item by item; the newer one wins, and it asks when both changed. Docket signs in to no cloud service'],
     ['pr-merge', 'Merge', 'Add what the file has and update what differs. Desks and schedules the file lacks stay'],
     ['pr-replace', 'Replace', 'Make this computer match the file: also remove the desks and schedules it lacks. A desk with sessions running stays'],
     ['pr-path', 'Folder on this computer', 'This path was written on another computer and is not on this one. Use this folder instead; Docket remembers the answer'],
@@ -1891,7 +2000,7 @@ const HELP = [
     ['pr-theirs', "Take the other computer's", "Use the version the other computer wrote, in place of this computer's"],
     ['pr-folder', 'Profile folder', 'Keep docket-profile.json in this folder. The cloud service\'s own app copies it to your other computers'],
     ['pr-other', 'Another folder', 'The full path of any folder, like a network share or a synced folder Docket did not find'],
-    ['menu-gauges', 'Gauges', 'AI Usage, and the memory and disk Docket uses'],
+    ['menu-gauges', 'Gauges', 'AI Usage, the memory and disk Docket uses, and the screen control log'],
     ['menu-usage', 'Gauges > AI Usage', 'What the AI has cost, by day, account, desk, group and session, with charts (opens in its own window)'],
     ['menu-machine', 'Gauges > Memory and Disk', 'How much memory Docket and its sessions use right now, and how much disk space its folders take'],
     ['mu-again', 'Refresh', 'Memory and disk: measure the folder sizes again now, instead of showing the last measurement'],
@@ -1900,28 +2009,28 @@ const HELP = [
     ['menu-key', 'Help > Key', 'What the dots, colors and sounds mean'],
     ['menu-help', 'Help > Instructions', 'What every button and symbol does (shortcut: ?)'],
     ['menu-tour', 'Help > Show me around', 'A five-step tour of the main parts of the page'],
-    ['menu-settings', 'Settings', 'Color, sound, theme, stopping stuck steps, pausing on sleep and resting idle sessions'],
-    ['menu-sound', 'Settings > Sound', () => soundTip()],
-    ['menu-theme', 'Settings > Theme', 'Pick default (follows the computer), light or dark'],
-    ['menu-theme-default', 'Settings > Theme > Default', 'Follow the computer\'s light or dark setting, changing when it changes'],
-    ['menu-theme-light', 'Settings > Theme > Light', 'Always light, whatever the computer is set to. Kept in this browser'],
-    ['menu-theme-dark', 'Settings > Theme > Dark', 'Always dark, whatever the computer is set to. Kept in this browser'],
-    ['menu-stall', 'Settings > Stop stuck steps', STALL_TIP],
-    ['menu-autocontinue', 'Settings > Continue after a crash', 'On: when Docket stops without warning partway through a turn (a crash, a power cut, a forced restart), it continues each session it cut off by itself once it is back, with a note to check what state things are in first. Each cut-off gets one try; the rest show a banner with Continue.'],
-    ['menu-startup', 'Settings > Starting Docket', 'Whether Docket starts by itself when you sign in to this computer, or only from its shortcut, and a switch between them. A page pinned in the browser cannot start Docket.'],
-    ['menu-rest', 'Settings > Rest idle sessions', 'How long a session sits idle, with nothing running or waiting on you, before Docket releases it from memory (its claude process, connected services and browser). It stays in the list with a hollow dot and wakes on its next message. 0 means never; the default, 60, matches the prompt cache.'],
-    ['menu-autopause', 'Settings > Pause on sleep', 'On: when the computer is about to sleep, hibernate or shut down, Docket pauses every working session by itself, and resumes them when it wakes or starts again. A pause you made with the ⏸ button always waits for you.'],
+    ['menu-settings', 'Docket settings', 'Settings for all of Docket on this computer, whichever desk is open: default color, sound, theme, stuck steps, crashes, sleep, resting idle sessions, starting Docket, the autopilot and your profile. A desk\'s own settings are under ☰ > Desks > its name'],
+    ['menu-sound', 'Docket settings > Sound', () => soundTip()],
+    ['menu-theme', 'Docket settings > Theme', 'Pick default (follows the computer), light or dark'],
+    ['menu-theme-default', 'Docket settings > Theme > Default', 'Follow the computer\'s light or dark setting, changing when it changes'],
+    ['menu-theme-light', 'Docket settings > Theme > Light', 'Always light, whatever the computer is set to. Every Docket page follows it'],
+    ['menu-theme-dark', 'Docket settings > Theme > Dark', 'Always dark, whatever the computer is set to. Every Docket page follows it'],
+    ['menu-stall', 'Docket settings > Stop stuck steps', STALL_TIP],
+    ['menu-autocontinue', 'Docket settings > Continue after a crash', 'On: when Docket stops without warning partway through a turn (a crash, a power cut, a forced restart), it continues each session it cut off by itself once it is back, with a note to check what state things are in first. Each cut-off gets one try; the rest show a banner with Continue.'],
+    ['menu-startup', 'Docket settings > Starting Docket', 'Whether Docket starts by itself when you sign in to this computer, or only from its shortcut, and a switch between them. A page pinned in the browser cannot start Docket.'],
+    ['menu-rest', 'Docket settings > Rest idle sessions', 'How long a session sits idle, with nothing running or waiting on you, before Docket releases it from memory (its claude process, connected services and browser). It stays in the list with a hollow dot and wakes on its next message. 0 means never; the default, 60, matches the prompt cache.'],
+    ['menu-autopause', 'Docket settings > Pause on sleep', 'On: when the computer is about to sleep, hibernate or shut down, Docket pauses every working session by itself, and resumes them when it wakes or starts again. A pause you made with the ⏸ button always waits for you.'],
     ['menu-about', 'About', 'Which version of Docket this is, and its updates from GitHub'],
     ['menu-restartdocket', 'Restart Docket', 'Start Docket over to free everything it holds: it stops every session program, connected service and private browser, and the session runner, then starts again. Not a page reload. It says first which sessions are working or waiting on you; those show under "Open when the portal stopped" with Continue afterwards, and nothing continues by itself'],
     ['rd-anyway', 'Restart anyway', 'Restart now and cut off the sessions listed. Each shows under "Open when the portal stopped" with Continue afterwards'],
     ['rd-go', 'Restart', 'Stop everything Docket started and start it again'],
     ['menu-update', 'About > Check for updates', 'Look on GitHub for a newer Docket now'],
     ['upd-every', 'Check every', 'How often Docket looks on GitHub for a newer version'],
-    ['menu-screen', 'Settings > Screen control', 'On: this desk\'s sessions get tools to take screenshots, move and click the mouse and type, in any program on this computer (and on a remote desk\'s computer where it is on too). A last resort for programs with no better way in. Every action is logged, a bar shows while a session is in control, and Stop halts it. Off by default; sessions started or woken after you turn it on get the tools. Kept on this computer only'],
-    ['menu-screenlog', 'Settings > Screen control log', 'Open the folder with the log of every screen action (one file a day: session, time, action) and the picture of the screen taken before each click or drag. Kept 30 days'],
+    ['menu-screen', 'Desks > desk > Screen control', 'On: this desk\'s sessions get tools to take screenshots, move and click the mouse and type, in any program on this computer (and on a remote desk\'s computer where it is on too). A last resort for programs with no better way in. Every action is logged, a bar shows while a session is in control, and Stop halts it. Off by default; sessions started or woken after you turn it on get the tools. Kept on this computer only'],
+    ['menu-screenlog', 'Gauges > Screen control log', 'Open the folder with the log of every screen action, on every desk (one file a day: session, time, action) and the picture of the screen taken before each click or drag. Kept 30 days'],
     ['screen-stop', 'Stop', 'Stop this session using the mouse and keyboard now. Its running action ends at once, and its screen tools are refused until you next write to it'],
-    ['menu-signins', 'Settings > Private browser sign-ins', 'The sites this desk is signed in to in its private browser, the one its sessions use: add a sign-in or delete one. The same as the 🌐 button'],
-    ['menu-fbdest', 'Settings > Feedback destination', 'Which GitHub repo the Suggest a feature button files reports in from this computer, and the GitHub token it files them with. Not set means nothing is sent. Kept on this computer only'],
+    ['menu-signins', 'Desks > desk > Private browser sign-ins', 'The sites this desk is signed in to (it opens that desk first) in its private browser, the one its sessions use: add a sign-in or delete one. The same as the 🌐 button'],
+    ['menu-fbdest', 'Docket settings > Feedback destination', 'Which GitHub repo the Suggest a feature button files reports in from this computer, and the GitHub token it files them with. Not set means nothing is sent. Kept on this computer only'],
     ['fb-dest-repo', 'Repo', 'The GitHub repo the reports become Issues in, as owner/name. Leave it empty to stop sending'],
     ['fb-dest-token', 'Token', 'A fine-grained GitHub token for that one repo with Issues: Read and write and nothing else. Kept on this computer only, sent only to GitHub, and never shown again'],
     ['rest-min', 'Minutes', 'How many idle minutes before a session is released from memory. 0 means never'],
@@ -1959,11 +2068,11 @@ const HELP = [
     ['acc-pick', 'Any color', 'Pick any color you like'],
     ['acc-hex', 'Color code', 'Type or paste a hex color code, like #2074A4 (the # is optional, 3 or 6 digits)'],
     ['acc-default', 'Default (orange)', 'Go back to Docket\'s own orange'],
-    ['acc-none', 'None (use the main color)', 'No color of its own: this desk uses the main color from ☰ > Settings > Color'],
-    ['co-color', 'Color', 'Pick this desk\'s own main color. None uses the main color from ☰ > Settings > Color'],
+    ['acc-none', 'None (use the default color)', 'No color of its own: this desk uses the default color from ☰ > Docket settings > Default color'],
+    ['co-color', 'Color', 'Pick this desk\'s own main color. None uses the default color from ☰ > Docket settings > Default color'],
     ['co-name', 'Desk name', 'The name on the desk\'s button at the top'],
     ['co-fold', 'Open or close', 'Open this desk\'s settings. Opening or closing them here changes nothing about the desk', 'Close this desk\'s settings. Opening or closing them here changes nothing about the desk'],
-    ['co-hide', 'Hide or show', 'Hide this desk after Save: its button at the top and its sessions leave the list, and its Inspector leaves ☰ > Desks. Its sign-in, sessions, settings and folders all stay, and Show brings it back. One desk always stays shown', 'Hidden. Show it again after Save: its button at the top and its sessions come back'],
+    ['co-hide', 'Hide or show', 'Hide this desk after Save: its button at the top and its sessions leave the list, and its group leaves ☰ > Desks. Its sign-in, sessions, settings and folders all stay, and Show brings it back. One desk always stays shown', 'Hidden. Show it again after Save: its button at the top and its sessions come back'],
     ['co-check', 'Desk check', 'Show or hide the Desk check: setup problems Docket handles badly on this desk, each with what it means and its fix, and what it found. It runs when Docket starts or updates and when a desk is added. It only reads, and changes nothing'],
     ['co-check-act', 'Set as start folder', 'Make this folder the group\'s start folder now, the same as right-click > Set start folder… on the group. It changes only Docket\'s setting for the group, never any file'],
     ['co-check-run', 'Check again', 'Run the Desk check again now. It only reads the desk\'s folders and past sessions, and changes nothing'],
@@ -1978,7 +2087,7 @@ const HELP = [
     ['term-shell', 'Open a terminal', 'Open this kind of terminal in the folder shown, signed in as this desk. The ticked one is the last used'],
     ['term-cli', 'Start an AI program', 'Open the ticked terminal in the folder shown, signed in as this desk, and start this AI program in it. The terminal stays open when the program exits'],
     ['term-choose', 'Choose folder…', 'Pick another folder, and the kind of terminal, before it opens'],
-    ['cache-yes', 'Make it 1 hour', 'Start this desk\'s new Claude sessions with the 1-hour prompt cache. Sessions already running keep theirs. Change it back in ☰ > Desks'],
+    ['cache-yes', 'Make it 1 hour', 'Start this desk\'s new Claude sessions with the 1-hour prompt cache. Sessions already running keep theirs. Change it back in ☰ > Desks > this desk > Desk settings'],
     ['cache-later', 'Not now', 'Ask again in 30 days at the earliest, and only if pauses of 5 to 60 minutes keep costing a re-read'],
     ['cache-ok', 'OK', 'Close this note'],
     ['cache-never', 'Never', 'Never ask about this desk\'s prompt cache again'],
@@ -1999,6 +2108,8 @@ const HELP = [
     ['co-no', 'Not now', 'Keep the list as it is. This card does not show again; 👁 > Cost has it whenever you want it'],
     ['plan-no', 'Turn them off', 'Turn plans off for this desk and don\'t ask again. Turn them on later in the desk\'s Inspector, under Switches'],
     ['ps-convert', 'Convert in a session', 'Start a session on this desk that carries the plans listed here over to the new plan system. The old files stay as they are, and the desk keeps its old plan system until you press Finish the switch'],
+    ['ps-scope', 'What to convert', 'Convert the whole desk, or only the plans of one project or folder. The list above shows what that one has; the rest of the desk stays in the old files'],
+    ['ps-folder', 'Folder to convert', 'The full path of a folder: only the plan files in it and its subfolders are converted'],
     ['ps-switch', 'Switch without converting', 'Switch the plan system now and leave what is listed here where it is, unconverted'],
     ['ps-cancel', 'Cancel', 'Keep the plan system as it is'],
     ['ps-finish', 'Finish the switch', 'Switch the desk to its new plan system now. Press it once the conversion session says it is done'],
@@ -2072,8 +2183,9 @@ const HELP = [
     ['rd-desk', 'Desk it may use', 'The one desk another computer may use. Its sign-ins and costs stay on this computer'],
     ['rd-on', 'Turn on / Turn off', 'While on, computers on the office network can ask to connect (with a code from the authenticator app, and only after someone here clicks Allow). While off, nothing on the network can reach Docket here'],
     ['pilot-icon', '✈ Autopilot flying', 'The autopilot is on: its pilot session answers what waits on you, under the rules on this computer, and everything it answers says "answered by pilot". Click to see its log, or to turn it off'],
-    ['pilot-pick', 'Pilot', 'The session that answers for you. Pick one that is running (Grok first, any brand), then Save pilot'],
-    ['menu-autopilot', 'Settings > Autopilot', 'Let a pilot session answer what waits on you (permission prompts, question forms, cards) under rules kept on this computer. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the pilot, what waits now and the log of its answers'],
+    ['pilot-pick', 'Pilot', "The session that answers for you. Only a session of the autopilot's desk can be the pilot: pick one of its sessions that is running, then Save pilot"],
+    ['pilot-desk', "Autopilot's desk", "The desk the pilot works on: its own sign-ins, bill, memory and files, apart from the desks where work happens. What waits on it stays with you. Docket makes an Autopilot desk the first time you turn the autopilot on; pick another desk here and Save desk to use that one instead"],
+    ['menu-autopilot', 'Docket settings > Autopilot', 'One switch for all of Docket: the autopilot works across all desks from its own Autopilot desk, where its pilot session runs, and while it is on the label names that pilot. Let a pilot session answer what waits on you (permission prompts, question forms, cards) under rules kept on this computer. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the pilot, what waits now and the log of its answers'],
     ['rc-icon', '📡 Remote connection on', 'Another computer is using a desk here, or this computer is using a desk on another computer. Click the 📡 at the bottom left to see which, and to Disconnect'],
     ['rd-drop', 'Disconnect', 'End this computer\'s connection now. It needs a new code and an Allow to come back'],
     ['rd-revoke', 'Revoke', 'End this pilot key now. The autopilot on that computer can no longer reach this desk until someone here allows a new one'],
@@ -2085,8 +2197,8 @@ const HELP = [
     ['rd-off', 'Disconnect', 'End the connection to this remote desk. Nothing of it is kept on this computer'],
     ['rd-remove', 'Remove', 'Take this remote desk off this computer\'s list. Its sessions stay on the other computer'],
     ['rd-name', 'Name', 'What this remote desk is called here'],
-    ['rd-addr', 'Address', 'The address the other computer shows in ☰ > Remote Desks, like 192.168.1.20:4402'],
-    ['rd-check', 'Check code', 'The check code the other computer shows in ☰ > Remote Desks. It proves the connection reaches that computer and nothing in between reads it'],
+    ['rd-addr', 'Address', 'The address the other computer shows in ☰ > Desks > Remote Desks, like 192.168.1.20:4402'],
+    ['rd-check', 'Check code', 'The check code the other computer shows in ☰ > Desks > Remote Desks. It proves the connection reaches that computer and nothing in between reads it'],
     ['rd-add', 'Add', 'Check the address and the check code, then add the remote desk'],
     ['ra-no', 'Don\'t allow', 'Refuse this connection'],
     ['ra-yes', 'Allow', 'Let that computer use the desk named here, for a few hours. It had a correct authenticator code'],
@@ -2782,7 +2894,7 @@ function renderSpend(r) {
   el.innerHTML = `<span data-p="today">Today </span><b>${money(r.cost)}</b>${r.budget ? ` / ${whole(r.budget)}` : ''}<span data-p="agent"> · ${spanText(r.agent)} agent</span><span data-p="you"> · ${spanText(r.user)} you</span><span data-p="lines"> · ${todayLines(r)}</span>`;
   el.title = `${name} today at API prices: ${exact(r.cost)}` + (r.budget
     ? ` of a ${exact(r.budget)} daily budget (${Math.round(share * 100)}%). ${r.cost > r.budget ? exact(r.cost - r.budget) + ' over.' : exact(r.budget - r.cost) + ' left.'}`
-    : '. No daily budget set (☰ > Desks).')
+    : '. No daily budget set (☰ > Desks > this desk > Desk settings).')
     + `\nAgent time ${spanText(r.agent)}, waiting on you ${spanText(r.wait)}, your typing ${spanText(r.user)}, added up over every session today.`
     + `\nLines added ${(r.added || 0).toLocaleString()}, removed ${(r.removed || 0).toLocaleString()}, by the sessions' file edits today.`
     + '\nClick to open Usage for today.';
@@ -3851,7 +3963,7 @@ function dialog({ title, body = '', buttons, stack = false }) {
     document.addEventListener('keydown', onKey, true);
     $('dlgBtns').onclick = (e) => { const b = e.target.closest('[data-i]'); if (b) done(buttons[+b.dataset.i].value); };
     $('dlg').onclick = (e) => { if (e.target === $('dlg')) done(null); };
-    ($('dlgBody').querySelector('input[type=text]') || $('dlgBtns').querySelector('.primary'))?.focus();
+    ($('dlgBody').querySelector('input[type=text]:not([hidden])') || $('dlgBtns').querySelector('.primary'))?.focus();
   });
 }
 // Docket never shows the browser's own alert, confirm or prompt boxes (test/no-native-dialogs.test.mjs):
@@ -4483,7 +4595,7 @@ function readDeskSettings() {
   S.attnWindow = attnWindowOf(deskStore.get('attnWindow'));
   for (const [k, key, , , d] of VIEW_OPTS) S[k] = deskStore.get(key, d);
   // 👁 > Reason tags (#686): words, icons or off. Icons for anyone who has not picked (#695); a computer that set
-  // ☰ > Settings > Reason tags (#682) keeps it: on starts on words, off on off.
+  // the Reason tags setting (#682) keeps it: on starts on words, off on off.
   const oldTags = store.get('needTags', null);
   S.reasonTags = REASON_TAGS.find(([v]) => v === deskStore.get('reasonTags'))?.[0] || (oldTags === null ? 'icons' : oldTags ? 'words' : 'off');
   S.reasonDot = deskStore.get('reasonDot', false); // Icon as session dot (#720): off until picked, so desks keep their look
@@ -5238,7 +5350,7 @@ const CHAT_PRESETS = [['everything', 'Everything', { steps: true, look: 'open', 
 const chatPreset = (v) => CHAT_PRESETS.find(([, , p]) => Object.keys(p).every((k) => p[k] === v[k] || (k === 'look' && !v.steps)))?.[0] || 'custom';
 // The presets as a row of filters (DESIGN.md), the one the checkmarks match shown on; Custom when none.
 const presetsHtml = (label, o) => `<div class="ctx-presets" role="group" aria-label="${esc(label)}"><span>${esc(label)}</span>${o.presets.map(([p, pl, on]) => `<button class="chip-tgl${on ? ' on' : ''}" data-act="preset-${p}" aria-pressed="${on}"${tip('ctx-preset-' + p)}>${esc(pl)}</button>`).join('')}${o.custom ? `<span class="chip-tgl on custom"${tip('ctx-preset-custom')}>Custom</span>` : ''}</div>`;
-const SOUND_OFF = 'Sound is off for all sessions. Turn it on in ☰ > Settings.'; // why Chime is greyed out
+const SOUND_OFF = 'Sound is off for all sessions. Turn it on in ☰ > Docket settings.'; // why Chime is greyed out
 // View › in the session menu: how the chat is shown. ['head', label] is a heading over the choices below it.
 const viewMenuItems = (f) => {
   const v = f.chat || CHAT_PRESETS[1][2], preset = chatPreset(v);
@@ -5272,7 +5384,7 @@ function sessionMenuItems(f) {
   if (f.cwd) items.push(['terminal', 'Terminal…']);
   if (f.cwd) for (const ed of f.editors || []) items.push([`editor-${ed.id}`, `Open in ${ed.name}`]); // the ones installed here
   items.push(['view', 'View', { sub: viewMenuItems(f) }]);
-  const chimeOn = f.soundOn && !f.muted; // reads like Sound in ☰ > Settings
+  const chimeOn = f.soundOn && !f.muted; // reads like Sound in ☰ > Docket settings
   items.push(['chime', chimeOn ? '🔔 Chime: on' : '🔕 Chime: off', { checked: chimeOn, disabled: !f.soundOn, stated: true }]);
   items.push(['hr'], ['group', 'Group…']);
   if (!f.archived) items.push(['parent', 'Move under…']);
@@ -5368,7 +5480,7 @@ function openSessionMenu(id, at) {
     }
     const b = ev.target.closest('[data-act]'); if (!b || b.disabled) return;
     const act = b.dataset.act, { kids, otherRuns, unreadRuns } = ctx, s = sessionById(id);
-    if (act === 'chime' || act === 'timeline' || /^(preset|show|look)-/.test(act)) { // stays open and shows the new state, like Sound in ☰ > Settings
+    if (act === 'chime' || act === 'timeline' || /^(preset|show|look)-/.test(act)) { // stays open and shows the new state, like Sound in ☰ > Docket settings
       ev.stopPropagation(); // the redraw takes the clicked button out, so the page would read it as a click outside
       if (act === 'chime') setMuted(id, !isMuted(id)); else if (act === 'timeline') toggleTimeline(); else setChatView(chatViewChange(act, chatView()));
       draw(); m.querySelector(`[data-act="${act}"]`)?.focus();
@@ -5449,7 +5561,7 @@ async function openFeedback() {
   try {
     const r = await api('/api/feedback');
     $('fbFacts').textContent = JSON.stringify({ ...fbAt, ...r.docket }, null, 1);
-    if (!r.destination.repo) fbShow('Feedback is not set up on this computer yet, so Send will not reach anyone. Whoever looks after Docket here sets where it goes in ☰ > Settings > Feedback destination.', true);
+    if (!r.destination.repo) fbShow('Feedback is not set up on this computer yet, so Send will not reach anyone. Whoever looks after Docket here sets where it goes in ☰ > Docket settings > Feedback destination.', true);
   } catch {}
 }
 const closeFeedback = () => { fbDraft.set(); $('fbDlg').hidden = true; $('feedbackBtn').focus(); };
@@ -5472,7 +5584,7 @@ $('fbClose').onclick = closeFeedback;
 $('fbDlg').onclick = (e) => { if (e.target === $('fbDlg')) closeFeedback(); };
 $('fbDlg').addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeFeedback(); } if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendFeedback(); });
 $('fbText').addEventListener('input', fbDraft.set); $('fbName').addEventListener('input', fbDraft.set);
-// ☰ > Settings > Feedback destination: the GitHub repo this computer files reports in, and the token it files them with.
+// ☰ > Docket settings > Feedback destination: the GitHub repo this computer files reports in, and the token it files them with.
 async function setFeedbackDestination() {
   let cur = { repo: '', hasToken: false }; try { cur = (await api('/api/feedback')).destination; } catch {}
   const v = await dialog({ title: 'Feedback destination', body: `<div>Which GitHub repo the Suggest a feature button files reports in from this computer. Docket has no repo of its own: until one is set here with a token, nothing is sent.</div>
@@ -5484,7 +5596,7 @@ async function setFeedbackDestination() {
   const repo = document.getElementById('fbDestRepo').value.trim(), token = document.getElementById('fbDestToken').value.trim();
   try { await api('/api/feedback/destination', { repo, token }); } catch (err) { tell(err.message); }
 }
-// ---------- ☰ > Profile: desks, schedules and settings to another computer (#837) ----------
+// ---------- ☰ > Docket settings > Profile: desks, schedules and settings to another computer (#837) ----------
 // Export saves docket-profile.json; Import reads one and shows what it would change first; Keep my profile in a folder keeps it
 // in a folder a cloud service's own app copies between computers. No sign-ins, keys or tokens are ever in the file.
 const PROFILE_KINDS = [['desk', 'Desks'], ['schedule', 'Schedules'], ['setting', 'Settings']];
@@ -5571,7 +5683,7 @@ async function showProfilePending(v) {
   profileAsking = true;
   try {
     const ok = await dialog({ title: 'Profile changes from another computer', body: `<div>These came in through ${esc(v.folder)}. Check them before they are applied here.</div><div class="prof-list">${profileChangesHtml(v.pending)}</div>`,
-      buttons: [{ label: 'Later', value: null, tip: 'Leave these waiting. ☰ > Profile > Keep my profile in a folder shows them again' }, { label: 'Apply', value: 'ok', primary: true, tip: 'Apply these here, with the folders and choices above' }] });
+      buttons: [{ label: 'Later', value: null, tip: 'Leave these waiting. ☰ > Docket settings > Profile > Keep my profile in a folder shows them again' }, { label: 'Apply', value: 'ok', primary: true, tip: 'Apply these here, with the folders and choices above' }] });
     if (!ok) return;
     const r = await api('/api/my-profile/resolve', { answers: profileAnswers(), choices: profileChoices() });
     if (r.problems?.length) tell(`Applied, except: ${r.problems.join('; ')}`);
@@ -5610,38 +5722,51 @@ async function setRestMinutes() {
   try { S.restMinutes = (await api('/api/rest-minutes', { minutes: document.getElementById('restMin').value })).minutes; } catch (err) { tell(err.message); }
 }
 const autoPauseLabel = () => `Pause on sleep: ${S.autoPause === false ? 'off' : 'on'}`;
-// The ☰ menu: Desks (Manage, and every desk's settings), a few things you open often, then groups that open to the side
-// (Tools, Gauges, Help, Settings, About), and Settings > Theme opens one more level. A group opens on hover, on click,
-// and with → or Enter; ← or Escape closes it.
+// The ☰ menu: Desks (Manage, and one group per desk with everything that desk has), a few things you open often, then
+// groups that open to the side (Tools, Gauges, Help, Docket settings, About), and Docket settings > Theme and Profile open
+// one more level. A group opens on hover, on click, and with → or Enter; ← or Escape closes it.
 // Where there is no room beside the menu (a narrow window) a group opens under its name instead.
+// Anything that acts on one desk is in that desk's group or names the desk in its label (#879).
+// A fourth entry is the item's icon (html), drawn in a column of its own so the labels beside it line up; '' leaves it empty.
+const menuText = (b, t) => { (b.querySelector('.mi-t') || b).textContent = t; }; // a label redrawn in place, its icon kept
+const colorSquare = (c = store.get('accent', null) || 'var(--accent-default)') => `<span class="mi-sq" style="background:${esc(c)}"></span>`;
+const colorLabel = () => { const own = S.clients.find((c) => c.id === S.client && c.color); return own ? `Default color (${own.name} has its own)` : 'Default color'; };
+const deskItems = (c) => [['profile:' + c.id, 'Inspector'], ...(c.planSystem === 'folder' ? [['plantree:' + c.id, 'Plan tree']] : []), ...(c.remote ? [] : [['deskedit:' + c.id, 'Desk settings']]), ['signins:' + c.id, 'Private browser sign-ins'], ...(c.remote ? [] : [['screen:' + c.id, screenLabel(c.id)], ['bringin:' + c.id, 'Bring in Past Sessions']])];
 $('menuBtn').onclick = (e) => {
   e.stopPropagation();
   if (document.getElementById('ctx')) { closeMenu(); return; }
-  // Desks: Manage, then each desk's Inspector in the desk buttons' order, hidden desks left out.
-  const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage'], 'hr', ...shownDesks().map((c) => ['profile:' + c.id, `${c.name} Inspector`])]], ...(S.remoteOn ? [['remote', 'Remote Desks']] : []), ['history', 'Recently viewed'], ...(S.clients.find((c) => c.id === S.client)?.planSystem === 'folder' ? [['plantree', 'Plan tree']] : []), 'hr',
-    ['tools', 'Tools', [['bringin', 'Bring in Past Sessions'], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk']] : [])]],
-    ['myprofile', 'Profile', [['pexport', 'Export profile'], ['pimport', 'Import profile'], ['psync', 'Keep my profile in a folder']]],
-    ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk']]],
+  // Desks: Manage, Copy a Desk and Remote Desks, then a group for each desk in the desk buttons' order (its own color
+  // beside its name, an empty icon place for none), hidden desks left out.
+  const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage', null, ''], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk', null, '']] : []), ...(S.remoteOn ? [['remote', 'Remote Desks', null, '']] : []), 'hr',
+    ...shownDesks().map((c) => ['desk:' + c.id, c.name, deskItems(c), c.color ? colorSquare(c.color) : ''])]], ['history', 'Recently viewed'], 'hr',
+    ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk'], ...(S.clients.some((c) => !c.remote) ? [['screenlog', 'Screen control log']] : [])]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
-    ['settings', 'Settings', [['color', 'Color'], ['sound', soundLabel()],['theme', themeLabel(), themeItems()], ['stall', stallLabel()], ['autocontinue', autoContinueLabel()], ['autopause', autoPauseLabel()], ['rest', restLabel()], ['startup', startupLabel()], ['autopilot', pilotLabel()], ['signins', 'Private browser sign-ins'], ...(S.clients.find((c) => c.id === S.client)?.remote ? [] : [['screen', screenLabel()], ['screenlog', 'Screen control log']]), ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination']] : [])]],
+    ['settings', 'Docket settings', [['color', colorLabel(), null, colorSquare()], ['sound', soundLabel(), null, soundIcon()], ['theme', themeLabel(), themeItems(), '◐'], 'hr',
+      ['stall', stallLabel(), null, ''], ['autocontinue', autoContinueLabel(), null, ''], ['autopause', autoPauseLabel(), null, ''], ['rest', restLabel(), null, ''], ['startup', startupLabel(), null, ''], ['autopilot', pilotLabel(), null, ''], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination', null, '']] : []), 'hr',
+      ['myprofile', 'Profile', [['pexport', 'Export profile'], ['pimport', 'Import profile'], ['psync', 'Keep my profile in a folder']], '']]],
     ['about', 'About', [['update', 'Check for updates']]], 'hr', ['restartdocket', 'Restart Docket']];
+  const icon = (x) => x[3] === undefined ? '' : `<span class="mi-ic${x[0] === 'theme' ? ' mi-glyph' : ''}" aria-hidden="true">${x[3]}</span>`;
+  const label = (x) => x[3] === undefined ? esc(x[1]) : `${icon(x)}<span class="mi-t">${esc(x[1])}</span>`;
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
-    ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${x[0]}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0])}>${esc(x[1])}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
+    ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${esc(x[0])}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0].split(':')[0])}>${x[3] === undefined ? label(x) : `<span class="mi-l">${label(x)}</span>`}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
     : x[0].startsWith('theme-') ? `<button role="menuitemradio" data-mact="${x[0]}" aria-checked="${x[0] === 'theme-' + themeChoice()}"${tip('menu-' + x[0])}><span class="tick">${x[0] === 'theme-' + themeChoice() ? '✓' : ''}</span>${esc(x[1])}</button>`
-    : `<button role="menuitem" data-mact="${esc(x[0])}"${x[0] === 'sound' ? ` aria-pressed="${soundOn()}"` : ''}${tip('menu-' + x[0].split(':')[0])}>${esc(x[1])}</button>`;
+    : `<button role="menuitem" data-mact="${esc(x[0])}"${x[0] === 'sound' ? ` aria-pressed="${soundOn()}"` : ''}${tip('menu-' + x[0].split(':')[0])}>${label(x)}</button>`;
   const m = document.createElement('div'); m.className = 'ctx'; m.id = 'ctx'; m.setAttribute('role', 'menu'); m.setAttribute('aria-label', 'Menu');
   m.innerHTML = items.map(item).join('');
   document.body.appendChild(m);
   const r = $('menuBtn').getBoundingClientRect();
   m.style.left = r.left + 'px'; m.style.top = r.bottom + 4 + 'px';
   api('/api/update').then(showUpdate).catch(() => {});
-  api('/api/stall-stop').then((r) => { S.stallStop = r.on; const b = m.querySelector('[data-mact=stall]'); if (b) b.textContent = stallLabel(); }).catch(() => {});
-  api('/api/auto-continue').then((r) => { S.autoContinue = r.on; const b = m.querySelector('[data-mact=autocontinue]'); if (b) b.textContent = autoContinueLabel(); }).catch(() => {});
-  api('/api/startup').then((r) => { S.startup = r; const b = m.querySelector('[data-mact=startup]'); if (b) b.textContent = startupLabel(); }).catch(() => {});
-  api('/api/rest-minutes').then((r) => { S.restMinutes = r.minutes; const b = m.querySelector('[data-mact=rest]'); if (b) b.textContent = restLabel(); }).catch(() => {});
-  api('/api/auto-pause').then((r) => { S.autoPause = r.on; const b = m.querySelector('[data-mact=autopause]'); if (b) b.textContent = autoPauseLabel(); }).catch(() => {});
-  const screenDesk = S.client;
-  if (m.querySelector('[data-mact=screen]')) api(`/api/screen?client=${encodeURIComponent(screenDesk)}`).then((r) => { S.screenOn[screenDesk] = r.on; const b = m.querySelector('[data-mact=screen]'); if (b) b.textContent = screenLabel(); }).catch(() => {});
+  const redraw = (act, text) => { const b = m.querySelector(`[data-mact="${act}"]`); if (b) menuText(b, text); };
+  api('/api/stall-stop').then((r) => { S.stallStop = r.on; redraw('stall', stallLabel()); }).catch(() => {});
+  api('/api/auto-continue').then((r) => { S.autoContinue = r.on; redraw('autocontinue', autoContinueLabel()); }).catch(() => {});
+  api('/api/startup').then((r) => { S.startup = r; redraw('startup', startupLabel()); }).catch(() => {});
+  api('/api/rest-minutes').then((r) => { S.restMinutes = r.minutes; redraw('rest', restLabel()); }).catch(() => {});
+  api('/api/auto-pause').then((r) => { S.autoPause = r.on; redraw('autopause', autoPauseLabel()); }).catch(() => {});
+  for (const b of m.querySelectorAll('[data-mact^="screen:"]')) {
+    const desk = b.dataset.mact.slice(7);
+    api(`/api/screen?client=${encodeURIComponent(desk)}`).then((r) => { S.screenOn[desk] = r.on; menuText(b, screenLabel(desk)); }).catch(() => {});
+  }
   const hoverOk = () => matchMedia('(hover: hover)').matches && innerWidth > 600;
   const shut = (w) => { // a group and any group open inside it
     for (const x of [w, ...w.querySelectorAll('.sub-wrap')]) { x.querySelector('.sub').hidden = true; x.classList.remove('inline'); x.firstChild.setAttribute('aria-expanded', 'false'); }
@@ -5700,39 +5825,39 @@ $('menuBtn').onclick = (e) => {
     if (act === 'stall') { // stays open and shows the new state
       const b = ev.target.closest('button');
       try { S.stallStop = (await api('/api/stall-stop', { on: S.stallStop === false })).on; } catch (err) { tell(err.message); }
-      b.textContent = stallLabel();
+      menuText(b, stallLabel());
       return;
     }
     if (act === 'autocontinue') { // stays open and shows the new state
       const b = ev.target.closest('button');
       try { S.autoContinue = (await api('/api/auto-continue', { on: S.autoContinue === false })).on; } catch (err) { tell(err.message); }
-      b.textContent = autoContinueLabel();
+      menuText(b, autoContinueLabel());
       return;
     }
     if (act === 'restartdocket') { closeMenu(); restartDocketAsk(); return; }
     if (act === 'autopause') { // stays open and shows the new state
       const b = ev.target.closest('button');
       try { S.autoPause = (await api('/api/auto-pause', { on: S.autoPause === false })).on; } catch (err) { tell(err.message); }
-      b.textContent = autoPauseLabel();
+      menuText(b, autoPauseLabel());
       return;
     }
-    if (act === 'screen') { // stays open and shows the new state; turning it on asks first
-      const b = ev.target.closest('button'), desk = S.client, on = !S.screenOn[desk];
+    if (act.startsWith('screen:')) { // stays open and shows the new state; turning it on asks first
+      const b = ev.target.closest('button'), desk = act.slice(7), on = !S.screenOn[desk];
       if (on && !await ask(`Let ${S.clients.find((c) => c.id === desk)?.name || 'this desk'}'s sessions use the mouse and keyboard?`, SCREEN_ASK)) return;
       try { S.screenOn[desk] = (await api('/api/screen', { client: desk, on })).on; } catch (err) { tell(err.message); }
-      b.textContent = screenLabel();
+      menuText(b, screenLabel(desk));
       return;
     }
     if (act === 'sound') { // stays open and shows the new state
       const b = ev.target.closest('button');
-      toggleSound(); b.textContent = soundLabel(); b.title = soundTip(); b.setAttribute('aria-pressed', String(soundOn()));
+      toggleSound(); menuText(b, soundLabel()); b.querySelector('.mi-ic').textContent = soundIcon(); b.title = soundTip(); b.setAttribute('aria-pressed', String(soundOn()));
       return;
     }
     if (act.startsWith('theme-')) { // closes the Theme list; Settings stays open and shows the new choice
       setTheme(act === 'theme-default' ? null : act.slice(6));
       const w = m.querySelector('[data-sub=theme]').parentElement;
       for (const b of w.querySelectorAll('[role=menuitemradio]')) { const on = b.dataset.mact === act; b.setAttribute('aria-checked', String(on)); b.firstChild.textContent = on ? '✓' : ''; }
-      w.firstChild.firstChild.nodeValue = themeLabel();
+      menuText(w.firstChild, themeLabel());
       shut(w); w.firstChild.focus();
       return;
     }
@@ -5740,22 +5865,23 @@ $('menuBtn').onclick = (e) => {
     if (act === 'sessions') overPane('side', !$('side').classList.contains('open'));
     if (act === 'companies') editCompanies();
     if (act === 'remote') showRemoteDesks();
-    if (act === 'bringin') showBringIn();
+    if (act.startsWith('bringin:')) { const desk = act.slice(8); if (desk !== S.client) selectClient(desk); showBringIn(); } // it brings them in to the desk shown
     if (act === 'copydesk') copyDesk(S.clients.find((c) => c.id === S.client && !c.remote)?.id || S.clients.find((c) => !c.remote)?.id); // starts on this desk
     if (act.startsWith('profile:')) openProfile(act.slice(8));
+    if (act.startsWith('deskedit:')) editCompanies(undefined, '', undefined, undefined, act.slice(9));
+    if (act.startsWith('signins:')) { const desk = act.slice(8); if (desk !== S.client) selectClient(desk); openSites(); } // its sign-ins show on its own page
     if (act === 'color') pickMainColor();
     if (act === 'fbdest') setFeedbackDestination();
     if (act === 'pexport') exportProfile();
     if (act === 'pimport') importProfile();
     if (act === 'psync') keepProfileIn();
     if (act === 'rest') setRestMinutes();
-    if (act === 'signins') openSites();
     if (act === 'screenlog') api('/api/screen/log', {}).catch((err) => tell(err.message));
     if (act === 'key') showKey();
     if (act === 'help') showHelp();
     if (act === 'tour') startTour();
     if (act === 'history') showViewHistory();
-    if (act === 'plantree') openPlanTree();
+    if (act.startsWith('plantree:')) openPlanTree(act.slice(9));
     if (act === 'machine') showMachineUse();
     if (act === 'startup') showStartupSettings();
     if (act === 'autopilot') showAutopilot();
@@ -5764,12 +5890,12 @@ $('menuBtn').onclick = (e) => {
 };
 
 // ---------- screen control (#822) ----------
-// ☰ > Settings > Screen control turns it on for the desk shown (off by default, never for a remote desk from here),
+// ☰ > Desks > <desk> > Screen control turns it on for that desk (off by default, never for a remote desk from here),
 // and the bar at the top says which session is using the mouse and keyboard now, here or on a remote desk's
 // computer, with Stop. On Windows the same bar also shows on the screen itself, over every program.
 S.screenOn = {}; // desk id -> on, as last read
 S.screenActive = {}; // desk id -> [{ key, session, title, from, action, at }]
-const screenLabel = () => `Screen control: ${S.screenOn[S.client] ? 'on' : 'off'}`;
+const screenLabel = (desk) => `Screen control: ${S.screenOn[desk] ? 'on' : 'off'}`;
 const SCREEN_ASK = 'Its sessions get tools to take screenshots, move and click the mouse and type, in any program on this computer, as you would. It is a last resort, for programs with no better way in.\n\nEvery action is logged (with a picture of the screen before each click), a bar shows while a session is in control, and Stop halts it at once. Docket never types into a password field.\n\nSessions started or woken after this get the tools.';
 function drawScreenBar() {
   const rows = Object.entries(S.screenActive).flatMap(([desk, list]) => (list || []).map((a) => ({ ...a, desk })));
@@ -5937,7 +6063,7 @@ function keyHtml() {
     ${row(dot('asking'), 'Waiting on your answer. The session stopped in the middle of its work on a question form or an "Allow this?" prompt, and holds there until you answer.', '', play('question'))}
     ${row(dot('needs'), 'Needs you. The session finished a reply (or stopped with an error, shown by the red ring) you have not opened yet. Also a saved session that was waiting on you when Docket last stopped, and a session Claude Desktop ran whose latest reply came after you last opened it here.', '', play('ready'))}
     ${row(dot('idle'), 'Running and finished, and you have seen the reply. Nothing is waiting.')}
-    ${row(dot('resting'), 'Resting: idle for a while, so released from memory; wakes on your next message (a few seconds). How long it waits is in ☰ > Settings > Rest idle sessions.')}
+    ${row(dot('resting'), 'Resting: idle for a while, so released from memory; wakes on your next message (a few seconds). How long it waits is in ☰ > Docket settings > Rest idle sessions.')}
     ${row(dot('failed'), 'The last reply ended in an error, for example an expired sign-in. Until you open it, it is listed under Needs you and counts in ✦, also after Docket restarts. Open it to read the error; sending a message clears the red ring.')}
     ${row(dot('stopped'), 'Cut off partway through a reply, usually because Docket or the computer restarted. Open it and press Continue.')}
     ${row(dot('ended'), 'Saved, not running. Open it any time to pick it up again.')}
@@ -6099,7 +6225,7 @@ setInterval(pollGauges, 15_000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) pollGauges(); });
 pollGauges();
 
-// ---------- ☰ > Remote Desks: a desk here used from another computer, and desks on other computers used here ----------
+// ---------- ☰ > Desks > Remote Desks: a desk here used from another computer, and desks on other computers used here ----------
 // This computer's side: an authenticator app (scanned once), the desk the other computer may use, on or off, and
 // who is connected. The other side: remote desks (address and check code), each connected with a code and an Allow
 // clicked on that computer. A remote desk's sessions stay on that computer; this one only shows them.
@@ -6117,7 +6243,7 @@ function remoteHereHtml(rc, setup) {
   h += `<div class="rd-line"><label for="rdDesk">Desk it may use</label><select id="rdDesk"${tip('rd-desk')}><option value="">Choose a desk</option>${own.map((c) => `<option value="${esc(c.id)}"${c.id === rc.desk ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>`;
   h += `<div class="rd-line">Remote control is <b>${rc.on ? 'on' : 'off'}</b><button id="rdOn"${rc.on ? '' : ' class="primary"'}${tip('rd-on')}>${rc.on ? 'Turn off' : 'Turn on'}</button></div>`;
   if (rc.error) h += `<p class="signin-err">${esc(rc.error)}</p>`;
-  if (rc.on) h += `<p>On the other computer, open ☰ > Remote Desks and add a remote desk with:</p>
+  if (rc.on) h += `<p>On the other computer, open ☰ > Desks > Remote Desks and add a remote desk with:</p>
     <ul><li>Address: ${rc.addresses.map((a) => `<code>${esc(a)}</code>`).join(' or ') || 'no office network address found on this computer'}</li><li>Check code: <code>${esc(rc.check)}</code></li></ul>
     <p class="meta">Each connection needs a code from the authenticator app and someone clicking Allow here, and lasts ${rc.hours} hours. Only computers on the office network can connect, and only to this desk.</p>`;
   else h += '<p class="meta">While it is off, nothing on the network can reach Docket on this computer.</p>';
@@ -6147,7 +6273,7 @@ function remoteThereHtml(list) {
       : rdConnectHtml(d.id)}<button data-rd-rm="${d.id}"${tip('rd-remove')}>Remove</button></div>${rdPilotHtml(d)}
     <div class="meta" data-rd-msg="${d.id}"></div></div>`).join('') : '<p class="meta">None yet.</p>';
   return h + `<details${list.length ? '' : ' open'}><summary>Add a remote desk</summary>
-    <p>Turn on remote control on the other computer first (☰ > Remote Desks there). It shows the address and the check code.</p>
+    <p>Turn on remote control on the other computer first (☰ > Desks > Remote Desks there). It shows the address and the check code.</p>
     <div class="rd-form"><input type="text" id="rdName" placeholder="Name to show here"${tip('rd-name')}><input type="text" id="rdAddr" placeholder="Address, like 192.168.1.20:4402"${tip('rd-addr')}><input type="text" id="rdCheck" placeholder="Check code, like 1A2B-3C4D-5E6F-7A8B"${tip('rd-check')}><button class="primary" id="rdAdd"${tip('rd-add')}>Add</button></div></details>`;
 }
 async function showRemoteDesks(focus) {
@@ -6249,7 +6375,7 @@ function drawRemoteAsks() {
       delete S.remoteAsks[b.dataset.ra]; drawRemoteAsks();
     };
   }
-  box.innerHTML = asks.map((a) => `<div class="ra">${a.pilot ? `<b>${esc(a.name)}</b> (${esc(a.ip)}), connected to the desk <b>${esc(a.desk || '')}</b>, asks for a pilot key: its autopilot could then answer what waits on you on this desk, under the autopilot rules on this computer${a.pilot.screen ? ', and use the screen tools' : ''}, for ${a.pilot.days} days with no code. You can revoke it in ☰ > Remote Desks.`
+  box.innerHTML = asks.map((a) => `<div class="ra">${a.pilot ? `<b>${esc(a.name)}</b> (${esc(a.ip)}), connected to the desk <b>${esc(a.desk || '')}</b>, asks for a pilot key: its autopilot could then answer what waits on you on this desk, under the autopilot rules on this computer${a.pilot.screen ? ', and use the screen tools' : ''}, for ${a.pilot.days} days with no code. You can revoke it in ☰ > Desks > Remote Desks.`
     : `<b>${esc(a.name)}</b> (${esc(a.ip)}) wants to use the desk <b>${esc(a.desk || '')}</b> from another computer, with a correct authenticator code.`}
     <div class="ra-btns"><button data-ra="${a.id}" data-allow="0"${tip('ra-no')}>Don't allow</button><button class="primary" data-ra="${a.id}" data-allow="1"${tip('ra-yes')}>Allow</button></div></div>`).join('');
   $('cornerStack').scrollTop = $('cornerStack').scrollHeight; // a tall stack scrolls; the Allow prompt is at its foot
@@ -6342,12 +6468,13 @@ function startupHtml(v) {
   return `<p>Docket now starts: <b>${esc(START_MODE[v.now.mode])}</b>.</p><div class="st-rows">${rows.map(([k, on]) => `<span>${esc(k)}</span><span>${yes(on)}</span>`).join('')}</div>
     <p>${esc(startPinNote())}</p><p class="meta">Each Docket shortcut starts Docket if it is not running, then opens it.${v.choice === 'none' && v.now.mode === 'neither' ? ' Docket will not ask about this again on this computer.' : ''}</p>`;
 }
-// ☰ > Settings > Starting Docket: the state, and buttons to switch to each of the others.
-// ---------- ☰ > Settings > Autopilot (#821) ----------
+// ☰ > Docket settings > Starting Docket: the state, and buttons to switch to each of the others.
+// ---------- ☰ > Docket settings > Autopilot (#821) ----------
 // A pilot session answers what waits on you, under the rules in the file shown here. The ✈ in the top bar shows while
 // it is flying (switch on, pilot set), and opens this. What it answered says "answered by pilot" on the card.
 S.pilot = { on: false, flying: false };
-const pilotLabel = () => `Autopilot: ${S.pilot.on ? 'on' : 'off'}`;
+// While on it names the pilot session, when there is one (#879).
+const pilotLabel = () => S.pilot.on ? `Autopilot: on${S.pilot.title ? ` (pilot: ${S.pilot.title})` : ''}` : 'Autopilot: off';
 function drawPilot(p) {
   if (!p) return;
   S.pilot = { on: !!p.on, flying: !!p.flying, session: p.session, title: p.title };
@@ -6355,30 +6482,41 @@ function drawPilot(p) {
   b.title = `Autopilot flying: ${S.pilot.title || 'its pilot session'}. ${tipText('pilot-icon')}`;
 }
 const PILOT_WHEN = (t) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-function autopilotHtml(v) {
+function autopilotHtml(v, msg = '') {
+  const desks = [...(v.pilotDesk ? [] : [`<option value="">None yet: Docket makes an Autopilot desk when you turn it on</option>`]),
+    ...v.desks.map((d) => `<option value="${esc(d.id)}"${d.id === v.pilotDesk?.id ? ' selected' : ''}>${esc(d.name)}</option>`)];
   const opts = [`<option value="">No pilot</option>`, ...v.sessions.map((s) => `<option value="${esc(s.id)}"${s.id === v.session ? ' selected' : ''}>${esc(`${s.desk}: ${s.title} (${BRAND_NAMES[s.brand] || s.brand})`)}</option>`)];
   if (v.session && !v.sessions.some((s) => s.id === v.session)) opts.push(`<option value="${esc(v.session)}" selected>${esc(v.title)} (not running now)</option>`);
   const may = { allow: 'pilot may answer', deny: 'pilot may only decline', ask: 'stays with you' };
-  const waiting = v.waiting.length ? v.waiting.map((w) => `<div><b>${esc(w.desk)}</b> · ${esc(w.kind)} · ${esc(w.what || w.title)} <span class="${w.may === 'ask' ? 'pl-no' : 'by-pilot'}">(${may[w.may]})</span></div>`).join('') : '<div>Nothing waits on you now.</div>';
+  const own = (w) => w.may === 'ask' && /autopilot's own desk/.test(w.why || '') ? ": the autopilot's own desk" : '';
+  const waiting = v.waiting.length ? v.waiting.map((w) => `<div><b>${esc(w.desk)}</b> · ${esc(w.kind)} · ${esc(w.what || w.title)} <span class="${w.may === 'ask' ? 'pl-no' : 'by-pilot'}">(${may[w.may]}${own(w)})</span></div>`).join('') : '<div>Nothing waits on you now.</div>';
   const log = v.log.length ? v.log.map((l) => `<div>${esc(PILOT_WHEN(l.at))} · <b>${esc(l.kind)}</b> · ${esc(l.answer)} · ${esc(l.what || l.title)}${l.ok ? '' : ` <span class="pl-no">refused: ${esc(l.why)}</span>`}</div>`).join('') : '<div>The pilot has answered nothing yet.</div>';
   return `<div class="pilot-dlg"><div>A pilot session answers what waits on you, on every desk on this computer: permission prompts, question forms and cards. It is ${v.on ? '<b>on</b>' : '<b>off</b>'}${v.flying ? ', and flying' : ''}. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them.</div>
+    ${msg ? `<div class="pl-no" style="margin-top:8px">${esc(msg)}</div>` : ''}
+    <div class="pl-row"><label for="pilotDesk">Autopilot's desk</label><select id="pilotDesk"${tip('pilot-desk')}>${desks.join('')}</select></div>
+    <div class="meta" style="margin-top:4px">The pilot works on this desk, with its own sign-ins, bill and files. What waits on it stays with you.</div>
     <div class="pl-row"><label for="pilotPick">Pilot</label><select id="pilotPick"${tip('pilot-pick')}>${opts.join('')}</select></div>
-    <div class="meta" style="margin-top:4px">A session made the pilot is started again once it is idle, to give it the pilot tools.</div>
+    <div class="meta" style="margin-top:4px">Only a session of ${v.pilotDesk ? esc(v.pilotDesk.name) : "the autopilot's desk"} can be the pilot. Turning the autopilot on starts one there when none is running. A session made the pilot is started again once it is idle, to give it the pilot tools.</div>
     <div class="meta" style="margin-top:8px">Rules (allow, deny or ask, per kind and per desk): <code>${esc(v.rulesFile)}</code></div>
     <h4>Waiting on you now</h4><div class="pl-list">${waiting}</div>
     <h4>The pilot's answers</h4><div class="pl-list">${log}</div></div>`;
 }
 async function showAutopilot() {
+  // msg: why the last save was refused, or what turning on could not do, shown in the dialog itself (#875).
+  let msg = '';
   for (;;) {
     let v; try { v = await api('/api/pilot'); } catch (err) { tell(err.message); return; }
     drawPilot(v);
-    const pick = await dialog({ title: 'Autopilot', body: autopilotHtml(v), buttons: [
-      { label: v.on ? 'Turn off' : 'Turn on', value: 'switch', tip: v.on ? 'Every pilot tool refuses until you turn it on again' : 'The pilot may answer what its rules allow' },
-      { label: 'Save pilot', value: 'pilot', tip: 'Make the session picked above the pilot' },
+    const pick = await dialog({ title: 'Autopilot', body: autopilotHtml(v, msg), buttons: [
+      { label: v.on ? 'Turn off' : 'Turn on', value: 'switch', tip: v.on ? 'Every pilot tool refuses until you turn it on again' : "The pilot may answer what its rules allow. The first time, Docket makes the Autopilot desk and starts the pilot there" },
+      { label: 'Save desk', value: 'desk', tip: "Make the desk picked above the autopilot's desk" },
+      { label: 'Save pilot', value: 'pilot', tip: "Make the session picked above the pilot. Only a session of the autopilot's desk can be" },
       { label: 'Close', value: null, primary: true }] });
     if (!pick) return;
-    const body = pick === 'switch' ? { on: !v.on } : { session: document.getElementById('pilotPick').value || null };
-    try { drawPilot(await api('/api/pilot', body)); } catch (err) { tell(err.message); }
+    const deskPick = document.getElementById('pilotDesk').value;
+    if (pick === 'desk' && !deskPick) { msg = ''; continue; }
+    const body = pick === 'switch' ? { on: !v.on } : pick === 'desk' ? { desk: deskPick } : { session: document.getElementById('pilotPick').value || null };
+    try { const r = await api('/api/pilot', body); drawPilot(r); msg = r.note || ''; } catch (err) { msg = err.message; }
   }
 }
 $('pilotBtn').onclick = () => showAutopilot();
@@ -6470,7 +6608,7 @@ async function showBringIn({ offer = false } = {}) {
       <li>Each keeps the folder it worked in.</li>
       <li>Sessions already in ${esc(name)} are skipped, never written over.</li>
       <li>A report of where everything was and where each copy goes is saved first, in Docket's data folder.</li>
-      <li>Undo (☰ > Tools > Bring in Past Sessions) sends only the copies to ${BIN}.</li></ul>`,
+      <li>Undo (☰ > Desks > ${esc(name)} > Bring in Past Sessions) sends only the copies to ${BIN}.</li></ul>`,
       buttons: [{ label: 'Back', value: 'back' }, { label: `Copy ${biN(n, 'session')}`, value: 'copy', primary: true, tip: tipText('bi-copy') }] });
     if (v === 'back') continue;
     if (v !== 'copy') return;
@@ -6481,7 +6619,7 @@ async function showBringIn({ offer = false } = {}) {
       const url = '/api/bring-in/report?' + new URLSearchParams({ client, run: x.run.id });
       $('dlgBody').innerHTML = `<p>Brought in <b>${biN(x.run.copied, 'session')}</b>. They show in the session list in a moment, and in search.</p>`
         + (x.failed.length ? `<p class="bi-err">${x.failed.length} could not be copied: ${x.failed.map((f) => esc(`${f.title} (${f.error})`)).join('; ')}</p>` : '')
-        + `<p><a href="${url}" target="_blank"${tip('bi-report')}>Open the report</a> of where each one was and where its copy is. To take them out again: ☰ > Tools > Bring in Past Sessions > Undo.</p>`;
+        + `<p><a href="${url}" target="_blank"${tip('bi-report')}>Open the report</a> of where each one was and where its copy is. To take them out again: ☰ > Desks > ${esc(name)} > Bring in Past Sessions > Undo.</p>`;
     } catch (err) { $('dlgBody').innerHTML = `<p class="bi-err">${esc(err.message)}</p>`; }
     close.disabled = false;
     await done; return;
@@ -6726,26 +6864,26 @@ async function openInEditor(sessionId, ed) {
 }
 $('termTopBtn').onclick = (e) => terminalButton(e, S.clients.find((c) => c.id === S.client)?.folder);
 
-// ---------- the main color, kept in this browser ----------
+// ---------- the main color: a page setting every Docket page shares (state.pageSettings) ----------
 const ACCENTS = [['#2563eb', 'Blue'], ['#0d9488', 'Teal'], ['#16a34a', 'Green'], ['#7c3aed', 'Purple'], ['#db2777', 'Pink'], ['#dc2626', 'Red'], ['#ca8a04', 'Gold'], ['#475569', 'Slate']];
-// The color in use: the company's own, else this browser's main color, else the orange. Also kept for the
+// The color in use: the company's own, else the default color (☰ > Docket settings), else the orange. Also kept for the
 // paint before the page loads.
 function showAccent() {
   store.set('companyColors', Object.fromEntries((S.clients || []).filter((c) => c.color).map((c) => [c.id, c.color])));
   applyAccent(S.clients?.find((c) => c.id === S.client)?.color || store.get('accent', null));
 }
-// ☰ > Settings > Color, and the same window asked once on load by a browser that has never saved a main color.
+// ☰ > Docket settings > Default color, and the same window asked once on load by a browser that has never saved a main color.
 // Save or Cancel both answer it; Default (orange) is saved as null, so it counts as picked.
 const mainColorUnasked = () => localStorage.getItem('accent') === null && !store.get('accentAsked', false);
 async function pickMainColor({ first = false } = {}) {
   const own = S.clients.find((c) => c.id === S.client && c.color);
-  const note = [first ? 'Pick a main color for Docket. You can change it later in ☰ > Settings > Color.' : '',
-    own ? `${own.name} has its own color (☰ > Desks), so Docket shows that while it is open. This one is for desks without a color.` : ''].filter(Boolean).join(' ');
+  const note = [first ? 'Pick a main color for Docket. You can change it later in ☰ > Docket settings > Default color.' : '',
+    own ? `${own.name} has its own color (☰ > Desks > ${own.name} > Desk settings), so Docket shows that while it is open. This one is for desks without a color.` : ''].filter(Boolean).join(' ');
   const c = await pickAccent(store.get('accent', null), { note });
   if (first) store.set('accentAsked', true);
   if (c !== undefined) { store.set('accent', c); showAccent(); pageSettingChanged('accent'); }
 }
-// The color window, for ☰ > Settings > Color and for a company's color: starts on start, previews as you pick, and gives back
+// The color window, for ☰ > Docket settings > Default color and for a company's color: starts on start, previews as you pick, and gives back
 // the color picked (null for the none button) on Save, or undefined on Cancel. The caller keeps it.
 async function pickAccent(start, { title = 'Main color', none = 'Default (orange)', noneTip = 'acc-default', note = '' } = {}) {
   const before = start || null;
@@ -6818,13 +6956,16 @@ const coCheckPanel = (c, i) => {
     <small class="muted">Checked ${esc(new Date(r.at).toLocaleString())}. It only reads; nothing was changed.</small> ${again}</div>`;
 };
 // start: the list as it was when the screen first opened, kept across a trip to a company's color window.
-async function editCompanies(rows, error = '', start, scrollTo) {
+// openId: a desk whose settings start open and in view (☰ > Desks > <desk> > Desk settings).
+async function editCompanies(rows, error = '', start, scrollTo, openId) {
   rows ||= (await api('/api/clients/edit')).map(({ env, ...c }) => ({ ...c, envRows: Object.entries(env || {}), jiraUrl: c.links?.jira?.url || '', jiraKeys: (c.links?.jira?.keys || []).join(', '), adoOrg: c.links?.azureDevOps?.org || '', adoProject: c.links?.azureDevOps?.project || '',
     ...Object.fromEntries(Object.entries(c.startGear || {}).map(([e, k]) => ['startGear_' + e, k])),
     // A LiteLLM gateway, edited as flat fields like the links above.
     gatewayUrl: c.gateway?.url || '', gatewayClaudeRoute: c.gateway?.claudeRoute || '', gatewayLogin: c.gateway?.login || '', gatewayLite: c.gateway?.lite || '',
     ...Object.fromEntries(Object.entries(c.gateway?.models?.claude || {}).map(([k, v]) => ['gatewayModel_claude_' + k, v])) }));
   if (rows.length === 1) coOpen.add(rows[0]); // one desk: nothing to look past, so its settings start open
+  const opened = openId && rows.find((c) => c.id === openId);
+  if (opened) { coOpen.add(opened); scrollTo = rows.indexOf(opened); }
   const roots = await api('/api/clients/home-roots').catch(() => null);
   const gears = await api('/api/gears').catch(() => null); // Shift's gears per brand
   // One Start gear choice per ticked brand: the model its Shift sessions start on.
@@ -7434,7 +7575,7 @@ async function addCompany() {
   offerBringIn(id); // sessions from before Docket, found elsewhere on this computer
 }
 // ---------- Copy as new desk ----------
-// A new desk with a saved desk's setup, in homes of its own, from ☰ > Tools > Copy a Desk. The first step picks
+// A new desk with a saved desk's setup, in homes of its own, from ☰ > Desks > Copy a Desk. The first step picks
 // the desk to copy, starting on the one given. Each step's choices go to /api/clients/copy-plan, a dry
 // run that changes nothing, and the What to copy step shows what it found; Make the copy sends the same to
 // /api/clients/copy. Sessions, history and sign-in files are never copied, and the original is never written to.
@@ -7857,6 +7998,12 @@ function sentParts(ev) {
       || n.match(/^\(From Docket: This session was started by the session "([^\n]*)" \(id ([\w-]+)\)/)
       || n.match(/^\(From Docket: this session continues the work of the session "([^\n]*)" \(id ([\w-]+)\)/);
     if (m) { sender ||= { title: m[1], id: m[2], handoff: /continues the work/.test(n) }; continue; }
+    // A brief Docket wrote or brought in (#867): its note stays, for what more it says.
+    const desk = n.match(/^\(From Docket: this work was handed over from the desk "([^\n]*?)" and /);
+    const sched = n.match(/^\(From Docket: this session runs the scheduled task "([^\n]*?)" \(id [\w-]+\)/);
+    if (desk) sender ||= { label: `Handed over from desk ${desk[1]}` };
+    else if (sched) sender ||= { label: `From the schedule ${sched[1]}` };
+    else if (/^\(From Docket: (the user chose to convert this desk's plans|the user started this session from Docket's setup check card)/.test(n)) sender ||= { label: 'From Docket' };
     notes.push(n.replace(/^\((?:From Docket|From the session portal): /, '').replace(/\)$/, ''));
   }
   return { body, notes, sender };
@@ -7869,7 +8016,7 @@ S.openSent = new Set(); // messages from another session the person opened, by s
 function sentHtml(ev) {
   const { body, notes, sender } = sentParts(ev);
   const who = sender ? `<a href="#session:${esc(sender.id)}"${tip('open-session')}>${esc(sender.title)}</a>` : 'another session';
-  const from = `${sender?.handoff ? 'Handed off from' : 'From'} ${who}`;
+  const from = sender?.label ? esc(sender.label) : `${sender?.handoff ? 'Handed off from' : 'From'} ${who}`;
   const more = notes.length ? `<details class="mf-notes"><summary>${notes.length} note${notes.length > 1 ? 's' : ''} from Docket</summary>${noteList(notes)}</details>` : '';
   const inner = `<div class="mf-body">${esc(body)}</div>${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}${more}`;
   if (!body.includes('\n') && body.length <= 120 && !ev.images?.length && !ev.files?.length)
@@ -7900,13 +8047,13 @@ function eventHtml(ev) {
     case 'user': if (ev.from === 'docket' && /<session-report>/.test(ev.text)) return reportHtml(ev);
       if (ev.from === 'pilot') return `<div class="msg-user msg-from" data-ev data-from="pilot"><div class="mf-head">✈ Sent by the autopilot</div>${esc(ev.text)}</div>${msgWhen(ev, ' left')}`;
       if (ev.from === 'docket') return docketHtml(ev);
-      if (ev.from === 'session') return sentHtml(ev);
+      if (ev.from === 'session' || ev.from === 'brief') return sentHtml(ev);
       return `<div class="msg-user" data-ev${ev.from ? ` data-from="${esc(ev.from)}"` : ''}>${esc(ev.text)}${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}</div>${ev.at ? `<div class="msg-when">${stamp(ev.at)}</div>` : ''}`;
     case 'text': return `<div class="reply"><div class="msg-text" data-text="${esc(ev.id)}">${mdc(ev.text)}</div><div class="reply-actions">${ev.at ? `<span class="reply-when">${stamp(ev.at)}</span>` : ''}<button class="copy-btn" data-copy="reply" data-id="${esc(ev.id)}"${tip('copy-reply')}>Copy reply</button></div></div>`;
     case 'tool': {
       const ic = ev.status === 'running' ? ['running', '●'] : ev.status === 'error' ? ['error', '✕'] : ['done', '✓'];
       const body = JSON.stringify(ev.input ?? {}, null, 2) + (ev.result ? '\n\n── result ──\n' + ev.result : '');
-      const said = /mark_turn$/.test(ev.name) && ev.input?.label === 'done' ? ' data-said="done"' : ''; // a turn marked done (#726)
+      const said = /mark_turn$/.test(ev.name) && (ev.input?.label || ev.input?.state) === 'done' ? ' data-said="done"' : ''; // a turn marked done (#726)
       const book = BOOKKEEPING.test(ev.name || '') ? ' data-book' : '';
       return `<details class="tool" data-tool="${esc(ev.id)}"${said}${book}><summary><span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${esc(ev.name.replace(/^mcp__\w+?__/, ''))}</span><span class="lb">${esc(ev.label)}</span>${stepsWhen([ev])}</summary><pre>${esc(body)}</pre></details>`;
     }
@@ -7975,7 +8122,8 @@ function eventHtml(ev) {
     case 'error': return `<div class="err">${esc(ev.text)}${ev.login ? '\n\nThis client is not signed in. Use the Sign in button in the left column, then send your message again.' : ''}</div>`;
     // Signed in again after a turn failed on its sign-in: offer to send that message again; nothing resends on its own.
     case 'retry': return `<div class="note retry" data-retry="${esc(ev.id)}">Signed in again. <button class="primary" data-retry-send${tip('send-again')}>Send again</button><div class="retry-text">${esc(ev.text.length > 200 ? ev.text.slice(0, 200) + '…' : ev.text)}</div></div>`;
-    case 'result': return `<div class="done-line"${ev.error ? '' : ' data-end="done"'}${ev.hookMs ? ` title="${esc(HOOK_SPLIT_TIP)}"` : ''}>${ev.at ? stamp(ev.at) + ' · ' : ''}${ev.error ? 'Stopped' : 'Done'}${ev.ms ? ' in ' + dur(ev.ms) : ''}${ev.hookMs ? ` · model ${dur(ev.modelMs)} · steps ${dur(ev.toolMs)} · hooks ${dur(ev.hookMs)}` : ''}</div>`;
+    case 'result': return `<div class="done-line"${ev.error ? '' : ' data-end="done"'}${ev.hookMs ? ` title="${esc(HOOK_SPLIT_TIP)}"` : ''}>${ev.at ? stamp(ev.at) + ' · ' : ''}${ev.error ? 'Stopped' : 'Done'}${ev.ms ? ' in ' + dur(ev.ms) : ''}${ev.hookMs ? ` · model ${dur(ev.modelMs)} · steps ${dur(ev.toolMs)} · hooks ${dur(ev.hookMs)}` : ''}</div>`
+      + (ev.thin ? `<div class="thin-line" title="Claude Code kept only a shortened or empty copy of this answer. Docket asks the session to write it again in full with your next message.">Part of this reply was not saved</div>` : '');
     default: return '';
   }
 }
@@ -8377,7 +8525,7 @@ function mergeAskOf(id, evs) {
   let ask = null, ended = false;
   for (const ev of evs) {
     if (ev.k === 'user') ask = null;
-    else if (ev.k === 'tool' && /mark_turn$/.test(ev.name || '')) { ask = ev.input?.label === 'merge' && ev.input.pr ? ev : null; ended = false; }
+    else if (ev.k === 'tool' && /mark_turn$/.test(ev.name || '')) { ask = (ev.input?.label || ev.input?.state) === 'merge' && ev.input.pr ? ev : null; ended = false; }
     else if (ev.k === 'result') ended = true;
   }
   if (!ask || !ended || S.mergeSent.has(`${id}:${ask.id}`)) return null;
@@ -8803,7 +8951,7 @@ $('events').addEventListener('click', (e) => {
 
 // ---------- background tasks panel ----------
 // A step stuck mid-turn (stalledSteps in tasks.mjs): an amber tag with how long it has given no answer.
-const stalledTip = (st) => `This step has given no answer for ${st.minutes} min (its limit is ${st.limit} min${st.queued ? ', halved because a message of yours is waiting behind it' : ''}): ${st.label}. ${S.stallStop === false ? 'Docket will not stop it by itself (turned off in ☰ > Settings); Stop ends the turn.' : 'Past its limit Docket stops the turn and tells the session what happened.'}`;
+const stalledTip = (st) => `This step has given no answer for ${st.minutes} min (its limit is ${st.limit} min${st.queued ? ', halved because a message of yours is waiting behind it' : ''}): ${st.label}. ${S.stallStop === false ? 'Docket will not stop it by itself (turned off in ☰ > Docket settings); Stop ends the turn.' : 'Past its limit Docket stops the turn and tells the session what happened.'}`;
 // Its Claude config changed since it started (config-watch.mjs): a tag listing what changed, until it reloads.
 const cfgList = (s) => (s.configChanged || []).join('\n');
 const configTag = (s) => !s.live ? '' : s.reloading ? '<span class="tag cfg" title="Docket is starting this session again, with the same conversation, to load its changed config">reloading</span>'
@@ -8849,7 +8997,7 @@ function renderTasks() {
   const plan = on.plan && planSection(S.selected);
   const parts = { cost: on.cost && ['Cost', costHtml(S.costs[S.selected])], runs: schedRunsHtml(), plan, files: on.files && [outputs.length ? `Files ${outputs.length}` : 'Files', filesHtml],
     prs: on.prs && ['Pull requests', prHtml], tasks: on.tasks && [null, tasksHtml], mcp: on.mcp && S.selected !== 'draft' && ['Connected services', mcpSection()] };
-  const body = sectionOrder(store.get('sectionOrder', [])).map((k) => !parts[k]?.[1] ? '' : parts[k][0] === null ? parts[k][1] : sectionHtml(k, parts[k][0], parts[k][1], !!folded[k])).join('');
+  const body = sectionOrder(store.get('sectionOrder', [])).map((k) => !parts[k]?.[1] ? '' : parts[k][0] === null ? parts[k][1] : sectionHtml(k, parts[k][0], parts[k][1], !!folded[k], k, parts[k][2])).join('');
   $('tasksBody').innerHTML = S.selected === 'draft' ? '<div class="group">Start a session to see its details</div>'
     : groupBar(S.selected) + dirRows(S.selected) + (body || '<div class="files-sub">All sections are hidden. Turn them on with the buttons at the top of this panel.</div>');
   $('mcpSlot')?.replaceWith(mcpEl);
@@ -8893,7 +9041,7 @@ function planDetail(id) {
   if (!c) { S.planDetail[id] = { at: Date.now(), plan: null }; api(url).then((plan) => { S.planDetail[id] = { at: Date.now(), plan }; if (!S.schedOpen) renderTasks(); }).catch(() => {}); }
   return c?.plan || null;
 }
-const openPlanTree = () => window.open('/plans?' + new URLSearchParams({ client: S.client }), 'docket-plans');
+const openPlanTree = (desk = S.client) => window.open('/plans?' + new URLSearchParams({ client: desk }), 'docket-plans');
 // One plan from the plan folder: its progress, where it sits in the tree, and its checklist lines, nothing to click
 // that changes it.
 function folderPlanHtml(p, me) {
@@ -8905,33 +9053,181 @@ function folderPlanHtml(p, me) {
     return `<div class="task plan-task"${planRowAttrs(t, folderHolder(t.holder), me)}${t.depth ? ` style="margin-left:${Math.min(t.depth, 12) * 5}px"` : ''}><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '○'}</span><span class="lb">${esc((t.id ? t.id + ' ' : '') + t.title)}</span><span class="end"></span>${sub.length ? `<span class="sub">${sub.join(' · ')}</span>` : ''}</div>`;
   }).join('') + (p.broken.length ? `<div class="hint">Broken link${p.broken.length === 1 ? '' : 's'}: ${p.broken.map((b) => esc(b.ref)).join(', ')}</div>` : '') + `<div class="hint" title="${esc(p.file)}">${esc(p.file)}</div>`;
 }
-const PLAN_ICON = { open: '○', claimed: '●', done: '✓', waiting_on_user: '⏸', waiting_outside: '⧗', sent_back: '↩', dropped: '✕' };
-const PLAN_WORD = { open: 'open', claimed: 'claimed', done: 'done', waiting_on_user: 'waiting on you', waiting_outside: 'waiting outside Docket', sent_back: 'sent back', dropped: 'dropped' };
+// The state dots use the session list's colors (#868): grey not started, blue in progress, green done, ⧗ waiting
+// outside Docket, ⏸ a step its session paused to ask you.
+const PLAN_ICON = { open: '●', claimed: '●', done: '✓', waiting_on_user: '⏸', waiting_outside: '⧗', sent_back: '↩', dropped: '✕' };
+const PLAN_WORD = { open: 'open', claimed: 'in progress', done: 'done', waiting_on_user: 'waiting on you', waiting_outside: 'waiting outside Docket', sent_back: 'sent back', dropped: 'dropped' };
 // A task's state in words; waiting outside Docket says on what (#652).
 const planWord = (t) => t.state === 'waiting_outside' && t.waitsOn ? `waiting on ${t.waitsOn}` : PLAN_WORD[t.state] || t.state;
 // A task row held by another session opens it on a click anywhere in the row, as its held-by link does (#669);
-// the brief stays in the row's tip.
+// the brief stays in the row's tip. Plan-folder rows only: Docket's own plans open a row instead (#868).
 const planRowAttrs = (t, holder, me) => holder && holder !== me ? ` data-plan-open="${esc(holder)}" title="${esc(`${t.brief || t.title}\nClick to open ${t.holderTitle || 'its session'}`)}"` : ` title="${esc(t.brief || t.title)}"`;
 // A plan-folder holder as a Docket session id: the plan file may name it whole or by its first characters; '' when no
 // session here matches.
 const folderHolder = (h) => !h ? '' : sessionById(h) ? h : h.length >= 6 ? [...Object.keys(S.live), ...(S.history[S.client] || []).map((x) => x.id)].find((id) => id.startsWith(h)) || '' : '';
-const sessionLink = (id, title) => id ? `<a href="#" data-plan-open="${esc(id)}" title="Open this session">${esc(title || 'a session')}</a>` : '';
-const linkHtml = (l) => /^\[[^\]]+\]\(https?:\/\/[^)]+\)$/.test(l) ? (([, t, u]) => `<a href="${esc(u)}" target="_blank" rel="noopener" title="${esc(u)}">${esc(t)}</a>`)(l.match(/^\[([^\]]+)\]\((.*)\)$/)) // a markdown link: its words
-  : /^https?:\/\//.test(l) ? `<a href="${esc(l)}" target="_blank" rel="noopener" title="${esc(l)}">${esc(l.replace(/^https?:\/\/(www\.)?/, '').slice(0, 60))}</a>` : esc(l.split(/[\\/]/).pop());
-function planHtml(p, me) {
-  // Your steps at a glance (#652): the tasks only you can do, not yet done, with the ones you can do now first.
-  const yours = p.tasks.filter((t) => t.forUser && t.state !== 'done' && t.state !== 'dropped');
-  const now = yours.filter((t) => t.ready);
-  const steps = yours.length ? `<div class="plan-yours">Your steps · ${now.length ? `<b>now: ${now.map((t) => esc(t.id)).join(', ')}</b>` : 'none to do yet'}${yours.length > now.length ? ` · later: ${yours.filter((t) => !t.ready).map((t) => esc(t.id)).join(', ')}` : ''}</div>` : '';
+// A task's link as a short label in the session list's own look (#868): a pull request with its icon and state color
+// (#1772 and the repo), an issue in its ticket box, a git branch with the branch icon, the full address in the tip.
+// The state is what Docket already knows from the Pull requests and Tickets sections; grey when it knows none.
+const ghBase = (u) => u.match(/^(https?:\/\/github\.com\/[^/]+\/[^/]+\/(?:pull|issues)\/\d+)/i)?.[1].toLowerCase() || '';
+const prOfLink = (u) => { const b = ghBase(u); return b && Object.values(S.prs).flat().find((p) => p?.url && ghBase(p.url) === b); };
+const ticketOfLink = (u) => { const b = ghBase(u); return b && Object.values(S.tickets).flat().find((t) => t?.url && ghBase(t.url) === b); };
+function linkHtml(l) {
+  const md = l.match(/^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/), u = md ? md[2] : /^https?:\/\//.test(l) ? l : '';
+  if (!u) return `<span class="plink" title="${esc(l)}">${esc(l.split(/[\\/]/).pop())}</span>`;
+  const a = (inner, tipText) => `<a class="plink" href="${esc(u)}" target="_blank" rel="noopener" title="${esc(tipText)}">${inner}</a>`;
+  const m = u.match(/^https?:\/\/github\.com\/[^/]+\/([^/]+)\/(pull|issues|tree)\/([^?#]+)/i);
+  if (m && m[2] !== 'tree') {
+    const n = m[3].split('/')[0];
+    if (m[2] === 'pull') { const p = prOfLink(u), st = p ? prState(p) : 'unknown'; return a(`${prIcon(st)}<span class="pr-${st} pn">#${esc(n)}</span><span class="gl">${esc(m[1])}</span>`, `${m[1]} pull request #${n} · ${p ? PR_LABEL[st].toLowerCase() : 'state unknown'}\n${u}`); }
+    const t = ticketOfLink(u), c = t?.category || 'unknown';
+    return a(`<span class="tkb tk-${c}">#${esc(n)}</span><span class="gl">${esc(m[1])}</span>`, `${m[1]} issue #${n} · ${t ? (t.status || TK_LABEL[c]).toLowerCase() : 'state unknown'}\n${u}`);
+  }
+  if (m) { const b = decodeURIComponent(m[3]); return a(`${BRANCH_ICON}<span>${esc(b)}</span>`, `git branch ${b}\n${u}`); }
+  return a(`<span>${esc(md ? md[1] : u.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48))}</span>`, u);
+}
+// ---------- plan order (#868) ----------
+// Steps stay in plan order. A step that waits on an earlier step of the same phase sits right under it (the first such
+// step it names), so a chain reads as a tree and the top level shows what can run side by side. A wait on a step
+// elsewhere stays as "after T1" text.
+const planFinished = (t) => t.state === 'done' || t.state === 'dropped';
+function planParents(tasks) {
+  const at = new Map(tasks.map((t, i) => [t.id, i])), out = new Map();
+  tasks.forEach((t, i) => {
+    const j = (t.after || []).map((a) => at.get(a)).find((j) => j !== undefined && j < i && (tasks[j].phase || '') === (t.phase || ''));
+    if (j !== undefined) out.set(t.id, tasks[j]);
+  });
+  return out;
+}
+// The steps of one list in tree order: each root in plan order, followed by the steps that hang under it.
+function planTree(list, parents) {
+  const kids = new Map(), inList = new Set(list);
+  for (const t of list) { const p = parents.get(t.id); if (p && inList.has(p)) { if (!kids.has(p.id)) kids.set(p.id, []); kids.get(p.id).push(t); } }
+  const walk = (t) => [t, ...(kids.get(t.id) || []).flatMap(walk)];
+  return list.filter((t) => !inList.has(parents.get(t.id))).flatMap(walk);
+}
+// A plan's phases (#869), in the order it lists them, each with its steps; null when it has none. A plan lists them as
+// names, and a task names its phase ('' for none); a task whose phase is not listed goes in a last "No phase".
+function planPhases(p) {
+  const names = (Array.isArray(p.phases) ? p.phases : []).map((x) => typeof x === 'string' ? x : x?.name).filter(Boolean);
+  if (!names.length) return null;
+  const out = names.map((name, i) => ({ key: name, no: i + 1, name, steps: p.tasks.filter((t) => t.phase === name) }));
+  const rest = p.tasks.filter((t) => !names.includes(t.phase));
+  if (rest.length) out.push({ key: '', no: 0, name: 'No phase', steps: rest });
+  return out.filter((x) => x.steps.length);
+}
+// A note's lines; a "label — a, b, c, d" line with a short label and more than three items is a list.
+const planNoteLines = (note) => String(note || '').split('\n').map((l) => {
+  const m = l.match(/^(.+?) — (.+)$/), items = m ? m[2].split(',').map((x) => x.trim()).filter(Boolean) : [];
+  return items.length > 3 && m[1].length <= 40 ? { label: m[1], items } : { text: l };
+});
+// end of plan order
+// The Plan section's look (#868): 👁 settings shared by every plan, and for each plan its open rows, folded phases,
+// shown notes and filters, all remembered in this browser. Runs shown from a gap line last until the filters change.
+const PLAN_VIEW = { phases: true, gaps: false, two: false };
+const planView = () => ({ ...PLAN_VIEW, ...store.get('planView', {}) });
+const planUi = (pid) => ({ open: [], shut: [], unshut: [], full: [], done: false, active: false, ...(store.get('planPanel', {})[pid] || {}) });
+function setPlanUi(pid, u) { const all = store.get('planPanel', {}); all[pid] = u; store.set('planPanel', all); }
+S.planReveal = {}; // plan id -> runs of step ids shown from their gap line
+S.planEye = false;
+// A run of steps by its first and last ID in plan order (a chain puts them in tree order).
+const planIds = (g, tasks) => { const at = new Map(tasks.map((t, i) => [t.id, i])), o = [...g].sort((x, y) => at.get(x) - at.get(y)); return o.length === 1 ? o[0] : `${o[0]}–${o[o.length - 1]}`; };
+// A session as a chip with its session-list dot; pressing it opens that session.
+function planSessChip(id, title, me) {
+  const s = sessionById(id);
+  return `<a href="#" class="plink sess" data-plan-open="${esc(id)}" title="${id === me ? 'The session whose details these are' : 'Open this session'}"><span class="dot ${s ? dotClass(s) : 'ended'}"></span><span>${esc(title || s?.title || 'a session')}</span></a>${id === me ? '<span class="here">open now</span>' : ''}`;
+}
+// The second line of a row (👁 > Two-line rows): what it is at, who has it, what it waits on, the start of its note.
+function planSummary(t, me) {
+  const done = planFinished(t);
+  const bits = [t.forUser && !done ? 'your step' : t.state === 'waiting_on_user' ? 'its session asked you' : planWord(t)];
+  if (t.holder && !done) bits.push((t.holderTitle || 'a session') + (t.holder === me ? ' (open now)' : ''));
+  if (t.after.length && !done) bits.push('after ' + t.after.join(', '));
+  if (t.sub) bits.push(`its plan: ${t.sub.done} of ${t.sub.total} done`);
+  if (t.note) bits.push(t.note.split('\n')[0]);
+  return esc(bits.join(' · '));
+}
+// An opened row: no State field (the dot says it), a plain line only when it adds something, then its session,
+// what it waits on, its own plan and links as chips, and the note in its own paragraph.
+function planOpenHtml(t, p, me, u) {
+  const done = planFinished(t), s = t.holder && sessionById(t.holder), by = new Map(p.tasks.map((x) => [x.id, x]));
+  const why = done ? '' : t.state === 'waiting_on_user' ? `Its session asked you:${s?.said ? `<div class="ask">${esc(s.said)}</div>` : ''}`
+    : t.state === 'waiting_outside' && t.waitsOn ? esc(`Waiting on ${t.waitsOn}.`)
+    : t.forUser ? 'Your step. The session before it ends by asking you for it, or the one after starts by asking.' : '';
+  const f = [];
+  if (t.holder) f.push(['Session', planSessChip(t.holder, t.holderTitle, me)]);
+  if (t.after.length) f.push(['After', t.after.map((a) => { const d = by.get(a); return d ? `<button class="plink dep${planFinished(d) ? ' ok' : ''}" data-plan-jump="${esc(a)}" title="${esc(`${a} ${d.title} — ${planWord(d)}`)}">${PLAN_ICON[d.state] || '●'} ${esc(a)}</button>` : `<span class="plink">${esc(a)}</span>`; }).join('')]);
+  if (t.sub) f.push(['Its plan', `${esc(t.sub.title)}: ${t.sub.done} of ${t.sub.total} done`]);
+  if (t.links.length) f.push(['Links', t.links.map(linkHtml).join('')]);
+  const long = t.note && (t.note.length > 220 || t.note.split('\n').length > 3), all = u.full.includes(t.id);
+  const note = !t.note ? '' : `<div class="pnote${long && !all ? ' clamp' : ''}">${planNoteLines(t.note).map((l) => l.items ? `<div><i>${esc(l.label)}</i> (${l.items.length})<ul><li>${l.items.map(esc).join(', ')}</li></ul></div>` : `<div>${esc(l.text) || '&nbsp;'}</div>`).join('')}</div>${long ? `<button class="more" data-plan-full="${esc(t.id)}" title="${all ? 'Cut the note back to four lines' : 'Show the whole note'}">${all ? 'Show less' : 'Show all'}</button>` : ''}`;
+  return `<div class="det">${why ? `<div class="why${t.state === 'waiting_on_user' ? ' now' : ''}">${why}</div>` : ''}${f.map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join('')}${note}</div>`;
+}
+// One step: its dot, ID, title (cut off with …) and kind on one line. The user's steps are quiet grey with a dashed
+// "you" tag; a step this session holds has an accent bar on the left. A click opens it; a click on its title closes it.
+function planRowHtml(t, p, me, u, v, depth) {
+  const open = u.open.includes(t.id), done = planFinished(t);
+  const cls = ['plan-row', 'st-' + t.state, open && 'open', done && 'done', t.forUser && 'user', t.holder === me && !done && 'mine'].filter(Boolean).join(' ');
+  const tag = t.kind || t.forUser ? `<span class="ptag${t.forUser ? ' you' : ''}"${t.forUser ? ' title="Only you can do this step; no session claims it"' : ''}>${t.forUser ? 'you' + (t.kind ? ' · ' : '') : ''}${esc(t.kind)}</span>` : '';
+  return `<div class="${cls}" data-id="${esc(t.id)}"${open ? '' : ` title="${esc(t.brief || t.title)}"`}><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '●'}</span><span class="l1">${depth ? `<span class="tw">${' '.repeat(depth - 1)}└</span>` : ''}<span class="id">${esc(t.id)}</span>${esc(t.title)}</span><span class="end">${tag}</span>${v.two && !open ? `<span class="l2">${planSummary(t, me)}</span>` : ''}${open ? planOpenHtml(t, p, me, u) : ''}</div>`;
+}
+// One plan: its head (coordinator, where it sits, a progress bar with a block per step), the Active and Done filters,
+// and its steps in plan order, under phase headings when it has phases. Filters hide steps but never move them.
+function planHtml(p, me, ctx) {
+  const v = planView(), u = planUi(p.id), reveal = S.planReveal[p.id] || [], parents = planParents(p.tasks);
+  const phases = v.phases ? planPhases(p) : null;
+  const active = (t) => t.state === 'claimed' || t.state === 'waiting_outside';
+  const base = (t) => (!planFinished(t) || u.done) && (!u.active || active(t) || planFinished(t));
+  const pass = (t) => base(t) || reveal.some((g) => g.includes(t.id));
+  // the └ shows only under a step that is shown too
+  const depth = (t) => { let d = 0; for (let x = parents.get(t.id); x && pass(x) && d < 12; x = parents.get(x.id)) d++; return d; };
+  let out = '', run = [];
+  // a run of hidden steps leaves a thin line in its place (👁 > Gap lines); a run shown from it gets a line to fold it back
+  const flush = () => {
+    if (run.length && v.gaps) { const d = run.filter(planFinished).length, o = run.length - d; out += `<button class="plan-gap" data-plan-gap="${esc(run.map((t) => t.id).join(','))}" title="Show ${run.length === 1 ? 'this step' : 'these steps'}">${[d && `✓ ${d} done`, o && `${o} other`].filter(Boolean).join(' · ')} <span class="ids">· ${esc(planIds(run.map((t) => t.id), p.tasks))}</span></button>`; }
+    run = [];
+  };
+  const fold = (t) => { const g = reveal.find((g) => g[0] === t.id); return g && !base(t) ? `<button class="plan-gap fold" data-plan-fold="${esc(g.join(','))}" title="Hide ${g.length === 1 ? 'this step' : 'these steps'} again">▴ hide ${esc(planIds(g, p.tasks))}</button>` : ''; };
+  const steps = (list) => {
+    for (const t of planTree(list, parents)) {
+      if (!pass(t)) { run.push(t); continue; }
+      flush(); out += fold(t) + planRowHtml(t, p, me, u, v, depth(t));
+      if (u.open.includes(t.id)) ctx.anyOpen = true;
+    }
+    flush();
+  };
+  if (!phases) steps(p.tasks);
+  else for (const ph of phases) {
+    // a finished phase folds to its heading while Done is off; a heading folded by hand stays folded
+    // done/total as the server counts them (phaseProgress, #869): dropped steps left out, a step with its own plan as its steps
+    const pr = (p.phaseProgress || []).find((x) => x.name === ph.key), live = ph.steps.filter((t) => t.state !== 'dropped');
+    const d = pr ? pr.done : live.filter((t) => t.state === 'done').length, n = pr ? pr.total : live.length;
+    const complete = ph.steps.every(planFinished), any = ph.steps.some(pass);
+    const auto = complete && !u.done, shut = u.shut.includes(ph.key) || (auto && !u.unshut.includes(ph.key));
+    if (!any && !complete && !v.gaps) continue;
+    out += `<div class="plan-phase${shut ? ' shut' : ''}${complete ? ' complete' : ''}${!any && !complete ? ' nomatch' : ''}" data-plan-phase="${esc(ph.key)}"${auto ? ' data-auto' : ''} title="${shut ? 'Show' : 'Fold'} this phase"><span class="car">▾</span><span class="pn">${ph.no ? `<span class="no">${ph.no}</span>` : ''}${esc(ph.name)}</span><span class="pc">${complete ? '✓ done' : `${d}/${n}<span class="mini"><i style="width:${n ? Math.round(d / n * 100) : 0}%"></i></span>`}</span></div>`;
+    if (!shut) steps(ph.steps);
+  }
+  const order = phases ? phases.flatMap((ph) => ph.steps.map((t) => [t, ph.key])) : p.tasks.map((t) => [t, '']);
+  const bar = order.map(([t, k], i) => `<i class="st-${t.state}${i && k !== order[i - 1][1] ? ' ps' : ''}" data-plan-jump="${esc(t.id)}" title="${esc(`${t.id} ${t.title} — ${planWord(t)}`)}"></i>`).join('');
+  const count = (s) => p.tasks.filter((t) => t.state === s).length, finished = p.tasks.filter(planFinished).length, dropped = count('dropped');
+  // ✓ Done counts the done steps, as the legend does; it shows and hides dropped steps along with them
+  const doneTip = `${u.done ? 'Hide' : 'Show'} finished steps in their place: ${count('done')} done${dropped ? `, ${dropped} dropped` : ''}`;
   // "needs review" (#661): made before the current plan rules, and its coordinator has not marked the review done yet.
   const review = p.needsReview ? ' <span class="tag plan-tag" title="Made before the current plan rules. Docket asks its coordinator, once, to check it against them with the plan tools; this stays until the coordinator marks the review done.">needs review</span>' : '';
-  const head = `<div class="plan-head">${esc(p.title)} · ${p.done} of ${p.total} done${review}<span class="plan-sub">${p.coordinator === me ? 'Coordinated by this session' : `Coordinated by ${sessionLink(p.coordinator, p.coordinatorTitle)}`}${p.parent ? ` · part of ${esc(p.parentTitle || p.parent.plan)}, task ${esc(p.parent.task)}` : ' · master plan'}</span></div>${steps}`;
-  return head + p.tasks.map((t) => {
-    const sub = [esc(planWord(t)) + (t.ready ? (t.forUser ? ', your turn now' : ', free to start') : ''), t.holder ? (t.holder === me ? 'held by this session' : `held by ${sessionLink(t.holder, t.holderTitle)}`) : '',
-      t.after.length && t.state !== 'done' && t.state !== 'dropped' ? 'after ' + t.after.join(', ') : '', t.sub ? `its plan: ${t.sub.done} of ${t.sub.total} done` : '', ...t.links.map(linkHtml), t.note ? esc(t.note) : ''].filter(Boolean);
-    // The kind beside the name (#639); a dropped task stays, crossed out, with its note.
-    return `<div class="task plan-task${t.state === 'dropped' ? ' dropped' : ''}"${planRowAttrs(t, t.holder, me)}><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '○'}</span><span class="lb${t.holder === me && t.state !== 'done' && t.state !== 'dropped' ? ' mine' : ''}">${esc(t.id)} ${esc(t.title)}</span><span class="end">${t.forUser ? '<span class="tag you" title="Only you can do this step; no session claims it">you</span>' : ''}${t.kind ? `<span class="tag">${esc(t.kind)}</span>` : ''}</span><span class="sub">${sub.join(' · ')}</span></div>`;
-  }).join('');
+  const where = p.parent ? `part of ${esc(p.parentTitle || p.parent.plan)}, task ${esc(p.parent.task)}` : 'master plan';
+  const empty = finished === p.tasks.length && !u.done ? `Every step is done${dropped ? ' or dropped' : ''}. Turn on ✓ Done to see them.` : 'No steps match.';
+  return `<div class="plan" data-plan="${esc(p.id)}"><div class="plan-head"><div class="t">${esc(p.title)}${review}</div>
+    <div class="plan-sub">${p.coordinator ? `Coordinated by ${planSessChip(p.coordinator, p.coordinatorTitle, me)} · ` : ''}${where} · <a href="#" data-plan-tree${tip('plan-tree')}>Plan tree</a></div>
+    ${p.tasks.length ? `<div class="plan-bar">${bar}</div><div class="plan-legend"><span style="--c: var(--ok)">${p.done} of ${p.total} done</span><span style="--c: var(--run)">${count('claimed')} in progress</span><span style="--c: var(--muted)">${count('waiting_outside')} waiting outside</span></div>` : ''}</div>
+    <div class="plan-flts"><button class="plan-flt" data-plan-f="active" aria-pressed="${u.active}" title="Only steps in progress or waiting outside Docket">Active<span class="n">${p.tasks.filter(active).length}</span></button><span class="div"></span><button class="plan-flt" data-plan-f="done" aria-pressed="${u.done}" title="${esc(doneTip)}">✓ Done<span class="n">${count('done')}</span></button></div>
+    <div class="plan-list">${out || `<div class="hint">${empty}</div>`}</div></div>`;
+}
+// The Plan section heading's own controls: the 👁 view menu (a link, DESIGN.md) and Expand all / Collapse all.
+const PLAN_VIEW_OPTS = [['phases', 'Phases', 'Sections the plan defines, each with its progress'], ['gaps', 'Gap lines', 'A thin line where hidden steps sit'], ['two', 'Two-line rows', 'A summary line under each step']];
+function planHeadCtl(anyOpen) {
+  const v = planView();
+  return `<span class="plan-ctl"><span class="plan-eye-wrap"><button class="plan-eye" data-plan-eye aria-haspopup="true" aria-expanded="${S.planEye}" title="View: how the Plan section shows its steps, for every plan">👁</button>${S.planEye ? `<div class="tl-menu plan-view-pop" role="menu" aria-label="Plan view">${PLAN_VIEW_OPTS.map(([k, l, d]) => `<button role="menuitemcheckbox" aria-checked="${!!v[k]}" data-plan-v="${k}" title="${esc(d)}. For every plan."><span class="tick">${v[k] ? '✓' : ''}</span>${l}<span class="d">${d}</span></button>`).join('')}</div>` : ''}</span>`
+    + `<button class="plan-all" data-plan-all="${anyOpen ? 'close' : 'open'}" title="${anyOpen ? 'Close every opened step' : 'Open every step shown'}">${anyOpen ? '⊟ Collapse all' : '⊞ Expand all'}</button></span>`;
 }
 // The Plan section for one session, or null when it coordinates no plan and holds no task.
 function planSection(id) {
@@ -8946,9 +9242,47 @@ function planSection(id) {
   const ids = [...new Set([ownPlan(id)?.id, ...S.plans.plans.filter((p) => p.holders.includes(id)).map((p) => p.id)].filter(Boolean))];
   if (!ids.length) return null;
   const shown = ids.map((pid) => planDetail(pid)).filter(Boolean);
-  const own = ownPlan(id);
-  return [own ? `Plan · ${own.done} of ${own.total} done` : 'Plan', shown.length ? shown.map((p) => planHtml(p, id)).join('') : '<div class="hint">Loading…</div>'];
+  const own = ownPlan(id), ctx = { anyOpen: false };
+  const html = shown.map((p) => planHtml(p, id, ctx)).join('');
+  return [own ? `Plan · ${own.done} of ${own.total} done` : 'Plan', shown.length ? html : '<div class="hint">Loading…</div>', shown.length ? planHeadCtl(ctx.anyOpen) : ''];
 }
+// Jump to a step (a progress bar block, an After chip): its phase unfolds, it shows even when a filter hides it, and it opens.
+function planJump(pid, id) {
+  const p = S.planDetail[pid]?.plan, t = p?.tasks.find((x) => x.id === id); if (!t) return;
+  const u = planUi(pid), key = (planPhases(p) || []).find((ph) => ph.steps.includes(t))?.key;
+  if (key !== undefined) { u.shut = u.shut.filter((x) => x !== key); if (!u.unshut.includes(key)) u.unshut.push(key); }
+  if (!u.open.includes(id)) u.open.push(id);
+  setPlanUi(pid, u); renderTasks();
+  const row = () => $('tasksBody').querySelector(`.plan[data-plan="${CSS.escape(pid)}"] .plan-row[data-id="${CSS.escape(id)}"]`);
+  if (!row()) { (S.planReveal[pid] ||= []).push([id]); renderTasks(); }
+  const r = row(); if (!r) return;
+  r.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); r.classList.add('flash');
+}
+$('tasksBody').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-plan-eye], [data-plan-v], [data-plan-all], [data-plan-f], [data-plan-gap], [data-plan-fold], [data-plan-phase], [data-plan-jump], [data-plan-full], a, .plan-row');
+  if (!b || b.matches('a')) return;
+  if (b.hasAttribute('data-plan-eye')) { S.planEye = !S.planEye; renderTasks(); return; }
+  if (b.dataset.planV) { const v = planView(); v[b.dataset.planV] = !v[b.dataset.planV]; store.set('planView', v); renderTasks(); $('tasksBody').querySelector(`[data-plan-v="${b.dataset.planV}"]`)?.focus(); return; }
+  if (b.dataset.planAll) {
+    for (const el of $('tasksBody').querySelectorAll('.plan[data-plan]')) { const u = planUi(el.dataset.plan); u.open = b.dataset.planAll === 'open' ? [...el.querySelectorAll('.plan-row')].map((r) => r.dataset.id) : []; setPlanUi(el.dataset.plan, u); }
+    renderTasks(); return;
+  }
+  const pid = b.closest('[data-plan]')?.dataset.plan; if (!pid) return;
+  const u = planUi(pid), tog = (arr, x) => { const i = arr.indexOf(x); if (i < 0) arr.push(x); else arr.splice(i, 1); };
+  const save = () => { setPlanUi(pid, u); renderTasks(); };
+  if (b.dataset.planF) { u[b.dataset.planF] = !u[b.dataset.planF]; S.planReveal[pid] = []; save(); return; }
+  if (b.dataset.planGap) { (S.planReveal[pid] ||= []).push(b.dataset.planGap.split(',')); renderTasks(); return; }
+  if (b.dataset.planFold) { S.planReveal[pid] = (S.planReveal[pid] || []).filter((g) => g.join(',') !== b.dataset.planFold); renderTasks(); return; }
+  if (b.dataset.planPhase !== undefined) { tog(b.hasAttribute('data-auto') ? u.unshut : u.shut, b.dataset.planPhase); save(); return; }
+  if (b.dataset.planFull) { tog(u.full, b.dataset.planFull); save(); return; }
+  if (b.dataset.planJump) { planJump(pid, b.dataset.planJump); return; }
+  if (b.classList.contains('open') && !e.target.closest('.l1, .ic')) return; // a click inside the details does not close it
+  tog(u.open, b.dataset.id); save();
+});
+// The 👁 menu closes on a click outside it or Esc; it is hidden in place, so the click still lands where it was aimed.
+const shutPlanEye = () => { S.planEye = false; const w = $('tasksBody').querySelector('.plan-eye-wrap'); w?.querySelector('.plan-view-pop')?.remove(); w?.querySelector('[data-plan-eye]')?.setAttribute('aria-expanded', 'false'); };
+document.addEventListener('mousedown', (e) => { if (S.planEye && !e.target.closest('.plan-eye-wrap')) shutPlanEye(); });
+document.addEventListener('keydown', (e) => { if (S.planEye && e.key === 'Escape') { e.stopPropagation(); shutPlanEye(); $('tasksBody').querySelector('[data-plan-eye]')?.focus(); } }, true);
 $('tasksBody').addEventListener('click', (e) => {
   if (e.target.closest('[data-plan-tree]')) { e.preventDefault(); openPlanTree(); return; }
   if (e.target.closest('a:not([data-plan-open])')) return; // a task's own links open themselves, not its row's session
@@ -9054,7 +9388,7 @@ function foldedSections(saved) {
 }
 // end of details sections
 // k is the section's place in the order (what a drag moves); fold, when given, is what folding it remembers.
-const sectionHtml = (k, label, html, closed, fold = k) => `<div class="gsec dsec" data-dsec="${k}" data-fold="${fold}" draggable="true"${tip('dsec-head')}><span class="caret">${closed ? '▸' : '▾'}</span><span class="gname">${esc(label)}</span></div>${closed ? '' : html}`;
+const sectionHtml = (k, label, html, closed, fold = k, ctl = '') => `<div class="gsec dsec" data-dsec="${k}" data-fold="${fold}" draggable="true"${tip('dsec-head')}><span class="caret">${closed ? '▸' : '▾'}</span><span class="gname">${esc(label)}</span>${closed ? '' : ctl}</div>${closed ? '' : html}`;
 function renderSectionToggles() {
   const on = sections();
   for (const k of sectionOrder(store.get('sectionOrder', []))) { const b = $('secToggles').querySelector(`[data-sec="${k}"]`); if (b) $('secToggles').appendChild(b); } // the buttons follow the sections' order
@@ -9071,7 +9405,7 @@ $('secToggles').onclick = (e) => {
 // A section heading: a click folds or opens it; a drag moves it, the top half of the heading it is dropped on
 // putting it before that section and the bottom half after (the same line the session rows show).
 $('tasksBody').addEventListener('click', (e) => {
-  const h = e.target.closest('.dsec'); if (!h) return;
+  const h = e.target.closest('.dsec'); if (!h || e.target.closest('.plan-ctl')) return; // the Plan heading's own controls
   const c = foldedSections(store.get('collapsedSections', {})), f = h.dataset.fold; if (c[f]) delete c[f]; else c[f] = true;
   store.set('collapsedSections', c); renderTasks();
 });
@@ -9586,7 +9920,8 @@ function setMuted(id, muted) {
 }
 // The timeline in the chat is one setting for every session; View › Timeline in the chat in the session menu turns it on and off.
 function toggleTimeline() { const on = sections(); on.timeline = !on.timeline; store.set('sections', on); tl.menu = false; renderHead(); renderTlBar(); weave(); }
-const soundLabel = () => soundOn() ? '🔔 Sound: on' : '🔕 Sound: off';
+const soundLabel = () => `Sound: ${soundOn() ? 'on' : 'off'}`;
+const soundIcon = () => soundOn() ? '🔔' : '🔕';
 function soundTip() {
   return (soundOn() ? 'Sound on. The sounds:' : 'Sound off. Click to turn these back on:')
     + `\n• ${SOUND_WORDS.ready}\n• ${SOUND_WORDS.question}\n• ${SOUND_WORDS.cache} A waiting session's 1 hour cache has 10 minutes left. It is not the chime.\n`
@@ -9919,11 +10254,11 @@ function connect() {
 // Theme: default (no stored choice, so the page follows the computer's light/dark setting live), light or dark.
 const osTheme = () => matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 const themeChoice = () => document.documentElement.dataset.theme || 'default';
-const themeLabel = () => { const t = document.documentElement.dataset.theme; return t ? `◐ Theme: ${t}` : `◐ Theme: default (${osTheme()})`; };
-// Settings > Theme's own list: the current one is ticked when the ☰ menu draws it.
+const themeLabel = () => { const t = document.documentElement.dataset.theme; return t ? `Theme: ${t}` : `Theme: default (${osTheme()})`; };
+// Docket settings > Theme's own list: the current one is ticked when the ☰ menu draws it.
 const themeItems = () => [['theme-default', `Default (follows the computer — ${osTheme()} now)`], ['theme-light', 'Light'], ['theme-dark', 'Dark']];
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  const b = document.querySelector('[data-sub=theme]'); if (b) b.firstChild.nodeValue = themeLabel();
+  const b = document.querySelector('[data-sub=theme]'); if (b) menuText(b, themeLabel());
   const d = document.querySelector('[data-mact=theme-default]'); if (d) d.lastChild.nodeValue = themeItems()[0][1];
 });
 function applyTheme(t) {
@@ -10757,16 +11092,32 @@ const PLAN_NAMES = { docket: 'Docket\'s plans', folder: 'a plan folder', none: '
 async function switchPlans(id, to) {
   const c = S.clients.find((x) => x.id === id), name = c?.name || 'This desk';
   let w; try { w = await api(`/api/clients/${id}/plan-switch?to=${encodeURIComponent(to)}`); } catch (err) { tell(err.message); return null; }
-  let action = 'switch';
+  let action = 'switch', scope = '';
   if (w.warn) {
     const into = w.way === 'in';
-    action = await dialog({ title: into ? `${name} already keeps plans another way` : `${name} has plans in Docket`,
-      body: `<p>Switching ${esc(name)} to ${esc(PLAN_NAMES[to])} leaves this behind:</p><ul class="ps-found">${w.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
+    const projects = into ? w.found?.projects || [] : [];
+    const pick = projects.length ? `<p class="ps-scope">Convert <select id="psScope" aria-label="What to convert"${tip('ps-scope')}><option value="">the whole desk</option>${projects.map((p) => `<option value="${esc(p.folder)}">${esc(p.name)}: ${plural(p.files, 'plan file')}, ${p.open} open</option>`).join('')}<option value="*">another folder…</option></select>
+        <input type="text" id="psFolder" placeholder="Full path of the folder" aria-label="Folder to convert" hidden${tip('ps-folder')}></p>` : '';
+    const lines = (l) => l.map((x) => `<li>${esc(x)}</li>`).join('');
+    const shown = dialog({ title: into ? `${name} already keeps plans another way` : `${name} has plans in Docket`,
+      body: `<p>Switching ${esc(name)} to ${esc(PLAN_NAMES[to])} leaves this behind:</p><ul class="ps-found" id="psFound">${lines(w.lines)}</ul>${pick}
         <p class="meta">${into ? 'Convert starts a session on this desk that makes Docket plans from them: tasks, who holds each, what waits on what, and what is done.' : 'Convert starts a session on this desk that writes them out as markdown checklists.'} The old files stay as they are, and ${esc(name)} keeps ${esc(PLAN_NAMES[w.from])} until you press Finish the switch.</p>`,
       buttons: [{ label: 'Cancel', value: null, tip: tipText('ps-cancel') }, { label: 'Switch without converting', value: 'switch', tip: tipText('ps-switch') }, { label: 'Convert in a session', value: 'convert', primary: true, tip: tipText('ps-convert') }] });
+    // One project or folder instead of the whole desk: the list above shows what that one has.
+    const sel = $('dlgBody').querySelector('#psScope'), box = $('dlgBody').querySelector('#psFolder');
+    const rescan = async () => {
+      const want = sel.value === '*' ? box.value.trim() : sel.value;
+      if (sel.value === '*' && !want) return;
+      let v; try { v = await api(`/api/clients/${id}/plan-switch?to=${encodeURIComponent(to)}&scope=${encodeURIComponent(want)}`); } catch (err) { tell(err.message); return; }
+      scope = want;
+      const ul = $('dlgBody').querySelector('#psFound'); if (ul) ul.innerHTML = lines(v.lines.length ? v.lines : [`Nothing to convert in ${want}.`]);
+    };
+    if (sel) { sel.onchange = () => { box.hidden = sel.value !== '*'; if (!box.hidden) box.focus(); else rescan(); }; box.onchange = rescan; }
+    action = await shown;
+    if (sel) scope = sel.value === '*' ? box.value.trim() : sel.value;
     if (!action) return null;
   }
-  let r; try { r = await api(`/api/clients/${id}/plan-switch`, { to, action }); } catch (err) { tell(err.message); return null; }
+  let r; try { r = await api(`/api/clients/${id}/plan-switch`, { to, action, ...(action === 'convert' && scope ? { scope } : {}) }); } catch (err) { tell(err.message); return null; }
   if (c) { c.planSystem = r.planSystem; if (r.session) c.planSwitch = { to, from: w.from, session: r.session }; else delete c.planSwitch; }
   if (r.session && S.client === id) openSession(r.session);
   showPlanOffer();

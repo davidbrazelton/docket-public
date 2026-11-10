@@ -29,7 +29,7 @@ Every button, toggle and menu in Docket is one of five kinds. The kind says what
 
 ## Colors
 
-Use the color tokens on `:root` in `index.html` only (`--line`, `--panel-2`, `--accent`, `--accent-soft`, `--muted`, `--text`, `--warn`). Never a fixed color. That way light, dark and a main color picked in ☰ > Settings > Color (`data-accent`) all work without extra rules.
+Use the color tokens on `:root` in `index.html` only (`--line`, `--panel-2`, `--accent`, `--accent-soft`, `--muted`, `--text`, `--warn`). Never a fixed color. That way light, dark and a default color picked in ☰ > Docket settings > Default color, or a desk's own (`data-accent`) all work without extra rules.
 
 ## Deciding a new control
 

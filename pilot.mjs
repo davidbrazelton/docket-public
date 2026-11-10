@@ -97,9 +97,44 @@ export function itemStops(item) {
   }
 }
 
+// The autopilot's own desk (#875): the pilot is a desk of its own, so its judgment, bill, sign-ins and files are
+// that desk's and no working desk's. What waits on that desk stays with the person, so the pilot never approves itself.
+export const OWN_DESK = "on the autopilot's own desk";
+export const PILOT_DESK_NAME = 'Autopilot';
+
+// The desk entry Docket makes the first time the switch goes on, filled in the way ☰ > Desks > Add a desk fills a new
+// one: working folder <claude root>\<Name>, Claude home <claude root>\<Name>\claude-home (made empty), Grok home
+// <grok root>\<Name>, Grok as the brand its sessions start on. roots: the server's homeRoots(). clients: the desks
+// there are now; a name or folder one of them uses is passed over for Autopilot 2, 3 and so on.
+export function pilotDeskEntry(roots, clients = []) {
+  const sep = roots.sep || '\\';
+  const norm = (p) => String(p || '').replace(/[\\/]+/g, '/').replace(/\/$/, '').toLowerCase();
+  const inside = (p) => norm(p) === norm(roots.docket) || norm(p).startsWith(norm(roots.docket) + '/');
+  const names = new Set(clients.map((c) => String(c.name || '').trim().toLowerCase()));
+  const used = new Set(clients.flatMap((c) => [c.home, c.grokHome, c.codexHome, c.folder]).filter(Boolean).map(norm));
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? PILOT_DESK_NAME : `${PILOT_DESK_NAME} ${n}`;
+    // Never inside Docket's own folder (it holds the sign-in): <Name>-desk then, as Add a desk does.
+    const at = (root, ...rest) => { const p = [root, name, ...rest].join(sep); return inside(p) ? [root, `${name}-desk`, ...rest].join(sep) : p; };
+    const e = { name, folder: at(roots.claude), home: at(roots.claude, 'claude-home'), grokHome: at(roots.grok || [roots.claude, 'grok_home'].join(sep)), defaultEngine: 'grok' };
+    if (!names.has(name.toLowerCase()) && ![e.folder, e.home, e.grokHome].some((p) => used.has(norm(p)))) return e;
+  }
+}
+
+// Why this session may not be the pilot, or '' when it may: only a session of the autopilot's desk can be.
+// session: { id, desk, deskName } (desk: its desk id). pilotDesk: { id, name }, or null when none is set yet.
+export function pilotSessionRefusal(session, pilotDesk) {
+  if (!session) return '';
+  if (!pilotDesk) return "The autopilot has no desk yet. Turn it on once, and Docket makes the Autopilot desk and starts the pilot there, or pick a desk and Save desk first.";
+  if (session.desk !== pilotDesk.id) return `That session is on the desk ${session.deskName || session.desk || '(unknown)'}. The pilot must be a session of the autopilot's own desk, ${pilotDesk.name}, so that its sign-ins, bill, memory and files are that desk's and not a working desk's. Start one on ${pilotDesk.name}, or bind another desk as the autopilot's.`;
+  return '';
+}
+
 // The level the rules give an item: its desk's rule for its kind over the general one, then any hard stop it hits
 // that the rules do not name as allow or deny pulls it back to ask. Returns { level, stops, why }.
-export function ruleFor(rules, item) {
+// pilotDesk: the autopilot's own desk id; what waits there stays with the person, whatever the rules say.
+export function ruleFor(rules, item, pilotDesk) {
+  if (pilotDesk && item.desk === pilotDesk && !item.there) return { level: 'ask', stops: itemStops(item), why: OWN_DESK };
   const r = cleanRules(rules), desk = r.desks[item.desk] || { kinds: {}, stops: {} };
   const kind = desk.kinds[item.kind] || r.kinds[item.kind] || 'ask';
   const stops = itemStops(item);
@@ -122,12 +157,12 @@ export const stricter = (a, b) => {
 };
 
 // Whether the pilot may give this answer to this item. Returns { ok, why }. floor: the level another computer's
-// rules gave it (an item on a remote desk, #827); the stricter of that and these rules counts.
-export function mayAnswer(rules, item, answer, floor) {
+// rules gave it (an item on a remote desk, #827); the stricter of that and these rules counts. pilotDesk: as ruleFor.
+export function mayAnswer(rules, item, answer, floor, pilotDesk) {
   const k = KINDS[item.kind];
   if (!k) return { ok: false, why: `Unknown kind ${item.kind}.` };
   if (!k.answers.includes(answer)) return { ok: false, why: `"${answer}" is not an answer to ${item.kind}; use one of: ${k.answers.join(', ')}.` };
-  let { level, why } = ruleFor(rules, item);
+  let { level, why } = ruleFor(rules, item, pilotDesk);
   if (floor && stricter(floor, level) !== level) { level = stricter(floor, level); why = `the rules on the computer with the desk say ${level} for it`; }
   if (level === 'allow') return { ok: true, why };
   if (level === 'deny') return answer === k.decline ? { ok: true, why } : { ok: false, why: `${why}: the pilot may only answer ${k.decline}. It stays with the person.` };

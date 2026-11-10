@@ -17,8 +17,9 @@ export const KINDS = ['build', 'test', 'decision', 'research'];
 // The plan rules' version (#661): raised when the rules change in a way older plans should be checked against. A plan
 // records, on its "- Rules checked:" line, the version its coordinator last reviewed it at; a plan file without that
 // line was never reviewed (0). New plans start at the current version. 1: the rules of #651 to #655. 2: done means
-// done, and a task set done by mistake is corrected (#663).
-export const PLAN_RULES_VERSION = 2;
+// done, and a task set done by mistake is corrected (#663). 3: fewer user steps, checks and other people's work are not
+// the user's, and the coordinator starts everything free at once and gathers the user's decisions (#870).
+export const PLAN_RULES_VERSION = 3;
 // Task names follow the plan tree (#639): T1, T2 in the master plan; T3.1, T3.2 in a plan made for task T3; T3.2.1
 // one level deeper. Numbers are never reused: a dropped task keeps its number and stays in the file.
 const TASK_ID = /T\d+(?:\.\d+)*/;
@@ -36,6 +37,10 @@ export const userTag = (t) => t.forUser ? " (the user's step)" : '';
 const PLAN_ID = /\bp-[a-z0-9]{4,}\b/;
 const stamp = (t) => new Date(t).toISOString().slice(0, 16).replace('T', ' ');
 const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
+// Phases (#869): a plan may name its sections, in the order the work happens, and put each task in one. The file keeps
+// them on one "- Phases: Setup | Build | Ship" line, so a name never holds "|". Plans without phases are unchanged.
+const phaseName = (s) => oneLine(String(s ?? '').replace(/\|/g, '/'));
+const PHASE_SEP = ' | ';
 
 // "<session id> (<title>)" both ways.
 const who = (id, title) => id ? `${id}${title ? ` (${oneLine(title).replace(/[()]/g, '')})` : ''}` : '';
@@ -47,18 +52,19 @@ function parseWho(v) {
 // ---------- the file ----------
 export function parsePlan(text, file = '') {
   const lines = String(text).replace(/\r\n/g, '\n').split('\n');
-  const plan = { id: '', title: '', coordinator: '', coordinatorTitle: '', parent: null, made: '', rulesChecked: 0, goal: '', tasks: [], file };
+  const plan = { id: '', title: '', coordinator: '', coordinatorTitle: '', parent: null, made: '', rulesChecked: 0, phases: [], goal: '', tasks: [], file };
   let where = 'head', goal = [], task = null, key = null;
   for (const line of lines) {
     if (where === 'head' && /^# /.test(line) && !plan.title) { plan.title = line.slice(2).trim(); continue; }
     if (/^## Tasks\s*$/.test(line)) { where = 'tasks'; continue; }
     if (where === 'head') {
-      const m = line.match(/^- (Plan|Coordinator|Part of|Made|Rules checked): (.*)$/);
+      const m = line.match(/^- (Plan|Coordinator|Part of|Made|Rules checked|Phases): (.*)$/);
       if (m && !goal.length) {
         if (m[1] === 'Plan') plan.id = m[2].match(PLAN_ID)?.[0] || '';
         else if (m[1] === 'Coordinator') { const w = parseWho(m[2]); plan.coordinator = w.id; plan.coordinatorTitle = w.title; }
         else if (m[1] === 'Part of') { const p = m[2].match(PLAN_ID)?.[0], t = m[2].match(PART_OF_TASK)?.[1]; if (p) plan.parent = { plan: p, task: t || '' }; }
         else if (m[1] === 'Rules checked') plan.rulesChecked = Number(m[2].match(/\d+/)?.[0] || 0);
+        else if (m[1] === 'Phases') plan.phases = m[2].split('|').map(phaseName).filter((n, i, a) => n && a.findIndex((x) => x.toLowerCase() === n.toLowerCase()) === i);
         else plan.made = m[2].trim();
         continue;
       }
@@ -67,11 +73,11 @@ export function parsePlan(text, file = '') {
     }
     const t = line.match(TASK_LINE);
     if (t) {
-      task = { id: t[2], title: t[3].trim(), kind: '', forUser: false, state: t[1] === ' ' ? 'open' : 'done', holder: '', holderTitle: '', claimedAt: '', after: [], waitsOn: '', brief: '', note: '', links: [], plan: '' };
+      task = { id: t[2], title: t[3].trim(), kind: '', forUser: false, state: t[1] === ' ' ? 'open' : 'done', holder: '', holderTitle: '', claimedAt: '', after: [], waitsOn: '', brief: '', note: '', links: [], plan: '', phase: '' };
       plan.tasks.push(task); key = null; continue;
     }
     if (!task) continue;
-    const d = line.match(/^ {2}- (State|Kind|Owner|Held by|After|Waits on|Brief|Note|Link|Plan): ?(.*)$/);
+    const d = line.match(/^ {2}- (State|Kind|Owner|Phase|Held by|After|Waits on|Brief|Note|Link|Plan): ?(.*)$/);
     if (d) {
       key = d[1];
       const v = d[2];
@@ -80,6 +86,7 @@ export function parsePlan(text, file = '') {
       else if (key === 'Held by') { const w = parseWho(v); task.holder = w.id; task.holderTitle = w.title; }
       else if (key === 'Kind') task.kind = v.trim().toLowerCase();
       else if (key === 'Owner') task.forUser = v.trim().toLowerCase() === USER_OWNER;
+      else if (key === 'Phase') task.phase = phaseName(v);
       else if (key === 'Waits on') task.waitsOn = oneLine(v);
       else if (key === 'After') task.after = v.match(TASK_IDS) || [];
       else if (key === 'Brief') task.brief = v;
@@ -92,6 +99,12 @@ export function parsePlan(text, file = '') {
     if (line.trim()) key = null;
   }
   plan.goal = goal.join('\n').trim();
+  // A task naming a phase the list lacks (a file edited by hand) keeps it: the phase joins the end of the list.
+  for (const t of plan.tasks) {
+    if (!t.phase) continue;
+    const known = plan.phases.find((n) => n.toLowerCase() === t.phase.toLowerCase());
+    if (known) t.phase = known; else plan.phases.push(t.phase);
+  }
   return plan;
 }
 
@@ -102,6 +115,7 @@ export function formatPlan(p, fileOf = (id) => id) {
   if (p.parent) out.push(`- Part of: [${p.parent.plan}](${fileOf(p.parent.plan)}), task ${p.parent.task}`);
   if (p.made) out.push(`- Made: ${p.made}`);
   if (p.rulesChecked) out.push(`- Rules checked: ${p.rulesChecked}`);
+  if (p.phases?.length) out.push(`- Phases: ${p.phases.map(phaseName).join(PHASE_SEP)}`);
   out.push('');
   if (p.goal) out.push(p.goal.trim(), '');
   out.push('## Tasks', '');
@@ -109,6 +123,7 @@ export function formatPlan(p, fileOf = (id) => id) {
     out.push(`- [${t.state === 'done' ? 'x' : ' '}] ${t.id} ${oneLine(t.title)}`);
     if (t.kind) out.push(`  - Kind: ${t.kind}`);
     if (t.forUser) out.push(`  - Owner: ${USER_OWNER}`);
+    if (t.phase) out.push(`  - Phase: ${phaseName(t.phase)}`);
     out.push(`  - State: ${STATE_WORDS[t.state] || 'open'}${t.claimedAt && t.state !== 'open' ? ` since ${t.claimedAt}` : ''}`);
     if (t.holder) out.push(`  - Held by: ${who(t.holder, t.holderTitle)}`);
     if (t.after.length) out.push(`  - After: ${t.after.join(', ')}`);
@@ -163,6 +178,31 @@ export function whyNoneReady(plan) {
 export const planOpen = (plan) => plan.tasks.some((t) => !finished(t));
 export const reviewDue = (plan, version = PLAN_RULES_VERSION) => planOpen(plan) && (plan.rulesChecked || 0) < version;
 
+// ---------- phases (#869) ----------
+// The plan's own name for a phase given loosely (any case), or '' when it has none by that name.
+export const findPhase = (plan, name) => (plan.phases || []).find((n) => n.toLowerCase() === phaseName(name).toLowerCase()) || '';
+// The plan's phases in order, each with its tasks in plan order; tasks with no phase come last under the name ''
+// (only when there are any). A plan without phases gives one '' group holding every task.
+export function phaseGroups(plan) {
+  const phases = plan.phases || [];
+  const groups = phases.map((name) => ({ name, tasks: plan.tasks.filter((t) => t.phase === name) }));
+  const loose = plan.tasks.filter((t) => !phases.includes(t.phase));
+  if (loose.length || !groups.length) groups.push({ name: '', tasks: loose });
+  return groups;
+}
+// A phase list as given: names checked, and none twice.
+function phaseList(names) {
+  const out = [];
+  for (const n of names || []) {
+    const name = phaseName(n);
+    if (!name) throw new Error('Every phase needs a name.');
+    if (out.some((x) => x.toLowerCase() === name.toLowerCase())) throw new Error(`The phase "${name}" is named twice.`);
+    out.push(name);
+  }
+  return out;
+}
+const phasesSay = (p) => p.phases?.length ? `Its phases are ${p.phases.join(', ')}.` : 'It has no phases yet.';
+
 // ---------- the folder ----------
 const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 const slug = (s) => oneLine(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
@@ -216,14 +256,22 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   function newTasks(plan, specs) {
     const pre = prefixOf(plan), mine = new RegExp(`^${pre.replace(/\./g, '\\.')}(\\d+)$`);
     let n = Math.max(0, ...plan.tasks.map((t) => Number(t.id.match(mine)?.[1] || 0)));
+    // Every task without a kind is named at once, so one retry fixes them all (#858).
+    const kindless = specs.filter((s) => !String(s.kind ?? '').trim());
+    if (kindless.length === 1) throw new Error(`${oneLine(kindless[0].title) ? `Task "${oneLine(kindless[0].title)}"` : 'Every task'} needs a kind: build, test, decision or research. Nothing was made: give it a kind and call again.`);
+    if (kindless.length) throw new Error(`${kindless.length} tasks need a kind (build, test, decision or research), so nothing was made: ${kindless.slice(0, 10).map((s) => `"${oneLine(s.title)}"`).join(', ')}${kindless.length > 10 ? `, and ${kindless.length - 10} more` : ''}. Give every task a kind and call again.`);
     for (const s of specs) {
       const what = oneLine(s.title) ? `Task "${oneLine(s.title)}"` : 'Every task';
-      const k = String(s.kind ?? '').trim().toLowerCase();
-      if (!k) throw new Error(`${what} needs a kind: build, test, decision or research.`);
+      const k = String(s.kind).trim().toLowerCase();
       if (!KINDS.includes(k)) throw new Error(`${what} has the kind "${oneLine(s.kind)}", which is not one of build, test, decision or research.`);
     }
     const made = specs.map((s) => ({ id: `${pre}${++n}`, title: oneLine(s.title), kind: String(s.kind).trim().toLowerCase(), forUser: !!s.for_user, state: 'open', holder: '', holderTitle: '', claimedAt: '',
-      after: [], waitsOn: '', brief: String(s.brief || '').trim(), note: '', links: (s.links || []).map(oneLine).filter(Boolean), plan: '' }));
+      after: [], waitsOn: '', brief: String(s.brief || '').trim(), note: '', links: (s.links || []).map(oneLine).filter(Boolean), plan: '', phase: '' }));
+    specs.forEach((s, i) => {
+      if (!phaseName(s.phase)) return;
+      made[i].phase = findPhase(plan, s.phase);
+      if (!made[i].phase) throw new Error(`Task "${made[i].title}" is in the phase "${phaseName(s.phase)}", which this plan does not have. ${phasesSay(plan)} Add the phase first.`);
+    });
     const ids = new Set([...plan.tasks, ...made].map((t) => t.id));
     specs.forEach((s, i) => {
       made[i].after = [...new Set((s.after || []).map((a) => typeof a === 'number' || /^\d+$/.test(a) ? made[Number(a) - 1]?.id : String(a).toUpperCase()))];
@@ -254,11 +302,11 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   }
 
   // A new plan. parent { plan, task } hangs it off that task, and the task names it back.
-  function create({ title, goal = '', tasks = [], coordinator, coordinatorTitle = '', parent = null }) {
+  function create({ title, goal = '', tasks = [], phases = [], coordinator, coordinatorTitle = '', parent = null }) {
     if (!oneLine(title)) throw new Error('A plan needs a title.');
     return locked(() => {
       let id; do id = 'p-' + randomBytes(4).toString('hex').slice(0, 6); while (fileOf(id));
-      const plan = { id, title: oneLine(title), coordinator: coordinator || '', coordinatorTitle, parent: null, made: stamp(now()), rulesChecked: PLAN_RULES_VERSION, goal: String(goal).trim(), tasks: [], file: '' };
+      const plan = { id, title: oneLine(title), coordinator: coordinator || '', coordinatorTitle, parent: null, made: stamp(now()), rulesChecked: PLAN_RULES_VERSION, phases: phaseList(phases), goal: String(goal).trim(), tasks: [], file: '' };
       let up = null, t = null;
       if (parent) {
         up = must(parent.plan);
@@ -318,7 +366,8 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   // forUser (true or false) makes a task the user's step or gives it back to sessions: the coordinator's to say.
   // Done is undone only by the coordinator (#663): sent back after checking it, or corrected when it was set done by
   // mistake, to dropped or back to open, with a note saying why; the note then starts "Corrected from done:".
-  function update(id, taskId, { state, note, links, kind, waitsOn, forUser } = {}, actor, actorTitle = '') {
+  // phase moves a task to another of the plan's phases ('' takes it out of any): the coordinator's to say (#869).
+  function update(id, taskId, { state, note, links, kind, waitsOn, forUser, phase } = {}, actor, actorTitle = '') {
     if (state && !STATES.includes(state)) throw new Error(`State must be one of ${STATES.join(', ')}.`);
     const k = kind === undefined ? '' : String(kind).trim().toLowerCase();
     if (kind !== undefined && !KINDS.includes(k)) throw new Error(`The kind "${oneLine(kind)}" is not one of build, test, decision or research.`);
@@ -349,6 +398,12 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
         if (!isCoord) throw new Error(`Only the plan's coordinator says whose step ${t.id} is.`);
         if (forUser && t.holder && (state || t.state) !== 'open' && !finished(t)) throw new Error(`${t.id} is held by ${t.holderTitle || t.holder}; set it open first, then make it the user's step.`);
       }
+      let ph;
+      if (phase !== undefined) {
+        ph = phaseName(phase) ? findPhase(p, phase) : '';
+        if (phaseName(phase) && !ph) throw new Error(`Plan ${id} has no phase "${phaseName(phase)}". ${phasesSay(p)}`);
+        if (ph !== t.phase && !isCoord) throw new Error(`Only the plan's coordinator moves ${t.id} to another phase.`);
+      }
       const before = new Set(readyTasks(p).map((x) => x.id));
       if (state) {
         if (state === 'open') { t.holder = ''; t.holderTitle = ''; t.claimedAt = ''; }
@@ -362,6 +417,7 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       }
       if (waits) t.waitsOn = waits;
       if (forUser !== undefined) t.forUser = !!forUser;
+      if (ph !== undefined) t.phase = ph;
       if (k) t.kind = k;
       if (note !== undefined) t.note = String(note).trim();
       for (const l of links || []) if (oneLine(l) && !t.links.includes(oneLine(l))) t.links.push(oneLine(l));
@@ -395,6 +451,29 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       return write(p);
     });
   }
+  // The coordinator sets the plan's phases (#869): the whole list in its new order, which adds and reorders, with
+  // renames { from, to } applied first so tasks follow their phase to its new name; with renames alone the order
+  // stays. A phase that still has tasks cannot be left out: move them first, or rename it.
+  function setPhases(id, { phases, renames = [] } = {}, actor) {
+    return locked(() => {
+      const p = must(id);
+      if (!actor || actor !== p.coordinator) throw new Error(`Only the plan's coordinator changes the phases of ${id}.`);
+      const names = new Map(p.phases.map((n) => [n, n]));
+      for (const r of renames || []) {
+        const from = findPhase(p, r.from), to = phaseName(r.to);
+        if (!from) throw new Error(`Plan ${id} has no phase "${phaseName(r.from)}" to rename. ${phasesSay(p)}`);
+        if (!to) throw new Error(`Say the new name for the phase "${from}".`);
+        names.set(from, to);
+      }
+      const next = phaseList(phases === undefined ? p.phases.map((n) => names.get(n)) : phases);
+      const keep = (n) => next.find((x) => x.toLowerCase() === n.toLowerCase()) || '';
+      const left = [...new Set(p.tasks.filter((t) => t.phase && !keep(names.get(t.phase) || t.phase)).map((t) => t.phase))];
+      if (left.length) throw new Error(`The phase${left.length > 1 ? 's' : ''} ${left.map((n) => `"${n}"`).join(', ')} still ${left.length > 1 ? 'have' : 'has'} tasks (${p.tasks.filter((t) => left.includes(t.phase)).map((t) => t.id).join(', ')}). Move them to another phase first with plan_update_task, or keep the phase.`);
+      for (const t of p.tasks) if (t.phase) t.phase = keep(names.get(t.phase) || t.phase);
+      p.phases = next;
+      return write(p);
+    });
+  }
   // The coordinator has reviewed the plan against the current rules (#661), changes or none: the version is recorded.
   function markReviewed(id, actor) {
     return locked(() => {
@@ -417,6 +496,20 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
     }
     return { done, total };
   }
+  // Progress per phase (#869), counted like rollup: [{ name, done, total }] in phase order, with '' last for tasks in
+  // no phase when there are any. A plan without phases gives [].
+  function phaseRollup(id, all = list()) {
+    const p = all.find((x) => x.id === id); if (!p?.phases?.length) return [];
+    return phaseGroups(p).map((g) => {
+      let done = 0, total = 0;
+      for (const t of g.tasks) {
+        if (t.state === 'dropped') continue;
+        const sub = t.plan && rollup(t.plan, all);
+        if (sub && sub.total) { done += sub.done; total += sub.total; } else { total++; if (t.state === 'done') done++; }
+      }
+      return { name: g.name, done, total };
+    });
+  }
   // What lies behind rollup's two numbers, for the plan badge's hover (#841): the smallest pieces by state (dropped
   // ones too, which rollup leaves out), and this plan's own tasks: how many were made, which were dropped, and which
   // count as their own plan's tasks instead of themselves.
@@ -436,5 +529,5 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       dropped: p.tasks.filter((t) => t.state === 'dropped').length,
       subs: subs.map((t) => t.id), subTotal: subs.reduce((n, t) => n + rollup(t.plan, all).total, 0) };
   }
-  return { dir, read, list, create, addTasks, claim, update, setCoordinator, passTasks, setGoal, markReviewed, rollup, breakdown, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
+  return { dir, read, list, create, addTasks, claim, update, setCoordinator, passTasks, setGoal, setPhases, markReviewed, rollup, phaseRollup, breakdown, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
 }

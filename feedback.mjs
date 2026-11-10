@@ -1,6 +1,6 @@
 // The Suggest a feature button (#552, #563): anyone using Docket can suggest a feature. The page sends the message, an
 // optional name and what its browser can see; the app adds what is safe to say about Docket itself, and files the
-// report as a GitHub Issue in the repo set on this computer (☰ > Settings > Feedback destination), with the token set
+// report as a GitHub Issue in the repo set on this computer (☰ > Docket settings > Feedback destination), with the token set
 // there. There is no default repo and no token in the code: until both are set on a computer, nothing is sent.
 // What may go out is listed here, field by field: anything not on a list is dropped, and nothing about sessions
 // (their words, titles, folders), sign-ins, desk names or client names is ever read in, so it cannot leak.
@@ -116,7 +116,7 @@ const NO_NET = new Set(['ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'ENETDOWN', 'EH
 // Files the report as an Issue. Never says sent unless GitHub answered 201 Created:
 // { ok: true, where, link, number } | { ok: false, kind: 'unset' | 'offline' | 'unreachable' | 'refused', code?, message }
 export async function sendReport(dest, report, { fetch: f = globalThis.fetch, timeoutMs = 15000 } = {}) {
-  if (!dest) return { ok: false, kind: 'unset', message: 'Feedback is not set up on this computer yet, so nothing was sent. Whoever looks after Docket here sets where it goes in ☰ > Settings > Feedback destination.' };
+  if (!dest) return { ok: false, kind: 'unset', message: 'Feedback is not set up on this computer yet, so nothing was sent. Whoever looks after Docket here sets where it goes in ☰ > Docket settings > Feedback destination.' };
   let r;
   try {
     r = await f(`https://api.github.com/repos/${dest.repo}/issues`, {

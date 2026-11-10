@@ -892,7 +892,7 @@ $timer.add_Tick({ if (-not (Get-Process -Id $Owner -ErrorAction SilentlyContinue
 ` };
 
 // ---------- the profile folder (profile-sync.mjs) ----------
-// The cloud folders a profile can be kept in, in the order ☰ > Profile > Keep my profile in a folder suggests them: Google Drive
+// The cloud folders a profile can be kept in, in the order ☰ > Docket settings > Profile > Keep my profile in a folder suggests them: Google Drive
 // for desktop first, then OneDrive, Dropbox and iCloud Drive. Each service's own app moves the file; Docket only sees a
 // folder. exists(path): whether a folder is there; list(dir): the names in a folder ([] when it can't be read).
 // Windows: Google Drive streams to a drive letter (G: unless another was taken) with My Drive at its top, or mirrors to

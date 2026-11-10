@@ -1,5 +1,5 @@
-// Docket's profile (#837): one computer's desks, schedules and settings as docket-profile.json, for ☰ > Profile >
-// Export and Import, and kept in a folder a cloud service's own app copies between computers (☰ > Profile > Keep my
+// Docket's profile (#837): one computer's desks, schedules and settings as docket-profile.json, for ☰ > Docket settings > Profile >
+// Export and Import, and kept in a folder a cloud service's own app copies between computers (☰ > Docket settings > Profile > Keep my
 // profile in…). Docket signs in to nothing and hosts nothing: the file is the person's, on their own storage.
 // Only works things out; server.mjs reads and writes the files and applies the result.
 import crypto from 'node:crypto';
@@ -7,7 +7,7 @@ import crypto from 'node:crypto';
 export const PROFILE_FILE = 'docket-profile.json';
 export const PROFILE_VERSION = 1;
 
-// The settings that travel, with the words the preview uses. The first four are the app's own (☰ > Settings); the
+// The settings that travel, with the words the preview uses. The first four are the app's own (☰ > Docket settings); the
 // page's (main color, theme, sound) live in the browser, which sends them to the app. What belongs to one computer
 // stays out: ports, its name, starting at sign-in, screen control, the feedback destination and its token.
 export const SETTINGS = {

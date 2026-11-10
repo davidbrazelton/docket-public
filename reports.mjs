@@ -106,11 +106,12 @@ export function reportRoute({ reportsTo, replyTo, waiting }) {
 
 // Who started a session's current turn, from the message that started it: 'person' for what the
 // person typed or a Docket button they pressed, 'session' for work another session sent, 'docket' for
-// Docket's own wake-ups and notices (a session report, a resume, a save-before-compact).
+// Docket's own wake-ups and notices (a session report, a resume, a save-before-compact). A brief Docket wrote or
+// brought in (from 'brief': a scheduled task's prompt, another desk's handover, a card's session) counts as the person's.
 export function turnStarter({ system = false, from = '', byPerson = false } = {}) {
   if (byPerson) return 'person';
   if (system) return 'docket';
-  return from ? 'session' : 'person';
+  return from && from !== 'brief' ? 'session' : 'person';
 }
 
 // Whether a session with reports waiting is woken now, and its wake count after. After `limit`
@@ -170,7 +171,7 @@ export function quietRefusal({ turnBy, report = false, error = false, said = '',
   if (error) return 'the turn ended in an error';
   if (said === 'question') return 'the turn asks the user a question (mark_turn)';
   if (said === 'done') return 'the turn marks your own work done (mark_turn)';
-  if (closedLast) return 'you closed your last open session this turn, so your own job is done: call mark_turn with "done"';
+  if (closedLast) return 'you closed your last open session this turn, so your own job is done: call mark_turn with label "done"';
   return '';
 }
 
@@ -190,6 +191,13 @@ export function kidStartRefusal({ started = 0, error = false, said = '', asks = 
   return '';
 }
 
+// The label a mark_turn call gives: label, or state, its other name (#864), since a model may guess either.
+export const turnLabelOf = (input) => input?.label || input?.state || '';
+// When the closing tools (mark_turn, report_quiet, present_file, rename_session) are called (#862): before the
+// final reply, never after it. Text written just before a tool call may be kept only as a shortened narration, so a
+// reply followed by mark_turn and a closing line showed only that line.
+export const BEFORE_REPLY = 'Call it before your final reply: the full reply is the last thing in the turn, with no tool call after it.';
+
 // ---------- a turn that ends with background jobs still running (#713) ----------
 // The turn is held: it reports when its jobs end, since a session often ends a turn on purpose to wait for a
 // build, a test run, a CI Monitor, a subagent or a test server. But a turn the session marked done (mark_turn
@@ -200,7 +208,7 @@ export function heldTurnReport({ jobs = 0, said = '', quiet = false }) {
   if (quiet) return 'none';
   return !jobs || said === 'done' ? 'now' : 'hold';
 }
-// What mark_turn "done" answers while jobs still run, so the session settles them inside the same turn.
+// What mark_turn with label "done" answers while jobs still run, so the session settles them inside the same turn.
 // jobs: runningJobs() from tasks.mjs.
 export function doneWithJobsReply(jobs) {
   const list = jobs.map((j) => `- ${j.label} (task id ${j.taskId}${j.minutes === null ? '' : `, running ${j.minutes} min`})`).join('\n');

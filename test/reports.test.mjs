@@ -97,6 +97,7 @@ test('a turn waiting on the user gives the sender a note and keeps the reply-to'
 test('turnStarter: typed or button-pressed turns are the person\'s, sent work and Docket wake-ups are not', () => {
   assert.equal(turnStarter({}), 'person');
   assert.equal(turnStarter({ from: 'session' }), 'session');
+  assert.equal(turnStarter({ from: 'brief' }), 'person'); // a scheduled task's prompt, another desk's handover (#867)
   assert.equal(turnStarter({ system: true }), 'docket');
   assert.equal(turnStarter({ system: true, byPerson: true }), 'person'); // the plan notice: the person pressed it
 });

@@ -68,5 +68,5 @@ test('both of the card\'s buttons save a choice on the desk', () => {
   const click = page.slice(page.indexOf("$('planOffer').onclick"), page.indexOf('</script>', page.indexOf("$('planOffer').onclick")));
   // through the plan switch (#700): a warning first when the choice leaves plans behind, else saved at once
   assert.match(click, /if \(await switchPlans\(id, b\.dataset\.plan\) === null\)/);
-  assert.match(page, /api\(`\/api\/clients\/\$\{id\}\/plan-switch`, \{ to, action \}\)/);
+  assert.match(page, /api\(`\/api\/clients\/\$\{id\}\/plan-switch`, \{ to, action[ ,]/);
 });

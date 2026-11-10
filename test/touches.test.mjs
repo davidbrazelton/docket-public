@@ -71,6 +71,30 @@ test('the chat still reads who wrote a message the same way (moved from server.m
   assert.ok(DOCKET_BLOCK.test('<session-report>') && SESSION_BLOCK.test('(Sent by the session'));
 });
 
+test('briefs Docket wrote or brought in read back as a brief, not typed (#867)', () => {
+  const notes = [
+    '(From Docket: this work was handed over from the desk "Acme" and the user pressed Start in B\'s list. It runs on B\'s own sign-in.)',
+    '(From Docket: this session runs the scheduled task "Morning check" (id daily-1). The message above is the task\'s prompt, which the user wrote in the schedule.)',
+    '(From Docket: the user chose to convert this desk\'s plans before switching its plan system.)',
+    '(From Docket: the user started this session from Docket\'s setup check card for this desk.)',
+  ];
+  for (const n of notes) {
+    assert.equal(messageFrom(['The long brief', n, '(From Docket: this session\'s title is "x", one the user chose.)'], 0), 'brief', n);
+    assert.ok(DOCKET_BLOCK.test(n) && !SESSION_BLOCK.test(n));
+    assert.ok(!typedByUser(user([text('The long brief'), text(n)])), n);
+  }
+  assert.equal(messageFrom(['x', '(From Docket: This session was started by the session "p" (id 1).)'], 0), 'session', 'another session still reads as one');
+  assert.equal(messageFrom(['Fix it', '(From Docket: the user wants this done today.)'], 0), '', 'a note that only looks alike');
+});
+
+test('a scheduled run with Docket\'s note: the prompt is skipped and the person\'s first reply still counts', () => {
+  const line = (o, at) => JSON.stringify({ ...o, timestamp: new Date(at).toISOString() });
+  const prompt = user([text('Check the inbox'), text('(From Docket: this session runs the scheduled task "Inbox" (id s1). The message above is the task\'s prompt, which the user wrote in the schedule.)')]);
+  assert.equal(lastTyped([line(prompt, 1000)], { scheduled: true }), 0);
+  assert.equal(lastTyped([line(prompt, 1000), line(user('a reply'), 2000)], { scheduled: true }), 2000);
+  assert.equal(lastTyped([line(prompt, 1000), line(user('a reply'), 2000)]), 2000, 'the note marks it even when the session lost its schedule');
+});
+
 // The server's part: runs fillTouches / fillAllTouches with pretend files and state.
 const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const start = server.indexOf('// ---------- filling in touch times');

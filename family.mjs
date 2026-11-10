@@ -32,7 +32,7 @@ export function openFamily(root, ids, parentOf, isOpen) {
 // What close_session adds after closing a child. left: the open sessions still under the caller
 // ([{ id, title, state }], state 'working', 'waiting' or 'done'). Only with none left was that the last one.
 export function closedNote(left = []) {
-  const done = ' if your own job is now complete, end this turn with mark_turn "done" (not report_quiet), and make your reply the closing message; if something is still left for the user, say what.';
+  const done = ' if your own job is now complete, call mark_turn with label "done" (not report_quiet) before your final reply, and make that reply the closing message; if something is still left for the user, say what.';
   if (!left.length) return ' That was your last open session:' + done;
   const list = left.map((k) => `"${k.title || 'Untitled'}" (id ${k.id}, ${k.state})`).join('; ');
   if (left.every((k) => k.state === 'done')) return ` None of your sessions is still working or waiting on the user, but ${left.length} under you ${left.length === 1 ? 'is' : 'are'} still open: ${list}. Close each one that is done, or leave it for the user; then,` + done;

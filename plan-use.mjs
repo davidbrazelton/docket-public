@@ -10,10 +10,11 @@
 export const plansOnFor = (planSystem) => !planSystem || planSystem === 'docket';
 
 // 'none' (no plans on this desk), 'full' (the session uses a plan) or 'short' (plans are on, this session has none yet).
-// own: it coordinates a plan; holds: it holds a task not yet done; parentOwns: the session that started it coordinates one.
-export function planUse({ on, own = false, holds = false, parentOwns = false }) {
+// own: it coordinates a plan; holds: it holds a task not yet done; parentOwns: the session that started it coordinates one;
+// converting: it converts the desk's plans (inConversion), so its first plan_create already needs the argument notes.
+export function planUse({ on, own = false, holds = false, parentOwns = false, converting = false }) {
   if (!on) return 'none';
-  return own || holds || parentOwns ? 'full' : 'short';
+  return own || holds || parentOwns || converting ? 'full' : 'short';
 }
 
 // The two lines a session without a plan gets instead of plans.md.
@@ -45,4 +46,29 @@ export function closePlanOffers(cards = [], own = false) {
   const evs = cards.map((c) => c.ev).filter((ev) => ev?.k === 'plan-offer' && ev.state === 'open');
   for (const ev of evs) ev.state = 'planned';
   return evs;
+}
+
+// A desk's conversion onto Docket's plans (#700, #858) is done by the session Docket started for it and the sessions
+// that session starts, one per plan file, so no one session has to hold every file. Each of them has the plan tools
+// in full before the desk switches. planSwitch: the desk's pending switch ({ to, session }); parentOf(id): the
+// session that started id, or null.
+export function inConversion(id, planSwitch, parentOf) {
+  if (!id || !planSwitch?.session || !plansOnFor(planSwitch.to)) return false;
+  for (let cur = id, seen = new Set(); cur && !seen.has(cur); seen.add(cur), cur = parentOf(cur)) if (cur === planSwitch.session) return true;
+  return false;
+}
+
+// Why plan_create refuses a session one more plan, or ''. A session coordinates one plan, except a conversion session
+// (inConversion), which makes one plan per plan file it converts. owns: the plans it coordinates.
+export function secondPlanRefusal({ owns = [], converting = false }) {
+  if (!owns.length || converting) return '';
+  return `This session already coordinates plan ${owns[0].id} ("${owns[0].title}"). Add tasks to it with plan_add_tasks.`;
+}
+
+// The plan a coordinator's tool means when it names none (#858): its one plan, or, for a conversion session that
+// coordinates several, none until it says which. Returns { id } or { error }.
+export function ownPlanOf(owns = [], given = '') {
+  if (given) return { id: given };
+  if (owns.length > 1) return { error: `This session coordinates ${owns.length} plans (${owns.map((p) => p.id).join(', ')}). Say which with plan_id.` };
+  return owns.length ? { id: owns[0].id } : { error: 'This session coordinates no plan. Make one with plan_create.' };
 }

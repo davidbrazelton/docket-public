@@ -1,7 +1,7 @@
 // Tests for the autopilot's rules (pilot.mjs, #821): the rules check and the hard stops. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, STOPS, DEFAULT_RULES, cleanRules, permissionStops, itemStops, ruleFor, mayAnswer, logLine } from '../pilot.mjs';
+import { KINDS, STOPS, DEFAULT_RULES, cleanRules, permissionStops, itemStops, ruleFor, mayAnswer, logLine, pilotDeskEntry, pilotSessionRefusal, OWN_DESK } from '../pilot.mjs';
 
 const perm = (command, extra = {}) => ({ id: 'permission:1', kind: 'permission', desk: 'acme', tool: 'Bash', input: { command }, ...extra });
 
@@ -114,4 +114,47 @@ test('every item kind maps to its hard stops, and answers are checked', () => {
 test('a log line keeps what was answered and why', () => {
   const l = logLine({ at: 5, item: { id: 'permission:1', kind: 'permission', desk: 'acme', session: 's1', title: 'T', what: 'Bash: ls' }, answer: 'allow', ok: true, why: 'w' });
   assert.deepEqual(l, { at: 5, id: 'permission:1', kind: 'permission', desk: 'acme', session: 's1', title: 'T', what: 'Bash: ls', answer: 'allow', ok: true, why: 'w' });
+});
+
+// ---------- the autopilot's own desk (#875) ----------
+test("what waits on the autopilot's own desk stays with the person, whatever the rules say", () => {
+  const all = { kinds: Object.fromEntries(Object.keys(KINDS).map((k) => [k, 'allow'])), stops: Object.fromEntries(Object.keys(STOPS).map((k) => [k, 'allow'])) };
+  for (const kind of Object.keys(KINDS)) {
+    const own = mayAnswer(all, { kind, desk: 'autopilot' }, KINDS[kind].answers[0], undefined, 'autopilot');
+    assert.equal(own.ok, false, kind);
+    assert.match(own.why, /autopilot's own desk: it stays with the person/, kind);
+    if (KINDS[kind].decline) assert.equal(mayAnswer(all, { kind, desk: 'autopilot' }, KINDS[kind].decline, undefined, 'autopilot').ok, false, `${kind}: not even a decline`);
+  }
+  assert.equal(ruleFor(all, perm('ls', { desk: 'autopilot' }), 'autopilot').level, 'ask');
+  assert.equal(ruleFor(all, perm('ls', { desk: 'autopilot' }), 'autopilot').why, OWN_DESK);
+  // Every other desk on this computer still goes by the rules, and the hard stops still hold there.
+  assert.equal(mayAnswer(DEFAULT_RULES, perm('npm test'), 'allow', undefined, 'autopilot').ok, true);
+  assert.equal(mayAnswer(DEFAULT_RULES, perm('gh pr merge 12'), 'allow', undefined, 'autopilot').ok, false);
+  assert.equal(mayAnswer(DEFAULT_RULES, { kind: 'merge', desk: 'acme' }, 'merge', undefined, 'autopilot').ok, false);
+  // No autopilot desk (as before #875): the rules alone.
+  assert.equal(mayAnswer(DEFAULT_RULES, perm('npm test', { desk: 'autopilot' }), 'allow').ok, true);
+  // An item on a remote desk that only shares the id is that computer's, not this autopilot's own.
+  assert.equal(mayAnswer(DEFAULT_RULES, perm('npm test', { desk: 'autopilot', there: 'permission:9' }), 'allow', 'allow', 'autopilot').ok, true);
+});
+
+test("only a session of the autopilot's desk can be the pilot, and the refusal says why", () => {
+  const desk = { id: 'autopilot', name: 'Autopilot' };
+  assert.equal(pilotSessionRefusal({ id: 's1', desk: 'autopilot', deskName: 'Autopilot' }, desk), '');
+  const no = pilotSessionRefusal({ id: 's2', desk: 'acme', deskName: 'Acme' }, desk);
+  assert.match(no, /on the desk Acme/);
+  assert.match(no, /autopilot's own desk, Autopilot/);
+  assert.match(pilotSessionRefusal({ id: 's2', desk: 'acme', deskName: 'Acme' }, null), /no desk yet/);
+  assert.equal(pilotSessionRefusal(null, desk), '', 'no pilot is always allowed');
+});
+
+test('the Autopilot desk is filled in the way Add a desk fills a new one', () => {
+  const roots = { claude: '/home/a/Docket desks', grok: '/home/a/Docket desks/grok_home', docket: '/home/a/Docket', sep: '/' };
+  assert.deepEqual(pilotDeskEntry(roots, []), { name: 'Autopilot', folder: '/home/a/Docket desks/Autopilot', home: '/home/a/Docket desks/Autopilot/claude-home', grokHome: '/home/a/Docket desks/grok_home/Autopilot', defaultEngine: 'grok' });
+  // A name or folder another desk uses is passed over.
+  const taken = [{ name: 'autopilot', home: '/elsewhere/claude-home' }, { name: 'Other', home: '/home/a/Docket desks/Autopilot 2/claude-home' }];
+  assert.equal(pilotDeskEntry(roots, taken).name, 'Autopilot 3');
+  // No Grok root of its own: grok_home beside the Claude homes, as Add a desk does.
+  assert.equal(pilotDeskEntry({ claude: '/w', docket: '/opt/docket', sep: '/' }, []).grokHome, '/w/grok_home/Autopilot');
+  // Windows paths keep their separator.
+  assert.equal(pilotDeskEntry({ claude: 'C:\\Work', grok: 'C:\\Work\\grok_home', docket: 'C:\\Docket', sep: '\\' }, []).home, 'C:\\Work\\Autopilot\\claude-home');
 });

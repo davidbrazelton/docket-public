@@ -93,7 +93,7 @@ test('a hidden desk is still hidden after the app restarts, with its sign-in fol
 test('the page leaves hidden desks out of the desk buttons, ☰ > Desks and the sessions it loads', () => {
   assert.match(page, /function shownDesks\(\) \{ return S\.clients\.filter\(\(c\) => !c\.hidden\); \}/);
   assert.match(page, /\$\('clients'\)\.innerHTML = shownDesks\(\)\.map/, 'the desk buttons');
-  assert.match(page, /\['companies', 'Manage'\], 'hr', \.\.\.shownDesks\(\)\.map/, '☰ > Desks lists the Inspectors in the buttons\' order');
+  assert.match(page, /'hr',\r?\n\s*\.\.\.shownDesks\(\)\.map\(\(c\) => \['desk:' \+ c\.id/, '☰ > Desks lists a group for each desk in the buttons\' order');
   assert.match(page, /Promise\.all\(shownDesks\(\)\.filter\(\(c\) => c\.id !== S\.client\)/, 'other desks\' sessions loaded at start');
   assert.match(page, /if \(!shownDesks\(\)\.some\(\(c\) => c\.id === S\.client\)\) selectClient/, 'a desk hidden while open moves to a shown one');
 });

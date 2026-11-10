@@ -175,7 +175,7 @@ export function renameClient(v, from, to) {
 // A connected computer asks for one and someone here clicks Allow. It reaches only the linked desk, and only the
 // pilot's actions there: what waits on the person, answering one item under this computer's autopilot rules, giving
 // the key back, and the screen tools when it was granted with them. This computer keeps a hash of it, never the key,
-// lists it in ☰ > Remote Desks with Revoke, and refuses it after PILOT_KEY_DAYS. It is random: never the
+// lists it in ☰ > Desks > Remote Desks with Revoke, and refuses it after PILOT_KEY_DAYS. It is random: never the
 // authenticator secret or anything made from it.
 export const PILOT_KEY_DAYS = 30;
 export const isPilotKey = (t) => /^dpk_[0-9a-f]{64}$/.test(String(t || ''));

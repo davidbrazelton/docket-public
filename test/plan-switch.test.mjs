@@ -140,3 +140,103 @@ test('the page warns before every plan system switch, and the server holds the s
   assert.match(server, /action === 'finish' \? \{ planSystem: ps\.to, planSwitch: undefined \}/);
   assert.match(server, /plansOnIn\(clientById\(parent\.client\), parent\.id\) \? planToolDefs\(parent\)/, 'the conversion session gets the plan tools');
 });
+
+// A desk with two projects: Ripple (a claimed plan, a sub-plan it links to, a QA plan in testing/ that nobody claims or
+// links, and claims on sub-plans since deleted) and Other (one claimed plan).
+function twoProjects() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'docket-planswitch-'));
+  const home = path.join(root, 'home'), rip = path.join(root, 'Projects', 'RIP-893'), other = path.join(root, 'Projects', 'OTHER-1');
+  for (const d of [home, path.join(rip, 'testing'), path.join(rip, 'node_modules'), other]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(rip, 'RIP-893-plan.md'), '# Ripple\n\n- [ ] Code — see [deploy](RIP-893-deploy-plan.md)\n- [ ] Review, [facts](RIP-893-facts.md)\n- [x] Look\n');
+  fs.writeFileSync(path.join(rip, 'RIP-893-facts.md'), '# Facts, not a plan\n\n- [x] checked one\n- [ ] a note\n');
+  fs.writeFileSync(path.join(rip, 'RIP-893-deploy-plan.md'), '# Deploy\n\n- [ ] DEV\n- [ ] PROD\n');
+  fs.writeFileSync(path.join(rip, 'testing', 'RIP-893-qa-test-plan.md'), '# QA\n\n- [ ] Setup\n- [ ] Run\n- [ ] Report\n');
+  fs.writeFileSync(path.join(rip, 'testing', 'notes-plan.md'), '# No checklist here\n\nJust words.\n');
+  fs.writeFileSync(path.join(rip, 'node_modules', 'x-plan.md'), '- [ ] not ours\n');
+  fs.writeFileSync(path.join(other, 'OTHER-1-plan.md'), '# Other\n\n- [ ] One\n');
+  const claim = (id, f) => fs.writeFileSync(path.join(home, `.acme-plan-${id}`), `state=claimed\nplan=${f}\n`);
+  claim('aaaa00000001', path.join(rip, 'RIP-893-plan.md'));
+  claim('aaaa00000002', path.join(rip, 'RIP-893-sub-a.md')); // deleted since
+  claim('aaaa00000003', path.join(rip, 'RIP-893-sub-a.md'));
+  claim('aaaa00000004', path.join(rip, 'RIP-893-sub-b.md'));
+  claim('bbbb00000001', path.join(other, 'OTHER-1-plan.md'));
+  const cmd = (f) => `powershell -NoProfile -File "${path.join(root, 'tools', f)}"`;
+  fs.writeFileSync(path.join(home, 'settings.json'), JSON.stringify({ hooks: {
+    SessionStart: [{ hooks: [{ command: cmd('plan-brief.ps1') }] }],
+    PreToolUse: [{ matcher: 'Write|Edit', hooks: [{ command: cmd('tree-gate.ps1') }] }, { matcher: 'Bash', hooks: [{ command: cmd('ship-gate.ps1') }] }],
+  } }));
+  return { root, home, rip, other };
+}
+
+test('scan: claims on files that are gone are missing, and unclaimed plans are found by link and beside the others', () => {
+  const { root, home, rip, other } = twoProjects();
+  const before = snapshot(root);
+  const f = scanPlanSystem({ home });
+  assert.deepEqual(before, snapshot(root), 'the scan only reads');
+  const files = f.plans.map((p) => path.relative(root, p.file)).sort();
+  assert.deepEqual(files, [path.join('Projects', 'OTHER-1', 'OTHER-1-plan.md'), path.join('Projects', 'RIP-893', 'RIP-893-deploy-plan.md'), path.join('Projects', 'RIP-893', 'RIP-893-plan.md'), path.join('Projects', 'RIP-893', 'testing', 'RIP-893-qa-test-plan.md')],
+    'the linked sub-plan and the QA plan in testing/; not a linked facts file, a plan-named file with no checklist, or one in node_modules');
+  assert.equal(f.plans.find((p) => p.file.endsWith('RIP-893-deploy-plan.md')).found, 'linked');
+  assert.equal(f.plans.find((p) => p.file.endsWith('RIP-893-qa-test-plan.md')).found, 'folder');
+  assert.deepEqual(f.missing.map((m) => [path.basename(m.file), m.claims]), [['RIP-893-sub-a.md', 2], ['RIP-893-sub-b.md', 1]]);
+  assert.equal(f.claims.length, 5);
+  assert.equal(f.claims.filter((c) => c.missing).length, 3);
+  assert.deepEqual(f.projects.map((p) => [p.name, p.files, p.open, p.missing]), [['RIP-893', 3, 7, 2], ['OTHER-1', 1, 1, 0]], 'the testing folder counts with its project');
+  assert.equal(f.projects[0].folder, rip);
+  assert.equal(f.projects[1].folder, other);
+});
+
+test('scan with a scope: only the plans, claims and missing files in that folder, and every project still listed', () => {
+  const { home, rip } = twoProjects();
+  const f = scanPlanSystem({ home }, { scope: rip });
+  assert.equal(f.scope, rip);
+  assert.ok(f.plans.every((p) => p.file.startsWith(rip)) && f.plans.length === 3);
+  assert.equal(f.claims.length, 4, 'not the claim on the other project');
+  assert.deepEqual(f.markers.map((m) => m.claims), [4]);
+  assert.equal(f.missing.length, 2);
+  assert.equal(f.projects.length, 2, 'the page can still offer the other project');
+  const qa = scanPlanSystem({ home }, { scope: path.join(rip, 'testing') });
+  assert.deepEqual(qa.plans.map((p) => path.basename(p.file)), ['RIP-893-qa-test-plan.md'], 'a folder nobody claims anything in is searched itself');
+});
+
+test('warning: missing claims are counted as missing, and each hook event says how many run there', () => {
+  const { home, rip } = twoProjects();
+  const w = switchWarning(scanPlanSystem({ home }), 'none', 'docket').lines.join('\n');
+  assert.match(w, /4 plan files another system keeps, 4 with open tasks \(8 open in all\)/);
+  assert.match(w, /5 claims in marker files \(\.acme-plan-\*\); 3 of them name 2 files that no longer exist\./);
+  assert.match(w, /3 Claude Code hooks of that system \(1 at SessionStart, 2 at PreToolUse\)/);
+  const one = switchWarning(scanPlanSystem({ home }, { scope: rip }), 'none', 'docket').lines;
+  assert.equal(one[0], `Only the plans in ${rip}.`);
+  assert.match(one.join('\n'), /3 plan files/);
+});
+
+test('brief: a scoped conversion says so, lists every claim, and the missing files apart', () => {
+  const { home, rip, other } = twoProjects();
+  const b = conversionBrief({ desk: 'Acme', from: 'none', to: 'docket', found: scanPlanSystem({ home }, { scope: rip }) });
+  assert.ok(b.includes(`convert one project now: only the plans in ${rip}.`));
+  assert.match(b, /do not convert them/);
+  assert.ok(!b.includes(other), 'nothing from the other project');
+  assert.match(b, /RIP-893-qa-test-plan\.md — "QA": 3 open, 0 done; no claim and no link/);
+  assert.match(b, /RIP-893-deploy-plan\.md — "Deploy": 2 open, 0 done; no claim, a plan above links to it/);
+  assert.match(b, /Claims on files that no longer exist \(3 claims, 2 files\)/);
+  assert.match(b, /RIP-893-sub-a\.md: 2 claims/);
+  assert.ok(!/\.acme-plan-aaaa00000002 →/.test(b), 'a claim on a gone file is not listed as a claim');
+  assert.match(b, /other projects were not converted/);
+  const whole = conversionBrief({ desk: 'Acme', from: 'none', to: 'docket', found: scanPlanSystem({ home }) });
+  assert.ok(whole.includes(other) && !/convert one project now/.test(whole), 'the whole desk is still one Convert');
+  // A desk with many claims gets them all, not the first 60.
+  for (let i = 0; i < 120; i++) fs.writeFileSync(path.join(home, `.acme-plan-cccc${String(i).padStart(8, '0')}`), `state=claimed\nplan=${path.join(rip, 'RIP-893-plan.md')}\n`);
+  const many = conversionBrief({ desk: 'Acme', from: 'none', to: 'docket', found: scanPlanSystem({ home }) });
+  assert.equal((many.match(/^- \.acme-plan-\w+ → /gm) || []).length, 122);
+  assert.ok(!/more, not listed here/.test(many));
+});
+
+test('convert takes a scope, and the Plan panel shows the plans being made before Finish', () => {
+  assert.match(server, /async function planSwitchAction\(client, \{ to = '', action = '', scope = '' \} = \{\}\)/);
+  assert.match(server, /const found = await planSwitchFound\(client, only\);/);
+  assert.match(server, /scope = switchScope\(url\.searchParams\.get\('scope'\)\)/);
+  assert.match(server, /const plansShown = \(client\) => plansOn\(client\) \|\| \(!!client\?\.planSwitch && plansOnFor\(client\.planSwitch\.to\)\);/);
+  assert.match(server, /function plansSummary\(client\) \{\r?\n\s*if \(!plansShown\(client\)\)/);
+  assert.match(page, /<select id="psScope"/);
+  assert.match(page, /\{ to, action, \.\.\.\(action === 'convert' && scope \? \{ scope \} : \{\}\) \}/);
+});

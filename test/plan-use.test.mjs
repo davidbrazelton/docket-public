@@ -47,9 +47,9 @@ test('a session without a plan gets one-line plan tool descriptions and no argum
   assert.match(defs, /const d = \(t, text\) => full \? t\.describe\(text\) : t;/);
   // Every tool's description goes through say(long, short), and every short one is one short line.
   const tools = defs.match(/tool\('plan_\w+',/g);
-  assert.equal(tools.length, 11);
+  assert.equal(tools.length, 12);
   const shorts = [...defs.matchAll(/say\("(?:[^"\\]|\\.)*",\s*(['"])((?:(?!\1)[^\\]|\\.)*)\1\)/g)].map((m) => m[2]);
-  assert.equal(shorts.length, 11, 'each plan tool has a short description');
+  assert.equal(shorts.length, 12, 'each plan tool has a short description');
   for (const s of shorts) assert.ok(s.length <= 110 && !s.includes('\n'), s);
   assert.equal(defs.match(/\.describe\(/g).length, 1, 'argument notes only through d(), so a plain session gets none');
 });

@@ -49,7 +49,7 @@ test('closedNote: only with nothing left open is it the last open session', () =
   const done = closedNote([{ id: 'm', title: 'Moved', state: 'done' }]);
   assert.doesNotMatch(done, /last open session/);
   assert.match(done, /None of your sessions is still working or waiting on the user, but 1 under you is still open: "Moved" \(id m, done\)/);
-  assert.match(done, /mark_turn "done"/);
+  assert.match(done, /mark_turn with label "done" \(not report_quiet\) before your final reply/);
   const busy = closedNote([{ id: 'w', title: 'W', state: 'working' }, { id: 'm', title: 'M', state: 'done' }]);
   assert.match(busy, /^ Still open under you: "W" \(id w, working\); "M" \(id m, done\)\.$/);
 });
