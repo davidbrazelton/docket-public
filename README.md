@@ -4,6 +4,11 @@ A page on your computer for starting, resuming and watching AI coding sessions, 
 
 **Just want to install it?** [Download for Windows](https://github.com/davidbrazelton/docket-public/releases/latest/download/Docket-Setup.exe) · [Install page](https://davidbrazelton.github.io/docket-public/) · [Mac steps](#install-on-a-mac)
 
+<picture>
+  <source srcset="docs/screenshot-dark.webp" media="(prefers-color-scheme: dark)">
+  <img src="docs/screenshot-light.webp" width="1440" alt="Docket in use: a list of sessions with what each needs from you, child sessions nested under their parent, and one conversation open">
+</picture>
+
 ## Why Docket
 
 Cursor, OpenCode and similar tools are AI coding agents: one person, one editor or terminal, one conversation at a time. Docket works one level above them. It doesn't replace your AI. It runs the AI tools you already use (Claude Code, Codex, Grok) and gives you one place to run all your work with them.
