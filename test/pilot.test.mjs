@@ -1,7 +1,8 @@
 // Tests for the autopilot's rules (pilot.mjs, #821): the rules check and the hard stops. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, STOPS, DEFAULT_RULES, cleanRules, permissionStops, itemStops, ruleFor, mayAnswer, logLine, pilotDeskEntry, pilotSessionRefusal, OWN_DESK } from '../pilot.mjs';
+import { KINDS, STOPS, DEFAULT_RULES, cleanRules, permissionStops, itemStops, ruleFor, mayAnswer, logLine, runLine, pilotDeskEntry, pilotSessionRefusal, OWN_DESK, runStep, runDone, pilotSetting, pilotSettingRefusal } from '../pilot.mjs';
+import { GEARS } from '../gears.mjs';
 
 const perm = (command, extra = {}) => ({ id: 'permission:1', kind: 'permission', desk: 'acme', tool: 'Bash', input: { command }, ...extra });
 
@@ -157,4 +158,65 @@ test('the Autopilot desk is filled in the way Add a desk fills a new one', () =>
   assert.equal(pilotDeskEntry({ claude: '/w', docket: '/opt/docket', sep: '/' }, []).grokHome, '/w/grok_home/Autopilot');
   // Windows paths keep their separator.
   assert.equal(pilotDeskEntry({ claude: 'C:\\Work', grok: 'C:\\Work\\grok_home', docket: 'C:\\Docket', sep: '\\' }, []).home, 'C:\\Work\\Autopilot\\claude-home');
+});
+
+// ---------- runs (#881) ----------
+const item = (id, may = 'allow') => ({ id, may });
+test('a run starts once the batch delay is up, with every item that came in meanwhile', () => {
+  const offered = new Set();
+  // Nothing the pilot may answer: no run.
+  assert.deepEqual(runStep({ items: [item('a', 'ask')], offered, since: null, now: 0, delay: 1000 }), { act: 'idle' });
+  // The first item starts the batch delay...
+  assert.deepEqual(runStep({ items: [item('a')], offered, since: null, now: 0, delay: 1000 }), { act: 'wait', ms: 1000 });
+  // ...a second close behind it waits out the rest of the same delay...
+  assert.deepEqual(runStep({ items: [item('a'), item('b')], offered, since: 0, now: 400, delay: 1000 }), { act: 'wait', ms: 600 });
+  // ...and both go in one run; what stays with the person does not.
+  const go = runStep({ items: [item('a'), item('b', 'deny'), item('c', 'ask')], offered, since: 0, now: 1000, delay: 1000 });
+  assert.equal(go.act, 'start');
+  assert.deepEqual(go.items.map((i) => i.id), ['a', 'b']);
+});
+
+test('one run at a time: what comes in during a run waits for the next, and nothing is offered twice', () => {
+  const offered = new Set(['a']);
+  const busy = runStep({ items: [item('a'), item('b')], offered, running: true, since: 0, now: 5000, delay: 1000 });
+  assert.equal(busy.act, 'busy');
+  assert.deepEqual(busy.items.map((i) => i.id), ['b'], 'a was offered already');
+  // The run ended: b starts the next batch.
+  assert.deepEqual(runStep({ items: [item('a'), item('b')], offered, running: false, since: null, now: 6000, delay: 1000 }), { act: 'wait', ms: 1000 });
+  assert.deepEqual(runStep({ items: [item('a'), item('b')], offered, since: 6000, now: 7000, delay: 1000 }).items.map((i) => i.id), ['b']);
+  // An item a run was given and left for the person never starts another run.
+  assert.deepEqual(runStep({ items: [item('a')], offered, since: null, now: 0 }), { act: 'idle' });
+});
+
+test('a run is done when its turn ends with nothing left, or its session ends, or it runs too long', () => {
+  const s = (o) => ({ status: 'idle', events: [{ k: 'result' }], pendingAsks: new Map(), ...o });
+  assert.equal(runDone(null), 'its session ended');
+  assert.equal(runDone(s({ status: 'ended' })), 'its session ended');
+  assert.equal(runDone(s({ status: 'starting', events: [] }), { at: 0, now: 1000 }), '', 'not started yet');
+  assert.equal(runDone(s({ status: 'idle', events: [] }), { at: 0, now: 1000 }), '', 'idle before its first turn');
+  assert.equal(runDone(s({ status: 'running' }), { at: 0, now: 1000 }), '', 'still working');
+  assert.equal(runDone(s({ pendingAsks: new Map([['k', {}]]) }), { at: 0, now: 1000 }), '', 'asking the person');
+  assert.equal(runDone(s({}), { tasks: 1, at: 0, now: 1000 }), '', 'a job still running');
+  assert.equal(runDone(s({}), { at: 0, now: 1000 }), 'its turn ended');
+  assert.match(runDone(s({ status: 'running' }), { at: 0, now: 31 * 60000 }), /more than 30 minutes/);
+});
+
+test("the pilot's brand: Claude on its lowest gear by default, and only a brand its desk has signed in", () => {
+  assert.deepEqual(pilotSetting(undefined, GEARS), { brand: 'claude', gear: 'haiku' });
+  assert.deepEqual(pilotSetting({ brand: 'grok' }, GEARS), { brand: 'grok', gear: 'fast' });
+  assert.deepEqual(pilotSetting({ brand: 'codex', gear: 'sol' }, GEARS), { brand: 'codex', gear: 'sol' });
+  assert.deepEqual(pilotSetting({ brand: 'nope', gear: 'opus' }, GEARS), { brand: 'claude', gear: 'opus' });
+  assert.deepEqual(pilotSetting({ brand: 'claude', gear: 'fast' }, GEARS), { brand: 'claude', gear: 'haiku' }, "another brand's gear is the lowest");
+  const offered = [{ brand: 'claude', signedIn: false }, { brand: 'grok', signedIn: true }];
+  assert.equal(pilotSettingRefusal({ brand: 'grok', gear: 'fast' }, offered, GEARS), '');
+  assert.match(pilotSettingRefusal({ brand: 'claude', gear: 'haiku' }, offered, GEARS), /not signed in to claude/);
+  assert.match(pilotSettingRefusal({ brand: 'codex', gear: 'luna' }, offered, GEARS), /does not use codex/);
+  assert.match(pilotSettingRefusal({ brand: 'grok', gear: 'opus' }, offered, GEARS), /not a gear of grok/);
+  assert.match(pilotSettingRefusal({ brand: 'x' }, offered, GEARS), /not a brand/);
+});
+
+test('the log links each run: its answers carry the run, and the run has lines of its own', () => {
+  assert.equal(logLine({ at: 1, item: { id: 'permission:k', kind: 'permission', desk: 'acme' }, answer: 'allow', ok: true, why: '', run: 'r1' }).run, 'r1');
+  assert.equal('run' in logLine({ at: 1, item: { id: 'x', kind: 'card', desk: 'acme' }, answer: 'start', ok: true, why: '' }), false);
+  assert.deepEqual(runLine({ at: 2, run: 'r1', answer: 'started', what: '2 items', brand: 'grok', gear: 'fast' }), { at: 2, kind: 'run', run: 'r1', answer: 'started', what: '2 items', ok: true, brand: 'grok', gear: 'fast' });
 });

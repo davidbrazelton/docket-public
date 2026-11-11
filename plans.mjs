@@ -18,8 +18,9 @@ export const KINDS = ['build', 'test', 'decision', 'research'];
 // records, on its "- Rules checked:" line, the version its coordinator last reviewed it at; a plan file without that
 // line was never reviewed (0). New plans start at the current version. 1: the rules of #651 to #655. 2: done means
 // done, and a task set done by mistake is corrected (#663). 3: fewer user steps, checks and other people's work are not
-// the user's, and the coordinator starts everything free at once and gathers the user's decisions (#870).
-export const PLAN_RULES_VERSION = 3;
+// the user's, and the coordinator starts everything free at once and gathers the user's decisions (#870). 4: waiting_outside only when someone said so,
+// keep the plan moving in parallel, and pausing is the user's (#889).
+export const PLAN_RULES_VERSION = 4;
 // Task names follow the plan tree (#639): T1, T2 in the master plan; T3.1, T3.2 in a plan made for task T3; T3.2.1
 // one level deeper. Numbers are never reused: a dropped task keeps its number and stays in the file.
 const TASK_ID = /T\d+(?:\.\d+)*/;
@@ -367,7 +368,8 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   // Done is undone only by the coordinator (#663): sent back after checking it, or corrected when it was set done by
   // mistake, to dropped or back to open, with a note saying why; the note then starts "Corrected from done:".
   // phase moves a task to another of the plan's phases ('' takes it out of any): the coordinator's to say (#869).
-  function update(id, taskId, { state, note, links, kind, waitsOn, forUser, phase } = {}, actor, actorTitle = '') {
+  // after replaces the tasks it waits on, so a chain that is not truly needed can be loosened (#889): the coordinator's too.
+  function update(id, taskId, { state, note, links, kind, waitsOn, forUser, phase, after } = {}, actor, actorTitle = '') {
     if (state && !STATES.includes(state)) throw new Error(`State must be one of ${STATES.join(', ')}.`);
     const k = kind === undefined ? '' : String(kind).trim().toLowerCase();
     if (kind !== undefined && !KINDS.includes(k)) throw new Error(`The kind "${oneLine(kind)}" is not one of build, test, decision or research.`);
@@ -404,7 +406,17 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
         if (phaseName(phase) && !ph) throw new Error(`Plan ${id} has no phase "${phaseName(phase)}". ${phasesSay(p)}`);
         if (ph !== t.phase && !isCoord) throw new Error(`Only the plan's coordinator moves ${t.id} to another phase.`);
       }
+      let aft;
+      if (after !== undefined) {
+        if (!isCoord) throw new Error(`Only the plan's coordinator changes what ${t.id} waits on.`);
+        aft = [...new Set(after.map((a) => String(a).trim().toUpperCase()).filter(Boolean))];
+        const bad = aft.filter((a) => a === t.id || !p.tasks.some((x) => x.id === a));
+        if (bad.length) throw new Error(`${t.id} cannot wait on ${bad.join(', ')}: ${bad.includes(t.id) ? 'a task cannot wait on itself' : `plan ${id} has no such task`}.`);
+        const loop = findLoop(p.tasks.map((x) => x === t ? { ...x, after: aft } : x));
+        if (loop) throw new Error(`That makes a loop: ${loop.join(' after ')}.`);
+      }
       const before = new Set(readyTasks(p).map((x) => x.id));
+      if (aft) t.after = aft;
       if (state) {
         if (state === 'open') { t.holder = ''; t.holderTitle = ''; t.claimedAt = ''; }
         // A task set going or done with no holder records the session that set it, so the plan says who did it. A

@@ -170,8 +170,63 @@ export function mayAnswer(rules, item, answer, floor, pilotDesk) {
 }
 
 // One answer the pilot gave, or tried to, as a line in its log.
-// from: the computer whose pilot answered with a pilot key (#827), when not this one's.
-export const logLine = ({ at = Date.now(), item, answer, ok, why, from }) => ({
+// from: the computer whose pilot answered with a pilot key (#827), when not this one's. run: the pilot run that
+// answered (#881), its session id.
+export const logLine = ({ at = Date.now(), item, answer, ok, why, from, run }) => ({
   at, id: item.id, kind: item.kind, desk: item.desk, session: item.session || null, title: item.title || '', what: item.what || '', answer, ok, why,
-  ...(from ? { from } : {}),
+  ...(from ? { from } : {}), ...(run ? { run } : {}),
 });
+// A run starting or ending, as a line in the pilot's log (#881): kind run, answer started or ended, what says why.
+export const runLine = ({ at = Date.now(), run, answer, what = '', brand, gear }) => ({ at, kind: 'run', run, answer, what, ok: true, ...(brand ? { brand, gear } : {}) });
+
+// ---------- runs (#881) ----------
+// The pilot keeps no long conversation: it works in short runs. When something it may act on comes in, Docket waits a
+// short delay so items close together go in one batch, then starts a fresh session on the autopilot's desk for them.
+// The run answers what it can and ends, and is archived. At most one run at a time: what arrives during a run goes to
+// the next. What the pilot must remember lives in files each run reads: the rules, the log and the pilot notes.
+
+// What to do next, from what waits now. items: waitingOnPerson's list (may: allow | deny | ask). offered: ids a run
+// was already given (or saw in pilot_pending), never offered again. running: a run is going. since: when the
+// first item of the next batch was seen (null: none yet). Returns { act: 'idle' } (nothing for the pilot),
+// { act: 'busy', items } (they wait for the run going now to end), { act: 'wait', ms } (the batch is still filling:
+// since starts now when it was null) or { act: 'start', items } (start a run with these).
+export function runStep({ items = [], offered = new Set(), running = false, since = null, now = Date.now(), delay = 10000 }) {
+  const fresh = items.filter((i) => i.may !== 'ask' && !offered.has(i.id));
+  if (!fresh.length) return { act: 'idle' };
+  if (running) return { act: 'busy', items: fresh };
+  if (since === null) return { act: 'wait', ms: delay };
+  if (now - since < delay) return { act: 'wait', ms: delay - (now - since) };
+  return { act: 'start', items: fresh };
+}
+
+// Whether a run is done: its session ended or is gone, or its turn finished with nothing left (nothing asked of the
+// person, no job still running). s: the live session, or null; tasks: its jobs still running; at: when the run
+// started. Returns '' while it is still working, else why it ended.
+export function runDone(s, { tasks = 0, maxMs = 30 * 60000, now = Date.now(), at = now } = {}) {
+  if (!s || s.status === 'ended') return 'its session ended';
+  if (now - at > maxMs) return `it ran more than ${Math.round(maxMs / 60000)} minutes`;
+  const turned = (s.events || []).some((e) => e.k === 'result');
+  if (turned && s.status === 'idle' && !s.pendingAsks?.size && !s.reloading && !tasks) return 'its turn ended';
+  return '';
+}
+
+// The pilot's brand and starting gear (☰ > Docket settings > Autopilot). saved: { brand, gear } as kept. gears:
+// GEARS from gears.mjs. Default: Claude on its lowest gear, so cheap triage shifts up to the top gear only to judge.
+// A gear the brand has no gear by that key for is its lowest. Returns { brand, gear } (gear: a gear key).
+export const PILOT_DEFAULT_BRAND = 'claude';
+export function pilotSetting(saved, gears) {
+  const brand = gears[saved?.brand] ? saved.brand : PILOT_DEFAULT_BRAND;
+  const list = gears[brand];
+  const gear = list.some((g) => g.key === saved?.gear) ? saved.gear : list[0].key;
+  return { brand, gear };
+}
+// Why this brand and gear can't be saved for the pilot, or '' when they can. offered: [{ brand, signedIn }] the
+// brands the autopilot's desk has set up (name: the brand's name, for the message).
+export function pilotSettingRefusal({ brand, gear }, offered, gears) {
+  if (!gears[brand]) return `${brand} is not a brand Docket knows.`;
+  const o = offered.find((x) => x.brand === brand), name = o?.name || brand;
+  if (!o) return `The autopilot's desk does not use ${name}. Tick it for that desk in ☰ > Desks first.`;
+  if (!o.signedIn) return `The autopilot's desk is not signed in to ${name}. Sign it in beside it in ☰ > Desks first.`;
+  if (gear !== undefined && !gears[brand].some((g) => g.key === gear)) return `${gear} is not a gear of ${name}. Its gears: ${gears[brand].map((g) => g.key).join(', ')}.`;
+  return '';
+}

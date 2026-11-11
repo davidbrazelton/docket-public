@@ -486,14 +486,30 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .chip { display: flex; align-items: center; gap: 6px; background: var(--panel-2); border-radius: 8px; padding: 3px 4px 3px 8px; font-size: 12px; }
 .chip img { height: 34px; border-radius: 4px; }
 .chip button { padding: 0 6px; border: none; }
-.compose-row { display: flex; gap: 8px; align-items: flex-end; position: relative; }
+/* The message box (#892): one rounded border round the file chips, the text and a row of its own controls (+ on the left,
+   Stop and Send on the right); the session's settings stay on the line below it, outside the box. */
+.compose-row { display: flex; flex-direction: column; position: relative; border: 1px solid var(--line); border-radius: 14px; background: var(--panel-2); container-type: inline-size; }
+.compose-row:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
+.compose-row > .chips:not(:empty) { padding: 8px 10px 0; }
+.compose-row .chip { background: var(--panel); }
+.cbox-bar { display: flex; align-items: center; gap: 6px; padding: 2px 8px 8px; }
+.cbox-bar .spacer { flex: 1; }
+.cbox-bar .chint { font-size: 11px; color: var(--muted); white-space: nowrap; margin-right: 4px; }
+@container (max-width: 440px) { .cbox-bar .chint { display: none; } }
+/* icon buttons in rounded squares, all one size: + and Stop are actions (thin border), Send the main action */
+.cbox-bar .ib { width: 32px; height: 32px; padding: 0; display: inline-grid; place-items: center; border-radius: 9px; color: var(--text); flex: none; }
+.cbox-bar .ib[hidden] { display: none; }
+.cbox-bar .ib:hover { background: var(--panel); }
+.cbox-bar .ib.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.cbox-bar .ib.primary.idle { opacity: .4; cursor: default; filter: none; }
 .slash { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); max-height: 280px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 4px; z-index: 30; }
 .slash .sl { display: flex; gap: 10px; align-items: baseline; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
 .slash .sl.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 .slash .sn { font-family: ui-monospace, Consolas, monospace; font-size: 13px; white-space: nowrap; }
 .slash .sd { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .slash .snone { padding: 5px 8px; font-size: 12px; color: var(--muted); }
-.compose-row textarea { flex: 1; resize: none; min-height: 44px; max-height: 260px; }
+.compose-row textarea { resize: none; min-height: 44px; max-height: 260px; border: none; background: transparent; padding: 10px 14px 4px; border-radius: 14px 14px 0 0; }
+.compose-row textarea:focus { outline: none; }
 .compose-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .compose-bar .spacer { flex: 1; }
 /* the state fills the gap and shortens with … rather than pushing the model and effort to a second line */
@@ -505,7 +521,6 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .compose-bar select:hover, .compose-bar select:focus { border-color: var(--line); color: var(--text); }
 select option { background: var(--panel); color: var(--text); }
 select option:disabled { color: var(--muted); }
-.compose-bar .plus { width: 28px; height: 28px; padding: 0; font-size: 18px; line-height: 1; border-radius: 50%; }
 /* Summary | ▾ (#724): an action, so a thin grey border; one box with a divider, each half its own button. The ▾ half
    only shows with sessions under this one; the whole control greys while a turn runs. */
 .sum-ctl { position: relative; flex: none; display: inline-flex; align-items: stretch; height: 28px; border: 1px solid var(--line); border-radius: 8px; }
@@ -560,7 +575,7 @@ select option:disabled { color: var(--muted); }
 .scard a, .child-report a { color: var(--accent); }
 .child-report { font-size: 13px; color: var(--muted); border-left: 3px solid var(--line); padding: 4px 10px; }
 .child-report .ct { white-space: pre-wrap; }
-.composer.drag textarea { outline: 2px dashed var(--accent); }
+.composer.drag .compose-row { outline: 2px dashed var(--accent); outline-offset: 2px; }
 
 /* tasks panel */
 aside.tasks { position: relative; width: var(--right-w, 330px); border-left: 1px solid var(--divider); background: var(--panel); display: flex; flex-direction: column; min-height: 0; border-radius: var(--card-r); box-shadow: var(--card-shadow); }
@@ -591,6 +606,19 @@ aside.tasks.hidden { display: none; }
 .plan-bar i.st-done { background: var(--ok); } .plan-bar i.st-claimed { background: var(--run); } .plan-bar i.st-waiting_outside { background: var(--muted); }
 .plan-bar i.st-waiting_on_user, .plan-bar i.st-sent_back { background: var(--warn); } .plan-bar i.st-dropped { background: var(--panel-2); }
 .plan-bar i.ps { margin-left: 3px; } .plan-bar i:hover { opacity: .7; }
+/* The plan's state (#889): an indicator line, coloured by state, with Pause plan / Resume plan (an action) at its end */
+.plan-motion { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 11px; color: var(--muted); margin: 4px 0 2px; }
+.plan-motion .pm-st { font-weight: 600; display: inline-flex; align-items: center; gap: 4px; color: var(--c, var(--muted)); }
+.plan-motion .pm-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--muted)); }
+.plan-motion .pm-why { flex: 1 1 160px; min-width: 0; }
+.plan-motion.m-moving, .pm.m-moving { --c: var(--run); }
+.plan-motion.m-waiting, .pm.m-waiting { --c: var(--accent); }
+.plan-motion.m-stalled, .pm.m-stalled { --c: var(--warn); }
+.plan-motion.m-paused, .pm.m-paused { --c: var(--muted); }
+.plan-motion.m-stalled .pm-why { color: var(--text); }
+.plan-pause { margin-left: auto; font-size: 11px; padding: 2px 8px; min-height: 28px; border: 1px solid var(--line); border-radius: 8px; background: none; color: var(--text); cursor: pointer; }
+.plan-pause:hover { background: var(--panel-2); }
+.tag.plan-tag .pm { color: var(--c); font-weight: 600; }
 .plan-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: var(--muted); }
 .plan-legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
 /* Active and Done are filters (DESIGN.md): bordered; on, a soft tint with a main-color border */
@@ -1138,7 +1166,7 @@ aside.tasks.wide { width: max(440px, var(--right-w, 330px)); }
 aside.side > .resizer { right: -4px; }
 aside.tasks > .resizer { left: -4px; }
 body.resizing { cursor: col-resize; user-select: none; }
-.compose-row > .resizer { top: -9px; bottom: auto; left: 0; right: 0; width: auto; height: 7px; cursor: row-resize; }
+.compose-row > .resizer { top: -10px; bottom: auto; left: 0; right: 0; width: auto; height: 7px; cursor: row-resize; }
 .compose-row > .resizer::after { top: 3px; bottom: auto; left: 0; right: 0; width: auto; height: 1px; }
 .compose-row > .resizer:hover::after, .compose-row > .resizer.dragging::after { width: auto; left: 0; height: 2px; top: 2px; }
 body.resizing.rows { cursor: row-resize; }
@@ -1205,6 +1233,9 @@ header.top .pilot-btn[hidden] { display: none; }
 .pilot-dlg .pl-list div { padding: 3px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
 .pilot-dlg .pl-list div:last-child { border-bottom: none; }
 .pilot-dlg .pl-no { color: var(--warn); }
+.pilot-dlg .pl-ask { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.co.pilot-desk .co-ro { overflow-wrap: anywhere; color: var(--muted); }
+.co.pilot-desk .co-pilot-name { flex: 1; font-weight: 600; }
 .tl-menu.rc-pop { left: auto; right: 0; min-width: 260px; }
 .rc-pop .rc-item { display: flex; align-items: center; gap: 8px; padding: 6px; font-size: 13px; }
 .rc-pop .rc-item span { flex: 1; }
@@ -1284,6 +1315,9 @@ header.top .pilot-btn[hidden] { display: none; }
 .ctx .sub-btn { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ctx button:hover, .tl-menu button:hover, .ctx .sub-btn[aria-expanded="true"] { background: var(--pop-hover); }
 .ctx .sub-arrow { color: var(--muted); }
+/* ☰ > Desks: the desk you are on, in the same tint as its desk tab in the top bar (a link that is on, DESIGN.md; #890) */
+.ctx .sub-btn.on, .ctx .sub-btn.on:hover { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.ctx .sub-btn.on .sub-arrow { color: inherit; }
 /* Docket settings: an icon column (the default color square, 🔔, ◐), the same size for each, so the labels line up (#879) */
 .ctx .mi-l { display: flex; align-items: center; }
 .ctx .mi-ic { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; margin-right: 8px; vertical-align: -3px; font-size: 15px; line-height: 1; flex: none; }
@@ -1608,17 +1642,21 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     <div class="transcript" id="transcript"><div class="jump-wrap"><button class="primary" id="jumpNew" hidden data-tip="jump-new">Jump to new</button></div><div class="inner" id="events"></div></div>
     <div class="composer" id="composer">
       <div class="inner">
-        <div class="chips" id="chips"></div>
         <div class="compose-row">
           <input type="file" id="fileInput" multiple hidden>
           <div class="slash" id="slash" hidden role="listbox" aria-label="Skills and slash commands"></div>
           <div class="resizer" id="composeResizer" role="separator" aria-orientation="horizontal" aria-label="Resize the typing box" data-tip="resize-compose" tabindex="0"></div>
-          <textarea id="input" data-tip="message" rows="2" placeholder="Message the session. Paste images or drop files here. Enter sends, Shift+Enter for a new line."></textarea>
-          <button id="stopBtn" data-tip="stop" hidden>Stop</button>
-          <button class="primary" id="sendBtn" data-tip="send">Send</button>
+          <div class="chips" id="chips"></div>
+          <textarea id="input" data-tip="message" rows="2" placeholder="Message the session. Paste images or drop files here."></textarea>
+          <div class="cbox-bar">
+            <button id="attachBtn" class="ib" data-tip="attach" aria-label="Add files"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" d="M8 3v10M3 8h10"/></svg></button>
+            <span class="spacer"></span>
+            <span class="chint" aria-hidden="true">Enter sends · Shift+Enter new line</span>
+            <button id="stopBtn" class="ib" data-tip="stop" aria-label="Stop the turn" hidden><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" fill="currentColor"/></svg></button>
+            <button class="primary ib idle" id="sendBtn" data-tip="send" aria-label="Send"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></svg></button>
+          </div>
         </div>
         <div class="compose-bar">
-          <button id="attachBtn" class="plus" data-tip="attach" aria-label="Add files">+</button>
           <span class="sum-ctl" id="sumCtl" hidden><button id="sumBtn" data-tip="summary">Summary</button><button id="sumModeBtn" aria-haspopup="menu" aria-expanded="false" aria-label="Summary mode" data-tip="summary-mode">▾</button><div id="sumMenu" class="tl-menu sum-pop" role="menu" aria-label="Summary of" hidden></div></span>
           <select id="cPerm" aria-label="Permission mode" data-tip="perm-mode">
             <option value="bypassPermissions">Bypass permissions</option><option value="auto">Auto</option><option value="acceptEdits">Accept edits</option><option value="default">Ask before acting</option><option value="plan">Plan mode</option>
@@ -1915,6 +1953,8 @@ const HELP = [
   ['Details panel (right)', [
     ['sec-cost', '$ Cost', 'Cost: what this session and this desk have spent'],
     ['sec-plan', '📋 Plan', 'Plan: the plan this session coordinates, or the task it holds in one: each task, its state, which session holds it, and its links'],
+    ['ctx-plan-pause', 'Pause plan', 'Stop Docket nudging this plan\'s coordinator, or waking it for freed tasks, until you resume it. Sessions already working carry on'],
+    ['ctx-plan-resume', 'Resume plan', 'End the pause: Docket checks the plan at once and nudges its coordinator again when it stalls'],
     ['plan-badge', 'Plan badge', 'This session coordinates a plan: how many of its tasks are done, counting the tasks of the plans under it'],
     ['plan-badge-folder', 'Plan badge', 'This session holds a plan in the desk\'s plan folder (its marker file says so): how many of its lines are done, counting the plans under it'],
     ['plan-tree', 'Plan tree', 'Every plan in this desk\'s plan folder, as a tree with progress, broken links and plans nothing links to (opens in its own window)'],
@@ -2182,10 +2222,11 @@ const HELP = [
     ['rd-setup-cancel', 'Cancel', 'Keep the authenticator you had, or none'],
     ['rd-desk', 'Desk it may use', 'The one desk another computer may use. Its sign-ins and costs stay on this computer'],
     ['rd-on', 'Turn on / Turn off', 'While on, computers on the office network can ask to connect (with a code from the authenticator app, and only after someone here clicks Allow). While off, nothing on the network can reach Docket here'],
-    ['pilot-icon', '✈ Autopilot flying', 'The autopilot is on: its pilot session answers what waits on you, under the rules on this computer, and everything it answers says "answered by pilot". Click to see its log, or to turn it off'],
-    ['pilot-pick', 'Pilot', "The session that answers for you. Only a session of the autopilot's desk can be the pilot: pick one of its sessions that is running, then Save pilot"],
+    ['pilot-icon', '✈ Autopilot flying', 'The autopilot is on: short pilot runs on its own desk answer what waits on you, under the rules on this computer, and everything they answer says "answered by pilot". Click to see its runs and log, or to turn it off'],
+    ['pilot-screen', 'Turn on', "Let the autopilot's runs see and act on this computer's screen when a job needs it. Turn it off again in ☰ > Desks > the autopilot's desk > Screen control"],
+    ['pilot-brand', "Pilot's brand", "The brand and starting gear each pilot run uses: only brands the autopilot's desk is signed in to. A run starts on this gear and shifts up to the top gear to judge. Pick one, then Save brand; the next run uses it, and a run going now keeps its own"],
     ['pilot-desk', "Autopilot's desk", "The desk the pilot works on: its own sign-ins, bill, memory and files, apart from the desks where work happens. What waits on it stays with you. Docket makes an Autopilot desk the first time you turn the autopilot on; pick another desk here and Save desk to use that one instead"],
-    ['menu-autopilot', 'Docket settings > Autopilot', 'One switch for all of Docket: the autopilot works across all desks from its own Autopilot desk, where its pilot session runs, and while it is on the label names that pilot. Let a pilot session answer what waits on you (permission prompts, question forms, cards) under rules kept on this computer. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the pilot, what waits now and the log of its answers'],
+    ['menu-autopilot', 'Docket settings > Autopilot', 'One switch for all of Docket: the autopilot works across all desks from its own Autopilot desk, in short runs there, and while it is on the label names the pilot\'s brand. Let the pilot answer what waits on you (permission prompts, question forms, cards) under rules kept on this computer. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the desk, the pilot\'s brand, its runs, what waits now and the log of its answers'],
     ['rc-icon', '📡 Remote connection on', 'Another computer is using a desk here, or this computer is using a desk on another computer. Click the 📡 at the bottom left to see which, and to Disconnect'],
     ['rd-drop', 'Disconnect', 'End this computer\'s connection now. It needs a new code and an Allow to come back'],
     ['rd-revoke', 'Revoke', 'End this pilot key now. The autopilot on that computer can no longer reach this desk until someone here allows a new one'],
@@ -2657,12 +2698,14 @@ function waitingCount(clientId) {
 // The desks with a button at the top, in the list's order. A hidden desk (☰ > Desks > Manage) has none, so its
 // sessions are out of the list until it is shown again. The server keeps at least one shown.
 function shownDesks() { return S.clients.filter((c) => !c.hidden); }
+// The autopilot's desk (#886) shows a robot wherever desks are named; the server lists it first.
+const deskName = (c) => `${c.pilot ? '<span class="pilot-mark" aria-label="Autopilot desk">🤖</span> ' : ''}${esc(c.name)}`;
 function renderClients() {
   if (menuHold(renderClients)) return; // waits while a menu is open (menu hold)
   $('clients').innerHTML = shownDesks().map((c) => {
     const n = waitingCount(c.id);
     const rc = remoteMarkTip(c);
-    return `<button class="${c.id === S.client ? 'on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${esc(c.name)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+    return `<button class="${c.id === S.client ? 'on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${deskName(c)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
   }).join('');
   const total = waitingCount(S.client);
   const name = S.clients.find((c) => c.id === S.client)?.name;
@@ -4836,7 +4879,7 @@ function hoverCardHtml(s) {
   if (snip) line('Search', snip);
   if (s.scheduleId) line('Schedule', `⏰ ${esc(run?.title || S.schedTitles[s.scheduleId] || 'a schedule')}${run && run.runs.length > 1 ? ` · newest of ${run.runs.length} runs` : ''}${run?.unread ? ` · ${run.unread} not read` : ''}`);
   const p = S.plans.on && ownPlan(s.id);
-  if (p) line('Plan', `${esc(p.title)} · ${p.done} of ${p.total} tasks done`);
+  if (p) line('Plan', `${esc(p.title)} · ${p.done} of ${p.total} tasks done${p.motion ? ` · ${PLAN_MOTION[p.motion.state]}` : ''}`);
   const prs = S.prs[s.id] || [];
   if (prs.length) line('Pull requests', prs.map((x) => `#${x.number}${prState(x) in PR_LABEL && prState(x) !== 'unknown' ? ' ' + PR_LABEL[prState(x)].toLowerCase() : ''}`).join(', '));
   const tks = S.tickets[s.id] || [];
@@ -5391,6 +5434,7 @@ function sessionMenuItems(f) {
   if (!f.archived && f.parentId) items.push(['top', 'Make top level']);
   if (!f.archived && f.noGroup) items.push(['auto-group', 'Auto Group…']);
   if (!f.archived && f.plansOn && !f.hasPlan) items.push(['use-plan', 'Use a plan for this work']);
+  if (f.planOpen) items.push([f.planPaused ? 'plan-resume' : 'plan-pause', f.planPaused ? 'Resume plan' : 'Pause plan']);
   items.push(['rename', 'Rename'], ['hr']);
   if (f.live) items.push(['end', 'End']);
   items.push(['delete', 'Delete…']);
@@ -5410,6 +5454,11 @@ async function usePlan(id, card = '') {
   try { await api(`/api/sessions/${id}/use-plan?client=${S.client}`, card ? { card } : {}); }
   catch (err) { tell(err.message); }
 }
+// The open plan this session coordinates, for Pause plan / Resume plan in its menu (#889).
+function menuPlan(id) {
+  const p = S.plans.client === S.client && plansOnDesk(S.client) && S.plans.plans.find((x) => x.coordinator === id && x.motion);
+  return p ? { planOpen: p.id, planPaused: !!p.paused } : {};
+}
 function sessionMenuFacts(s) {
   const kids = s.archived ? [] : descendants(s.id).filter((x) => !x.archived);
   // A schedule's row stands for all its runs: Archive and Mark read take every run with them.
@@ -5421,7 +5470,7 @@ function sessionMenuFacts(s) {
     why: `"${k.title}" finished its turn, but this background job still runs, so the session waits for it and this one waits on that session. Mark done if the job is stuck or no longer needed: it stops holding the turn, and this session hears. Docket does this by itself after 15 minutes with no sign of life from the job.` })));
   return { kids, otherRuns, unreadRuns, f: { heldJobs, archived: !!s.archived, live: !!s.live, midReply: !!s.midReply, cwd: s.cwd || '', parentId: s.parentId || null,
     noGroup: hasNoGroup(s), needsYou: needsYou(s), working: !!(s.live && ['running', 'starting'].includes(s.status)),
-    pinned: pinnedHere(s.id), muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), chat: chatView(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
+    pinned: pinnedHere(s.id), muted: isMuted(s.id), soundOn: soundOn(), timeline: tlOn(), chat: chatView(), plansOn: plansOnDesk(S.client), hasPlan: S.plans.client === S.client && S.plans.plans.some((p) => p.coordinator === s.id), ...menuPlan(s.id), editors: S.editors.filter((ed) => /^[a-z0-9-]+$/.test(ed.id)), kids: kids.length, otherRuns: otherRuns.length, unreadRuns: unreadRuns.length } };
 }
 // at is { x, y } for a right-click (the menu opens at the cursor) or { el } for ⋯ (it opens under the button,
 // right edges lined up). Either way it stays on screen. Arrow keys move through it, Escape closes it.
@@ -5507,6 +5556,7 @@ function openSessionMenu(id, at) {
     if (act === 'top') await setSessionParent(id, null);
     if (act === 'auto-group') await autoGroup(id);
     if (act === 'use-plan') await usePlan(id);
+    if (act === 'plan-pause' || act === 'plan-resume') await pausePlan(ctx.f.planOpen, act === 'plan-pause');
     if (act === 'pin' || act === 'unpin') await setPin(id, act === 'pin');
     if (act === 'unread') {
       S.keepUnread = id;
@@ -5736,7 +5786,7 @@ $('menuBtn').onclick = (e) => {
   e.stopPropagation();
   if (document.getElementById('ctx')) { closeMenu(); return; }
   // Desks: Manage, Copy a Desk and Remote Desks, then a group for each desk in the desk buttons' order (its own color
-  // beside its name, an empty icon place for none), hidden desks left out.
+  // beside its name, an empty icon place for none), hidden desks left out. The desk you are on is tinted like its desk tab (#890).
   const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage', null, ''], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk', null, '']] : []), ...(S.remoteOn ? [['remote', 'Remote Desks', null, '']] : []), 'hr',
     ...shownDesks().map((c) => ['desk:' + c.id, c.name, deskItems(c), c.color ? colorSquare(c.color) : ''])]], ['history', 'Recently viewed'], 'hr',
     ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk'], ...(S.clients.some((c) => !c.remote) ? [['screenlog', 'Screen control log']] : [])]],
@@ -5748,7 +5798,7 @@ $('menuBtn').onclick = (e) => {
   const icon = (x) => x[3] === undefined ? '' : `<span class="mi-ic${x[0] === 'theme' ? ' mi-glyph' : ''}" aria-hidden="true">${x[3]}</span>`;
   const label = (x) => x[3] === undefined ? esc(x[1]) : `${icon(x)}<span class="mi-t">${esc(x[1])}</span>`;
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
-    ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn" data-sub="${esc(x[0])}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0].split(':')[0])}>${x[3] === undefined ? label(x) : `<span class="mi-l">${label(x)}</span>`}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
+    ? `<div class="sub-wrap"><button role="menuitem" class="sub-btn${x[0] === 'desk:' + S.client ? ' on" aria-current="page' : ''}" data-sub="${esc(x[0])}" aria-haspopup="menu" aria-expanded="false"${tip('menu-' + x[0].split(':')[0])}>${x[3] === undefined ? label(x) : `<span class="mi-l">${label(x)}</span>`}<span class="sub-arrow" aria-hidden="true">›</span></button><div class="ctx sub" role="menu" aria-label="${esc(x[1])}" hidden>${x[0] === 'about' ? '<div class="ver" id="menuVer">Version</div>' : ''}${x[2].map(item).join('')}</div></div>`
     : x[0].startsWith('theme-') ? `<button role="menuitemradio" data-mact="${x[0]}" aria-checked="${x[0] === 'theme-' + themeChoice()}"${tip('menu-' + x[0])}><span class="tick">${x[0] === 'theme-' + themeChoice() ? '✓' : ''}</span>${esc(x[1])}</button>`
     : `<button role="menuitem" data-mact="${esc(x[0])}"${x[0] === 'sound' ? ` aria-pressed="${soundOn()}"` : ''}${tip('menu-' + x[0].split(':')[0])}>${label(x)}</button>`;
   const m = document.createElement('div'); m.className = 'ctx'; m.id = 'ctx'; m.setAttribute('role', 'menu'); m.setAttribute('aria-label', 'Menu');
@@ -6470,55 +6520,79 @@ function startupHtml(v) {
 }
 // ☰ > Docket settings > Starting Docket: the state, and buttons to switch to each of the others.
 // ---------- ☰ > Docket settings > Autopilot (#821) ----------
-// A pilot session answers what waits on you, under the rules in the file shown here. The ✈ in the top bar shows while
-// it is flying (switch on, pilot set), and opens this. What it answered says "answered by pilot" on the card.
+// The pilot answers what waits on you, under the rules in the file shown here, in short runs on its own desk (#881):
+// a fresh session for each batch, archived when done. The ✈ in the top bar shows while it is flying (switch on, desk
+// set), and opens this. What it answered says "answered by pilot" on the card.
 S.pilot = { on: false, flying: false };
-// While on it names the pilot session, when there is one (#879).
-const pilotLabel = () => S.pilot.on ? `Autopilot: on${S.pilot.title ? ` (pilot: ${S.pilot.title})` : ''}` : 'Autopilot: off';
+// While on it names the pilot's brand, and the run going now when there is one (#879, #881).
+const pilotLabel = () => S.pilot.on ? `Autopilot: on (${S.pilot.brandName || 'Claude'}${S.pilot.session ? ', running' : ''})` : 'Autopilot: off';
 function drawPilot(p) {
   if (!p) return;
-  S.pilot = { on: !!p.on, flying: !!p.flying, session: p.session, title: p.title };
+  S.pilot = { on: !!p.on, flying: !!p.flying, session: p.session, title: p.title, brand: p.brand, gear: p.gear, brandName: p.brandName };
   const b = $('pilotBtn'); b.hidden = !S.pilot.flying;
-  b.title = `Autopilot flying: ${S.pilot.title || 'its pilot session'}. ${tipText('pilot-icon')}`;
+  b.title = `Autopilot flying on ${S.pilot.brandName || 'Claude'}${S.pilot.session ? `, running now: ${S.pilot.title}` : ''}. ${tipText('pilot-icon')}`;
 }
 const PILOT_WHEN = (t) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const pilotRunLink = (id, text) => `<a href="#session:${esc(id)}"${tip('open-session')}>${esc(text)}</a>`;
 function autopilotHtml(v, msg = '') {
   const desks = [...(v.pilotDesk ? [] : [`<option value="">None yet: Docket makes an Autopilot desk when you turn it on</option>`]),
-    ...v.desks.map((d) => `<option value="${esc(d.id)}"${d.id === v.pilotDesk?.id ? ' selected' : ''}>${esc(d.name)}</option>`)];
-  const opts = [`<option value="">No pilot</option>`, ...v.sessions.map((s) => `<option value="${esc(s.id)}"${s.id === v.session ? ' selected' : ''}>${esc(`${s.desk}: ${s.title} (${BRAND_NAMES[s.brand] || s.brand})`)}</option>`)];
-  if (v.session && !v.sessions.some((s) => s.id === v.session)) opts.push(`<option value="${esc(v.session)}" selected>${esc(v.title)} (not running now)</option>`);
+    ...v.desks.map((d) => `<option value="${esc(d.id)}"${d.id === v.pilotDesk?.id ? ' selected' : ''}>${d.id === v.pilotDesk?.id ? '🤖 ' : ''}${esc(d.name)}</option>`)];
+  // While on: the sign-in step for the pilot's brand when it is not signed in there, and a one-click Turn on for
+  // screen control, which the pilot never turns on itself (#886).
+  const mine = v.brands.find((b) => b.brand === v.brand);
+  const signin = v.on && v.pilotDesk && mine && !mine.signedIn ? `<div class="pl-ask"><b>${esc(v.pilotDesk.name)} is not signed in to ${esc(v.brandName)}</b>, so no run can start. Sign in here; the first run then starts on its own.
+    <span class="co-sign" data-sign-client="${esc(v.pilotDesk.id)}" data-sign-engine="${esc(v.brand)}" data-unsaved="">${coSignHtml(v.pilotDesk.id, v.brand, '')}</span></div>` : '';
+  const screen = v.on && v.pilotDesk && !v.screen ? `<div class="pl-ask pl-row">Screen control is off for the autopilot.<button data-pilot-screen${tip('pilot-screen')}>Turn on</button></div>` : '';
+  // The pilot's brand and starting gear: only brands the autopilot's desk has signed in, plus the one set now if it is not.
+  const groups = v.brands.filter((b) => b.signedIn || b.brand === v.brand).map((b) => `<optgroup label="${esc(b.name)}${b.signedIn ? '' : ' (not signed in)'}">${b.gears.map((g, i) =>
+    `<option value="${esc(`${b.brand}:${g.key}`)}"${b.brand === v.brand && g.key === v.gear ? ' selected' : ''}${b.signedIn ? '' : ' disabled'}>${esc(`${b.name}, starting on ${g.name}`)}${i === 0 ? ' (lowest)' : ''}</option>`).join('')}</optgroup>`);
+  if (!v.brands.some((b) => b.brand === v.brand)) groups.unshift(`<option value="" selected disabled>${esc(`${v.brandName} (${v.pilotDesk ? `${v.pilotDesk.name} does not use it` : 'once the desk is made'})`)}</option>`);
   const may = { allow: 'pilot may answer', deny: 'pilot may only decline', ask: 'stays with you' };
   const own = (w) => w.may === 'ask' && /autopilot's own desk/.test(w.why || '') ? ": the autopilot's own desk" : '';
   const waiting = v.waiting.length ? v.waiting.map((w) => `<div><b>${esc(w.desk)}</b> · ${esc(w.kind)} · ${esc(w.what || w.title)} <span class="${w.may === 'ask' ? 'pl-no' : 'by-pilot'}">(${may[w.may]}${own(w)})</span></div>`).join('') : '<div>Nothing waits on you now.</div>';
-  const log = v.log.length ? v.log.map((l) => `<div>${esc(PILOT_WHEN(l.at))} · <b>${esc(l.kind)}</b> · ${esc(l.answer)} · ${esc(l.what || l.title)}${l.ok ? '' : ` <span class="pl-no">refused: ${esc(l.why)}</span>`}</div>`).join('') : '<div>The pilot has answered nothing yet.</div>';
-  return `<div class="pilot-dlg"><div>A pilot session answers what waits on you, on every desk on this computer: permission prompts, question forms and cards. It is ${v.on ? '<b>on</b>' : '<b>off</b>'}${v.flying ? ', and flying' : ''}. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them.</div>
+  const runs = v.runs.length ? v.runs.map((r) => `<div>${esc(PILOT_WHEN(r.at))} · ${pilotRunLink(r.id, r.title)} · ${esc(BRAND_NAMES[r.brand] || r.brand)} · ${r.items} item${r.items === 1 ? '' : 's'} · ${r.ended ? `ended: ${esc(r.why || '')}` : r.id === v.session ? '<b>running now</b>' : 'stopped'}</div>`).join('') : '<div>No run yet. One starts when something comes in that the rules let the pilot answer.</div>';
+  const log = v.log.length ? v.log.map((l) => l.kind === 'run'
+    ? `<div>${esc(PILOT_WHEN(l.at))} · ${pilotRunLink(l.run, 'run')} ${esc(l.answer)}${l.what ? ` · ${esc(l.what)}` : ''}</div>`
+    : `<div>${esc(PILOT_WHEN(l.at))} · <b>${esc(l.kind)}</b> · ${esc(l.answer)} · ${esc(l.what || l.title)}${l.ok ? '' : ` <span class="pl-no">refused: ${esc(l.why)}</span>`}${l.run ? ` · ${pilotRunLink(l.run, 'its run')}` : ''}</div>`).join('') : '<div>The pilot has answered nothing yet.</div>';
+  return `<div class="pilot-dlg"><div>The pilot answers what waits on you, on every desk on this computer: permission prompts, question forms and cards. It is ${v.on ? '<b>on</b>' : '<b>off</b>'}${v.flying ? ', and flying' : ''}. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them.</div>
     ${msg ? `<div class="pl-no" style="margin-top:8px">${esc(msg)}</div>` : ''}
+    ${v.problem && !signin ? `<div class="pl-no" style="margin-top:8px">${esc(v.problem)}</div>` : ''}${signin}${screen}
     <div class="pl-row"><label for="pilotDesk">Autopilot's desk</label><select id="pilotDesk"${tip('pilot-desk')}>${desks.join('')}</select></div>
     <div class="meta" style="margin-top:4px">The pilot works on this desk, with its own sign-ins, bill and files. What waits on it stays with you.</div>
-    <div class="pl-row"><label for="pilotPick">Pilot</label><select id="pilotPick"${tip('pilot-pick')}>${opts.join('')}</select></div>
-    <div class="meta" style="margin-top:4px">Only a session of ${v.pilotDesk ? esc(v.pilotDesk.name) : "the autopilot's desk"} can be the pilot. Turning the autopilot on starts one there when none is running. A session made the pilot is started again once it is idle, to give it the pilot tools.</div>
-    <div class="meta" style="margin-top:8px">Rules (allow, deny or ask, per kind and per desk): <code>${esc(v.rulesFile)}</code></div>
+    <div class="pl-row"><label for="pilotBrand">Pilot's brand</label><select id="pilotBrand"${tip('pilot-brand')}>${groups.join('')}</select></div>
+    <div class="meta" style="margin-top:4px">Each run is a fresh session on ${v.pilotDesk ? esc(v.pilotDesk.name) : "the autopilot's desk"}: it starts when something comes in that the rules let the pilot answer, handles what came in close together, then ends and is archived. One run at a time; what comes in during a run goes to the next. The next run uses the brand saved here. It starts on the gear picked, and shifts up to the top gear to judge.</div>
+    <div class="meta" style="margin-top:8px">Rules (allow, deny or ask, per kind and per desk): <code>${esc(v.rulesFile)}</code>${v.notesFile ? `<br>The pilot's notes, which every run reads: <code>${esc(v.notesFile)}</code>` : ''}</div>
     <h4>Waiting on you now</h4><div class="pl-list">${waiting}</div>
+    <h4>Runs</h4><div class="pl-list">${runs}</div>
     <h4>The pilot's answers</h4><div class="pl-list">${log}</div></div>`;
 }
 async function showAutopilot() {
-  // msg: why the last save was refused, or what turning on could not do, shown in the dialog itself (#875).
+  // msg: why the last save was refused, shown in the dialog itself (#875).
   let msg = '';
   for (;;) {
     let v; try { v = await api('/api/pilot'); } catch (err) { tell(err.message); return; }
     drawPilot(v);
     const pick = await dialog({ title: 'Autopilot', body: autopilotHtml(v, msg), buttons: [
-      { label: v.on ? 'Turn off' : 'Turn on', value: 'switch', tip: v.on ? 'Every pilot tool refuses until you turn it on again' : "The pilot may answer what its rules allow. The first time, Docket makes the Autopilot desk and starts the pilot there" },
+      { label: v.on ? 'Turn off' : 'Turn on', value: 'switch', tip: v.on ? 'Every pilot tool refuses, and no run starts, until you turn it on again' : "The pilot may answer what its rules allow, in short runs. The first time, Docket makes the Autopilot desk" },
       { label: 'Save desk', value: 'desk', tip: "Make the desk picked above the autopilot's desk" },
-      { label: 'Save pilot', value: 'pilot', tip: "Make the session picked above the pilot. Only a session of the autopilot's desk can be" },
+      { label: 'Save brand', value: 'brand', tip: 'The next run uses the brand and starting gear picked above. A run going now keeps its own' },
       { label: 'Close', value: null, primary: true }] });
     if (!pick) return;
-    const deskPick = document.getElementById('pilotDesk').value;
-    if (pick === 'desk' && !deskPick) { msg = ''; continue; }
-    const body = pick === 'switch' ? { on: !v.on } : pick === 'desk' ? { desk: deskPick } : { session: document.getElementById('pilotPick').value || null };
+    const deskPick = document.getElementById('pilotDesk').value, brandPick = document.getElementById('pilotBrand').value;
+    if ((pick === 'desk' && !deskPick) || (pick === 'brand' && !brandPick)) { msg = ''; continue; }
+    const [brand, gear] = brandPick.split(':');
+    const body = pick === 'switch' ? { on: !v.on } : pick === 'desk' ? { desk: deskPick } : { brand, gear };
     try { const r = await api('/api/pilot', body); drawPilot(r); msg = r.note || ''; } catch (err) { msg = err.message; }
+    if (pick === 'switch') await reloadClients().catch(() => {}); // the desk may be new, and shows first
   }
 }
+// The panel's Turn on for screen control (#886): one click turns it on for the autopilot's desk, and the panel shows again.
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-pilot-screen]'); if (!b) return;
+  b.disabled = true;
+  try { const v = await api('/api/pilot'); if (v.pilotDesk) { await api('/api/screen', { client: v.pilotDesk.id, on: true }); S.screenOn[v.pilotDesk.id] = true; } } catch (err) { tell(err.message); }
+  b.closest('.pl-ask')?.remove();
+});
 $('pilotBtn').onclick = () => showAutopilot();
 
 async function showStartupSettings() {
@@ -6985,7 +7059,7 @@ async function editCompanies(rows, error = '', start, scrollTo, openId) {
   const field = (i, key, label, hint, more = '') => `<label for="co${i}${key}">${label}</label><input id="co${i}${key}" title="${esc(hint)}" data-i="${i}" data-k="${key}" value="${esc(rows[i][key] || '')}" placeholder="${esc(hint)}"${more}>`;
   const body = () => `<div class="co-note" style="color:var(--muted)">This list is kept on this computer only. Tick the AI brands each desk uses: each has its own home folder (its sign-in, settings and memory), filled in for you when you tick it, and signs in on its own, shown beside its folder. You pick the brand for each new session beside the model; + Add a desk walks you through setting up a new one.</div>
     ${error ? `<div class="co-err">${esc(error)}</div>` : ''}
-    <div class="co-list">${rows.map((c, i) => `<div class="co${coOpen.has(c) ? '' : ' shut'}${c.hidden ? ' hidden-desk' : ''}">
+    <div class="co-list">${rows.map((c, i) => c.pilot ? coPilotRow(c, i) : `<div class="co${coOpen.has(c) ? '' : ' shut'}${c.hidden ? ' hidden-desk' : ''}">
       <div class="co-head" data-fold="${i}"><button class="co-fold" data-fold="${i}" aria-expanded="${coOpen.has(c)}" aria-label="${coOpen.has(c) ? 'Close' : 'Open'} this desk's settings"${tip('co-fold', coOpen.has(c))}>${coOpen.has(c) ? '▾' : '▸'}</button>
         <input data-i="${i}" data-k="name" value="${esc(c.name || '')}" placeholder="Desk name" aria-label="Desk name"${tip('co-name')}>
         ${c.hidden ? '<span class="co-hidden-mark">Hidden</span>' : ''}
@@ -7020,6 +7094,15 @@ async function editCompanies(rows, error = '', start, scrollTo, openId) {
       ${c.id ? '' : '<div class="co-note">New</div>'}
     </div>`).join('')}</div>
 `;
+  // The autopilot's desk (#886): Docket sets it up, so it shows read-only, with its sign-ins, and no Rename, Copy,
+  // Hide or Move. It is removed only with the autopilot off.
+  const coPilotRow = (c, i) => `<div class="co pilot-desk">
+      <div class="co-head"><span class="co-pilot-name">${deskName(c)}</span>
+        <button data-remove="${i}" ${c.pilotOn ? 'disabled title="Turn the autopilot off in ☰ > Docket settings > Autopilot first"' : c.running ? `disabled title="${c.running} session${c.running === 1 ? '' : 's'} running; end them first"` : 'title="Remove from this list. Its folders and sessions are not deleted."'}>Remove</button></div>
+      <div class="co-note">The autopilot's own desk. Docket sets it up when you turn the autopilot on, so its settings show here read-only. Pick the pilot's brand in ☰ > Docket settings > Autopilot.</div>
+      <span>Working folder</span><span class="co-ro">${esc(c.folder || '')}</span>
+      ${CO_BRANDS.filter(([e]) => coUses(c, e)).map(([e, n, k]) => `<span>${n} home</span><span class="co-home"><span class="co-ro">${esc(c[k] || '')}</span><span class="co-sign" data-sign-client="${esc(c.id)}" data-sign-engine="${e}" data-unsaved="">${coSignHtml(c.id, e, '')}</span></span>`).join('')}
+    </div>`;
   // Who each brand of a saved desk is billed to, and which other desks share that connection, so their use adds up
   // on one plan or account (the Usage page's By connection view shows the totals).
   const coBilled = (c) => !(c.connections || []).length ? '' : `<span>Billed to</span><span class="co-billed">${c.connections.map((x) => `<span title="${esc(x.detail || '')}">${esc(CO_BRANDS.find((b) => b[0] === x.brand)?.[1] || x.brand)}${x.brand === 'claude' && c.awsProfile ? ' (Bedrock)' : ''}: ${esc(x.label)}${x.kind === 'unknown' ? ' <small>(sign-in not readable)</small>' : ''}${x.sharedWith.length ? `, shared with ${esc(x.sharedWith.join(', '))}` : ''}</span>`).join('')}</span>`;
@@ -7587,7 +7670,8 @@ async function copyDesk(id) {
   selectClient(nid);
 }
 async function copyWizard(id) {
-  const [desks, roots] = await Promise.all([api('/api/clients/edit'), api('/api/clients/home-roots').catch(() => null)]);
+  const [all, roots] = await Promise.all([api('/api/clients/edit'), api('/api/clients/home-roots').catch(() => null)]);
+  const desks = all.filter((c) => !c.pilot); // the autopilot's desk is not copied (#886)
   if (!desks.length) return null;
   let src, uses;
   return new Promise((resolve) => {
@@ -9023,7 +9107,21 @@ const holdsPlan = (p, id) => p.holders.some((h) => h === id || (S.plans.folder &
 const ownPlan = (id) => S.plans.folder ? S.plans.plans.find((p) => holdsPlan(p, id)) : S.plans.plans.find((p) => p.coordinator === id);
 function planBadge(id) {
   const p = S.plans.on && ownPlan(id); if (!p) return '';
-  return `<span class="tag plan-tag" title="${esc(`${tipText(S.plans.folder ? 'plan-badge-folder' : 'plan-badge')}\n${p.title}: ${p.done} of ${p.total} done${planBreakdown(p.breakdown)}`)}">📋 ${p.done}/${p.total}</span>`;
+  const m = p.motion, word = m && (m.state === 'stalled' || m.state === 'paused') ? ` <span class="pm m-${m.state}">${PLAN_MOTION[m.state]}</span>` : '';
+  return `<span class="tag plan-tag" title="${esc(`${tipText(S.plans.folder ? 'plan-badge-folder' : 'plan-badge')}\n${p.title}: ${p.done} of ${p.total} done${m ? `\n${PLAN_MOTION[m.state]}: ${m.why}` : ''}${planBreakdown(p.breakdown)}`)}">📋 ${p.done}/${p.total}${word}</span>`;
+}
+// A plan's state (#889): moving, waiting on you, stalled (with why), paused. An indicator (DESIGN.md), coloured by state.
+const PLAN_MOTION = { moving: 'moving', waiting: 'waiting on you', stalled: 'stalled', paused: 'paused' };
+function planMotionHtml(p) {
+  const sum = S.plans.plans.find((x) => x.id === p.id), m = sum?.motion;
+  if (!m) return '';
+  const btn = `<button class="plan-pause" data-plan-pause="${sum.paused ? 'resume' : 'pause'}" title="${sum.paused ? 'End the pause: Docket checks the plan at once and nudges its coordinator again when it stalls' : 'Stop Docket nudging this plan\'s coordinator, or waking it for freed tasks, until you resume it. Sessions already working carry on'}">${sum.paused ? '▶ Resume plan' : '⏸ Pause plan'}</button>`;
+  return `<div class="plan-motion m-${m.state}"><span class="pm-st"><span class="pm-dot"></span>${PLAN_MOTION[m.state]}</span><span class="pm-why">${esc(m.why)}</span>${btn}</div>`;
+}
+// Pause plan / Resume plan, from the plan's section or its coordinator's session menu.
+async function pausePlan(pid, paused) {
+  try { await api(`/api/plans/${encodeURIComponent(pid)}/pause`, { client: S.client, paused }); await loadPlans(); }
+  catch (err) { tell(err.message); }
 }
 // The badge's hover, below its done/total: each state's count, and why the total differs from the last task's
 // number (#841). Plans from the plan folder have no breakdown.
@@ -9218,7 +9316,7 @@ function planHtml(p, me, ctx) {
   const empty = finished === p.tasks.length && !u.done ? `Every step is done${dropped ? ' or dropped' : ''}. Turn on ✓ Done to see them.` : 'No steps match.';
   return `<div class="plan" data-plan="${esc(p.id)}"><div class="plan-head"><div class="t">${esc(p.title)}${review}</div>
     <div class="plan-sub">${p.coordinator ? `Coordinated by ${planSessChip(p.coordinator, p.coordinatorTitle, me)} · ` : ''}${where} · <a href="#" data-plan-tree${tip('plan-tree')}>Plan tree</a></div>
-    ${p.tasks.length ? `<div class="plan-bar">${bar}</div><div class="plan-legend"><span style="--c: var(--ok)">${p.done} of ${p.total} done</span><span style="--c: var(--run)">${count('claimed')} in progress</span><span style="--c: var(--muted)">${count('waiting_outside')} waiting outside</span></div>` : ''}</div>
+    ${planMotionHtml(p)}${p.tasks.length ? `<div class="plan-bar">${bar}</div><div class="plan-legend"><span style="--c: var(--ok)">${p.done} of ${p.total} done</span><span style="--c: var(--run)">${count('claimed')} in progress</span><span style="--c: var(--muted)">${count('waiting_outside')} waiting outside</span></div>` : ''}</div>
     <div class="plan-flts"><button class="plan-flt" data-plan-f="active" aria-pressed="${u.active}" title="Only steps in progress or waiting outside Docket">Active<span class="n">${p.tasks.filter(active).length}</span></button><span class="div"></span><button class="plan-flt" data-plan-f="done" aria-pressed="${u.done}" title="${esc(doneTip)}">✓ Done<span class="n">${count('done')}</span></button></div>
     <div class="plan-list">${out || `<div class="hint">${empty}</div>`}</div></div>`;
 }
@@ -9259,6 +9357,8 @@ function planJump(pid, id) {
   r.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); r.classList.add('flash');
 }
 $('tasksBody').addEventListener('click', (e) => {
+  const pz = e.target.closest('[data-plan-pause]');
+  if (pz) { pz.disabled = true; pausePlan(pz.closest('[data-plan]').dataset.plan, pz.dataset.planPause === 'pause'); return; }
   const b = e.target.closest('[data-plan-eye], [data-plan-v], [data-plan-all], [data-plan-f], [data-plan-gap], [data-plan-fold], [data-plan-phase], [data-plan-jump], [data-plan-full], a, .plan-row');
   if (!b || b.matches('a')) return;
   if (b.hasAttribute('data-plan-eye')) { S.planEye = !S.planEye; renderTasks(); return; }
@@ -9514,7 +9614,7 @@ async function addFiles(files) {
   }
   renderChips();
 }
-const placeholder = () => `Message ${openBrand()}. Paste images or drop files here. Enter sends, Shift+Enter for a new line.`;
+const placeholder = () => `Message ${openBrand()}. Paste images or drop files here.`;
 function setSuggestion(text) {
   S.suggestion = text || '';
   const saved = S.selected && S.selected !== 'draft' && !S.live[S.selected];
@@ -9528,6 +9628,7 @@ function useSuggestion() {
 function renderChips() {
   stashBox();
   $('chips').innerHTML = S.attachments.map((a, i) => `<span class="chip">${a.preview ? `<img src="${a.preview}" alt="">` : '📄'} ${esc(a.name)}<button data-rm="${i}" aria-label="Remove"${tip('chip-remove')}>✕</button></span>`).join('');
+  sendState();
 }
 $('chips').onclick = (e) => { const b = e.target.closest('[data-rm]'); if (b) { S.attachments.splice(Number(b.dataset.rm), 1); renderChips(); } };
 $('attachBtn').onclick = () => $('fileInput').click();
@@ -9608,6 +9709,9 @@ const comp = $('composer');
 comp.addEventListener('dragover', (e) => { e.preventDefault(); comp.classList.toggle('drag', [...e.dataTransfer.types].includes('Files')); });
 comp.addEventListener('dragleave', (e) => { if (!comp.contains(e.relatedTarget)) comp.classList.remove('drag'); });
 comp.addEventListener('drop', (e) => { e.preventDefault(); comp.classList.remove('drag'); addFiles([...e.dataTransfer.files]); });
+// Send greys out while there is nothing to send (no text, no file); it stays pressable, and send() does nothing then.
+// autosize and renderChips call it, so every change to the text or the files reaches it.
+function sendState() { const b = $('sendBtn'), none = !$('input').value.trim() && !S.attachments.length; b.classList.toggle('idle', none); b.setAttribute('aria-disabled', none); }
 $('input').addEventListener('input', () => { autosize(); stashBox(); });
 
 // ---------- unsent text, kept per company and session ----------
@@ -9650,6 +9754,7 @@ function pruneBoxes() {
   }
 }
 function autosize() {
+  sendState();
   const t = $('input');
   if (S.composeH && innerWidth > 900) { t.style.maxHeight = 'none'; t.style.height = Math.max(44, Math.min(S.composeH, composeMax())) + 'px'; return; } // a height dragged by hand
   t.style.maxHeight = ''; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 260) + 'px';

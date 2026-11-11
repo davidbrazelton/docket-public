@@ -16,6 +16,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 if (process.argv[2] === '--version') { process.stdout.write('grok 1.0.70 (fake) [stable]\n'); process.exit(0); } // the setup wizard's check
+// `grok models`, Docket's sign-in check: signed in only with FAKE_ACP_SIGNED_IN, so other tests see a desk not signed in.
+if (process.argv[2] === 'models') { process.stdout.write(process.env.FAKE_ACP_SIGNED_IN ? 'You are logged in with grok.com.\n' : 'You are not authenticated.\n'); process.exit(0); }
 const MEMORY = process.env.FAKE_ACP_MEMORY, HOW = process.env.FAKE_ACP_RESUME;
 const memoryFile = (sid) => path.join(MEMORY, `${sid}.json`);
 const recall = (sid) => { try { return JSON.parse(fs.readFileSync(memoryFile(sid), 'utf8')); } catch { return null; } };
@@ -89,7 +91,8 @@ async function docketTurn(m) {
   const slow = text.match(/^SLOW (\d+)$/m); // a line "SLOW <ms>" keeps the turn working that long
   if (slow) await new Promise((r) => setTimeout(r, +slow[1]));
   const call = text.match(/^CALL (\S+) (.*)$/m);
-  if (call) {
+  if (/^You are Docket's autopilot/m.test(text)) said = await pilotRun(text);
+  else if (call) {
     const [, tool, json] = call;
     const toolCall = { toolCallId: 'C' + nextAsk, title: 'use_tool', rawInput: { tool_name: tool, tool_input: JSON.parse(json) }, _meta: { 'x.ai/tool': { name: 'use_tool' } } };
     update({ sessionUpdate: 'tool_call', ...toolCall });
@@ -105,4 +108,25 @@ async function docketTurn(m) {
   }
   update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: said + ' [end of reply]' } }); // never ends on a question
   send({ id: m.id, result: { stopReason: 'end_turn' } });
+}
+// A pilot run's brief (#881): as a stand-in pilot it lists what it may answer and answers each permission prompt
+// allow and each question form with its first options, then ends its turn. A line "PILOT_SLOW <ms>" in its brief (from
+// the pilot notes) keeps the run going that long after it answered, so a test can bring in more while it is going.
+async function pilotRun(text) {
+  const tool = async (name, args) => {
+    const r = await fetch(portal.url + '/api/tools/call', { method: 'POST', headers: { 'content-type': 'application/json', 'x-docket-token': portal.token },
+      body: JSON.stringify({ session: portal.session, name, args }) });
+    return (await r.json()).content?.map((c) => c.text).join('\n') || '';
+  };
+  const listed = await tool('pilot_pending', {});
+  let items = [];
+  try { items = JSON.parse(listed.split('\n\n')[0]); } catch {}
+  const done = [];
+  for (const i of items) {
+    if (i.kind === 'permission') done.push(await tool('pilot_answer', { id: i.id, answer: 'allow' }));
+    else if (i.kind === 'question') done.push(await tool('pilot_answer', { id: i.id, answer: 'answer', answers: Object.fromEntries(i.questions.map((q) => [q.question, q.options[0]])) }));
+  }
+  const slow = text.match(/^PILOT_SLOW (\d+)$/m);
+  if (slow) await new Promise((r) => setTimeout(r, +slow[1]));
+  return `pilot run: ${done.length} answered. ${done.join(' ')}`;
 }

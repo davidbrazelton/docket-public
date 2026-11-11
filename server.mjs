@@ -15,12 +15,12 @@ import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, wokeByItself, noteWoke, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
 import { netError, refused, netText, withRetries, noConversation, startMode, continueNudge, firstMessage, reportText, firstStore } from './first-start.mjs';
-import { KINDS as PILOT_KINDS, cleanRules as cleanPilotRules, ruleFor as pilotRuleFor, mayAnswer as pilotMayAnswer, logLine as pilotLogLine, DEFAULT_RULES as PILOT_DEFAULT_RULES, stricter as stricterLevel, pilotDeskEntry, pilotSessionRefusal } from './pilot.mjs';
+import { KINDS as PILOT_KINDS, cleanRules as cleanPilotRules, ruleFor as pilotRuleFor, mayAnswer as pilotMayAnswer, logLine as pilotLogLine, DEFAULT_RULES as PILOT_DEFAULT_RULES, stricter as stricterLevel, pilotDeskEntry, pilotSessionRefusal, runStep as pilotRunStep, runDone as pilotRunDone, runLine as pilotRunLine, pilotSetting, pilotSettingRefusal } from './pilot.mjs';
 import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting, keptReason, markUnreadReason } from './needs-you.mjs';
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, busyHow, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnLabelOf, BEFORE_REPLY, turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE, lowGearNote } from './reports.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnLabelOf, BEFORE_REPLY, turnNewsFor, reportIsNews, agreedAsNote, mergeOwnedText, heldNewsText, debounceLeft, REPORT_DEBOUNCE, lowGearNote } from './reports.mjs';
 import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from './keep-warm.mjs';
 import { WAITS, CONDITIONS, parseWait, waitWhat, prVerdict, sessionVerdict, portVerdict, portAnswers, timeoutLine, nextLook, waitInline, kindOf, checksOf, stateLine, branchPr } from './waits.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
@@ -57,6 +57,7 @@ import { groupProcesses, folderSize, cpuPercent, diskKeeper, breakdown, sharedSe
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
 import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexAccount, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
+import { planMotion, nudgeFor, nudgeText, freedLine, MOTION_TICK_MS } from './plan-motion.mjs';
 import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES, PLAN_RULES_VERSION, reviewDue, planOpen, phaseGroups } from './plans.mjs';
 import { REVIEW_EVERY_MS, reviewSent, nextReview, reviewText } from './plan-review.mjs';
 import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT } from './plan-use.mjs';
@@ -787,6 +788,7 @@ function signedOutTurn(s) {
 // The sign-in of client's engine is back. how: 'user' when the person signed in, 'seen' when Docket noticed it.
 // Each session marked as failed on it is looked at in turn (resumeAfterSignIn).
 function signedInAgain(client, engine = 'claude', how = 'seen') {
+  if (client.id === state.pilot?.desk && pilotRun.problem) { pilotRun.problem = null; setTimeout(pilotLook, 0); } // the autopilot's first run starts on its own (#886)
   for (const [id, rec] of Object.entries(state.sessions)) {
     if (rec.signinFail && rec.client === client.id && (rec.engine || 'claude') === engine) queueSignInResume(id, how);
   }
@@ -1095,6 +1097,7 @@ async function resumeAll(reason = 'user') {
   if (!paused) return { resumed: 0 };
   state.paused = null; // first, so what follows is sent rather than held again
   saveState(); broadcastPause();
+  checkPlansAgain(); // the plan checks run once (#889)
   const plan = resumePlan(paused);
   logEvent(`resumed all (${reason})`, `${plan.filter((x) => x.kind === 'note').length} told to carry on, ${paused.held.length} held messages sent`);
   let resumed = 0;
@@ -1543,6 +1546,7 @@ function planText(client, p) {
   const lines = [`Plan ${p.id}: ${p.title}`, `File: ${p.file}`, `Coordinator: ${p.coordinator ? `${p.coordinatorTitle || knownTitle(client, p.coordinator) || 'a session'} (${p.coordinator})` : 'none'}`];
   if (p.parent) lines.push(`Part of: plan ${p.parent.plan}, task ${p.parent.task}`);
   lines.push(`Progress: ${r.done} of ${r.total} done`);
+  if (planPaused(p.id)) lines.push('Paused by the user (Pause plan): Docket sends no nudges for it and does not wake its coordinator for freed tasks. Start no new work for it until the user presses Resume plan; only the user pauses or resumes a plan.');
   if (reviewDue(p)) lines.push(`Needs review against the new plan rules (version ${PLAN_RULES_VERSION}): its coordinator checks it with the plan tools, then marks it done with plan_review_done.`);
   if (p.goal) lines.push('', p.goal);
   // The user's steps at a glance (#652), before the full list.
@@ -1576,12 +1580,101 @@ const stateText = (t) => t.state === 'waiting_outside' ? `waiting outside Docket
 function plansChanged(client, plan, nowReady = [], actor = '') {
   broadcast({ t: 'plans', client: client.id });
   closePlanOffersOf(client, plan?.coordinator);
-  if (!plan?.coordinator || plan.coordinator === actor || !nowReady.length) return;
+  if (!plan?.coordinator || plan.coordinator === actor || !nowReady.length || planPaused(plan.id)) return;
   const by = actor && live.get(actor);
   const item = { kind: 'plan', planId: plan.id, title: plan.title, tasks: nowReady.map((t) => ({ id: t.id, title: t.title + userTag(t) })),
     ...(by?.status === 'running' ? { waitFor: actor } : {}), ...(by?.turnBy === 'person' ? { byPerson: true } : {}) };
   wakeWith(client, plan.coordinator, item, `Plan "${plan.title}": ${nowReady.map((t) => `${t.id} ${t.title}${userTag(t)}`).join('; ')} ${nowReady.length === 1 ? 'is' : 'are'} now free to start.`)
     .catch((e) => console.log('[plan wake]', e.message));
+}
+// ---------- keeping plans moving (#889, plan-motion.mjs) ----------
+// Pause plan / Resume plan is the user's (state.planPaused: plan id -> { at }); no tool lets a coordinator set it.
+// While a plan is paused, Docket neither nudges its coordinator nor wakes it for freed tasks.
+const planPaused = (id) => !!state.planPaused?.[id];
+const pausedWord = (p) => planPaused(p.id) ? 'plan' : state.paused ? 'docket' : '';
+// Where a session stands for a plan (standing in plan-motion.mjs).
+function planLook(client) {
+  return (id) => {
+    const s = live.get(id);
+    if (wasDeleted(id)) return { st: 'stopped', idleMs: Infinity, why: 'it was deleted' };
+    if (!s || s.status === 'ended') return { st: 'stopped', idleMs: Infinity, why: isArchived(client, id) ? 'it was closed' : 'it is not running' };
+    return { st: liveChildState(s), idleMs: Date.now() - (s.lastActivity || 0) };
+  };
+}
+// The coordinator, the same way, except that one not running here but not closed can still be woken (wakeWith resumes
+// it; resting: its last reply is read before it is nudged), and one with reports on their way to it is about to work.
+function coordLook(client, id) {
+  if (!id) return null;
+  const s = live.get(id);
+  if (!s || s.status === 'ended') return wasDeleted(id) || isArchived(client, id) ? { st: 'stopped', idleMs: Infinity, why: 'was closed' } : { st: 'done', idleMs: Infinity, resting: true };
+  if (s.pendingReports?.length) return { st: 'working', idleMs: 0 };
+  return { st: liveChildState(s), idleMs: Date.now() - (s.lastActivity || 0) };
+}
+const motionOf = (client, p, look = planLook(client)) => planMotion({ plan: p, look, coord: coordLook(client, p.coordinator), paused: pausedWord(p) });
+// The end-of-turn check and the orphaned-task check, for one plan: wakes its coordinator when nudgeFor says so.
+// state.planNudges (plan id -> { sig, told }) keeps what the last nudge saw, so the same state is never nudged twice.
+async function nudgeCheck(client, p, look = planLook(client)) {
+  if (!p.coordinator || state.paused) return;
+  const coord = coordLook(client, p.coordinator), memo = state.planNudges?.[p.id];
+  const n = nudgeFor({ plan: p, look, coord, paused: pausedWord(p), last: memo });
+  if (JSON.stringify(n.last) !== JSON.stringify(memo || { sig: '', told: [] })) { (state.planNudges ||= {})[p.id] = n.last; saveState(); }
+  if (!n.send) return;
+  if (coord.resting) { // not running here: a last reply asking the user something is theirs to answer first
+    const ev = await loadTranscript(client, p.coordinator).catch(() => []);
+    if (endsWaiting(ev.findLast((e) => e.k === 'text')?.text || '')) return;
+    // reading it took time: what is said must be what the plan is now
+    const now = plansOf(client).list().find((x) => x.id === p.id), again = now && nudgeFor({ plan: now, look, coord, paused: pausedWord(now), last: memo });
+    if (!again?.send) return;
+    p = now; Object.assign(n, again);
+    state.planNudges[p.id] = n.last; saveState();
+  }
+  const what = [n.free.length && `${n.free.map((t) => t.id).join(', ')} free to start`, ...n.orphans.map((o) => `${o.task.id}'s session ${o.kind === 'waiting' ? 'waits on the user' : o.kind === 'stopped' ? 'stopped' : 'is idle'}`)].filter(Boolean).join('; ');
+  logEvent('plan nudged', `${p.id} "${p.title}" to ${p.coordinator}: ${what}`);
+  await wakeWith(client, p.coordinator, { kind: 'nudge', planId: p.id, title: p.title, text: nudgeText(p, n), at: Date.now() },
+    `Docket nudged this session: plan "${p.title}" had stalled (${what}).`);
+}
+// Every MOTION_TICK_MS: pages redraw a desk's plans when a plan's state (moving, waiting on you, stalled, paused) changed,
+// and, unless Docket is paused, each open plan gets the checks.
+const motionSent = new Map(); // desk id -> the plans' states last sent
+let motionBusy = false; // one look at a time: a slow one (a transcript read, a resume) is never overlapped
+async function motionTick() {
+  if (motionBusy) return;
+  motionBusy = true;
+  try { await motionLook(); } finally { motionBusy = false; }
+}
+async function motionLook() {
+  for (const client of CLIENTS) {
+    if (!plansOn(client)) continue;
+    const plans = plansOf(client).list(), look = planLook(client);
+    const now = JSON.stringify(plans.map((p) => [p.id, motionOf(client, p, look)]));
+    if (motionSent.has(client.id) && motionSent.get(client.id) !== now) broadcast({ t: 'plans', client: client.id });
+    motionSent.set(client.id, now);
+    if (state.paused) continue;
+    for (const p of plans) await nudgeCheck(client, p, look).catch((e) => console.log('[plan nudge]', e.message));
+  }
+}
+setInterval(() => motionTick().catch((e) => console.log('[plan motion]', e.message)), MOTION_TICK_MS).unref?.();
+// After Resume all or Resume plan the checks run once, as if no nudge had been sent before.
+function checkPlansAgain(client = null, id = '') {
+  if (id) delete state.planNudges?.[id]; else state.planNudges = {};
+  saveState();
+  setTimeout(() => {
+    if (!client) return motionTick().catch((e) => console.log('[plan motion]', e.message));
+    const p = plansOf(client).list().find((x) => x.id === id);
+    if (p) nudgeCheck(client, p).catch((e) => console.log('[plan nudge]', e.message));
+  }, 3000);
+}
+// Pause plan / Resume plan, from the coordinator's session menu or the plan's section of the Plan panel.
+function setPlanPaused(client, p, on) {
+  if (on === planPaused(p.id)) return;
+  if (on) (state.planPaused ||= {})[p.id] = { at: Date.now() };
+  else delete state.planPaused[p.id];
+  saveState();
+  logEvent(on ? 'plan paused' : 'plan resumed', `${p.id} "${p.title}"`);
+  const c = live.get(p.coordinator);
+  if (c && c.status !== 'ended') { addEvent(c, { k: 'note', text: on ? `Plan "${p.title}" paused (Pause plan): Docket sends no nudges for it, and does not wake this session for freed tasks, until Resume plan.` : `Plan "${p.title}" resumed (Resume plan).` }); pushSession(c); }
+  plansChanged(client, p);
+  if (!on) checkPlansAgain(client, p.id);
 }
 // The one-time review against new plan rules (#661, plan-review.mjs). Only a coordinator that is open, between turns,
 // not archived, and whose tool list has plan_review_done (reviewTool, set when its tools are listed) is sent it; a
@@ -1614,8 +1707,10 @@ setInterval(() => { try { reviewTick(); } catch (e) { console.log('[plan review]
 const plansShown = (client) => plansOn(client) || (!!client?.planSwitch && plansOnFor(client.planSwitch.to));
 function plansSummary(client) {
   if (!plansShown(client)) return { on: false, plans: [] };
-  const store = plansOf(client), all = store.list();
+  const store = plansOf(client), all = store.list(), look = planLook(client);
+  // motion: { state: 'moving' | 'waiting' | 'stalled' | 'paused', why }, null once nothing is left (#889)
   return { on: true, plans: all.map((p) => ({ id: p.id, title: p.title, file: p.file, coordinator: p.coordinator, parent: p.parent, ...store.rollup(p.id, all), breakdown: store.breakdown(p.id, all), needsReview: reviewDue(p),
+    motion: motionOf(client, p, look), paused: planPaused(p.id),
     holders: [...new Set(p.tasks.filter((t) => t.holder && t.state !== 'done' && t.state !== 'dropped').map((t) => t.holder))] })) };
 }
 function planDetail(client, id) {
@@ -1851,12 +1946,13 @@ function planToolDefs(parent) {
         waits_on: d(z.string().optional(), 'With state waiting_outside (required then): what the task waits on outside Docket, such as other people\'s work, in a few words, e.g. "Quo to issue the Hub\'s phone number"'),
         for_user: d(z.boolean().optional(), 'Coordinator only: true makes this task the user\'s step (only for what no session could do: a decision, money, something they asked to do themselves; no session claims it), false gives it back to sessions'),
         phase: d(z.string().optional(), 'Coordinator only: move the task to this phase of the plan; an empty string takes it out of any phase'),
+        after: d(z.array(z.string()).optional(), 'Coordinator only: the tasks this one waits on, replacing its list (an empty list frees it). Loosen an "after" that is not truly needed, so the task can run now'),
         plan_id: pa('Plan id; defaults to the plan where this session holds that task, then its own plan'),
       },
-      async ({ task_id: task, state: st, note, links, kind, waits_on: waitsOn, for_user: forUser, phase, plan_id: plan }) => run(() => {
+      async ({ task_id: task, state: st, note, links, kind, waits_on: waitsOn, for_user: forUser, phase, after, plan_id: plan }) => run(() => {
         const ref = taskRef(task, plan), id = planFor(client, parent, ref.plan, { want: 'update', task: ref.task });
         if (!id) return reply('Give the plan id: this session holds no such task and coordinates no plan.', true);
-        const r = store.update(id, ref.task, { state: st, note, links, kind, waitsOn, forUser, phase }, parent.id, parent.title);
+        const r = store.update(id, ref.task, { state: st, note, links, kind, waitsOn, forUser, phase, after }, parent.id, parent.title);
         plansChanged(client, r.plan, r.nowReady, parent.id);
         const all = store.list(), done = r.plan.tasks.some((t) => t.state === 'done') && r.plan.tasks.every((t) => t.state === 'done' || t.state === 'dropped');
         const up = done && r.plan.parent && `Every task in this plan is done, so task ${r.plan.parent.task} of plan ${r.plan.parent.plan} may be done too.`;
@@ -2071,7 +2167,7 @@ function portalToolDefs(parent) {
         {
           id: z.string().describe('Session id'), message: z.string().describe('The message, complete on its own'),
           gear: z.string().optional().describe(`Only for a Shift session you started: raise it to this gear before it reads the message (never lower). ${Object.entries(GEARS).map(([b, gs]) => `${BRANDS[b]?.name || b}: ${gs.map((g) => g.key).join(', ')}`).join('; ')}. Set it to the top gear when the message corrects a result that was wrong or incomplete`),
-          done: z.boolean().optional().describe('True when this message tells the session you checked and agree its work is done. Its reply ("complete and ready to close") then comes into your chat as a note instead of waking you, unless it is the last session you are waiting on'),
+          done: z.boolean().optional().describe('True when this message tells the session you checked and agree its work is done. Its reply ("complete and ready to close") then comes into your chat as a note instead of waking you, unless it is the last session you are waiting on. A pull request it opened stays its own to ask the user to merge: never take the merge over ("I will handle it", "merge from my session"); it then ends on its merge ask'),
         },
         async ({ id, message, gear: to, done }) => {
           // A raise: decided on the child's saved record, which a resume reads its gear from.
@@ -2127,7 +2223,7 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: 'This turn will end quietly. Finish with your usual short reply.' }] };
         }),
       tool('mark_turn',
-        'Say why this turn needs the user, for the short label on your row in the session list: "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default), including a reply that lists things left for the user before the session can close. Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. "merge" with pr only when the turn ends on a plain ask to merge that one pull request you made ("Say merge and I will merge pull request #146."): Docket then shows a Merge button under your reply that sends "merge" as the user\'s message, so you still do the merge. Never "merge" for several pull requests, a merge order, a draft, a conflict, failing or running checks, or anything else for the user to do or decide first: use "reply" and let them answer in words. Pass it as label (state works too). Call it at most once per turn. ' + BEFORE_REPLY,
+        'Say why this turn needs the user, for the short label on your row in the session list: "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default), including a reply that lists things left for the user before the session can close. Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. "merge" with pr only when the turn ends on a plain ask to merge that one pull request you made ("Say merge and I will merge pull request #146."): Docket then shows a Merge button under your reply that sends "merge" as the user\'s message, so you still do the merge. That ask is yours also when your parent says your work is done, whatever its message says. Never for a pull request a session you started made: that session owns the ask, so link to it ("[its title](#session:<id>) is waiting on you to merge #146"). Never "merge" for several pull requests, a merge order, a draft, a conflict, failing or running checks, or anything else for the user to do or decide first: use "reply" and let them answer in words. Pass it as label (state works too). Call it at most once per turn. ' + BEFORE_REPLY,
         {
           label: z.enum(['done', 'question', 'reply', 'merge']).optional().describe('What this turn needs from the user'),
           state: z.enum(['done', 'question', 'reply', 'merge']).optional().describe('Another name for label'),
@@ -4233,9 +4329,11 @@ async function savedRow(client, id) {
 async function deliverToSession(clientId, id, message, from, before, done = false) {
   const news = from ? turnNewsFor({ message, done }) : '';
   const was = live.get(id);
+  // Its pull requests read afresh: one it opened on another branch than the snapshot's still counts (#895).
+  if (news === 'agreed' && was && was.status !== 'ended') await refreshStateSnap(was).catch(() => {});
+  const snap = news === 'agreed' ? stateSnaps.get(id) : null;
   if (news === 'agreed' && was && was.status !== 'ended' && state.sessions[id]?.lastDone && !before) {
-    if (!stateSnaps.has(id)) await refreshStateSnap(was).catch(() => {});
-    if (agreedAsNote({ news, lastDone: true, state: liveChildState(was), pr: stateSnaps.get(id)?.pr })) {
+    if (agreedAsNote({ news, lastDone: true, state: liveChildState(was), pr: snap?.pr, prs: snap?.open })) {
       addEvent(was, { k: 'note', text: `"${from.title || from.id}" checked and agrees the work is done (no turn ran, since this session had already said it is ready to close): ${message}` });
       logEvent(`agreed as a note: ${sessionTag(was)}`, `from ${sessionTag(from)}`);
       return { reportsTo: state.sessions[id]?.reportsTo || null, restored: false, noted: true };
@@ -4253,7 +4351,8 @@ async function deliverToSession(clientId, id, message, from, before, done = fals
   else delete rec.replyTo;
   saveState();
   const back = from && rec.replyTo ? ' When you finish this work, that session gets a short report of your reply.' : '';
-  sendToSession(target, { text: message, attachments: [], from: 'session', context: from ?`(Sent by the session "${from.title || from.id}" in the portal, id ${from.id}.${back})` : '', news });
+  const ask = news === 'agreed' ? mergeOwnedText(snap?.open?.length ? snap.open : [snap?.pr]) : '';
+  sendToSession(target, { text: message, attachments: [], from: 'session', context: from ?`(Sent by the session "${from.title || from.id}" in the portal, id ${from.id}.${back}${ask ? ' ' + ask : ''})` : '', news });
   return { reportsTo, restored };
 }
 // A notice from Docket itself: a line in the chat, and the same words to Claude (not shown as the person's message).
@@ -4548,8 +4647,8 @@ function flushReports(parent) {
   for (const r of reports) if (r.childId) parent.waitingChildren?.delete(r.childId);
   const waiting = [...(parent.waitingChildren || [])].map(([id, title]) => `- "${title}" (id ${id}) is waiting on the user in its own chat.`);
   parent.waitingChildren?.clear();
-  const line = (r) => r.kind === 'plan'
-    ? `- Plan "${r.title}" (${r.planId}), which you coordinate: ${r.tasks.map((t) => `${t.id} ${t.title}`).join('; ')} ${r.tasks.length === 1 ? 'is' : 'are'} now free to start. Start ${r.tasks.length === 1 ? 'it' : 'every one of them'} now as the plan's rules say, unless the user said to wait${r.tasks.some((t) => t.title.endsWith(userTag({ forUser: true }))) ? "; gather the user's steps that are due into one message, saying in a line each what to decide or do" : ''}.`
+  const line = (r) => r.kind === 'plan' ? freedLine(r, userTag({ forUser: true }))
+    : r.kind === 'nudge' ? r.text
     : `- "${r.title}" (id ${r.childId}) finished ${r.sent ? 'the work you sent it with send_to_session (it reports to another session, so close_session is not yours to use on it)' : 'a turn'}.${r.jobs ? ' ' + leftoverJobsText(r.jobs) : ''}${r.gear ? ' ' + lowGearNote(r.gear, r.top) : ''} Its latest reply begins: ${r.text}`;
   const body = [...reports.map(line), ...waiting].join('\n');
   sendToSession(parent, { text: '', system: true, report: true, reported: reports.map((r) => r.childId).filter(Boolean), context: `<session-report>
@@ -4632,7 +4731,7 @@ async function refreshStateSnap(s) {
     // A pull request opened in the turn just ended: by branch, "none" is otherwise kept for ten minutes.
     const stale = [...ghByBranch].filter(([k, v]) => branch && k.endsWith('|' + branch.toLowerCase()) && Date.now() - v.at > 60000);
     if (stale.length && !branchPr(links?.prs, branch)) { for (const [k] of stale) ghByBranch.delete(k); links = await ask(); }
-    stateSnaps.set(s.id, { at: Date.now(), branch, pr: branchPr(links?.prs, branch) });
+    stateSnaps.set(s.id, { at: Date.now(), branch, pr: branchPr(links?.prs, branch), open: (links?.prs || []).filter(openPr) });
   } finally { s.stateBusy = false; }
 }
 function stateLineFor(s, reported = []) {
@@ -5022,22 +5121,38 @@ function dismissInbox(clientId, id) {
 }
 
 // ---------- the autopilot (#821; the rules are in pilot.mjs) ----------
-// A pilot session (Grok first, any brand) answers what waits on the person, across every desk on this computer, under
-// rules the person keeps here. state.pilot: { on, session, desk } (the switch in ☰ > Docket settings > Autopilot, the session
-// marked as pilot, and the autopilot's own desk, #875). The pilot is a desk: the first time the switch goes on Docket
-// makes the Autopilot desk (or uses the one bound in Docket settings) and starts the pilot session there, and only a session
-// of that desk can be the pilot. Only that session gets the pilot tools, and with the switch off they refuse every
-// call. What waits on the autopilot's own desk stays with the person. Whatever the pilot answers is marked answered
-// by pilot on the card and in the chat, and kept in its log.
-// The rules: data/pilot-rules.json (per computer; written with the safe defaults the first time the switch goes on).
+// A pilot answers what waits on the person, across every desk on this computer, under rules the person keeps here.
+// state.pilot: { on, desk, brand, gear, session, runAt, runs } (the switch in ☰ > Docket settings > Autopilot, the
+// autopilot's own desk, #875, the brand and starting gear its runs use, #881, the run going now and when it started,
+// and the last runs). The pilot is a desk: the first time the switch goes on Docket makes the Autopilot desk (or uses
+// the one bound in Docket settings). It works in short runs (#881): when something it may answer comes in, Docket
+// waits a short delay to batch what comes close together, then starts a fresh session on that desk for it; the run
+// answers and ends, and is archived. One run at a time; what comes during a run goes to the next. Only the run going
+// now gets the pilot tools, and with the switch off they refuse every call. What waits on the autopilot's own desk
+// stays with the person. Whatever the pilot answers is marked answered by pilot on the card and in the chat, and kept
+// in its log, which also links each run.
+// What it remembers between runs lives in files each run reads: the rules, data/pilot-rules.json (per computer;
+// written with the safe defaults the first time the switch goes on), the log, and the pilot notes on its desk.
 const PILOT_RULES_FILE = path.resolve(process.env.PORTAL_PILOT_RULES || path.join(DATA_DIR, 'pilot-rules.json'));
 const PILOT_LOG = path.join(DATA_DIR, 'pilot-log.jsonl');
 const PILOT_OFF = 'The autopilot is switched off (☰ > Docket settings > Autopilot), so every pilot tool refuses until the user turns it on.';
+const PILOT_BATCH_MS = +process.env.PORTAL_PILOT_BATCH_MS || 10000; // how long a batch fills before its run starts
+const PILOT_BOOT = Date.now(); // a run's session not back yet just after a restart is not taken as ended
 const pilotFeeds = new Set(); // open /api/pilot/events responses
 let pilotSeen = new Map(); // id -> item, as last looked
-let pilotWoken = false; // the pilot was told of new items and has not called pilot_pending since
+// The next run: since, when its first item was seen; timer, to start it once the batch delay is up; offered, ids a run
+// was given or listed, never offered to another; starting, a run being started; problem, why runs cannot start now.
+const pilotRun = { since: null, timer: null, offered: new Set(), starting: false, problem: null };
 const remotePilot = new Map(); // remote desk id -> { items, error }: what waits on a remote desk this computer holds a pilot key for (#827)
 const pilotOn = () => !!state.pilot?.on;
+const pilotFlying = () => pilotOn() && !!pilotDesk();
+// The autopilot's desk is special (#886): first in every list of desks, set up by Docket and not edited by hand.
+const isPilotDesk = (id) => !!id && id === state.pilot?.desk && !!clientById(id);
+const pilotFirst = (list) => [...list.filter((c) => isPilotDesk(c.id)), ...list.filter((c) => !isPilotDesk(c.id))];
+// Its folders, made again when missing whenever the switch goes on.
+function pilotDeskFolders(d) {
+  for (const f of [d.folder, d.home, d.grokHome, d.codexHome].filter(Boolean)) try { fs.mkdirSync(f, { recursive: true }); } catch (e) { logEvent('autopilot: folder not made', `${f}: ${e.message}`); }
+}
 // The autopilot's own desk (#875), and the pilot session only while it is a session of that desk: one saved before
 // #875 on another desk, or left on a desk that is no longer the autopilot's, is no pilot.
 const pilotDesk = () => clientById(state.pilot?.desk) || null;
@@ -5052,16 +5167,21 @@ function writePilotRulesIfMissing() {
   fs.writeFileSync(PILOT_RULES_FILE, JSON.stringify({ ...PILOT_DEFAULT_RULES, desks: {} }, null, 2) + '\n');
 }
 function pilotLog(line) {
-  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.appendFileSync(PILOT_LOG, JSON.stringify(pilotLogLine(line)) + '\n'); } catch {}
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.appendFileSync(PILOT_LOG, JSON.stringify(line.kind === 'run' ? pilotRunLine(line) : pilotLogLine(line)) + '\n'); } catch {}
   broadcast({ t: 'pilot', pilot: pilotBrief() });
 }
+// The pilot notes (#881): a short to-do list and things to remember, on the autopilot's desk, read by every run.
+const pilotNotesFile = (d) => path.join(d.folder, 'pilot-notes.md');
+const readPilotNotes = (d) => { try { return fs.readFileSync(pilotNotesFile(d), 'utf8'); } catch { return ''; } };
 function pilotLogTail(n = 50) {
   try { return fs.readFileSync(PILOT_LOG, 'utf8').trim().split('\n').slice(-n).reverse().map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; }
 }
-// What the page's indicator needs: on, the pilot session, and flying (on, with a pilot set).
+// What the page's indicator needs: on, the run going now (session), the brand and gear runs use, and flying (on,
+// with the autopilot's desk set, so runs start as things come in).
 function pilotBrief() {
-  const id = pilotSession(), rec = id ? state.sessions[id] : null;
-  return { on: pilotOn(), session: id, title: id ? (live.get(id)?.title || rec?.title || 'Untitled') : '', desk: rec?.client || (id && live.get(id)?.client) || null, flying: pilotOn() && !!id };
+  const id = pilotSession(), rec = id ? state.sessions[id] : null, { brand, gear } = pilotSetting(state.pilot, GEARS);
+  return { on: pilotOn(), session: id, title: id ? (live.get(id)?.title || rec?.title || 'Untitled') : '', desk: rec?.client || (id && live.get(id)?.client) || null,
+    flying: pilotFlying(), brand, gear, brandName: BRANDS[brand]?.name || brand };
 }
 // Everything waiting on the person, across desks, each with a stable id (kind:its own id), its desk and session, and
 // what the rules let the pilot do with it (may: allow | deny | ask). The pilot's own session is left out, and the rest
@@ -5110,7 +5230,8 @@ function waitingOnPerson({ rules = pilotRules() } = {}) {
 // answers: a question form's picks, keyed by question text. Returns { ok, why }.
 // from, desk: a pilot on another computer answering with a pilot key (#827): only that desk's items, and this
 // computer's own switch does not count (the key is the person's say-so); the rules here still do.
-async function pilotAnswer(id, answer, { answers, from, desk } = {}) {
+// run: the pilot run answering, its session id (#881), for the log.
+async function pilotAnswer(id, answer, { answers, from, desk, run } = {}) {
   if (!from && !pilotOn()) return { ok: false, why: PILOT_OFF };
   if (!from && id.startsWith('r:')) await refreshRemotePilot();
   const item = waitingOnPerson().find((x) => x.id === id && (!from || (x.desk === desk && x.kind !== 'remote' && !x.there)));
@@ -5118,7 +5239,7 @@ async function pilotAnswer(id, answer, { answers, from, desk } = {}) {
   const may = pilotMayAnswer(pilotRules(), item, answer, item.remoteMay, pilotDesk()?.id);
   if (may.ok && item.kind === 'question' && answer === 'answer' && !(answers && typeof answers === 'object' && Object.keys(answers).length))
     Object.assign(may, { ok: false, why: 'A question form needs answers: { "question text": "the option label" }.' });
-  const tried = { item, answer, ok: may.ok, why: may.why, from };
+  const tried = { item, answer, ok: may.ok, why: may.why, from, run };
   if (!may.ok) { pilotLog(tried); logEvent(`autopilot refused: ${item.kind}`, `${item.id} ${answer}: ${may.why}`); return { ok: false, why: may.why }; }
   if (item.there) return answerThere(item, answer, answers, tried);
   const key = id.slice(item.kind.length + 1), s = item.session ? live.get(item.session) : null;
@@ -5153,12 +5274,12 @@ async function pilotAnswer(id, answer, { answers, from, desk } = {}) {
   pilotLog({ ...tried, answer: said });
   return { ok: true, why: may.why };
 }
-// Looks at what waits now: new items go to the feeds, and the pilot is woken once (until it next calls
-// pilot_pending) when one of them is something its rules let it answer. Runs shortly after anything the pages hear,
-// and every 15 seconds for what they do not (a pull request found open).
+// Looks at what waits now: new items go to the feeds, a run that is done ends, and a run starts for what the rules
+// let the pilot answer (pilotRunTick). Runs shortly after anything the pages hear, and every 15 seconds for what they
+// do not (a pull request found open).
 function pilotLook() {
   const sid = pilotSession();
-  pilotWatch.armed = !!sid || pilotFeeds.size > 0;
+  pilotWatch.armed = pilotFlying() || !!state.pilot?.session || pilotFeeds.size > 0;
   if (!pilotWatch.armed) { pilotSeen = new Map(); return; }
   // A session just marked as pilot gets its tools when it next starts; one running is started again once idle.
   const ps = sid ? live.get(sid) : null;
@@ -5171,13 +5292,32 @@ function pilotLook() {
   pilotSeen = now;
   for (const i of added) pilotFeed('pending', i);
   for (const id of gone) pilotFeed('settled', { id });
-  const forPilot = added.filter((i) => i.may !== 'ask');
-  if (pilotOn() && sid && forPilot.length && !pilotWoken && !ps?.reloading) {
-    pilotWoken = true;
-    const rec = state.sessions[sid];
-    noticeToSession(rec?.client || ps?.client, sid, `${forPilot.length} new item${forPilot.length === 1 ? '' : 's'} waiting that your autopilot rules let you answer: ${forPilot.slice(0, 5).map((i) => `${i.id} (${i.kind}, ${i.deskName}: ${clip(i.what, 80)})`).join('; ')}. Call mcp__portal__pilot_pending for the full list, then pilot_answer.`)
-      .catch((e) => { pilotWoken = false; logEvent('autopilot: could not wake the pilot', e.message); });
+  pilotRunTick([...now.values()]);
+}
+// The runs (#881): the run going now ends once its turn is done, and the next starts when the batch delay is up and
+// none is going (pilotRunStep in pilot.mjs). items: what waits now.
+function pilotRunTick(items) {
+  const p = state.pilot || {};
+  if (p.session && !p.runAt) { markPilot(p, null); saveState(); } // a long-lived pilot from before #881 is left as it is, and no run
+  if (p.session) {
+    const s = live.get(p.session), why = pilotRunDone(s, { tasks: s ? runningTasks(s) : 0, at: p.runAt });
+    if (why && (s || Date.now() - PILOT_BOOT > 60000)) endPilotRun(why);
   }
+  const ids = new Set(items.map((i) => i.id));
+  for (const id of pilotRun.offered) if (!ids.has(id)) pilotRun.offered.delete(id); // settled: an id never comes back
+  if (!pilotFlying()) { pilotRun.since = null; return; }
+  // A brand that is not set up or signed in: looked at again after a minute, not on every look.
+  if (pilotRun.problem && Date.now() - pilotRun.problem.at < 60000) return;
+  const step = pilotRunStep({ items, offered: pilotRun.offered, running: !!p.session || pilotRun.starting, since: pilotRun.since, delay: PILOT_BATCH_MS });
+  if (step.act === 'idle') { pilotRun.since = null; return; }
+  if (step.act === 'busy') return;
+  if (step.act === 'wait') {
+    if (pilotRun.since === null) pilotRun.since = Date.now();
+    if (!pilotRun.timer) pilotRun.timer = setTimeout(() => { pilotRun.timer = null; pilotLook(); }, step.ms + 50);
+    return;
+  }
+  pilotRun.since = null;
+  startPilotRun(step.items).catch((e) => logEvent('autopilot: run not started', e.message));
 }
 pilotWatch.look = pilotLook;
 setInterval(pilotLook, 15000);
@@ -5194,7 +5334,7 @@ function forgetPilotKey(d, why) {
 let remotePilotBusy = null;
 function refreshRemotePilot() {
   return remotePilotBusy ||= (async () => {
-    const flying = pilotOn() && !!pilotSession() && remoteOn();
+    const flying = pilotFlying() && remoteOn();
     for (const d of remoteDesks()) {
       if (!flying || !d.pilotKey) { remotePilot.delete(d.id); continue; }
       if (d.pilotKey.expires <= Date.now()) { forgetPilotKey(d, 'its time ran out'); continue; }
@@ -5207,7 +5347,7 @@ function refreshRemotePilot() {
     }
   })().catch((e) => logEvent('autopilot: could not look at remote desks', e.message)).finally(() => { remotePilotBusy = null; });
 }
-setInterval(() => { if (remotePilot.size || (pilotOn() && pilotSession() && remoteDesks().some((d) => d.pilotKey))) refreshRemotePilot().then(pilotLook); }, 15000);
+setInterval(() => { if (remotePilot.size || (pilotFlying() && remoteDesks().some((d) => d.pilotKey))) refreshRemotePilot().then(pilotLook); }, 15000);
 // An answer to an item on a remote desk, passed on with the pilot key; that computer checks its own rules again.
 async function answerThere(item, answer, answers, tried) {
   const d = remoteDeskById(item.desk);
@@ -5236,23 +5376,77 @@ function makePilotDesk() {
   const made = [r.home, r.grokHome].filter((h) => h && !fs.existsSync(h));
   if (made.length) r.madeFolders = made;
   try { fs.mkdirSync(r.folder, { recursive: true }); } catch (err) { throw new Error(`Could not make the Autopilot desk's working folder ${r.folder}: ${err.message}`); }
-  saveCompanies([...CLIENTS, r]);
+  saveCompanies([r, ...CLIENTS]);
   const d = clientById(r.id);
   runDeskCheck(d).catch(() => {});
   logEvent('autopilot: desk made', `${d.name}: ${d.home}`);
   return d;
 }
-const PILOT_BRIEF = "You are Docket's autopilot on this computer. This desk is the autopilot's own, kept apart from the desks where work happens. Call mcp__portal__pilot_pending to see what waits on the user across the desks, and answer with mcp__portal__pilot_answer only what it marks may: allow (or decline what it marks deny). Leave everything marked ask for the user, including anything on this desk. Docket checks its rules again on every answer and wakes you when something new arrives that you may answer; until then, do nothing. Keep each reply to a line or two.";
-// The pilot session on the autopilot's desk: Grok when the desk has it, else the desk's own default brand. It is
-// marked as pilot before its tools are first asked for, so it has them from its first turn.
-function startPilotSession(d) {
-  const s = startSession({ clientId: d.id, title: 'Autopilot', engine: brandsOf(d).includes('grok') ? 'grok' : defaultEngineOf(d) });
-  state.sessions[s.id].titleBy = 'you';
-  state.pilot.session = s.id;
-  touchSession(d.id, s.id);
-  sendToSession(s, { text: PILOT_BRIEF, attachments: [], from: 'brief', context: "(From Docket: the user turned the autopilot on in ☰ > Docket settings > Autopilot, and Docket started this session on the autopilot's own desk as the pilot.)" });
-  logEvent('autopilot: pilot started', `${d.name}: ${sessionTag(s)}`);
-  return s;
+// The brief a run starts with (#881): what to do in this one turn, the items it was started for, and what it must
+// remember, from the files each run reads (its notes, its last answers in the log, and where the rules are).
+function pilotRunBrief(d, items) {
+  const notes = readPilotNotes(d).trim();
+  const last = pilotLogTail(12).filter((l) => l.kind !== 'run').map((l) => `- ${new Date(l.at).toISOString().slice(0, 16).replace('T', ' ')} ${l.kind} on ${companyName(l.desk) || l.desk}: ${l.answer}${l.ok ? '' : ` (refused: ${clip(l.why, 80)})`} - ${clip(l.what || l.title, 80)}`);
+  return `You are Docket's autopilot on this computer, in one short run. This desk is the autopilot's own, kept apart from the desks where work happens. Docket started this session for the items below and archives it as soon as your turn ends, so do it all in this one turn, then stop. The next run is a fresh session: it knows only your notes and the log.
+
+1. Call mcp__portal__pilot_pending for the list as it is now (it may have changed since).
+2. Answer with mcp__portal__pilot_answer only what it marks may: allow (or decline what it marks deny). Leave everything marked ask for the user, including anything on this desk. Docket checks its rules again on every answer.
+3. You start on a low gear: listing, and answering plain permission prompts, is fine there. Before you choose an answer that needs judgment (what to pick in a question form, a plan, a card), shift up to the top gear with mcp__portal__shift_gear.
+${screenOn(d.id) ? '' : "Screen control is off for this desk, and you never turn it on yourself. When a job needs the screen, say so in your reply: the user turns it on in the Autopilot panel.\n"}4. When the next run should know something (a short to-do, or how the user wants a kind of thing answered), add it with mcp__portal__pilot_notes. Keep the notes short.
+
+End with a line or two: what you answered, and what you left for the user.
+
+Items this run was started for:
+${items.map((i) => `- ${i.id} (${i.kind}, ${i.deskName}: ${clip(i.what, 100)}; may: ${i.may})`).join('\n')}
+
+Your notes (${pilotNotesFile(d)}):
+${notes || '(none yet)'}
+
+Your last answers (the log, ${PILOT_LOG}):
+${last.join('\n') || '(none yet)'}
+
+The rules (allow, deny or ask, per kind and per desk) are in ${PILOT_RULES_FILE}; only the user changes them.`;
+}
+// A run on the autopilot's desk (#881), on the brand and starting gear set in Settings (Claude on its lowest gear
+// unless changed), for these items. It is marked as the pilot before its tools are first asked for, so it has them
+// from its first turn. A brand the desk has not set up or signed in starts nothing, and says why in Settings.
+async function startPilotRun(items) {
+  const d = pilotDesk(), p = state.pilot, { brand, gear } = pilotSetting(p, GEARS);
+  if (!d || pilotRun.starting || p.session) return;
+  pilotRun.starting = true;
+  try {
+    const why = await brandProblem(d, brand);
+    if (why) {
+      if (pilotRun.problem?.why !== why) logEvent('autopilot: run not started', why);
+      pilotRun.problem = { at: Date.now(), why: why.replace(' No session was started.', ' No pilot run was started.') };
+      broadcast({ t: 'pilot', pilot: pilotBrief() });
+      return;
+    }
+    pilotRun.problem = null;
+    if (!pilotFlying() || p.session) return; // switched off, or a run started meanwhile
+    const at = Date.now();
+    const s = startSession({ clientId: d.id, title: `Autopilot run ${new Date(at).toTimeString().slice(0, 5)}`, engine: brand, gear: findGear(brand, gear)?.id });
+    state.sessions[s.id].titleBy = 'you';
+    p.session = s.id; p.runAt = at;
+    for (const i of items) pilotRun.offered.add(i.id);
+    p.runs = [{ id: s.id, at, brand, gear, items: items.length }, ...(p.runs || [])].slice(0, 20);
+    touchSession(d.id, s.id);
+    saveState();
+    sendToSession(s, { text: pilotRunBrief(d, items), attachments: [], from: 'brief', context: `(From Docket: ${items.length} item${items.length === 1 ? '' : 's'} came in that the autopilot's rules let it answer, so Docket started this session on the autopilot's own desk as one pilot run.)` });
+    pilotLog({ kind: 'run', run: s.id, answer: 'started', what: `${items.length} item${items.length === 1 ? '' : 's'}: ${items.map((i) => i.kind).join(', ')}`, brand, gear });
+    logEvent('autopilot: run started', `${d.name}: ${sessionTag(s)}, ${BRANDS[brand]?.name} ${gear}, ${items.length} item(s)`);
+  } finally { pilotRun.starting = false; }
+}
+// The run going now is done: it is archived by itself, so the list does not fill up, and its end goes in the log.
+function endPilotRun(why) {
+  const p = state.pilot, id = p.session, d = clientById(sessionDeskOf(id));
+  p.session = null; delete p.runAt;
+  const r = (p.runs || []).find((x) => x.id === id);
+  if (r) Object.assign(r, { ended: Date.now(), why });
+  try { if (d) archiveSession(d, id, true); } catch (e) { logEvent('autopilot: run not archived', `${id}: ${e.message}`); }
+  saveState();
+  pilotLog({ kind: 'run', run: id, answer: 'ended', what: why });
+  logEvent('autopilot: run ended', `${id}: ${why}`);
 }
 function markPilot(p, id) {
   if (id === p.session) return;
@@ -5261,19 +5455,38 @@ function markPilot(p, id) {
   p.session = id;
   const s = id ? live.get(id) : null;
   if (s && s.status !== 'ended') s.pilotReload = true; // started again once idle, to load the pilot tools
+  if (id) p.runAt = Date.now(); else delete p.runAt; // a session made the pilot by hand is the run going now (#881)
   logEvent('autopilot: pilot set', id ? sessionTag(s || { id, title: state.sessions[id]?.title }) : 'none');
 }
-// The switch, the pilot and the autopilot's desk, from ☰ > Docket settings > Autopilot. desk: bind an existing desk as the
-// autopilot's. session: only a session of that desk; one from any other desk is refused with why. on: the first
-// time, the desk is made (unless one is bound) and the pilot session started there when none of it is running.
-// Returns a note to show when the pilot session could not be started.
-function setPilot({ on, session, desk }) {
+// The brands the autopilot's desk has set up, each with whether it is signed in there (#881): Settings offers only
+// those signed in as the pilot's brand.
+async function pilotBrands(d) {
+  if (!d) return [];
+  return Promise.all(brandsOf(d).map(async (brand) => ({ brand, name: BRANDS[brand].name, signedIn: await authStatus(d, false, brand).catch(() => false),
+    gears: gearsOf(brand).map((g) => ({ key: g.key, name: g.name })) })));
+}
+// The switch, the autopilot's desk and the pilot's brand, from ☰ > Docket settings > Autopilot. desk: bind an existing
+// desk as the autopilot's. brand, gear: the brand and starting gear the next run uses (#881), only a brand that desk
+// has signed in; a running run keeps its own. on: the first time, the desk is made (unless one is bound); runs start
+// as things come in. session: make a running session of that desk the run going now (one from any other desk is
+// refused with why). Returns a note to show, or ''.
+async function setPilot({ on, session, desk, brand, gear }) {
   const p = state.pilot ||= { on: false, session: null };
-  let note = '';
   if (desk !== undefined) {
     const d = clientById(String(desk || ''));
     if (!d) throw new Error('There is no desk with that id on this computer.');
     if (d.id !== p.desk) { p.desk = d.id; logEvent('autopilot: desk bound', d.name); }
+  }
+  if (brand !== undefined || gear !== undefined) {
+    const d = pilotDesk();
+    if (!d) throw new Error("The autopilot has no desk yet. Turn it on once, and Docket makes the Autopilot desk, or pick a desk and Save desk first.");
+    const was = pilotSetting(p, GEARS), want = { brand: brand ? String(brand) : was.brand };
+    want.gear = gear ? String(gear) : want.brand === was.brand ? was.gear : gearsOf(want.brand)[0]?.key;
+    const why = pilotSettingRefusal(want, await pilotBrands(d), GEARS);
+    if (why) throw new Error(why);
+    p.brand = want.brand; p.gear = want.gear;
+    pilotRun.problem = null;
+    logEvent('autopilot: brand set', `${BRANDS[want.brand].name}, starting on ${findGear(want.brand, want.gear)?.name}`);
   }
   if (session !== undefined) {
     const id = session ? String(session) : null;
@@ -5286,35 +5499,32 @@ function setPilot({ on, session, desk }) {
   // A pilot left on a desk that is not the autopilot's (bound away from, or saved before #875) is no pilot.
   if (p.session && sessionDeskOf(p.session) !== p.desk) markPilot(p, null);
   if (on !== undefined) {
-    if (on) {
-      const d = pilotDesk() || makePilotDesk();
-      p.desk = d.id;
-      const running = p.session && live.get(p.session);
-      if (!running || running.status === 'ended') {
-        try { startPilotSession(d); } catch (e) { note = `The pilot session could not be started on ${d.name}: ${e.message}`; logEvent('autopilot: pilot not started', note); }
-      }
-    }
+    // On sets up whatever the pilot needs (#886): the desk and its folders, the rules, and then runs as things come in.
+    if (on) { const d = pilotDesk() || makePilotDesk(); p.desk = d.id; pilotDeskFolders(d); if (!CLIENTS[0] || CLIENTS[0].id !== d.id) saveCompanies(pilotFirst(CLIENTS)); }
     p.on = !!on;
-    if (p.on) writePilotRulesIfMissing();
+    if (p.on) { writePilotRulesIfMissing(); pilotRun.problem = null; }
+    // Off stops runs: the one going now ends; the desk and its files stay.
+    if (!p.on && p.session) endPilotRun('the autopilot was turned off');
     logEvent(`autopilot ${p.on ? 'on' : 'off'}`);
+    broadcast({ t: 'clients' });
   }
-  pilotWoken = false;
   saveState();
-  pilotWatch.armed = !!pilotSession() || pilotFeeds.size > 0;
+  pilotWatch.armed = pilotFlying() || pilotFeeds.size > 0;
   broadcast({ t: 'pilot', pilot: pilotBrief() });
   setTimeout(pilotLook, 0);
-  return note;
+  return '';
 }
-// What ☰ > Docket settings > Autopilot shows: the switch, the autopilot's desk and the desks that could be it, the pilot and
-// the sessions of that desk that could be it, the rules file, what waits now and the log.
-function pilotView() {
+// What ☰ > Docket settings > Autopilot shows: the switch, the autopilot's desk and the desks that could be it, the
+// brands that desk has (signed in or not) and the brand and gear runs use, why runs cannot start now, the run going
+// now and the last runs, the rules and notes files, what waits now and the log.
+async function pilotView() {
   const d = pilotDesk();
-  const sessions = !d ? [] : [...live.values()].filter((s) => s.status !== 'ended' && s.client === d.id)
-    .map((s) => ({ id: s.id, title: s.title || 'Untitled', desk: companyName(s.client), brand: s.engine || 'claude' }));
   let waiting = [];
-  try { waiting = waitingOnPerson().map(({ id, kind, deskName, title, what, may, why }) => ({ id, kind, desk: deskName, title, what: clip(what, 160), may, why })); } catch {}
+  try { waiting = waitingOnPerson().map(({ id, kind, deskName, session, title, what, may, why }) => ({ id, kind, desk: deskName, session, title, what: clip(what, 160), may, why })); } catch {}
+  const runs = (state.pilot?.runs || []).map((r) => ({ ...r, title: state.sessions[r.id]?.title || live.get(r.id)?.title || 'Autopilot run' }));
   return { ...pilotBrief(), pilotDesk: d ? { id: d.id, name: d.name } : null, desks: CLIENTS.map((c) => ({ id: c.id, name: c.name })),
-    sessions, rulesFile: PILOT_RULES_FILE, rules: pilotRules(), log: pilotLogTail(), waiting };
+    brands: await pilotBrands(d), problem: pilotOn() ? pilotRun.problem?.why || '' : '', runs, screen: d ? screenOn(d.id) : false,
+    rulesFile: PILOT_RULES_FILE, notesFile: d ? pilotNotesFile(d) : '', rules: pilotRules(), log: pilotLogTail(), waiting };
 }
 // The pilot's tools: offered only to the session marked as pilot (see portalToolDefs).
 function pilotToolDefs(parent) {
@@ -5326,11 +5536,11 @@ function pilotToolDefs(parent) {
       { kind: z.string().optional().describe('Only this kind (permission, question, plan, offer, card, handoff, inbox, cross, merge, signin, remote)'), desk: z.string().optional().describe('Only this desk (its id or name)'), all: z.boolean().optional().describe('Also list the items that stay with the user (may: ask)') },
       async ({ kind, desk, all }) => {
         const why = notPilot(); if (why) return refuse(why);
-        pilotWoken = false;
         await refreshRemotePilot();
         const want = String(desk || '').toLowerCase();
         const items = waitingOnPerson().filter((i) => (!kind || i.kind === kind) && (!want || String(i.desk).toLowerCase() === want || i.deskName.toLowerCase() === want));
         const shown = all ? items : items.filter((i) => i.may !== 'ask'), held = items.length - shown.length;
+        for (const i of shown) if (i.may !== 'ask') pilotRun.offered.add(i.id); // this run saw it: not offered to the next (#881)
         const text = (shown.length ? JSON.stringify(shown.map(({ input, ...i }) => i), null, 1) : 'Nothing waiting that your rules let you answer.')
           + (held && !all ? `\n\n${held} more stay${held === 1 ? 's' : ''} with the user (may: ask); pass all: true to see them.` : '')
           + [...remotePilot.entries()].filter(([, r]) => r.error).map(([id, r]) => `\n\nThe remote desk ${remoteDeskById(id)?.name || id} could not be looked at: ${r.error}`).join('')
@@ -5342,8 +5552,20 @@ function pilotToolDefs(parent) {
       { id: z.string().describe('The item id from pilot_pending'), answer: z.string().describe('One of the answers its kind takes'), answers: z.record(z.string(), z.string()).optional().describe('For a question form with answer "answer": the option label picked for each question, keyed by question text (several labels for a multi-select joined with ", ")') },
       async ({ id, answer, answers }) => {
         const why = notPilot(); if (why) return refuse(why);
-        const r = await pilotAnswer(id, answer, { answers });
+        const r = await pilotAnswer(id, answer, { answers, run: parent.id });
         return r.ok ? { content: [{ type: 'text', text: `Answered ${id}: ${answer}. Shown to the user as answered by pilot.` }] } : refuse(`Not answered: ${r.why}`);
+      }),
+    tool('pilot_notes',
+      "Docket's autopilot: your notes, kept in a file on the autopilot's desk and given to every run, since each run is a fresh session (#881). Add a line for the next runs (a short to-do, or how the user wants a kind of thing answered), or replace them all to keep them short. Returns the notes as they are now.",
+      { add: z.string().optional().describe('A line to add at the end'), replace: z.string().optional().describe('All the notes, in place of what is there (an empty string clears them)') },
+      async ({ add, replace }) => {
+        const why = notPilot(); if (why) return refuse(why);
+        const d = pilotDesk(), file = pilotNotesFile(d);
+        try {
+          if (replace !== undefined) fs.writeFileSync(file, replace.trim() ? replace.trim() + '\n' : '');
+          if (add?.trim()) fs.appendFileSync(file, `- ${add.trim().replace(/^- /, '')}\n`);
+        } catch (e) { return refuse(`The notes could not be written to ${file}: ${e.message}`); }
+        return { content: [{ type: 'text', text: readPilotNotes(d).trim() || '(no notes)' }] };
       }),
   ];
 }
@@ -7993,6 +8215,7 @@ const COPY_FIELD = { name: 'The name', folder: 'The working folder', env: 'Envir
 function copyRequest(b) {
   const src = clientById(b.source);
   if (!src) return { error: 'Unknown desk' };
+  if (isPilotDesk(src.id)) return { error: `${src.name} is the autopilot's desk, which is not copied.` };
   const uses = brandsOf(src);
   const conn = {};
   for (const e of Object.keys(BRANDS)) {
@@ -9368,14 +9591,14 @@ const server = http.createServer(async (req, res) => {
       req.on('close', () => { clearInterval(beat); pilotFeeds.delete(res); });
       return;
     }
-    // ☰ > Docket settings > Autopilot: the switch, the pilot, the rules file, what waits now and the log.
+    // ☰ > Docket settings > Autopilot: the switch, the desk, the brand, the runs, the rules file, what waits now and the log.
     if (p === '/api/pilot') {
-      if (req.method === 'GET') return json(res, 200, pilotView());
+      if (req.method === 'GET') return json(res, 200, await pilotView());
       if (req.method === 'POST') {
         const b = await readBody(req);
         let note = '';
-        try { note = setPilot({ on: b.on === undefined ? undefined : !!b.on, session: b.session, desk: b.desk }); } catch (e) { return json(res, 400, { error: e.message }); }
-        return json(res, 200, { ...pilotView(), note });
+        try { note = await setPilot({ on: b.on === undefined ? undefined : !!b.on, session: b.session, desk: b.desk, brand: b.brand, gear: b.gear }); } catch (e) { return json(res, 400, { error: e.message }); }
+        return json(res, 200, { ...(await pilotView()), note });
       }
     }
     if (req.method === 'GET' && (p === '/' || p === '/index.html')) {
@@ -9416,10 +9639,10 @@ const server = http.createServer(async (req, res) => {
         // startGears: the model a new Shift session starts on, per brand, for the model menu's "Shift (starts ...)".
         const startGears = Object.fromEntries(brandsOf(c).map((e) => [e, usableGear(c, e, startGearOf(e, null, c.startGear?.[e])).name]));
         // planSystem: '' while the desk has not chosen one, which the page offers once (the card after the update, #180).
-        return { id: c.id, name: c.name, folder: c.folder, ...(c.hidden ? { hidden: true } : {}), color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', ...(c.planSwitch ? { planSwitch: { to: c.planSwitch.to, from: c.planSwitch.from, session: c.planSwitch.session } } : {}), brands, startGears,
+        return { id: c.id, name: c.name, folder: c.folder, ...(isPilotDesk(c.id) ? { pilot: true } : {}), ...(c.hidden && !isPilotDesk(c.id) ? { hidden: true } : {}), color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', ...(c.planSwitch ? { planSwitch: { to: c.planSwitch.to, from: c.planSwitch.from, session: c.planSwitch.session } } : {}), brands, startGears,
           bedrock: isBedrock(c), ...(gatewayFor(c, 'claude') ? { gateway: gatewayHost(c.gateway.url) } : {}), signedIn, forced: forcedOf(c), browser: browserStatus(c) };
       }));
-      return json(res, 200, [...rows, ...await remoteRows(!quick)]); // remote desks come after this computer's own
+      return json(res, 200, [...pilotFirst(rows), ...await remoteRows(!quick)]); // remote desks come after this computer's own
     }
     // Edit the company list: the whole list comes back, in order. Ids never change once made.
     // connections: who each brand of the desk is billed to, and the other desks billed to the same connection.
@@ -9428,7 +9651,7 @@ const server = http.createServer(async (req, res) => {
       const all = CLIENTS.map((c) => ({ id: c.id, name: c.name, conns: deskConnections(c) }));
       const connections = (c) => all.find((x) => x.id === c.id).conns.map((x) => ({ brand: x.brand, label: x.label, kind: x.kind, detail: x.detail,
         sharedWith: all.filter((o) => o.id !== c.id && o.conns.some((y) => y.key === x.key)).map((o) => o.name) }));
-      return json(res, 200, CLIENTS.map((c) => ({ ...c, forced: forcedOf(c), running: [...live.values()].filter((x) => x.client === c.id).length, hookList: hooksFor(c, PLUGIN_DIR), connections: connections(c),
+      return json(res, 200, pilotFirst(CLIENTS).map((c) => ({ ...c, ...(isPilotDesk(c.id) ? { pilot: true, pilotOn: pilotOn() } : {}), forced: forcedOf(c), running: [...live.values()].filter((x) => x.client === c.id).length, hookList: hooksFor(c, PLUGIN_DIR), connections: connections(c),
         gatewayModels: (gatewayFor(c, 'claude') && authCache.get(authKey(c.id))?.models) || [] })));
     }
     if (req.method === 'POST' && p === '/api/clients/edit') {
@@ -9436,12 +9659,15 @@ const server = http.createServer(async (req, res) => {
       const list = Array.isArray(b.clients) ? b.clients : [];
       const out = [], ids = new Set();
       for (const c of list) {
-        const r = cleanCompany(c, (id) => ids.has(id) || clientById(id) || list.some((x) => x.id === id));
+        // The autopilot's desk is Docket's to set (#886): it is kept as it is, whatever comes back.
+        const r = isPilotDesk(c.id) ? { ...clientById(c.id) } : cleanCompany(c, (id) => ids.has(id) || clientById(id) || list.some((x) => x.id === id));
         if (r.error) return json(res, 400, r);
         if (ids.has(r.id)) return json(res, 400, { error: `${r.name} is in the list twice` });
         ids.add(r.id);
         out.push(r);
       }
+      const pd = pilotDesk();
+      if (pd && !ids.has(pd.id) && pilotOn()) return json(res, 400, { error: `${pd.name} is the autopilot's desk. Turn the autopilot off in ☰ > Docket settings > Autopilot first, then Remove it.` });
       if (!out.length) return json(res, 400, { error: 'Keep at least one desk' });
       if (out.every((c) => c.hidden)) return json(res, 400, { error: 'Keep at least one desk shown' });
       const busy = CLIENTS.filter((c) => !ids.has(c.id) && [...live.values()].some((x) => x.client === c.id));
@@ -9449,7 +9675,8 @@ const server = http.createServer(async (req, res) => {
       // trash: the removed companies whose folders go to the Recycle Bin as well (only the ones Docket made).
       const binned = CLIENTS.filter((c) => !ids.has(c.id) && (b.trash || []).includes(c.id));
       const added = out.filter((c) => !clientById(c.id)).map((c) => c.id);
-      saveCompanies(out);
+      saveCompanies(pilotFirst(out));
+      if (pd && !ids.has(pd.id)) { delete state.pilot.desk; saveState(); logEvent('autopilot: desk removed', pd.name); broadcast({ t: 'pilot', pilot: pilotBrief() }); }
       for (const id of added) { const c = clientById(id); if (c) runDeskCheck(c).catch(() => {}); }
       if (!b.trash) return json(res, 200, out);
       const trashed = [];
@@ -9709,6 +9936,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/clients/save-one') {
       const b = await readBody(req);
       const old = b.id ? clientById(b.id) : null;
+      if (old && isPilotDesk(old.id)) return json(res, 400, { error: `${old.name} is the autopilot's desk: Docket sets it up, so it is not edited here. Its pilot's brand is in ☰ > Docket settings > Autopilot.` });
       const r = cleanCompany({ ...b, id: old ? old.id : null }, (id) => !!clientById(id));
       if (r.error) return json(res, 400, r);
       if (old && [...live.values()].some((x) => x.client === old.id) && (old.home !== r.home || old.awsProfile !== r.awsProfile || old.gateway?.url !== r.gateway?.url)) return json(res, 400, { error: `${old.name} has sessions running. End them before changing its folders or sign-in.` });
@@ -10037,6 +10265,14 @@ const server = http.createServer(async (req, res) => {
       }
       catch (e) { return json(res, 500, { error: 'Could not read prices or logs: ' + e.message }); }
     }
+    const pp = req.method === 'POST' && p.match(/^\/api\/plans\/([\w-]+)\/pause$/);
+    if (pp) { // { client, paused }: Pause plan / Resume plan (#889), the user's alone
+      const b = await readBody(req), client = clientById(b.client);
+      const plan = client && plansOn(client) && plansOf(client).list().find((x) => x.id === pp[1]);
+      if (!plan) return json(res, 404, { error: 'No such plan on this desk' });
+      setPlanPaused(client, plan, !!b.paused);
+      return json(res, 200, { paused: planPaused(plan.id) });
+    }
     if (req.method === 'GET' && p === '/api/plans') { // a desk's plans, for the board badges and the Plan section
       const client = clientById(url.searchParams.get('client'));
       if (!client) return json(res, 404, { error: 'Unknown desk' });
@@ -10218,6 +10454,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/sessions') {
       const b = await readBody(req);
+      if (isPilotDesk(b.client)) return json(res, 400, { error: `${clientById(b.client)?.name || 'This'} is the autopilot's desk: its sessions are the pilot runs Docket starts. Start work on another desk.` });
       const isGroup = (gid) => !!(clientById(b.client) && groupById(b.client, gid));
       const groupId = startGroup(b, isGroup);
       if (b.parentId) { // started by the person under a session: the same path as start_session

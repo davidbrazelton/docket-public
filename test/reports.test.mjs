@@ -112,11 +112,11 @@ test('wakeDecision: a child turn the person started wakes the parent at the limi
   assert.deepEqual(wakeDecision({ autoWakes: 8, reports: [{ childId: 'a' }, { childId: 'c', byPerson: true }], limit: 8 }), { wake: true, autoWakes: 0 });
 });
 
-test('freed plan tasks wake an idle coordinator through the same limit', () => {
+test('freed plan tasks wake an idle coordinator, counted, and not held at the limit (#889)', () => {
   const freed = { kind: 'plan', planId: 'p-1', title: 'Shop', tasks: [{ id: 'T10', title: 'Outbox' }] };
   assert.deepEqual(readyReports([freed], () => false), [freed]);
   assert.deepEqual(wakeDecision({ autoWakes: 2, reports: [freed], limit: 8 }), { wake: true, autoWakes: 3 });
-  assert.equal(wakeDecision({ autoWakes: 8, reports: [freed], limit: 8 }).wake, false);
+  assert.deepEqual(wakeDecision({ autoWakes: 8, reports: [freed], limit: 8 }), { wake: true, autoWakes: 9 });
 });
 
 test('readyReports: tasks freed mid-turn wait for that turn\'s report and go with it', () => {

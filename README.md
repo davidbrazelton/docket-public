@@ -2,6 +2,8 @@
 
 A page on your computer for starting, resuming and watching AI coding sessions, so your work does not depend on any one AI company's desktop app. It runs on Windows 10 or 11 and on macOS.
 
+**Just want to install it?** [Download for Windows](https://github.com/davidbrazelton/docket-public/releases/latest/download/Docket-Setup.exe) · [Install page](https://davidbrazelton.github.io/docket-public/) · [Mac steps](#install-on-a-mac)
+
 ## Why Docket
 
 Cursor, OpenCode and similar tools are AI coding agents: one person, one editor or terminal, one conversation at a time. Docket works one level above them. It doesn't replace your AI. It runs the AI tools you already use (Claude Code, Codex, Grok) and gives you one place to run all your work with them.

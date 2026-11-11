@@ -119,9 +119,12 @@ export function turnStarter({ system = false, from = '', byPerson = false } = {}
 // A report from a turn the person started (they typed into the child, or pressed a button) shows
 // the person is at work in this family: it wakes the session even at the limit, and starts the
 // count again.
+// A plan wake-up (tasks now free, or a stalled-plan nudge, #889) wakes even at the limit, carrying any held reports
+// with it: those come only when the plan's state changed (plan-motion.mjs), so they cannot loop, and an open plan must
+// not stall on the cap. They still count toward it.
 export function wakeDecision({ autoWakes = 0, reports = [], limit }) {
-  const byPerson = reports.some((r) => r.byPerson);
-  if (!byPerson && autoWakes >= limit) return { wake: false, autoWakes };
+  const byPerson = reports.some((r) => r.byPerson), plan = reports.some((r) => r.kind === 'plan' || r.kind === 'nudge');
+  if (!byPerson && !plan && autoWakes >= limit) return { wake: false, autoWakes };
   return { wake: true, autoWakes: byPerson ? 0 : autoWakes + 1 };
 }
 
@@ -250,9 +253,21 @@ export function reportIsNews({ cause = '', error = false, lastOpen = false, lowG
 // The other way (#755): a parent's 'agreed' message to a child whose last finished turn already said it is complete
 // and ready to close goes into the child's chat as a note, not a new turn that would only say so again. Only when
 // nothing waits on the person: lastDone (its last turn was marked done, asking nothing), state (childState) 'done'
-// (idle, no jobs, no prompt, no question), and no open pull request. Otherwise the turn runs, to end on that one thing.
-export function agreedAsNote({ news = '', lastDone = false, state = '', pr = null } = {}) {
-  return news === 'agreed' && !!lastDone && state === 'done' && !(pr && (pr.status === 'open' || pr.status === 'conflict'));
+// (idle, no jobs, no prompt, no question), and no open pull request: pr, the one from its branch, nor any in prs,
+// all it opened (#895: one on another branch than the session's own still waits on the merge). Otherwise the turn
+// runs, to end on that one thing.
+const prOpen = (p) => !!p && (p.status === 'open' || p.status === 'conflict');
+export function agreedAsNote({ news = '', lastDone = false, state = '', pr = null, prs = [] } = {}) {
+  return news === 'agreed' && !!lastDone && state === 'done' && !prOpen(pr) && !(prs || []).some(prOpen);
+}
+// What the turn an 'agreed' message runs carries when the child has open pull requests (#895): the session that
+// opened a pull request owns its merge ask, whatever its parent's message says, so it ends on it.
+export function mergeOwnedText(prs = []) {
+  const open = [...new Map((prs || []).filter((p) => prOpen(p) && p.number).map((p) => [p.number, p])).values()];
+  if (!open.length) return '';
+  if (open.length > 1) return `Pull requests ${open.map((p) => '#' + p.number).join(', ')} that you opened are still open: the merge ask is yours, whatever this message says. End on what is left for the user to merge, not on ready to close.`;
+  const n = open[0].number;
+  return `Pull request #${n} that you opened is still open: the merge ask is yours, whatever this message says (even if it offers to handle the merge). End on "Say merge and I will merge pull request #${n}." with mark_turn label "merge" and pr ${n}, not on ready to close.`;
 }
 // The block a session's next turn carries for the news it took in without a wake-up.
 export function heldNewsText(news = []) {

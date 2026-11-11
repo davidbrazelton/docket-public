@@ -2,7 +2,7 @@
 // parent, how held news reaches it, and the debounce for children that finish close together. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { turnNewsFor, reportIsNews, agreedAsNote, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from '../reports.mjs';
+import { turnNewsFor, reportIsNews, agreedAsNote, mergeOwnedText, heldNewsText, debounceLeft, REPORT_DEBOUNCE } from '../reports.mjs';
 
 test('turnNewsFor: a Nothing to do now notice and an agree-done message mark the turn as news', () => {
   assert.equal(turnNewsFor({ notice: 'The session "X" (id 1) now reports to you. Its finished turns will come to you as session reports. Nothing to do now; reply in one line at most.' }), 'ack');
@@ -62,4 +62,26 @@ test('agreedAsNote: a done message to a child that already said ready to close i
   assert.equal(agreedAsNote({ ...ok, pr: { status: 'open' } }), false); // an unmerged pull request
   assert.equal(agreedAsNote({ ...ok, pr: { status: 'conflict' } }), false);
   assert.equal(agreedAsNote(), false);
+});
+
+test('agreedAsNote: an open pull request on another branch than its own still runs the turn (#895)', () => {
+  const ok = { news: 'agreed', lastDone: true, state: 'done', pr: null };
+  assert.equal(agreedAsNote({ ...ok, prs: [{ number: 894, status: 'open' }] }), false);
+  assert.equal(agreedAsNote({ ...ok, pr: { status: 'merged' }, prs: [{ number: 894, status: 'conflict' }] }), false);
+  assert.equal(agreedAsNote({ ...ok, prs: [{ number: 894, status: 'merged' }, { number: 12, status: 'closed' }] }), true);
+  assert.equal(agreedAsNote({ ...ok, prs: null }), true);
+});
+
+test('mergeOwnedText: a done message to a session with an open pull request tells it to end on the merge ask (#895)', () => {
+  const one = mergeOwnedText([{ number: 894, status: 'open' }, { number: 12, status: 'merged' }]);
+  assert.match(one, /Say merge and I will merge pull request #894\./);
+  assert.match(one, /mark_turn label "merge" and pr 894/);
+  assert.match(one, /whatever this message says/);
+  assert.equal(mergeOwnedText([{ number: 894, status: 'open' }, { number: 894, status: 'open' }]), one); // the same one twice
+  const two = mergeOwnedText([{ number: 894, status: 'open' }, { number: 896, status: 'conflict' }]);
+  assert.match(two, /#894, #896/);
+  assert.doesNotMatch(two, /mark_turn label "merge"/); // several: no Merge button
+  assert.equal(mergeOwnedText([{ number: 12, status: 'merged' }]), '');
+  assert.equal(mergeOwnedText([null]), '');
+  assert.equal(mergeOwnedText(), '');
 });
