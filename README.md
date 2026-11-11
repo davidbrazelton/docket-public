@@ -6,7 +6,7 @@ A page on your computer for starting, resuming and watching AI coding sessions, 
 
 <picture>
   <source srcset="docs/screenshot-dark.webp" media="(prefers-color-scheme: dark)">
-  <img src="docs/screenshot-light.webp" width="1440" alt="Docket in use: a list of sessions with what each needs from you, child sessions nested under their parent, and one conversation open">
+  <img src="docs/screenshot-light.webp" width="1440" alt="Docket in use: a list of sessions with what each needs from you, a plan's coordinator with its two child sessions nested under it, the conversation open, and its Plan panel with phases and steps">
 </picture>
 
 ## Why Docket
@@ -14,7 +14,7 @@ A page on your computer for starting, resuming and watching AI coding sessions, 
 Cursor, OpenCode and similar tools are AI coding agents: one person, one editor or terminal, one conversation at a time. Docket works one level above them. It doesn't replace your AI. It runs the AI tools you already use (Claude Code, Codex, Grok) and gives you one place to run all your work with them.
 
 - **Every session in one place.** Dozens of sessions side by side, grouped by project, each marked with what it needs from you: a question, a merge, a problem. No more hunting through a pile of terminal windows.
-- **Sessions that hand off work.** A session can start child sessions for separate pieces of a job, check what they did and close them when they're done. Each one runs on the model the work needs, so routine steps don't cost top-model prices.
+- **Sessions that hand off work.** A session can start child sessions for separate pieces of a job, check what they did and close them when they're done. A big job gets a plan: phases and steps that child sessions take on as soon as each one is free, with progress in the Plan panel, and only your own steps, such as a decision, left to you. Each session runs on the model the work needs, so routine steps don't cost top-model prices.
 - **A desk for each client or team.** Each desk has its own sign-in, memory, past sessions and billing. Work for one client never leaks into another, and reaching across desks always asks you first.
 - **Work keeps going without you.** Schedules start sessions on a timetable, the autopilot answers routine questions under rules you set, and sessions keep running while Docket restarts or updates itself.
 - **More than code.** Sessions get a private browser with your saved sign-ins, a Files list for the reports and exports they make, and links to GitHub, Jira and Azure DevOps.

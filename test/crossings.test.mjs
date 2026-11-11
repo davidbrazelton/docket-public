@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
-import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox } from '../crossings.mjs';
+import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox, crossReport, inboxContext } from '../crossings.mjs';
 
 test('every pair of different companies may talk today; a company never pairs with itself', () => {
   assert.equal(canPair('acme', 'globex'), true);
@@ -82,4 +82,66 @@ test('old answered cards are dropped, open ones never', () => {
   for (let i = 0; i < 40; i++) { addToInbox(inbox, { id: 'i' + i }); if (i % 2) settleInbox(inbox, 'i' + i, 'dismissed'); }
   assert.equal(inbox.length, 30);
   assert.equal(openInbox(inbox).length, 20, 'all twenty open cards are still there');
+});
+
+// Report back (#904): the sending chat's card follows the work, and only status and the closing reply cross.
+const handed = (report) => {
+  const inbox = [];
+  const it = addToInbox(inbox, { id: 'inbox_7', from: 'docket', fromName: 'Docket', fromSession: 's1', fromTitle: 'Invoice triage', title: 'Fix the export', brief: 'Do X' });
+  it.report = report;
+  return { inbox, it };
+};
+
+test('report back on: the card moves to Started, then Done with the closing reply as news', () => {
+  const { inbox, it } = handed(true);
+  const start = crossReport(it, 'start', { at: 1000, childId: 'c1', toName: 'Acme' });
+  assert.deepEqual(start.card, { state: 'started', report: true, startedAt: 1000, childId: 'c1' });
+  assert.match(start.note, /Acme started "Fix the export"\. It reports back/);
+  assert.equal(crossReport(it, 'turn', { reply: 'too early' }), null, 'nothing goes back before it has started');
+  settleInbox(inbox, 'inbox_7', 'started', 'c1');
+  const turn = crossReport(it, 'turn', { at: 2000, reply: 'Fixed in pull request #212.', childId: 'c1', toName: 'Acme' });
+  assert.deepEqual(turn.card, { state: 'done', doneAt: 2000, text: 'Fixed in pull request #212.' });
+  assert.deepEqual(turn.news, { childId: 'c1', title: 'Fix the export', text: 'Fixed in pull request #212.', desk: 'Acme', at: 2000 });
+  assert.equal(crossReport(it, 'turn', { reply: 'x'.repeat(1000) }).news.text.length, 400, 'only a clipped closing reply crosses, never the chat');
+});
+
+test('report back off: only "started, not reporting" goes back, and no turn ever does', () => {
+  const { inbox, it } = handed(false);
+  const start = crossReport(it, 'start', { at: 1000, childId: 'c1', toName: 'Acme' });
+  assert.equal(start.card.report, false);
+  assert.match(start.note, /chose not to report back/);
+  settleInbox(inbox, 'inbox_7', 'started', 'c1');
+  assert.equal(crossReport(it, 'turn', { reply: 'secret progress' }), null);
+});
+
+test('Stop reporting turns it off from then on', () => {
+  const { inbox, it } = handed(true);
+  settleInbox(inbox, 'inbox_7', 'started', 'c1');
+  const q = crossReport(it, 'quiet', { toName: 'Acme' });
+  assert.deepEqual(q.card, { report: false });
+  assert.match(q.note, /stopped reporting back/);
+  it.report = false;
+  assert.equal(crossReport(it, 'turn', { reply: 'more' }), null);
+  assert.equal(crossReport(it, 'quiet'), null, 'stopping twice says nothing');
+});
+
+test('Take it back: the card leaves the other desk while open, and cannot be started after', () => {
+  const { inbox, it } = handed(true);
+  assert.equal(settleInbox(inbox, 'inbox_7', 'withdrawn').state, 'withdrawn');
+  assert.deepEqual(openInbox(inbox), [], "gone from the other desk's list");
+  assert.equal(crossReport(it, 'withdrawn', { at: 5 }).card.state, 'withdrawn');
+  assert.equal(settleInbox(inbox, 'inbox_7', 'started', 'c1'), null, 'a taken-back card cannot be started');
+  const { inbox: b } = handed(true);
+  settleInbox(b, 'inbox_7', 'started', 'c1');
+  assert.equal(settleInbox(b, 'inbox_7', 'withdrawn'), null, 'started work cannot be taken back');
+});
+
+test('the started session is told what goes back, or that nothing does', () => {
+  const on = inboxContext({ fromName: 'Docket', fromTitle: 'Invoice triage', report: true }, 'Acme');
+  assert.match(on, /closing reply .* goes back to the session "Invoice triage" in Docket/);
+  assert.match(on, /never this chat/);
+  assert.doesNotMatch(on, /Nothing you write here goes back/);
+  const off = inboxContext({ fromName: 'Docket', report: false }, 'Acme', 'pilot');
+  assert.match(off, /nothing you write here goes back to Docket/);
+  assert.match(off, /Docket's autopilot pressed Start/);
 });

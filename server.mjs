@@ -82,7 +82,7 @@ import { PROFILE_FILE, SETTINGS, PAGE_SETTINGS, localItems, hashOf, noteChanges,
 import { ARTIFACT_URL, artifactPublished } from './artifacts.mjs';
 import { copyPlan, runCopy, copyGroups, groupAction, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
 import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
-import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox } from './crossings.mjs';
+import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox, crossReport, inboxContext } from './crossings.mjs';
 import { signInFailure, recheckSignIns, awsSignedIn, keepKnown } from './signin-errors.mjs';
 import { newSigninFail, messagedSince, signinResumeCheck, dropsMark, signinNote, SIGNIN_NOTE } from './signin-resume.mjs';
 import WebSocket, { WebSocketServer } from 'ws';
@@ -606,13 +606,30 @@ function kidsOf(p) {
   }
   return kids;
 }
+// The same, with the work it handed to other desks (#904): a card still waiting for Accept and start there counts as
+// waiting on the person, and a started session that reports back here counts by its own state, so the sending row
+// shows the blue ring while that work goes on.
+function kidsWithCross(p) {
+  const kids = kidsOf(p);
+  for (const { ev } of state.sessions[p.id]?.cards || []) {
+    if (ev.k !== 'desk-handoff') continue;
+    const c = ev.state === 'open' ? null : ev.report && live.get(ev.childId);
+    const st = ev.state === 'open' ? 'waiting' : c ? liveChildState(c) : 'done';
+    if (st === 'done') continue;
+    kids[st]++;
+    kids.list.push({ id: ev.childId || null, desk: ev.to, title: `${ev.title} (in ${ev.toName})`, state: st, held: false, jobs: [] });
+  }
+  return kids;
+}
 // Whether this turn closed a child and none is left working or waiting on the person (#694).
 const closedLastKid = (s) => { if (!s.closedKid) return false; const k = kidsOf(s); return !k.working && !k.waiting; };
 // A child changed: its parent's row is sent again when the count it waits on changed.
 function pushParentOf(id) {
   const c = live.get(id);
   const p = live.get(c ? waitedOnBy(c) : reportsHere(state.sessions[id]));
-  if (p && p.id !== id && JSON.stringify(kidsOf(p)) !== p.kidsSent) pushSession(p);
+  if (p && p.id !== id && JSON.stringify(kidsWithCross(p)) !== p.kidsSent) pushSession(p);
+  const x = live.get(state.sessions[id]?.crossFrom?.inbox ? state.sessions[id].crossFrom.session : ''); // it was handed over from another desk (#904)
+  if (x && JSON.stringify(kidsWithCross(x)) !== x.kidsSent) pushSession(x);
 }
 
 function liveSaid(s) {
@@ -645,15 +662,23 @@ function summary(s) {
     cutOff: !!state.sessions[s.id]?.cutOff,
     cutBy: state.sessions[s.id]?.cutOff?.how || null,
     awaitingAnswer: liveAwaiting(s),
-    kids: kidsOf(s), // the child sessions it waits on: the still blue ring (#645)
+    kids: kidsWithCross(s), // the child sessions it waits on, and work it handed to other desks: the still blue ring (#645, #904)
     kidNews: !!s.kidNews, // a report it took in quietly that the person has not opened: the ring's halo
     unreadWhy: s.unread ? s.unreadWhy || null : null, // which path turned it orange: the row's reason (#671)
     asksYou: !!s.pendingAsks?.size || liveAsks(s), // a question form open, or its latest reply ends by asking: "question"
     cardOpen: openCards(s) > 0, // a session offer, proposal or handoff card waits on the person: "card" (#823)
+    waitsIn: waitsIn(s), // the desks where work it handed over waits for Accept and start: "waiting in Acme" (#904)
+    crossIn: crossIn(s), // it was started from work another desk handed over: the strip at the top of its chat (#904)
     unreadSaid: s.unread ? s.unreadSaid || null : null, // the label the session declared for that turn
     needsSignin: state.sessions[s.id]?.needsSignin || null, // { site, url } while it waits on a private browser sign-in: the 🌐 blinks (#678)
     said: liveSaid(s), // the start of its last reply: the hover card (#691)
   };
+}
+const waitsIn = (s) => [...new Set((state.sessions[s.id]?.cards || []).filter((c) => c.ev.k === 'desk-handoff' && c.ev.state === 'open').map((c) => c.ev.toName))];
+function crossIn(s) {
+  const x = state.sessions[s.id]?.crossFrom;
+  const it = x?.inbox && (state.inbox?.[s.client] || []).find((i) => i.id === x.inbox);
+  return it ? { inbox: it.id, desk: it.from, deskName: it.fromName, title: live.get(it.fromSession)?.title || it.fromTitle, session: it.fromSession, report: !!it.report } : null;
 }
 // How many cards (session offers, proposals, handoffs) wait on the person's click.
 const openCards = (s) => { const rec = state.sessions[s.id]; return (rec?.cards || []).filter((c) => isOpenCard(c.ev)).length + (rec?.handoffs || []).filter((h) => isOpenCard(h.ev)).length; };
@@ -1417,7 +1442,7 @@ function crossingTools(parent) {
       if (!await approveCrossing(parent, { kind: 'handoff', to, title, text: brief })) return { content: [{ type: 'text', text: `The user chose not to hand this to ${to.name}. Nothing was sent.` }] };
       logCrossing('handoff', { from: parent.client, to: to.id, session: parent.id, title: parent.title, text: `${title}\n\n${brief}` });
       const it = proposeToCompany(parent, to, { title, brief, folder });
-      return { content: [{ type: 'text', text: `Put in ${to.name}'s session list as a card ("${it.title}"). Nothing runs until the user presses Start there; it then runs on ${to.name}'s sign-in, and nothing comes back to this session.` }] };
+      return { content: [{ type: 'text', text: `Put in ${to.name}'s session list as a card ("${it.title}"), and shown in this chat as a card that follows it (Go to ${to.name}, Take it back). Nothing runs until the user presses Accept and start there; it then runs on ${to.name}'s sign-in. If the user leaves reporting on (the default), this session gets a note when it starts and its closing reply as news after each turn there; otherwise only that it started. No need to repeat the card in your reply.` }] };
     };
     const hide = (t) => (old ? Object.assign(t, { hidden: true }) : t);
     return [
@@ -1429,7 +1454,7 @@ function crossingTools(parent) {
         },
         ask)),
       hide(tool(named('propose_to_desk'),
-        (old ? 'Old name of propose_to_desk. ' : '') + 'Hand work to another desk in Docket, for requests like "file this in Acme" or "give this to Acme". Puts a card in that desk\'s session list; nothing runs until the user presses Start there, and the work then runs on that desk\'s sign-in and bills to it. Nothing comes back here. The first time this session reaches that desk, the user approves the exact title and brief in the portal, and this call waits for that. See "Other desks" in your instructions.',
+        (old ? 'Old name of propose_to_desk. ' : '') + 'Hand work to another desk in Docket, for requests like "file this in Acme" or "give this to Acme". Puts a card in that desk\'s session list and a card in this chat that follows it; nothing runs until the user presses Accept and start there, and the work then runs on that desk\'s sign-in and bills to it. Unless the user turns it off there, its start and its closing replies come back here as notes (never its chat). The first time this session reaches that desk, the user approves the exact title and brief in the portal, and this call waits for that. See "Other desks" in your instructions.',
         {
           [key]: z.string().describe('The other desk, by name or id'),
           title: z.string().describe('Short title for the work, under 60 characters'),
@@ -4560,6 +4585,7 @@ const WAKE_LIMIT = 8;
 async function reportToParent(child, leftover = []) {
   const rec = state.sessions[child.id];
   const reply = [...child.events].reverse().find((e) => e.k === 'text')?.text || '';
+  reportToSender(child, reply); // work handed over from another desk reports there too, when the person chose that (#904)
   const route = reportRoute({ reportsTo: rec?.reportsTo, replyTo: rec?.replyTo, waiting: waitingOnUser(child, reply) });
   if (!route.to) return;
   if (route.clearReplyTo) { delete rec.replyTo; saveState(); }
@@ -5094,21 +5120,47 @@ function proposeToCompany(s, to, { title, brief, folder }) {
     id: 'inbox_' + randomUUID().slice(0, 8), from: s.client, fromName: companyName(s.client), fromSession: s.id, fromTitle: s.title || '',
     title: clip(title, 80) || 'Handed over', brief, cwd, at: Date.now(),
   });
+  // The sending chat gets a live card for it (#904), saved like any card so it survives restarts; crossReport moves it.
+  const ev = { k: 'desk-handoff', id: item.id, to: to.id, toName: to.name, title: item.title, brief, state: 'open' };
+  saveCard(s, ev);
+  addEvent(s, ev);
   saveState();
-  broadcast({ t: 'inbox', client: to.id });
+  broadcast({ t: 'inbox', client: to.id, added: item.id });
   return item;
 }
-function startInbox(clientId, id, by = '') {
+// The sending session hears what crossReport says for this moment: its card moves, a note, news with the halo.
+function reportAcross(it, toId, moment, opts = {}) {
+  const r = crossReport(it, moment, { ...opts, toName: companyName(toId) });
+  if (!r) return;
+  const ev = savedCard(it.fromSession, 'desk-handoff', it.id);
+  if (ev) { Object.assign(ev, r.card); saveState(); updateCard({ id: it.fromSession }, ev); }
+  const s = live.get(it.fromSession);
+  if (r.note && s && s.status !== 'ended') addEvent(s, { k: 'note', text: r.note });
+  if (r.news) {
+    holdNews(it.fromSession, { childId: r.news.childId, title: `${it.title} (handed to ${r.news.desk})`, text: r.news.text, at: r.news.at, desk: toId }, 'desk report');
+    logCrossing('report', { from: toId, to: it.from, session: it.fromSession, title: it.fromTitle, text: r.news.text });
+  }
+}
+// A session started from a handed-over card finished a turn: its closing reply goes back when reporting is on.
+function reportToSender(child, reply) {
+  const x = state.sessions[child.id]?.crossFrom;
+  const it = x?.inbox && inboxOf(child.client).find((i) => i.id === x.inbox);
+  if (it) reportAcross(it, child.client, 'turn', { reply, childId: child.id });
+}
+// report: tell the sending session when it starts and finishes (the checkbox on the card, ticked by default).
+function startInbox(clientId, id, by = '', { report = true } = {}) {
   const to = clientById(clientId);
   const it = inboxOf(clientId).find((x) => x.id === id);
   if (!to || !it || it.state !== 'open') throw new Error('That card is no longer open');
+  it.report = report !== false;
   const child = startSession({ clientId: to.id, cwd: it.cwd, title: it.title });
   state.sessions[child.id].titleBy = 'you';
-  state.sessions[child.id].crossFrom = { client: it.from, session: it.fromSession };
-  sendToSession(child, { text: it.brief, attachments: [], from: 'brief', context: `(From Docket: this work was handed over from the desk "${it.fromName}" and ${by === 'pilot' ? "Docket's autopilot" : 'the user'} pressed Start in ${to.name}'s list. It runs on ${to.name}'s own sign-in and is billed to ${to.name}. Nothing you write here goes back to ${it.fromName}.)` });
+  state.sessions[child.id].crossFrom = { client: it.from, session: it.fromSession, inbox: it.id };
+  sendToSession(child, { text: it.brief, attachments: [], from: 'brief', context: inboxContext(it, to.name, by) });
   settleInbox(inboxOf(clientId), id, 'started', child.id);
   saveState();
-  logCrossing('start', { from: it.from, to: to.id, session: it.fromSession, title: it.fromTitle, text: `${it.title}\n(started as ${child.id})` });
+  logCrossing('start', { from: it.from, to: to.id, session: it.fromSession, title: it.fromTitle, text: `${it.title}\n(started as ${child.id}, ${it.report ? 'reports back' : 'not reporting back'})` });
+  reportAcross(it, to.id, 'start', { childId: child.id });
   broadcast({ t: 'inbox', client: to.id });
   return child;
 }
@@ -5117,6 +5169,37 @@ function dismissInbox(clientId, id) {
   if (!it) throw new Error('That card is no longer open');
   saveState();
   logEvent('handoff from another company dismissed', `${it.from} -> ${clientId}: ${it.title}`);
+  reportAcross(it, clientId, 'dismissed');
+  broadcast({ t: 'inbox', client: clientId });
+}
+// Take it back, from the sending chat's card: the card leaves the other desk's list while it is still open.
+function withdrawInbox(clientId, id) {
+  const it = settleInbox(inboxOf(clientId), id, 'withdrawn');
+  if (!it) throw new Error('That work was already started or dismissed there');
+  saveState();
+  logEvent('handoff to another desk taken back', `${it.from} -> ${clientId}: ${it.title}`);
+  reportAcross(it, clientId, 'withdrawn');
+  broadcast({ t: 'inbox', client: clientId });
+}
+// Stop reporting, in the started session's strip: nothing more goes back.
+function quietInbox(clientId, id) {
+  const it = inboxOf(clientId).find((x) => x.id === id);
+  if (!it || it.state !== 'started' || !it.report) throw new Error('It is not reporting back');
+  reportAcross(it, clientId, 'quiet');
+  it.report = false;
+  saveState();
+  const s = live.get(it.startedId); if (s) pushSession(s);
+}
+// Edit brief, on the card in the receiving desk, before it starts. The sending card's See brief shows the new one.
+function editInbox(clientId, id, brief) {
+  const it = inboxOf(clientId).find((x) => x.id === id);
+  brief = String(brief || '').trim();
+  if (!it || it.state !== 'open') throw new Error('That card is no longer open');
+  if (!brief) throw new Error('The brief is empty');
+  it.brief = brief;
+  const ev = savedCard(it.fromSession, 'desk-handoff', it.id);
+  if (ev) { ev.brief = brief; updateCard({ id: it.fromSession }, ev); }
+  saveState();
   broadcast({ t: 'inbox', client: clientId });
 }
 
@@ -10072,13 +10155,18 @@ const server = http.createServer(async (req, res) => {
       } catch (e) { return json(res, 400, { error: e.message }); }
     }
     // Work another company handed over: Start runs it in this company, Dismiss drops it.
-    const im = p.match(/^\/api\/inbox\/(inbox_[\w]+)\/(start|dismiss)$/);
+    // From the sending chat's card: withdraw (Take it back). From the started session's strip: quiet (Stop reporting).
+    const im = p.match(/^\/api\/inbox\/(inbox_[\w]+)\/(start|dismiss|withdraw|quiet|brief)$/);
     if (im && req.method === 'POST') {
       const client = clientById(url.searchParams.get('client'));
       if (!client) return json(res, 400, { error: 'Unknown client' });
       try {
-        if (im[2] === 'start') return json(res, 200, summary(startInbox(client.id, im[1])));
-        dismissInbox(client.id, im[1]);
+        const b = await readBody(req);
+        if (im[2] === 'start') return json(res, 200, summary(startInbox(client.id, im[1], '', { report: b.report !== false })));
+        if (im[2] === 'withdraw') withdrawInbox(client.id, im[1]);
+        else if (im[2] === 'quiet') quietInbox(client.id, im[1]);
+        else if (im[2] === 'brief') editInbox(client.id, im[1], b.brief);
+        else dismissInbox(client.id, im[1]);
         return json(res, 200, { ok: true });
       } catch (e) { return json(res, 400, { error: e.message }); }
     }
@@ -10450,7 +10538,7 @@ const server = http.createServer(async (req, res) => {
       const hist = allHist.filter((r) => !ids.has(r.id));
       // The session list shows all runs of a schedule as one row under the schedule's name.
       const schedules = scheduler.list(client.id).map(({ id, title }) => ({ id, title }));
-      return json(res, 200, { live: liveRows, history: hist, schedules, inbox: openInbox(state.inbox?.[client.id]), signinNeeds: signinNeeds(client.id) });
+      return json(res, 200, { live: liveRows, history: hist, schedules, inbox: openInbox(state.inbox?.[client.id]).map((it) => ({ ...it, fromTitle: live.get(it.fromSession)?.title || it.fromTitle })), signinNeeds: signinNeeds(client.id) });
     }
     if (req.method === 'POST' && p === '/api/sessions') {
       const b = await readBody(req);

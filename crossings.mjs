@@ -56,3 +56,35 @@ export function settleInbox(inbox, id, how, startedId) {
   return it;
 }
 export const openInbox = (inbox) => (inbox || []).filter((x) => x.state === 'open');
+
+// Report back (#904). The person who presses Start chooses whether the sending session hears how it goes (report,
+// on by default). The sending session's card in its chat (k 'desk-handoff', the same id as the inbox item) follows:
+// open (waiting in the other desk) -> started -> done, or withdrawn (Take it back) / dismissed there. Only status and
+// the closing reply cross, never the chat. What one moment changes: the card's fields, a note for the sending chat,
+// and news (the closing reply, shown with the halo like a child's report). Null when nothing goes back.
+export function crossReport(it, moment, { at = Date.now(), reply = '', childId = '', toName = '' } = {}) {
+  const desk = toName || 'the other desk';
+  switch (moment) {
+    case 'start':
+      return it.report
+        ? { card: { state: 'started', report: true, startedAt: at, childId }, note: `${desk} started "${it.title}". It reports back here when it finishes a turn.` }
+        : { card: { state: 'started', report: false, startedAt: at, childId }, note: `${desk} started "${it.title}" and chose not to report back. Its progress stays in ${desk}.` };
+    case 'turn':
+      if (it.state !== 'started' || !it.report) return null;
+      return { card: { state: 'done', doneAt: at, text: String(reply).slice(0, 400) }, news: { childId, title: it.title, text: String(reply).slice(0, 400), desk, at } };
+    case 'quiet': // Stop reporting, in the started session
+      if (it.state !== 'started' || !it.report) return null;
+      return { card: { report: false }, note: `${desk} stopped reporting back on "${it.title}". Its progress stays in ${desk}.` };
+    case 'withdrawn': case 'dismissed':
+      return { card: { state: moment, endedAt: at }, note: moment === 'dismissed' ? `${desk} dismissed "${it.title}"; nothing ran there.` : '' };
+    default: return null;
+  }
+}
+// What the started session is told about where its work came from, after its brief.
+export function inboxContext(it, toName, by = '') {
+  const who = by === 'pilot' ? "Docket's autopilot" : 'the user';
+  const back = it.report
+    ? `Your closing reply at the end of each turn goes back to the session "${it.fromTitle || 'Untitled'}" in ${it.fromName} as a short report (status and that reply only, never this chat), so end each turn with a reply that stands on its own. Leave out passwords, keys and anything ${toName}'s alone.`
+    : `${who === 'the user' ? 'The user' : who} chose not to report back: nothing you write here goes back to ${it.fromName}.`;
+  return `(From Docket: this work was handed over from the desk "${it.fromName}" and ${who} pressed Start in ${toName}'s list. It runs on ${toName}'s own sign-in and is billed to ${toName}. ${back})`;
+}

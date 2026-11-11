@@ -572,6 +572,34 @@ select option:disabled { color: var(--muted); }
 .scard .cross-text { color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin-top: 4px; max-height: 240px; }
 #inbox { max-height: 40vh; overflow: auto; flex: none; }
 .inbox-cards { padding: 6px 8px 8px; display: grid; gap: 6px; }
+/* Work handed over from another desk, and its card in the sending chat (#904) */
+.scard.inbox-card { border: 1px solid var(--accent); background: var(--accent-soft); }
+.scard.inbox-card .sk { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.scard.inbox-card .sb { color: var(--text); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; max-height: none; }
+.scard.inbox-card .sbtn, .scard.xh .sbtn { flex-wrap: wrap; }
+.scard.inbox-card .sbtn button, .scard.xh .sbtn button { white-space: nowrap; }
+.scard.inbox-card textarea { width: 100%; min-height: 90px; font: inherit; font-size: 12px; }
+.scard .x-report { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; color: var(--muted); margin-top: 6px; }
+.scard.flash { animation: plan-flash 1.5s 2; }
+.scard.xh { background: var(--panel-2); }
+.scard.xh.done { border-left-color: var(--line); }
+.scard.xh .sk { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; text-transform: none; letter-spacing: 0; font-size: 12px; }
+button.xlink { border-color: transparent; color: var(--accent); }
+button.xlink:hover { background: var(--accent-soft); }
+.xh-pill { font-size: 11px; border-radius: 999px; padding: 1px 8px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.xh-pill.plain { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.xh-pill.run { background: transparent; color: var(--run); border: 1px solid var(--run); }
+.xh-pill.ok { background: transparent; color: var(--ok); border: 1px solid var(--ok); }
+.scard.xh.ok { border-left-color: var(--ok); }
+.xh-track { display: flex; font-size: 11px; color: var(--muted); margin: 6px 0 2px; }
+.xh-track span { flex: 1; border-top: 3px solid var(--line); padding-top: 4px; }
+.xh-track span.on { border-color: var(--accent); color: var(--text); }
+.scard.xh .xh-said { border-left: 3px solid var(--line); padding: 2px 10px; font-size: 13px; color: var(--muted); white-space: pre-wrap; margin-top: 4px; }
+.cross-strip { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 6px 18px; background: var(--panel-2); border-bottom: 1px solid var(--line); font-size: 12px; }
+.cross-strip[hidden] { display: none; }
+.cross-strip a { color: var(--accent); text-decoration: none; }
+.cross-strip a:hover { text-decoration: underline; }
+#clients button.arrived { animation: plan-flash 1s 3; outline: 2px solid var(--accent); outline-offset: -2px; }
 .scard a, .child-report a { color: var(--accent); }
 .child-report { font-size: 13px; color: var(--muted); border-left: 3px solid var(--line); padding: 4px 10px; }
 .child-report .ct { white-space: pre-wrap; }
@@ -1645,6 +1673,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     <div class="main-head" id="head"></div>
     <div class="cfg-banner" id="cfgBanner" role="status" hidden><span id="cfgText"></span><button id="cfgReload" data-tip="cfg-reload">Reload</button></div>
     <div class="cut-banner" id="cutBanner" role="status" hidden><span id="cutWhy">Docket stopped unexpectedly partway through this session's turn, so its reply was cut off.</span><button id="cutContinue" data-tip="cut-continue">Continue</button></div>
+    <div class="cross-strip" id="crossStrip" role="status" hidden></div>
     <button class="last-msg" id="lastMsg" hidden data-tip="last-msg"><div class="lm-text"><span class="lm-label">Your last message</span><span id="lastMsgText"></span></div></button>
     <div class="card-strip" id="cardStrip" hidden role="region" aria-label="Cards waiting on you"></div>
     <div class="tl-bar" id="tlBar" hidden aria-label="Timeline in the chat"></div>
@@ -1921,8 +1950,19 @@ const HELP = [
     ['prop-dismiss', 'Dismiss', 'Turn the suggestion down'],
     ['cross-send', 'Send', 'Send exactly this text to the other desk. This session can then reach that desk again without asking, until it ends'],
     ['cross-stop', 'Don\'t send', 'Send nothing to the other desk'],
-    ['inbox-start', 'Start', 'Start this work as a session in this desk, on its own sign-in and billing'],
+    ['inbox-start', 'Accept and start', 'Start this work as a session in this desk, on its own sign-in and billing'],
     ['inbox-dismiss', 'Dismiss', 'Turn this work down; nothing runs'],
+    ['inbox-edit', 'Edit brief', 'Change the brief before you start it'],
+    ['inbox-text', 'Brief', 'The brief the new session gets as its first message'],
+    ['inbox-save', 'Save brief', 'Keep this brief; the sender\'s card shows it too'],
+    ['inbox-cancel', 'Cancel', 'Put the brief back as it was'],
+    ['xh-from', 'Sending session', 'Open the session that handed this work over, in its own desk'],
+    ['inbox-report', 'Tell the sender', 'When ticked, the session that sent this hears when it starts and gets the closing reply of each turn, never the chat'],
+    ['inbox-quiet', 'Stop reporting', 'Stop telling the desk that sent this work how it goes'],
+    ['xh-go', 'Go to the desk and start', 'Switch to the desk the work waits in and show its card there'],
+    ['xh-back', 'Take it back', 'Take the card out of the other desk\'s list; nothing runs there'],
+    ['xh-brief', 'See brief', 'Show or hide the brief that was sent'],
+    ['xh-open', 'Open', 'Open the session in the other desk'],
     ['offer-new', 'New session', 'Do this work in its own new session'],
     ['offer-here', 'Do it here', 'Do this work in this session instead'],
     ['hoff-continue', 'Continue in new session', 'Carry this work on in a fresh session that takes this one\'s place'],
@@ -2516,6 +2556,8 @@ const needIcon = (l) => l === 'merge' ? prIcon('merged') : `<svg viewBox="0 0 16
   problem: `<path d="M8 1.9 14.6 13.4H1.4Z" ${NEED_SVG}/><path d="M8 6.2v3.3" ${NEED_SVG} stroke-width="1.9"/><circle cx="8" cy="11.5" r=".95" fill="currentColor"/>`
 }[l]}</svg>`;
 const needMark = (l, as = S.reasonTags) => as === 'icons' ? `<span class="nic need-${l}" title="${l}: ${esc(NEED_TIPS[l])}" aria-label="${l}">${needIcon(l)}</span>` : `<span class="tag need need-${l}" title="${esc(NEED_TIPS[l])}">${l}</span>`;
+// Work it handed to another desk waits there for Accept and start (#904).
+const waitsTag = (s) => s.waitsIn?.length ? `<span class="tag waits-in" title="${esc(`Work this session handed over waits for you to accept it in ${s.waitsIn.join(', ')}`)}">waiting in ${esc(s.waitsIn.join(', '))}</span>` : '';
 const needTag = (s) => { if (S.reasonTags === 'off' || !needsYou(s)) return ''; const l = needLabel(s, openPR(s.id)); return l === 'problem' ? '' : needMark(l); };
 // The title a dot carries: the error for a red ring, what resting means for a hollow green one.
 const dotTip = (s, c = dotClass(s)) => c === 'failed' ? ` title="${esc(failedTip(s))}"` : c === 'asking' ? ' title="Waiting on your answer: the session is paused on a question or a permission prompt"' : c === 'resting' ? ` title="${RESTING_TIP}"` : c === 'childwait' || c === 'childnews' ? ` title="${esc(kidsText(s))}"` : '';
@@ -2709,12 +2751,14 @@ function waitingCount(clientId) {
 function shownDesks() { return S.clients.filter((c) => !c.hidden); }
 // The autopilot's desk (#886) shows a robot wherever desks are named; the server lists it first.
 const deskName = (c) => `${c.pilot ? '<span class="pilot-mark" aria-label="Autopilot desk">🤖</span> ' : ''}${esc(c.name)}`;
+const deskArrived = {}; // desk id -> when work handed over from another desk arrived there: its tab flashes (#904)
 function renderClients() {
   if (menuHold(renderClients)) return; // waits while a menu is open (menu hold)
   $('clients').innerHTML = shownDesks().map((c) => {
     const n = waitingCount(c.id);
     const rc = remoteMarkTip(c);
-    return `<button class="${c.id === S.client ? 'on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${deskName(c)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+    const arrived = Date.now() - (deskArrived[c.id] || 0) < 3000 && c.id !== S.client;
+    return `<button class="${c.id === S.client ? 'on' : ''}${arrived ? ' arrived' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${deskName(c)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
   }).join('');
   const total = waitingCount(S.client);
   const name = S.clients.find((c) => c.id === S.client)?.name;
@@ -4857,7 +4901,7 @@ function sessionRow(s, depth, rail = '', parent = false) {
   const tb = timeBit(s);
   const pin = !s.archived && pinnedHere(s.id) ?`<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
   return `<div class="row ${depth ? 'child' : ''} ${parent ? 'parent' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''}${S.hoverCard ? '' : ` title="${esc((run?.title || s.title) || 'Untitled')}"`}>
-      ${rail}${rowDot(s)}<span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>${costCell(s, run)}
+      ${rail}${rowDot(s)}<span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${waitsTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>${costCell(s, run)}
       <span class="meta ${tb[0]}" title="${esc(tb[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${tb[0].startsWith('warn') ? `<span class="tpill${tb[0].endsWith('end') ? ' end' : ''}">${tb[1]}</span>` : tb[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // ---------- the hover card (#691): a row's full title and every detail, while 👁 > Hover card is on ----------
@@ -5059,22 +5103,83 @@ for (const area of ['list', 'listBar']) {
   });
   $(area).addEventListener('focusout', () => setTimeout(releaseList));
 }
-// Work another company handed over, at the top of this company's list until Start or Dismiss.
+// Work another company handed over, at the top of this company's list until Accept and start or Dismiss (#904).
+// The report-back box is ticked by default; Edit brief changes the brief before it starts.
+const inboxEditing = new Map(); // inbox id -> the brief being edited, so a list redraw keeps it
+const inboxQuiet = new Set(); // inbox ids whose report-back box was unticked, so a list redraw keeps that
 function inboxHtml() {
   const items = S.inbox[S.client] || [];
   if (!items.length) return '';
-  return `<div class="group"><span>Handed over from other desks (${items.length})</span></div><div class="inbox-cards">` + items.map((it) =>
-    `<div class="scard" data-card="${esc(it.id)}"><div class="sk">From ${esc(it.fromName)}${it.fromTitle ? ` · "${esc(it.fromTitle)}"` : ''}</div><div class="st">${esc(it.title)}</div><div class="sb">${esc(it.brief)}</div>`
-    + `<div class="sbtn"><button class="primary" data-inbox="${esc(it.id)}" data-act="start"${tip('inbox-start')}>Start</button><button data-inbox="${esc(it.id)}" data-act="dismiss"${tip('inbox-dismiss')}>Dismiss</button></div></div>`).join('') + '</div>';
+  return `<div class="group"><span>Waiting for you to accept (${items.length})</span></div><div class="inbox-cards">` + items.map((it) => {
+    const id = esc(it.id), editing = inboxEditing.has(it.id);
+    return `<div class="scard inbox-card" data-card="${id}"><div class="sk">From <b>${esc(it.fromName)}</b>${it.fromTitle ? ` · "${esc(it.fromTitle)}"` : ''}${it.at ? ` · ${esc(agoText(it.at))}` : ''}</div><div class="st">${esc(it.title)}</div>`
+      + (editing ? `<textarea data-inbox-text="${id}" aria-label="Brief"${tip('inbox-text')}>${esc(inboxEditing.get(it.id))}</textarea>` : `<div class="sb" title="${esc(it.brief)}">${esc(it.brief)}</div>`)
+      + `<label class="x-report"><input type="checkbox" data-inbox-report="${id}"${inboxQuiet.has(it.id) ? '' : ' checked'}${tip('inbox-report')}> Tell ${esc(it.fromName)} when it starts and finishes (the closing reply only, never the chat)</label>`
+      + `<div class="sbtn"><button class="primary" data-inbox="${id}" data-act="start"${tip('inbox-start')}>Accept and start</button><button data-inbox="${id}" data-act="dismiss"${tip('inbox-dismiss')}>Dismiss</button>`
+      + (editing ? `<button data-inbox="${id}" data-act="brief"${tip('inbox-save')}>Save brief</button><button class="xlink" data-inbox-edit="${id}" data-cancel="1"${tip('inbox-cancel')}>Cancel</button>` : `<button class="xlink" data-inbox-edit="${id}"${tip('inbox-edit')}>Edit brief</button>`) + '</div></div>';
+  }).join('') + '</div>';
 }
+document.addEventListener('change', (e) => {
+  const c = e.target.closest('[data-inbox-report]'); if (!c) return;
+  if (c.checked) inboxQuiet.delete(c.dataset.inboxReport); else inboxQuiet.add(c.dataset.inboxReport);
+});
+document.addEventListener('input', (e) => { const t = e.target.closest('[data-inbox-text]'); if (t) inboxEditing.set(t.dataset.inboxText, t.value); });
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-inbox-edit]'); if (!b) return;
+  const id = b.dataset.inboxEdit, it = (S.inbox[S.client] || []).find((x) => x.id === id);
+  if (b.dataset.cancel || !it) inboxEditing.delete(id); else inboxEditing.set(id, it.brief);
+  renderList();
+  if (inboxEditing.has(id)) document.querySelector(`[data-inbox-text="${CSS.escape(id)}"]`)?.focus();
+});
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-inbox]'); if (!b) return;
+  const id = b.dataset.inbox, act = b.dataset.act;
   const card = b.closest('[data-card]'); for (const x of card.querySelectorAll('button')) x.disabled = true;
+  const body = act === 'start' ? { report: !inboxQuiet.has(id) } : act === 'brief' ? { brief: inboxEditing.get(id) || '' } : {};
   try {
-    const r = await api(`/api/inbox/${b.dataset.inbox}/${b.dataset.act}?client=${S.client}`, {});
+    if (act === 'start' && inboxEditing.has(id)) await api(`/api/inbox/${id}/brief?client=${S.client}`, { brief: inboxEditing.get(id) }); // starts with what is in the box
+    const r = await api(`/api/inbox/${id}/${act}?client=${S.client}`, body);
+    inboxEditing.delete(id); if (act !== 'brief') inboxQuiet.delete(id);
     await loadSessions(S.client); renderList(); renderClients();
-    if (b.dataset.act === 'start' && r?.id) openSession(r.id);
+    if (act === 'start' && r?.id) openSession(r.id);
   } catch (err) { tell(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
+});
+// The card in the chat that handed work to another desk (#904): it follows the work there through Sent, Started, Done.
+function deskHandoffHtml(ev) {
+  const d = esc(ev.toName || 'the other desk'), id = esc(ev.id);
+  const st = ev.state, gone = st === 'withdrawn' || st === 'dismissed';
+  if (gone) return `<div class="scard done slim" data-card="${id}">Handed to ${d}: <b>${esc(ev.title)}</b>, ${st === 'withdrawn' ? 'taken back' : `dismissed in ${d}`}${earlier(ev)}</div>`;
+  const pill = st === 'open' ? `<span class="xh-pill">Waiting for you in ${d}</span>` : st === 'done' ? `<span class="xh-pill ok">Done in ${d}</span>`
+    : ev.report ? `<span class="xh-pill run">Running in ${d}</span>` : `<span class="xh-pill plain">Started in ${d}</span>`;
+  const quiet = st !== 'open' && !ev.report && st !== 'done';
+  const track = quiet ? '' : `<div class="xh-track"><span class="on">Sent</span><span${ev.startedAt ? ' class="on"' : ''}>Started${ev.startedAt ? ' ' + esc(stamp(ev.startedAt)) : ''}</span><span${st === 'done' ? ' class="on"' : ''}>Done${ev.doneAt ? ' ' + esc(stamp(ev.doneAt)) : ''}</span></div>`;
+  const line = st === 'open' ? `<div class="sb">Nothing runs until you press <b>Accept and start</b> in ${d}'s list. It runs on ${d}'s sign-in and bills to ${d}.</div>`
+    : quiet ? `<div class="sb">${d} started it and chose not to report back. Its progress stays in ${d}.</div>` : '';
+  const said = st === 'done' && ev.text ? `<div class="xh-said">${esc(ev.text)}${ev.text.length >= 400 ? '…' : ''}</div>` : '';
+  const brief = `<div class="sb cross-text" data-xh-brief hidden>${esc(ev.brief || '')}</div>`;
+  const btns = st === 'open'
+    ? `<button class="primary" data-xh="go"${tip('xh-go')}>Go to ${d} and start ›</button><button data-xh="back"${tip('xh-back')}>Take it back</button><button class="xlink" data-xh="brief" aria-expanded="false"${tip('xh-brief')}>See brief</button>`
+    : `${ev.childId ? `<button class="xlink" data-xh="open"${tip('xh-open')}>Open in ${d} ›</button>` : ''}<button class="xlink" data-xh="brief" aria-expanded="false"${tip('xh-brief')}>See brief</button>`;
+  return `<div class="scard xh${st === 'open' ? '' : st === 'done' ? ' ok' : ' done'}" data-card="${id}" data-to="${esc(ev.to)}"${ev.childId ? ` data-child="${esc(ev.childId)}"` : ''}><div class="sk">Handed to <b>${d}</b> ${pill}${earlier(ev)}</div><div class="st">${esc(ev.title)}</div>${line}${track}${said}${brief}<div class="sbtn">${btns}</div></div>`;
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-xh]'); if (!b) return;
+  const card = b.closest('[data-card]'), id = card.dataset.card, to = card.dataset.to;
+  if (b.dataset.xh === 'brief') { const sb = card.querySelector('[data-xh-brief]'); sb.hidden = !sb.hidden; b.setAttribute('aria-expanded', String(!sb.hidden)); b.textContent = sb.hidden ? 'See brief' : 'Hide brief'; return; }
+  if (b.dataset.xh === 'open') { selectClient(to, card.dataset.child); return; }
+  if (b.dataset.xh === 'go') { // switch desk, then show its card in the list and flash it
+    if (!S.clients.some((c) => c.id === to)) { tell('That desk is not in this Docket any more.'); return; }
+    if (S.mode !== 'sessions') setMode('sessions');
+    selectClient(to);
+    await loadSessions(to).catch(() => {}); renderList();
+    const el = $('inbox').querySelector(`[data-card="${CSS.escape(id)}"]`);
+    if (el) { el.scrollIntoView({ block: 'nearest' }); el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); el.querySelector('button.primary')?.focus(); }
+    else tell('That card is no longer waiting there.');
+    return;
+  }
+  for (const x of card.querySelectorAll('button')) x.disabled = true;
+  try { await api(`/api/inbox/${id}/withdraw?client=${to}`, {}); }
+  catch (err) { tell(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
 });
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-cross]'); if (!b) return;
@@ -8041,6 +8146,19 @@ function renderStatusBit(s) {
   el.textContent = el.title = st[1];
   tick();
 }
+// A session started from work another desk handed over says where it came from, and whether it reports back (#904).
+function renderCrossStrip(s) {
+  const x = s?.crossIn, el = $('crossStrip');
+  el.hidden = !x; if (!x) return;
+  el.innerHTML = `Handed over from <b>${esc(x.deskName)}</b>${x.title ? ` · <a href="#session:${esc(x.session)}" data-desk="${esc(x.desk)}"${tip('xh-from')}>"${esc(x.title)}"</a>` : ''}`
+    + (x.report ? ` <span class="xh-pill ok">reports back</span> <button class="xlink" data-cross-quiet="${esc(x.inbox)}"${tip('inbox-quiet')}>Stop reporting</button>` : ' <span class="xh-pill plain">not reporting back</span>');
+}
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-cross-quiet]'); if (!b) return;
+  b.disabled = true;
+  try { await api(`/api/inbox/${b.dataset.crossQuiet}/quiet?client=${S.client}`, {}); }
+  catch (err) { tell(err.message); b.disabled = false; }
+});
 function renderHead() {
   renderSigninNeed();
   if (menuHold(renderHead)) return; // waits while a menu is open (menu hold)
@@ -8051,6 +8169,7 @@ function renderHead() {
   renderCfgBanner();
   const s = S.schedOpen ? null : current();
   renderStatusBit(s);
+  renderCrossStrip(s);
   if (S.schedOpen) return renderScheduleHead();
   if (!s) return;
   if (POPOUT) renderClients(); // the window's title is the session's
@@ -8169,7 +8288,7 @@ function eventHtml(ev) {
       const asks = ev.kind === 'ask';
       const head = asks ? `Ask ${esc(ev.toName)} this question?` : `Hand this work to ${esc(ev.toName)}?`;
       const what = asks ? `A short read-only session in ${esc(ev.toName)} will search its past sessions and answer. Only its answer comes back here.`
-        : `It goes to ${esc(ev.toName)}'s session list as a card. Nothing runs until you press Start there, and it bills to ${esc(ev.toName)}.`;
+        : `It goes to ${esc(ev.toName)}'s session list as a card. Nothing runs until you press Accept and start there, and it bills to ${esc(ev.toName)}.`;
       const tail = ev.state === 'pending' ? `<div class="sbtn"><button class="primary" data-cross="${esc(ev.id)}" data-send="1"${tip('cross-send')}>Send</button><button data-cross="${esc(ev.id)}" data-send="0"${tip('cross-stop')}>Don't send</button></div><div class="sbtn hint">Sending also lets this session reach ${esc(ev.toName)} again without asking, until it ends.</div>`
         : `<div class="sbtn hint">${{ sent: `Sent to ${esc(ev.toName)}`, stopped: 'Not sent', expired: 'Not sent: Docket restarted before you answered' }[ev.state] || ''}${byPilot(ev)}</div>`;
       return `<div class="scard ${ev.state === 'pending' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">${esc(ev.fromName)} → ${esc(ev.toName)}${earlier(ev)}</div><div class="st">${head}</div><div class="sb">${what}</div>${ev.title ? `<div class="st">${esc(ev.title)}</div>` : ''}<div class="sb cross-text">${esc(ev.text)}</div>${tail}</div>`;
@@ -8199,8 +8318,9 @@ function eventHtml(ev) {
         : `<div class="sbtn hint">${ev.state === 'applied' ? 'Applied' : 'Dismissed'}</div>`;
       return `<div class="scard ${ev.state === 'open' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Suggested title${earlier(ev)}</div><div class="st">${esc(ev.title)}</div>${ev.reason ? `<div class="sb">${esc(ev.reason)}</div>` : ''}${tail}</div>`;
     }
+    case 'desk-handoff': return deskHandoffHtml(ev);
     case 'child-report':
-      return `<div class="child-report${ev.waiting ? ' waiting' : ''}"><a href="#session:${esc(ev.childId)}"${tip('open-session')}>${esc(ev.title)}</a> ${ev.waiting ? 'is waiting on you' : ev.news ? 'finished a turn: news only, so this session was not woken (it reads it with its next turn)' : 'finished a turn'}<div class="ct">${esc(ev.text)}${ev.text.length >= 400 ? '…' : ''}</div>${ev.jobs?.length ? `<div class="ct">Still running: ${esc(ev.jobs.join('; '))}</div>` : ''}</div>`;
+      return `<div class="child-report${ev.waiting ? ' waiting' : ''}"><a href="#session:${esc(ev.childId)}"${ev.desk ? ` data-desk="${esc(ev.desk)}"` : ''}${tip('open-session')}>${esc(ev.title)}</a> ${ev.waiting ? 'is waiting on you' : ev.news ? 'finished a turn: news only, so this session was not woken (it reads it with its next turn)' : 'finished a turn'}<div class="ct">${esc(ev.text)}${ev.text.length >= 400 ? '…' : ''}</div>${ev.jobs?.length ? `<div class="ct">Still running: ${esc(ev.jobs.join('; '))}</div>` : ''}</div>`;
     case 'permission': {
       if (ev.tool === 'AskUserQuestion' && Array.isArray(ev.input?.questions)) return questionFormHtml(ev);
       const done = ev.state !== 'pending';
@@ -8254,13 +8374,14 @@ function stripBtns(el) {
   if (el.matches('.qform')) return [null, el.querySelector('[data-qskip]')];
   if (el.matches('.perm')) return [el.querySelector('[data-answer="allow"]'), el.querySelector('[data-answer="deny"]')];
   const row = [...el.querySelectorAll('.sbtn')].find((r) => r.querySelector('button.primary'));
-  return row ? [row.querySelector('button.primary'), [...row.querySelectorAll('button:not(.primary)')].pop()] : [null, null];
+  return row ? [row.querySelector('button.primary'), row.querySelector('[data-xh="back"]') || [...row.querySelectorAll('button:not(.primary)')].pop()] : [null, null];
 }
 // What the line says: the kind of card, then its title.
 function stripText(el) {
   const txt = (x) => (x?.textContent || '').replace(/\s+/g, ' ').trim();
   if (el.matches('.qform')) return [`${openBrand()}'s questions`, [...el.querySelectorAll('.qq')].map(txt).join(' · ')];
   if (el.matches('.perm')) return ['Allow this?', txt(el.querySelector('.pt'))];
+  if (el.matches('.xh')) return [txt(el.querySelector('.xh-pill')), txt(el.querySelector('.st'))]; // work handed to another desk (#904)
   // a question beside the buttons (a handoff's "Archive this session now?") is what the card asks now
   return [txt(el.querySelector('.sbtn .hint')) || txt(el.querySelector('.sk')).split(' · ')[0], [...el.querySelectorAll('.st')].map(txt).join(' · ')];
 }
@@ -8908,7 +9029,9 @@ document.addEventListener('click', (e) => { const a = e.target.closest('[data-go
 // Links Claude writes as [title](#session:<id>) open that session.
 document.addEventListener('click', (e) => {
   const a = e.target.closest('a[href^="#session:"]'); if (!a) return;
-  e.preventDefault(); openSession(a.getAttribute('href').slice('#session:'.length));
+  e.preventDefault();
+  const id = a.getAttribute('href').slice('#session:'.length);
+  if (a.dataset.desk && a.dataset.desk !== S.client) selectClient(a.dataset.desk, id); else openSession(id); // a report from another desk (#904)
 });
 document.addEventListener('click', async (e) => {
   const t = e.target.closest('[data-poffer]'); if (!t) return;
@@ -10384,7 +10507,10 @@ function connect() {
     } else if (m.t === 'stats-ready') {
       loadSessions(m.client, true).then(() => { if (m.client === S.client) { renderList(); if (!S.schedOpen) renderHead(); } });
     } else if (m.t === 'inbox') { // another desk handed work to this one, or a card here was answered
-      loadSessions(m.client).then(() => { renderClients(); if (m.client === S.client) renderList(); });
+      loadSessions(m.client).then(() => {
+        renderClients(); if (m.client === S.client) renderList();
+        if (m.added && m.client !== S.client) { deskArrived[m.client] = Date.now(); renderClients(); setTimeout(renderClients, 3100); } // its tab flashes once (#904)
+      });
     } else if (m.t === 'schedules') {
       loadSchedules();
       if (S.schedOpen) refreshScheduleDetail();
