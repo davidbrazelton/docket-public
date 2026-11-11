@@ -634,7 +634,7 @@ aside.tasks.hidden { display: none; }
 .plan-row:hover { background: var(--panel-2); }
 .plan-row.mine { border-left-color: var(--accent); }
 .plan-row .ic { line-height: 18px; text-align: center; font-size: 12px; color: var(--muted); }
-.plan-row .ic.st-done { color: var(--ok); } .plan-row .ic.st-claimed { color: var(--run); } .plan-row .ic.st-waiting_on_user, .plan-row .ic.st-sent_back { color: var(--warn); }
+.plan-row .ic.st-done, .pk .ic.st-done { color: var(--ok); } .plan-row .ic.st-claimed, .pk .ic.st-claimed { color: var(--run); } .plan-row .ic.st-waiting_on_user, .plan-row .ic.st-sent_back, .pk .ic.st-waiting_on_user, .pk .ic.st-sent_back { color: var(--warn); }
 .plan-row .l1 { line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .plan-row .l1 .id { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 5px; }
 .plan-row .l1 .tw { color: var(--muted); opacity: .6; margin-right: 3px; font-family: ui-monospace, Consolas, monospace; }
@@ -698,11 +698,20 @@ button.plink { cursor: pointer; }
 .plan-ctl { display: flex; align-items: center; gap: 2px; margin: -4px -6px -4px 0; text-transform: none; letter-spacing: 0; font-weight: 500; }
 .plan-eye-wrap { position: relative; display: flex; }
 .plan-ctl button { font: inherit; font-size: 11px; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; }
-.plan-ctl .plan-eye { min-width: 32px; height: 28px; padding: 0; font-size: 14px; }
+.plan-ctl .plan-eye, .plan-ctl .plan-key { min-width: 32px; height: 28px; padding: 0; font-size: 14px; }
 .plan-ctl .plan-all { height: 28px; padding: 0 6px; white-space: nowrap; }
-.plan-ctl > button:hover, .plan-ctl .plan-eye:hover { background: var(--panel-2); color: var(--text); }
-.plan-ctl .plan-eye[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
+.plan-ctl > button:hover, .plan-ctl .plan-eye:hover, .plan-ctl .plan-key:hover { background: var(--panel-2); color: var(--text); }
+.plan-ctl .plan-eye[aria-expanded="true"], .plan-ctl .plan-key[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
 .tl-menu.plan-view-pop { left: auto; right: 0; min-width: 240px; cursor: default; }
+/* The Plan key (#897): every state icon and tag, shown at the top of the Plan section by ? and in Help's Key */
+.plan-key-box { margin: 6px 14px 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; }
+.pkey { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 4px 8px; align-items: baseline; }
+.pkey h5 { grid-column: 1 / -1; margin: 6px 0 0; font-size: 11px; color: var(--muted); font-weight: 600; }
+.pkey h5:first-child { margin-top: 0; }
+.pkey .s { display: flex; justify-content: center; gap: 4px; color: var(--muted); }
+.pk .ic { font-size: 12px; color: var(--muted); }
+.pkey .c { color: var(--muted); }
+.pkey .bar { display: inline-block; width: 3px; height: 14px; background: var(--accent); vertical-align: -2px; }
 .plan-view-pop button { display: grid; grid-template-columns: 16px 1fr; gap: 0 6px; width: 100%; height: auto; padding: 5px 8px; text-align: left; font-size: 12px; color: var(--text); }
 .plan-view-pop button:hover { background: var(--pop-hover); }
 .plan-view-pop .tick { color: var(--accent); }
@@ -6131,6 +6140,9 @@ function keyHtml() {
     ${row(needSample('merge'), 'Its pull request is open and waiting on you to say merge.')}
     ${row(needSample('done'), 'It says its work is complete and ready to close.')}
     ${row(needSample('reply'), 'A finished reply to read when you like.')}
+    <h4>Plan steps (the Plan section in a session’s details; ? by its heading shows this too)</h4>
+    ${PLAN_KEY.map(([k, c, d]) => row(planKeyIc(k), `${esc(d)} Colour: ${c}.`, 'pk')).join('')}
+    ${PLAN_TAGS.map(([k, d]) => row(planKeyTag(k), esc(d))).join('')}
     <h4>Ticket and pull request chips</h4>
     ${row(chips('new', 'draft'), 'Grey: not started. A ticket still to do, or a draft pull request.')}
     ${row(chips('indeterminate', 'open'), 'Blue: being worked on. A ticket in progress or an open GitHub issue, or an open pull request.')}
@@ -9157,9 +9169,51 @@ const PLAN_ICON = { open: '●', claimed: '●', done: '✓', waiting_on_user: '
 const PLAN_WORD = { open: 'open', claimed: 'in progress', done: 'done', waiting_on_user: 'waiting on you', waiting_outside: 'waiting outside Docket', sent_back: 'sent back', dropped: 'dropped' };
 // A task's state in words; waiting outside Docket says on what (#652).
 const planWord = (t) => t.state === 'waiting_outside' && t.waitsOn ? `waiting on ${t.waitsOn}` : PLAN_WORD[t.state] || t.state;
+// The Plan key (#897): what each state icon, its colour and each tag on the right means. One list for the ? by
+// the Plan heading and for Help's Key.
+const PLAN_KEY = [
+  ['open', 'grey', 'Open: not started yet. Any session can take it once the steps before it are done.'],
+  ['claimed', 'blue', 'In progress: a session has it and is working on it.'],
+  ['done', 'green', 'Done.'],
+  ['waiting_on_user', 'amber', 'Waiting on you: its session stopped to ask you something. Open the step to see what.'],
+  ['waiting_outside', 'grey', 'Waiting outside Docket: on a person, a vendor, a date or a pull request. The step says on what.'],
+  ['sent_back', 'amber', 'Sent back: the plan\'s coordinator checked it and its session must fix something.'],
+  ['dropped', 'grey, crossed out', 'Dropped: no longer needed. It keeps its number and counts as neither open nor done.'],
+];
+const PLAN_TAGS = [
+  ['build', 'Make or change something: code, a document, a setting.'],
+  ['test', 'Check that something works.'],
+  ['decision', 'Settle a choice before the steps after it go on.'],
+  ['research', 'Find something out.'],
+  ['you', 'Your step (dashed): only you can do it, so no session takes it.'],
+];
+const planKeyIc = (k) => `<span class="ic st-${k}">${PLAN_ICON[k]}</span>`;
+const planKeyTag = (k) => `<span class="ptag${k === 'you' ? ' you' : ''}">${k}</span>`;
+function planKeyHtml() {
+  const r = (s, text) => `<span class="s">${s}</span><span>${text}</span>`;
+  return `<div class="pkey pk"><h5>Step icons (the progress bar uses the same colours)</h5>${PLAN_KEY.map(([k, c, d]) => r(planKeyIc(k), `${esc(d)} <span class="c">(${c})</span>`)).join('')}`
+    + `<h5>Tags on the right: what kind of step</h5>${PLAN_TAGS.map(([k, d]) => r(planKeyTag(k), esc(d))).join('')}`
+    + `<h5>Other marks</h5>${r('<span class="bar"></span>', 'A bar on the left: the step the open session has.')}${r('└', 'Under a step: it can start once the step above is done.')}</div>`;
+}
+// A step's hover (#897): where it stands first, then its brief in short lines, its Done: clause on a line of its own.
+function planTip(t, click) {
+  const done = t.state === 'done' || t.state === 'dropped', L = [`${t.id ? t.id + ' · ' : ''}${planWord(t)}`];
+  if (t.holder) L.push(`${done ? 'Done by' : 'Held by'}: ${t.holderTitle || t.holder}`);
+  if (t.after?.length && !done) L.push(`Starts after: ${t.after.join(', ')}`);
+  if (t.forUser && !done) L.push('Your step: only you can do it');
+  if (t.kind) L.push(`Kind: ${t.kind}`);
+  const brief = String(t.brief || '').trim(), m = brief.match(/(^|\s)Done( when)?:\s*/i);
+  const what = m ? brief.slice(0, m.index).trim() : brief, when = m ? brief.slice(m.index + m[0].length).trim() : '';
+  const lines = (s) => s.split(/\n+|(?<=[.!?])\s+(?=[A-Z0-9"'(`#*-])/).map((x) => x.trim()).filter(Boolean);
+  L.push('', t.title);
+  if (what) L.push('', 'What to do:', ...lines(what));
+  if (when) L.push('', 'Done when: ' + lines(when).join('\n'));
+  if (click) L.push('', click);
+  return L.join('\n');
+}
 // A task row held by another session opens it on a click anywhere in the row, as its held-by link does (#669);
 // the brief stays in the row's tip. Plan-folder rows only: Docket's own plans open a row instead (#868).
-const planRowAttrs = (t, holder, me) => holder && holder !== me ? ` data-plan-open="${esc(holder)}" title="${esc(`${t.brief || t.title}\nClick to open ${t.holderTitle || 'its session'}`)}"` : ` title="${esc(t.brief || t.title)}"`;
+const planRowAttrs = (t, holder, me) => holder && holder !== me ? ` data-plan-open="${esc(holder)}" title="${esc(planTip(t, `Click to open ${t.holderTitle || 'its session'}`))}"` : ` title="${esc(planTip(t))}"`;
 // A plan-folder holder as a Docket session id: the plan file may name it whole or by its first characters; '' when no
 // session here matches.
 const folderHolder = (h) => !h ? '' : sessionById(h) ? h : h.length >= 6 ? [...Object.keys(S.live), ...(S.history[S.client] || []).map((x) => x.id)].find((id) => id.startsWith(h)) || '' : '';
@@ -9227,6 +9281,7 @@ const planUi = (pid) => ({ open: [], shut: [], unshut: [], full: [], done: false
 function setPlanUi(pid, u) { const all = store.get('planPanel', {}); all[pid] = u; store.set('planPanel', all); }
 S.planReveal = {}; // plan id -> runs of step ids shown from their gap line
 S.planEye = false;
+S.planKey = false;
 // A run of steps by its first and last ID in plan order (a chain puts them in tree order).
 const planIds = (g, tasks) => { const at = new Map(tasks.map((t, i) => [t.id, i])), o = [...g].sort((x, y) => at.get(x) - at.get(y)); return o.length === 1 ? o[0] : `${o[0]}–${o[o.length - 1]}`; };
 // A session as a chip with its session-list dot; pressing it opens that session.
@@ -9266,7 +9321,7 @@ function planRowHtml(t, p, me, u, v, depth) {
   const open = u.open.includes(t.id), done = planFinished(t);
   const cls = ['plan-row', 'st-' + t.state, open && 'open', done && 'done', t.forUser && 'user', t.holder === me && !done && 'mine'].filter(Boolean).join(' ');
   const tag = t.kind || t.forUser ? `<span class="ptag${t.forUser ? ' you' : ''}"${t.forUser ? ' title="Only you can do this step; no session claims it"' : ''}>${t.forUser ? 'you' + (t.kind ? ' · ' : '') : ''}${esc(t.kind)}</span>` : '';
-  return `<div class="${cls}" data-id="${esc(t.id)}"${open ? '' : ` title="${esc(t.brief || t.title)}"`}><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '●'}</span><span class="l1">${depth ? `<span class="tw">${' '.repeat(depth - 1)}└</span>` : ''}<span class="id">${esc(t.id)}</span>${esc(t.title)}</span><span class="end">${tag}</span>${v.two && !open ? `<span class="l2">${planSummary(t, me)}</span>` : ''}${open ? planOpenHtml(t, p, me, u) : ''}</div>`;
+  return `<div class="${cls}" data-id="${esc(t.id)}"${open ? '' : ` title="${esc(planTip(t))}"`}><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '●'}</span><span class="l1">${depth ? `<span class="tw">${' '.repeat(depth - 1)}└</span>` : ''}<span class="id">${esc(t.id)}</span>${esc(t.title)}</span><span class="end">${tag}</span>${v.two && !open ? `<span class="l2">${planSummary(t, me)}</span>` : ''}${open ? planOpenHtml(t, p, me, u) : ''}</div>`;
 }
 // One plan: its head (coordinator, where it sits, a progress bar with a block per step), the Active and Done filters,
 // and its steps in plan order, under phase headings when it has phases. Filters hide steps but never move them.
@@ -9320,11 +9375,15 @@ function planHtml(p, me, ctx) {
     <div class="plan-flts"><button class="plan-flt" data-plan-f="active" aria-pressed="${u.active}" title="Only steps in progress or waiting outside Docket">Active<span class="n">${p.tasks.filter(active).length}</span></button><span class="div"></span><button class="plan-flt" data-plan-f="done" aria-pressed="${u.done}" title="${esc(doneTip)}">✓ Done<span class="n">${count('done')}</span></button></div>
     <div class="plan-list">${out || `<div class="hint">${empty}</div>`}</div></div>`;
 }
+// ? shows or hides the Plan key at the top of the section (a link, DESIGN.md).
+const planKeyBtn = () => `<button class="plan-key" data-plan-key aria-expanded="${S.planKey}" title="${S.planKey ? 'Hide the key' : 'Key: what the step icons, colours and tags mean'}">?</button>`;
+const planKeyBox = () => S.planKey ? `<div class="plan-key-box">${planKeyHtml()}</div>` : '';
 // The Plan section heading's own controls: the 👁 view menu (a link, DESIGN.md) and Expand all / Collapse all.
 const PLAN_VIEW_OPTS = [['phases', 'Phases', 'Sections the plan defines, each with its progress'], ['gaps', 'Gap lines', 'A thin line where hidden steps sit'], ['two', 'Two-line rows', 'A summary line under each step']];
 function planHeadCtl(anyOpen) {
   const v = planView();
   return `<span class="plan-ctl"><span class="plan-eye-wrap"><button class="plan-eye" data-plan-eye aria-haspopup="true" aria-expanded="${S.planEye}" title="View: how the Plan section shows its steps, for every plan">👁</button>${S.planEye ? `<div class="tl-menu plan-view-pop" role="menu" aria-label="Plan view">${PLAN_VIEW_OPTS.map(([k, l, d]) => `<button role="menuitemcheckbox" aria-checked="${!!v[k]}" data-plan-v="${k}" title="${esc(d)}. For every plan."><span class="tick">${v[k] ? '✓' : ''}</span>${l}<span class="d">${d}</span></button>`).join('')}</div>` : ''}</span>`
+    + planKeyBtn()
     + `<button class="plan-all" data-plan-all="${anyOpen ? 'close' : 'open'}" title="${anyOpen ? 'Close every opened step' : 'Open every step shown'}">${anyOpen ? '⊟ Collapse all' : '⊞ Expand all'}</button></span>`;
 }
 // The Plan section for one session, or null when it coordinates no plan and holds no task.
@@ -9335,14 +9394,14 @@ function planSection(id) {
     const held = S.plans.plans.filter((p) => holdsPlan(p, id));
     if (!held.length) return null;
     const shown = held.map((p) => planDetail(p.id)).filter(Boolean);
-    return [held.length === 1 ? `Plan · ${held[0].done} of ${held[0].total} done` : `Plans ${held.length}`, shown.length ? shown.map((p) => folderPlanHtml(p, id)).join('') : '<div class="hint">Loading…</div>'];
+    return [held.length === 1 ? `Plan · ${held[0].done} of ${held[0].total} done` : `Plans ${held.length}`, planKeyBox() + (shown.length ? shown.map((p) => folderPlanHtml(p, id)).join('') : '<div class="hint">Loading…</div>'), `<span class="plan-ctl">${planKeyBtn()}</span>`];
   }
   const ids = [...new Set([ownPlan(id)?.id, ...S.plans.plans.filter((p) => p.holders.includes(id)).map((p) => p.id)].filter(Boolean))];
   if (!ids.length) return null;
   const shown = ids.map((pid) => planDetail(pid)).filter(Boolean);
   const own = ownPlan(id), ctx = { anyOpen: false };
   const html = shown.map((p) => planHtml(p, id, ctx)).join('');
-  return [own ? `Plan · ${own.done} of ${own.total} done` : 'Plan', shown.length ? html : '<div class="hint">Loading…</div>', shown.length ? planHeadCtl(ctx.anyOpen) : ''];
+  return [own ? `Plan · ${own.done} of ${own.total} done` : 'Plan', shown.length ? planKeyBox() + html : '<div class="hint">Loading…</div>', shown.length ? planHeadCtl(ctx.anyOpen) : ''];
 }
 // Jump to a step (a progress bar block, an After chip): its phase unfolds, it shows even when a filter hides it, and it opens.
 function planJump(pid, id) {
@@ -9359,9 +9418,10 @@ function planJump(pid, id) {
 $('tasksBody').addEventListener('click', (e) => {
   const pz = e.target.closest('[data-plan-pause]');
   if (pz) { pz.disabled = true; pausePlan(pz.closest('[data-plan]').dataset.plan, pz.dataset.planPause === 'pause'); return; }
-  const b = e.target.closest('[data-plan-eye], [data-plan-v], [data-plan-all], [data-plan-f], [data-plan-gap], [data-plan-fold], [data-plan-phase], [data-plan-jump], [data-plan-full], a, .plan-row');
+  const b = e.target.closest('[data-plan-eye], [data-plan-key], [data-plan-v], [data-plan-all], [data-plan-f], [data-plan-gap], [data-plan-fold], [data-plan-phase], [data-plan-jump], [data-plan-full], a, .plan-row');
   if (!b || b.matches('a')) return;
   if (b.hasAttribute('data-plan-eye')) { S.planEye = !S.planEye; renderTasks(); return; }
+  if (b.hasAttribute('data-plan-key')) { S.planKey = !S.planKey; renderTasks(); return; }
   if (b.dataset.planV) { const v = planView(); v[b.dataset.planV] = !v[b.dataset.planV]; store.set('planView', v); renderTasks(); $('tasksBody').querySelector(`[data-plan-v="${b.dataset.planV}"]`)?.focus(); return; }
   if (b.dataset.planAll) {
     for (const el of $('tasksBody').querySelectorAll('.plan[data-plan]')) { const u = planUi(el.dataset.plan); u.open = b.dataset.planAll === 'open' ? [...el.querySelectorAll('.plan-row')].map((r) => r.dataset.id) : []; setPlanUi(el.dataset.plan, u); }
