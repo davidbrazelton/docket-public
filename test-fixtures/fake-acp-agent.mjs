@@ -110,7 +110,7 @@ async function docketTurn(m) {
   send({ id: m.id, result: { stopReason: 'end_turn' } });
 }
 // A pilot run's brief (#881): as a stand-in pilot it lists what it may answer and answers each permission prompt
-// allow and each question form with its first options, then ends its turn. A line "PILOT_SLOW <ms>" in its brief (from
+// allow and each question form with its first options (or suggests that, where the rules say suggest), then ends its turn. A line "PILOT_SLOW <ms>" in its brief (from
 // the pilot notes) keeps the run going that long after it answered, so a test can bring in more while it is going.
 async function pilotRun(text) {
   const tool = async (name, args) => {
@@ -123,8 +123,10 @@ async function pilotRun(text) {
   try { items = JSON.parse(listed.split('\n\n')[0]); } catch {}
   const done = [];
   for (const i of items) {
-    if (i.kind === 'permission') done.push(await tool('pilot_answer', { id: i.id, answer: 'allow' }));
-    else if (i.kind === 'question') done.push(await tool('pilot_answer', { id: i.id, answer: 'answer', answers: Object.fromEntries(i.questions.map((q) => [q.question, q.options[0]])) }));
+    // What the rules mark suggest it only suggests (#917), with the same answer.
+    const give = i.may === 'suggest' ? (args) => tool('pilot_suggest', { ...args, why: 'stand-in pilot' }) : (args) => tool('pilot_answer', args);
+    if (i.kind === 'permission') done.push(await give({ id: i.id, answer: 'allow' }));
+    else if (i.kind === 'question') done.push(await give({ id: i.id, answer: 'answer', answers: Object.fromEntries(i.questions.map((q) => [q.question, q.options[0]])) }));
   }
   const slow = text.match(/^PILOT_SLOW (\d+)$/m);
   if (slow) await new Promise((r) => setTimeout(r, +slow[1]));

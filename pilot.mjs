@@ -29,14 +29,31 @@ export const STOPS = {
   remote: 'letting another desk or computer in',
 };
 
-// Safe defaults: the pilot answers permission prompts and question forms, and New session / Do it here; every other
-// kind waits for the person. Every hard stop waits for the person.
+// The kinds that take judgment (#917): the pilot learns them first, by suggesting and watching the person's answers.
+export const JUDGMENT = ['question', 'plan', 'offer', 'card', 'handoff'];
+// The kinds a suggestion can be shown on (on the card, with Accept) and so learned; suggest on any other kind
+// counts as ask. Permission prompts are allowed by default, but a person may set them to suggest too.
+export const LEARNS = ['permission', ...JUDGMENT];
+const SUGGESTS = new Set(LEARNS);
+// Safe defaults: the pilot answers permission prompts, and suggests for the judgment kinds until the person lets it
+// answer them (I got this); every other kind waits for the person. Every hard stop waits for the person.
+// RULES_VERSION: written in the rules file, 2 once the judgment kinds default to suggest (upgradeRules).
+export const RULES_VERSION = 2;
 export const DEFAULT_RULES = {
-  kinds: { permission: 'allow', question: 'allow', plan: 'ask', offer: 'allow', card: 'ask', handoff: 'ask', inbox: 'ask', cross: 'ask', merge: 'ask', signin: 'ask', remote: 'ask' },
+  kinds: { permission: 'allow', question: 'suggest', plan: 'suggest', offer: 'suggest', card: 'suggest', handoff: 'suggest', inbox: 'ask', cross: 'ask', merge: 'ask', signin: 'ask', remote: 'ask' },
   stops: Object.fromEntries(Object.keys(STOPS).map((k) => [k, 'ask'])),
   desks: {},
 };
-const LEVELS = new Set(['allow', 'deny', 'ask']);
+const LEVELS = new Set(['allow', 'deny', 'suggest', 'ask']);
+// A rules file written before #917 holds the old defaults for the judgment kinds: those (and only those, so a level
+// the person chose stays) become suggest, once. Returns { rules, changed } (rules: the file's object, upgraded).
+const OLD_DEFAULTS = { question: 'allow', plan: 'ask', offer: 'allow', card: 'ask', handoff: 'ask' };
+export function upgradeRules(raw) {
+  if (!raw || typeof raw !== 'object' || raw.version >= RULES_VERSION) return { rules: raw, changed: false };
+  const kinds = { ...(raw.kinds || {}) };
+  for (const k of JUDGMENT) if (kinds[k] === undefined || kinds[k] === OLD_DEFAULTS[k]) kinds[k] = 'suggest';
+  return { rules: { ...raw, version: RULES_VERSION, kinds }, changed: true };
+}
 
 // The rules file as read (any shape) made safe: unknown kinds, stops and levels are dropped, and what is missing
 // takes the default. desks: per-desk kinds and stops laid over the rest.
@@ -125,8 +142,8 @@ export function pilotDeskEntry(roots, clients = []) {
 // session: { id, desk, deskName } (desk: its desk id). pilotDesk: { id, name }, or null when none is set yet.
 export function pilotSessionRefusal(session, pilotDesk) {
   if (!session) return '';
-  if (!pilotDesk) return "The autopilot has no desk yet. Turn it on once, and Docket makes the Autopilot desk and starts the pilot there, or pick a desk and Save desk first.";
-  if (session.desk !== pilotDesk.id) return `That session is on the desk ${session.deskName || session.desk || '(unknown)'}. The pilot must be a session of the autopilot's own desk, ${pilotDesk.name}, so that its sign-ins, bill, memory and files are that desk's and not a working desk's. Start one on ${pilotDesk.name}, or bind another desk as the autopilot's.`;
+  if (!pilotDesk) return "The autopilot has no desk yet. Turn it on once, and Docket makes the Autopilot desk and starts the pilot there.";
+  if (session.desk !== pilotDesk.id) return `That session is on the desk ${session.deskName || session.desk || '(unknown)'}. The pilot must be a session of the autopilot's own desk, ${pilotDesk.name}, so that its sign-ins, bill, memory and files are that desk's and not a working desk's.`;
   return '';
 }
 
@@ -138,7 +155,7 @@ export function ruleFor(rules, item, pilotDesk) {
   const r = cleanRules(rules), desk = r.desks[item.desk] || { kinds: {}, stops: {} };
   const kind = desk.kinds[item.kind] || r.kinds[item.kind] || 'ask';
   const stops = itemStops(item);
-  let level = kind, why = `the rules say ${kind} for ${item.kind}`;
+  let level = kind === 'suggest' && !SUGGESTS.has(item.kind) ? 'ask' : kind, why = `the rules say ${kind} for ${item.kind}`;
   for (const st of stops) {
     const s = desk.stops[st] || r.stops[st];
     // A hard stop only lets the pilot in as far as the rules name it: allow lets the kind's rule stand, deny lets
@@ -149,8 +166,8 @@ export function ruleFor(rules, item, pilotDesk) {
   return { level, stops, why };
 }
 
-// The stricter of two levels (allow, then deny, then ask).
-const RANK = { allow: 0, deny: 1, ask: 2 };
+// The stricter of two levels (allow, then deny, then suggest, then ask).
+const RANK = { allow: 0, deny: 1, suggest: 2, ask: 3 };
 export const stricter = (a, b) => {
   const x = a in RANK ? a : 'ask', y = b in RANK ? b : 'ask';
   return RANK[x] >= RANK[y] ? x : y;
@@ -166,15 +183,26 @@ export function mayAnswer(rules, item, answer, floor, pilotDesk) {
   if (floor && stricter(floor, level) !== level) { level = stricter(floor, level); why = `the rules on the computer with the desk say ${level} for it`; }
   if (level === 'allow') return { ok: true, why };
   if (level === 'deny') return answer === k.decline ? { ok: true, why } : { ok: false, why: `${why}: the pilot may only answer ${k.decline}. It stays with the person.` };
+  if (level === 'suggest') return { ok: false, why: `${why}: the pilot only suggests an answer for it (pilot_suggest), and the person picks.` };
   return { ok: false, why: `${why}: it stays with the person.` };
+}
+// Whether the pilot may suggest this answer for this item (#917): only where the rules say suggest. Returns { ok, why }.
+export function maySuggest(rules, item, answer, floor, pilotDesk) {
+  const k = KINDS[item.kind];
+  if (!k) return { ok: false, why: `Unknown kind ${item.kind}.` };
+  if (!k.answers.includes(answer)) return { ok: false, why: `"${answer}" is not an answer to ${item.kind}; use one of: ${k.answers.join(', ')}.` };
+  let { level, why } = ruleFor(rules, item, pilotDesk);
+  if (floor) level = stricter(floor, level);
+  if (level === 'suggest') return { ok: true, why };
+  return { ok: false, why: level === 'ask' ? `${why}: it stays with the person, with no suggestion.` : `The rules say ${level} for it: answer it with pilot_answer instead.` };
 }
 
 // One answer the pilot gave, or tried to, as a line in its log.
 // from: the computer whose pilot answered with a pilot key (#827), when not this one's. run: the pilot run that
-// answered (#881), its session id.
-export const logLine = ({ at = Date.now(), item, answer, ok, why, from, run }) => ({
+// answered (#881), its session id. suggest: the run only suggested this answer (#917).
+export const logLine = ({ at = Date.now(), item, answer, ok, why, from, run, suggest }) => ({
   at, id: item.id, kind: item.kind, desk: item.desk, session: item.session || null, title: item.title || '', what: item.what || '', answer, ok, why,
-  ...(from ? { from } : {}), ...(run ? { run } : {}),
+  ...(from ? { from } : {}), ...(run ? { run } : {}), ...(suggest ? { suggest: true } : {}),
 });
 // A run starting or ending, as a line in the pilot's log (#881): kind run, answer started or ended, what says why.
 export const runLine = ({ at = Date.now(), run, answer, what = '', brand, gear }) => ({ at, kind: 'run', run, answer, what, ok: true, ...(brand ? { brand, gear } : {}) });
@@ -210,23 +238,120 @@ export function runDone(s, { tasks = 0, maxMs = 30 * 60000, now = Date.now(), at
   return '';
 }
 
-// The pilot's brand and starting gear (☰ > Docket settings > Autopilot). saved: { brand, gear } as kept. gears:
-// GEARS from gears.mjs. Default: Claude on its lowest gear, so cheap triage shifts up to the top gear only to judge.
-// A gear the brand has no gear by that key for is its lowest. Returns { brand, gear } (gear: a gear key).
+// The pilot's brand (☰ > Docket settings > Autopilot): Claude unless another is picked there. A run always runs on
+// that brand's top gear, since every run judges (a lower gear once made a call the person disagreed with). saved:
+// { brand } as kept. gears: GEARS from gears.mjs, cheapest first. Returns { brand, gear } (gear: the top gear's key).
 export const PILOT_DEFAULT_BRAND = 'claude';
 export function pilotSetting(saved, gears) {
   const brand = gears[saved?.brand] ? saved.brand : PILOT_DEFAULT_BRAND;
-  const list = gears[brand];
-  const gear = list.some((g) => g.key === saved?.gear) ? saved.gear : list[0].key;
-  return { brand, gear };
+  return { brand, gear: gears[brand].at(-1).key };
 }
-// Why this brand and gear can't be saved for the pilot, or '' when they can. offered: [{ brand, signedIn }] the
-// brands the autopilot's desk has set up (name: the brand's name, for the message).
-export function pilotSettingRefusal({ brand, gear }, offered, gears) {
+// Why this brand can't be saved for the pilot, or '' when it can. offered: [{ brand, signedIn }] the brands the
+// autopilot's desk has set up (name: the brand's name, for the message).
+export function pilotSettingRefusal({ brand }, offered, gears) {
   if (!gears[brand]) return `${brand} is not a brand Docket knows.`;
   const o = offered.find((x) => x.brand === brand), name = o?.name || brand;
-  if (!o) return `The autopilot's desk does not use ${name}. Tick it for that desk in ☰ > Desks first.`;
-  if (!o.signedIn) return `The autopilot's desk is not signed in to ${name}. Sign it in beside it in ☰ > Desks first.`;
-  if (gear !== undefined && !gears[brand].some((g) => g.key === gear)) return `${gear} is not a gear of ${name}. Its gears: ${gears[brand].map((g) => g.key).join(', ')}.`;
+  if (!o) return `The autopilot's desk does not use ${name}.`;
+  if (!o.signedIn) return `The autopilot's desk is not signed in to ${name}. Sign it in first.`;
   return '';
+}
+
+// Finished runs stay in the autopilot desk's list for a week, so the person can read what they did, and are archived
+// after that. sessions: state.sessions. current: the run going now. Returns the ids to archive now.
+export const RUN_KEEP_MS = 7 * 24 * 3600000;
+export function runsToArchive(sessions, desk, current, now = Date.now()) {
+  return Object.entries(sessions || {}).filter(([id, r]) => r && r.client === desk && !r.archived && id !== current
+    && Number.isFinite(r.createdAt) && now - r.createdAt > RUN_KEEP_MS).map(([id]) => id);
+}
+
+// What the autopilot is doing, for the quiet animation on its desk and the ✈ (an indicator): off (switch off or no
+// desk), idle, waking (a batch is filling before a run starts) or working (a run is going).
+export function pilotState({ flying, running, filling }) {
+  if (!flying) return 'off';
+  if (running) return 'working';
+  return filling ? 'waking' : 'idle';
+}
+
+// ---------- learning first (#917) ----------
+// For the judgment kinds the pilot starts by suggesting: a run records the answer it would give (pilot_suggest), the
+// card shows it with Accept, and Docket logs the person's own answer beside it. Each run's brief carries those past
+// answers. Once the last suggestions for a kind on a desk agree with the person, Docket offers "I got this", which
+// lets the pilot answer that kind there; a miss after that ("Not my pick") drops it back to suggest.
+
+// An answer as given: { answer, answers } (answers: a question form's picks, keyed by question text).
+// Whether two answers are the same: the same answer, and for a question form the same picks (a multi-select's
+// labels in any order).
+export function sameAnswer(a, b) {
+  if (!a || !b || a.answer !== b.answer) return false;
+  if (a.answer !== 'answer') return true;
+  const norm = (o) => Object.fromEntries(Object.entries(o && typeof o === 'object' ? o : {})
+    .map(([q, v]) => [String(q).trim(), String(v).split(',').map((x) => x.trim()).filter(Boolean).sort().join(', ')]));
+  const x = norm(a.answers), y = norm(b.answers), keys = Object.keys(y);
+  return keys.length > 0 && keys.length === Object.keys(x).length && keys.every((q) => x[q] === y[q]);
+}
+// What an answer reads as on a card: "Allow", "New session", or a question form's picks.
+const LABELS = { allow: 'Allow', always: 'Always allow', deny: 'Deny', skip: 'Skip the form', new: 'New session', start: 'Start', dismiss: 'Dismiss', continue: 'Continue in new session', send: 'Send', stop: "Don't send", merge: 'Merge' };
+export function answerLabel(kind, { answer, answers } = {}) {
+  if (answer === 'answer') return Object.values(answers || {}).join(' · ') || 'Answer';
+  if (answer === 'here') return kind === 'handoff' ? 'Keep going here' : 'Do it here';
+  return LABELS[answer] || String(answer || '');
+}
+
+// One line of the learning log: the item, what the pilot suggested (null: none) and what the person answered.
+// how: user (the person answered, or pressed Accept), or miss (the person marked an answer the pilot gave as not theirs).
+export const learnLine = ({ at = Date.now(), item, suggested = null, user = null, how = 'user' }) => ({
+  at, id: item.id, kind: item.kind, desk: item.desk, session: item.session || null, what: item.what || item.title || '',
+  suggested: suggested ? { answer: suggested.answer, ...(suggested.answers ? { answers: suggested.answers } : {}) } : null,
+  user: user ? { answer: user.answer, ...(user.answers ? { answers: user.answers } : {}) } : null,
+  match: how === 'miss' ? false : suggested && user ? sameAnswer(suggested, user) : null, how,
+});
+
+// How sure the pilot can be of a kind on a desk: of the last n lines with a suggestion to compare (oldest first in
+// lines), how many matched. ready: at least n of them, at least rate matched, and the last recent all matched, so a
+// miss holds it back until the person has seen it right again.
+export const LEARN = { n: 10, rate: 0.9, recent: 3 };
+export function confidence(lines, desk, kind, o = LEARN) {
+  const last = (lines || []).filter((l) => l.desk === desk && l.kind === kind && typeof l.match === 'boolean').slice(-o.n);
+  const matched = last.filter((l) => l.match).length;
+  const ready = last.length >= o.n && matched / last.length >= o.rate && last.slice(-o.recent).every((l) => l.match);
+  return { ready, matched, total: last.length };
+}
+// The kinds on desks the pilot may now offer to take over: where the rules say suggest and it is ready.
+// Returns [{ desk, kind, matched, total }].
+export function promotable(lines, rules, o = LEARN) {
+  const r = cleanRules(rules), seen = new Set(), out = [];
+  for (const l of lines || []) {
+    const key = `${l.desk}\n${l.kind}`;
+    if (seen.has(key) || !SUGGESTS.has(l.kind)) continue;
+    seen.add(key);
+    if ((r.desks[l.desk]?.kinds[l.kind] || r.kinds[l.kind]) !== 'suggest') continue;
+    const c = confidence(lines, l.desk, l.kind, o);
+    if (c.ready) out.push({ desk: l.desk, kind: l.kind, matched: c.matched, total: c.total });
+  }
+  return out;
+}
+// The rules file's object with one desk's level for one kind set: allow when the person says "I got this", suggest
+// again after a miss. Everything else in it is kept as it was.
+export function setDeskLevel(raw, desk, kind, level) {
+  const r = raw && typeof raw === 'object' ? JSON.parse(JSON.stringify(raw)) : JSON.parse(JSON.stringify(DEFAULT_RULES));
+  r.desks = r.desks && typeof r.desks === 'object' ? r.desks : {};
+  const d = r.desks[desk] = r.desks[desk] && typeof r.desks[desk] === 'object' ? r.desks[desk] : {};
+  d.kinds = { ...(d.kinds || {}), [kind]: level };
+  return r;
+}
+// The person's own past answers for the kinds and desks of these items, newest first, at most n of each, for a run's
+// brief. deskName: id -> its name. Returns lines of text.
+export function pastAnswers(lines, items, deskName = (d) => d, n = 6) {
+  const out = [];
+  for (const key of new Set(items.filter((i) => JUDGMENT.includes(i.kind)).map((i) => `${i.desk}\n${i.kind}`))) {
+    const [desk, kind] = key.split('\n');
+    const mine = (lines || []).filter((l) => l.desk === desk && l.kind === kind && (l.user || l.how === 'miss')).slice(-n).reverse();
+    for (const l of mine) {
+      const when = new Date(l.at).toISOString().slice(0, 10);
+      const them = l.how === 'miss' ? `the pilot answered ${answerLabel(kind, l.suggested)} and the user marked it as not their pick` : `the user picked ${answerLabel(kind, l.user)}`;
+      const you = l.how === 'miss' || !l.suggested ? '' : ` (you suggested ${answerLabel(kind, l.suggested)}: ${l.match ? 'matched' : 'missed'})`;
+      out.push(`- ${when} ${kind} on ${deskName(desk)}: "${String(l.what).slice(0, 100)}": ${them}${you}`);
+    }
+  }
+  return out;
 }

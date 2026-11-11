@@ -1,8 +1,8 @@
-// Tests for the profile (#837): what goes in docket-profile.json, what stays out, and how two computers' changes meet.
+// Tests for the setup (#837, the profile until #910): what goes in docket-setup.json, what stays out, and how two computers' changes meet.
 // Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deskForFile, localItems, noteChanges, profileFile, readProfile, profilePlan, planSummary, hashOf, pathsOf } from '../profile-sync.mjs';
+import { PROFILE_FILE, OLD_PROFILE_FILE, FOLDER_FILES, newestFolderFile, deskForFile, localItems, noteChanges, profileFile, readProfile, profilePlan, planSummary, hashOf, pathsOf } from '../profile-sync.mjs';
 
 const desk = (over = {}) => ({ id: 'acme', name: 'Acme', home: 'C:\\Work\\acme\\claude-home', folder: 'C:\\Projects\\acme', ...over });
 const at = (n) => `2026-11-09T10:00:${String(n).padStart(2, '0')}.000Z`;
@@ -48,12 +48,29 @@ test('profileFile: the newer of this computer\'s and the file\'s record, item by
   assert.ok(readProfile(JSON.stringify(p)).profile, 'reads back');
 });
 
-test('readProfile: refuses what is not a profile, or one from a newer Docket, and skips unknown settings', () => {
+test('readProfile: refuses what is not a setup, or one from a newer Docket, and skips unknown settings', () => {
   assert.match(readProfile('nope').error, /not JSON/);
-  assert.match(readProfile('{"a":1}').error, /not a Docket profile/);
+  assert.match(readProfile('{"a":1}').error, /not a Docket setup \(docket-setup\.json\)/);
   assert.match(readProfile('{"docketProfile":99,"items":{}}').error, /newer Docket/);
   const r = readProfile(JSON.stringify({ docketProfile: 1, items: { 'setting:port': { at: at(1), item: { value: 1 } }, 'setting:sound': { at: at(1), item: { value: false } } } }));
   assert.deepEqual(Object.keys(r.profile.items), ['setting:sound']);
+});
+
+test('the file is docket-setup.json, and an older docket-profile.json still reads (#910)', () => {
+  assert.equal(PROFILE_FILE, 'docket-setup.json');
+  assert.deepEqual(FOLDER_FILES, ['docket-setup.json', 'docket-profile.json']);
+  // What a Docket before #910 saved as docket-profile.json: the same inside.
+  const old = { docketProfile: 1, savedAt: at(1), by: 'old-pc', items: { 'setting:sound': { at: at(1), item: { value: false } } } };
+  assert.deepEqual(Object.keys(readProfile(JSON.stringify(old)).profile.items), ['setting:sound']);
+});
+
+test('newestFolderFile: a kept folder reads whichever of the two files changed last (#910)', () => {
+  const setup = { file: PROFILE_FILE, text: '{"s":1}', mtime: 100 }, old = { file: OLD_PROFILE_FILE, text: '{"o":1}', mtime: 200 };
+  assert.equal(newestFolderFile([setup, old]), old, 'a computer not yet updated wrote docket-profile.json last');
+  assert.equal(newestFolderFile([{ ...setup, mtime: 300 }, old]).file, PROFILE_FILE);
+  assert.equal(newestFolderFile([setup, { ...old, mtime: 100 }]).file, PROFILE_FILE, 'a tie reads docket-setup.json');
+  assert.equal(newestFolderFile([{ ...setup, text: '', mtime: 0 }, old]), old, 'a folder with only the old file');
+  assert.equal(newestFolderFile([{ ...setup, text: '', mtime: 0 }, { ...old, text: '', mtime: 0 }]), undefined);
 });
 
 // A profile written on a Mac, for the import tests.

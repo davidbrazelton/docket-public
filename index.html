@@ -918,6 +918,19 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 #setupOffer ul { margin: 2px 0 0; padding-left: 18px; font-size: 13px; overflow-wrap: anywhere; }
 /* The start-cost card (#802) is the same card again. */
 #startOffer .b button { white-space: nowrap; }
+/* The summary check card (#919) is the same card again. */
+#summaryOffer .b button { white-space: nowrap; }
+/* ☰ > Gauges > Summary checks (#919): an indicator, so muted bars with no border. */
+.sc-row { display: grid; grid-template-columns: 70px 70px 1fr 110px; gap: 10px; align-items: center; padding: 4px 0; border-top: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.sc-row.head { color: var(--muted); font-size: 12px; border-top: 0; }
+.sc-row span:nth-child(2), .sc-row span:last-child { text-align: right; }
+.sc-bar { height: 8px; border-radius: 8px; background: var(--panel-2); overflow: hidden; }
+.sc-bar i { display: block; height: 100%; background: var(--muted); }
+.sc-row.below span:first-child::after { content: ' •'; color: var(--muted); }
+.sc-set { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+.sc-set input { width: 6em; }
+/* The usage stats window (#848): the exact report, scrolled when long. */
+.usage-report { max-height: 220px; overflow: auto; font-size: 12px; background: var(--panel-2); border-radius: 8px; padding: 8px; }
 /* The plan system card (#180) waits while the cache offer holds the corner. */
 #planOffer .b button { white-space: nowrap; }
 #cacheOffer:not([hidden]) + #planOffer { display: none; }
@@ -1271,6 +1284,47 @@ header.top .pilot-btn[hidden] { display: none; }
 .pilot-dlg .pl-list div:last-child { border-bottom: none; }
 .pilot-dlg .pl-no { color: var(--warn); }
 .pilot-dlg .pl-ask { margin-top: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.pilot-dlg .pl-status { margin-top: 10px; }
+/* The autopilot's suggestion on a waiting card, and its "I got this" (#917) */
+.pl-suggest { margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); font-size: 12px; }
+.pl-suggest button, .pl-ready button { margin-left: 8px; }
+.pl-ready { margin-top: 6px; }
+.pl-miss { margin-left: 6px; font-size: 11px; padding: 1px 6px; }
+.pilot-dlg .pl-more { margin-top: 10px; font-size: 12px; }
+.pilot-dlg .pl-more summary { cursor: pointer; color: var(--muted); }
+/* What the autopilot is doing, on the autopilot desk's 🤖 and the 🤖 in the top bar (indicators): a soft pulse while a
+   batch fills (waking), a steady glow while a run works, and one lightning flicker on each answer; still at rest.
+   Set on body, so nothing redraws. */
+.pilot-mark { display: inline-block; border-radius: 8px; }
+@keyframes pilot-pulse { 50% { opacity: .4; } }
+@keyframes pilot-zap { 0%, 100% { opacity: 1; } 15% { opacity: .2; } 25% { opacity: 1; } 45% { opacity: .35; } 55% { opacity: 1; } }
+body[data-pilot="waking"] :is(#pilotBtn, .pilot-mark) { animation: pilot-pulse 1.6s ease-in-out infinite; }
+body[data-pilot="working"] :is(#pilotBtn, .pilot-mark) { filter: drop-shadow(0 0 3px var(--accent)); }
+body.pilot-decided :is(#pilotBtn, .pilot-mark) { animation: pilot-zap .8s steps(1) 1; }
+/* The autopilot in a session's chat: a band above the typing box while a run has this session's item in hand, with
+   a calm wave; on an answer a lightning sweep runs once along the top of the typing box, the bolt flickers once and
+   the band flashes once, then says what it did until the run moves on. */
+.pl-band { display: flex; align-items: center; gap: 8px; padding: 5px 18px; font-size: 12px; color: var(--accent); border-top: 1px solid var(--line); background: var(--panel); white-space: nowrap; overflow: hidden; }
+.pl-band[hidden] { display: none; }
+.pl-band .pl-said { overflow: hidden; text-overflow: ellipsis; }
+.pl-band .pl-wave { flex: 1; height: 14px; min-width: 40px; max-width: 220px; }
+.pl-band .pl-wave path { stroke: var(--accent); fill: none; stroke-width: 1.6; stroke-linecap: round; animation: pl-wave 1.4s linear infinite; }
+@keyframes pl-wave { from { transform: translateX(0); } to { transform: translateX(-24px); } }
+.pl-band .pl-zap { animation: pl-zap .8s steps(1) 1 both; }
+@keyframes pl-zap { 0%, 25%, 55% { opacity: 1; } 15% { opacity: .2; } 45% { opacity: .35; } 100% { opacity: 0; } }
+@keyframes pl-flash { from { background: var(--accent-soft); } to { background: var(--panel); } }
+.pl-band.pl-flash { animation: pl-flash 1.2s ease-out 1; }
+.composer { position: relative; }
+.composer.pl-bolt::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; border-radius: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--accent) 45%, var(--panel) 50%, var(--accent) 55%, transparent); background-size: 200% 100%; animation: pl-sweep .9s linear 1 both; }
+@keyframes pl-sweep { from { background-position: 150% 0; } to { background-position: -50% 0; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  body[data-pilot] :is(#pilotBtn, .pilot-mark), .pl-band, .pl-band .pl-zap, .pl-band .pl-wave path { animation: none; }
+  .composer.pl-bolt::before { display: none; }
+  .pl-band .pl-wave { display: none; }
+  body[data-pilot="waking"] :is(#pilotBtn, .pilot-mark) { background: var(--panel-2); }
+  body[data-pilot="working"] :is(#pilotBtn, .pilot-mark) { filter: none; background: var(--accent-soft); }
+}
 .co.pilot-desk .co-ro { overflow-wrap: anywhere; color: var(--muted); }
 .co.pilot-desk .co-pilot-name { flex: 1; font-weight: 600; }
 .tl-menu.rc-pop { left: auto; right: 0; min-width: 260px; }
@@ -1329,7 +1383,7 @@ header.top .pilot-btn[hidden] { display: none; }
 .ctx { position: fixed; z-index: 20; min-width: 200px; background: var(--pop-bg); border: 1px solid var(--pop-line); border-radius: 8px; padding: 4px; box-shadow: var(--pop-shadow); }
 .ctx button { display: block; width: 100%; text-align: left; border: none; border-radius: 6px; padding: 6px 10px; font-size: 13px; }
 .ctx hr { border: none; border-top: 1px solid var(--pop-line); margin: 4px 0; }
-/* ☰ > Docket settings > Profile: the import preview and the profile folder */
+/* ☰ > Docket settings > Setup: the import preview and the setup folder */
 .prof-list { margin-top: 8px; max-height: 50vh; overflow: auto; }
 .prof-modes { margin-top: 8px; display: grid; gap: 4px; }
 .prof-kind { font-weight: 600; margin: 8px 0 2px; }
@@ -1638,7 +1692,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   <button id="pauseBtn" data-tip="pause-all" aria-label="Pause all sessions">⏸︎</button>
   <button id="reloadAllBtn" data-tip="reload-all" aria-label="Reload all sessions whose config changed" hidden>⟳<span id="reloadAllN"></span></button>
   <button class="ghost" id="feedbackBtn" data-tip="feedback" aria-label="Suggest a feature" aria-haspopup="dialog" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></button>
-  <span class="top-icons"><span class="sep" aria-hidden="true"></span><button class="ghost pilot-btn" id="pilotBtn" data-tip="pilot-icon" aria-label="Autopilot flying" hidden>✈</button><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
+  <span class="top-icons"><span class="sep" aria-hidden="true"></span><button class="ghost pilot-btn" id="pilotBtn" data-tip="pilot-icon" aria-label="Autopilot flying" hidden>🤖</button><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
 </header>
 <div class="start-banner" id="startBanner" role="status" hidden><span id="startBannerText"></span><button class="primary" id="startSignin" data-tip="start-signin">Start Docket at sign-in (recommended)</button><button id="startShortcut" data-tip="start-shortcut">Just add a shortcut</button><button id="startNever" data-tip="start-never">Don't ask again</button></div>
 <div class="app">
@@ -1678,6 +1732,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     <div class="card-strip" id="cardStrip" hidden role="region" aria-label="Cards waiting on you"></div>
     <div class="tl-bar" id="tlBar" hidden aria-label="Timeline in the chat"></div>
     <div class="transcript" id="transcript"><div class="jump-wrap"><button class="primary" id="jumpNew" hidden data-tip="jump-new">Jump to new</button></div><div class="inner" id="events"></div></div>
+    <div class="pl-band" id="plBand" role="status" hidden></div>
     <div class="composer" id="composer">
       <div class="inner">
         <div class="compose-row">
@@ -1727,6 +1782,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
 <div class="install-offer" id="setupOffer" role="dialog" aria-labelledby="setupOfferTitle" hidden></div>
 <div class="install-offer" id="startOffer" role="dialog" aria-labelledby="startOfferTitle" hidden></div>
+<div class="install-offer" id="summaryOffer" role="dialog" aria-labelledby="summaryOfferTitle" hidden></div>
 <div class="install-offer" id="formsOffer" role="dialog" aria-labelledby="formsOfferTitle" hidden></div>
 </div>
 <div class="upd-pop" id="updPop" role="dialog" aria-labelledby="updPopTitle" hidden></div>
@@ -1858,7 +1914,7 @@ const HELP = [
     ['new-group', '+ New group', 'Make a named group to sort sessions into'],
     ['show-empty', '👁 > Show empty groups', 'Show empty groups: list groups that have no sessions too', 'Groups with no sessions are listed too. Turn it off to hide them.'],
     ['group-head', 'A group header', 'Click to fold or unfold the group. Drag it to change the order. Right-click to rename it, set its start folder, archive or delete it.'],
-    ['today-spend', 'Today $… / $… · … agent · … you · +… / −…', 'What this desk has spent today at API prices, against its daily budget if it has one (set in ☰ > Desks > its name > Desk settings). Amber from 80% of the budget, red at 100%. Then the time its sessions spent working (agent) and the time you spent typing to them (you), each added up over every session; the time they stood waiting on you is in the hover text. Last, the lines their file edits added (green) and removed (red) today, the same as the Lines column on the Usage page. Click to open Usage for today.'],
+    ['today-spend', 'Today $… / $… · … agent · … you · +… / −…', 'What this desk has spent today at API prices, against its daily budget if it has one (set in ☰ > Desks > Manage). Amber from 80% of the budget, red at 100%. Then the time its sessions spent working (agent) and the time you spent typing to them (you), each added up over every session; the time they stood waiting on you is in the hover text. Last, the lines their file edits added (green) and removed (red) today, the same as the Lines column on the Usage page. Click to open Usage for today.'],
     ['activity', '● 3 ● 1 ● 9 and a line', 'This desk\'s live sessions by the color of their dot: blue working, orange waiting on you, green idle. Then a line of how many were working through today, midnight to now, in 5-minute steps. The hover text says today\'s peak and how long at least one was working. Click to open Usage › Activity, with the day by state and a week\'s busy hours.'],
     ['foot-more', '⋯', 'What a narrow list leaves out of the line above: the pieces that did not fit, then links to Usage › Activity and Usage for today. The line drops lines added and removed first, then the activity line, your time, the counts, agent time and the word Today; the dollar figure always stays.'],
     ['foot-go-activity', 'Open Usage › Activity', 'Opens Usage on its Activity part: when sessions worked, hour by hour'],
@@ -2058,12 +2114,11 @@ const HELP = [
     ['lb-next', '›', 'Next picture (→)'],
   ]],
   ['☰ menu', [
-    ['menu-desks', 'Desks', 'Manage, copy and share the desks on this computer, and one group for each desk with everything it has: its Inspector, its plan tree, its settings, its private browser sign-ins, screen control and Bring in Past Sessions'],
-    ['menu-desk', 'Desks > desk', 'Everything this one desk has: its Inspector, its plan tree (when it keeps plans in a folder), its settings, its private browser sign-ins, screen control and Bring in Past Sessions. The square is its own color; none means it uses the default color'],
-    ['menu-deskedit', 'Desks > desk > Desk settings', 'This desk\'s settings on the Desks screen, opened at it: name, color, brands, folders, budget, cache, variables, hooks and the rest'],
+    ['menu-desks', 'Desks', 'Manage, copy and share the desks on this computer, and one group for each desk with everything it has: its Inspector, its plan tree, its private browser sign-ins, screen control and Bring in Past Sessions'],
+    ['menu-desk', 'Desks > desk', 'Everything this one desk has: its Inspector, its plan tree (when it keeps plans in a folder), its private browser sign-ins, screen control and Bring in Past Sessions. The square is its own color; none means it uses the default color'],
     ['menu-profile', 'Desks > desk > Inspector', 'What every session on that desk starts with: its instructions, hooks, skills, connected services and switches'],
     ['menu-sessions', 'Sessions', 'Show the session list (on a narrow window it hides behind this menu)'],
-    ['menu-companies', 'Desks > Manage', 'Add, rename, reorder, hide or remove desks on this computer. Each desk\'s own group under ☰ > Desks opens its settings here too; a hidden desk keeps everything but leaves the buttons at the top until it is shown again'],
+    ['menu-companies', 'Desks > Manage', 'Add, rename, reorder, hide or remove desks on this computer. A hidden desk keeps everything but leaves the buttons at the top until it is shown again'],
     ['menu-remote', 'Desks > Remote Desks', 'Let another computer on the office network use one desk here, or use a desk on another computer from here. Each connection needs a code from an authenticator app and someone clicking Allow on the computer that has the desk'],
     ['menu-bringin', 'Desks > desk > Bring in Past Sessions', 'Claude Code sessions from before Docket, found on this computer outside this desk\'s Claude home (never in another desk\'s): pick which to copy in, so the session list, search and costs show them. The originals stay where they are; a report is saved first, and Undo sends the copies to the Recycle Bin'],
     ['menu-copydesk', 'Desks > Copy a Desk', 'Make a new desk with a saved desk\'s setup (rules, skills, settings, hooks, plugins, MCP servers, groups), in homes of its own: pick the desk to copy, starting on this one. Its sessions, history and sign-ins are never copied, and the desk copied is not changed'],
@@ -2077,19 +2132,19 @@ const HELP = [
     ['bi-undo-pick', 'Copy to undo', 'Send this copy to the Recycle Bin. Copies continued since they were brought in are not ticked: tick one to send it anyway, with what was added'],
     ['menu-history', 'Recently viewed', 'The last 200 sessions you viewed in this browser, day by day, so you can go back to one'],
     ['menu-plantree', 'Desks > desk > Plan tree', 'Every plan in this desk\'s plan folder (on a desk that keeps its plans in a folder), as a tree with progress, broken links and plans nothing links to (opens in its own window)'],
-    ['menu-color', 'Docket settings > Default color', 'Pick Docket\'s main color, for every desk without a color of its own. The square shows it. A desk with its own color (☰ > Desks > desk > Desk settings) keeps that while it is open, and the item says so'],
-    ['menu-myprofile', 'Docket settings > Profile', 'Take your desks, schedules and settings to another computer: export and import a file, or keep it in your own Google Drive, OneDrive, Dropbox or iCloud Drive folder'],
-    ['menu-pexport', 'Docket settings > Profile > Export profile', 'Save docket-profile.json: every desk, schedule and setting here. Never sign-ins, keys or tokens: each computer signs in again'],
-    ['menu-pimport', 'Docket settings > Profile > Import profile', 'Read a docket-profile.json saved on another computer. It shows what would change (desks, schedules, settings) first, with Merge or Replace, and asks about folders this computer does not have'],
-    ['menu-psync', 'Docket settings > Profile > Keep my profile in a folder', 'Keep docket-profile.json in a folder a cloud service copies between your computers, like Google Drive for desktop. Docket writes it when a desk, schedule or setting changes and takes in what the others change, item by item; the newer one wins, and it asks when both changed. Docket signs in to no cloud service'],
+    ['menu-color', 'Docket settings > Default color', 'Pick Docket\'s main color, for every desk without a color of its own. The square shows it. A desk with its own color (☰ > Desks > Manage) keeps that while it is open, and the item says so'],
+    ['menu-myprofile', 'Docket settings > Setup', 'Take your desks, schedules and settings to another computer: export and import a file, or keep it in your own Google Drive, OneDrive, Dropbox or iCloud Drive folder'],
+    ['menu-pexport', 'Docket settings > Setup > Export setup', 'Save docket-setup.json: every desk, schedule and setting here. Never sign-ins, keys or tokens: each computer signs in again'],
+    ['menu-pimport', 'Docket settings > Setup > Import setup', 'Read a docket-setup.json (or an older docket-profile.json) saved on another computer. It shows what would change (desks, schedules, settings) first, with Merge or Replace, and asks about folders this computer does not have'],
+    ['menu-psync', 'Docket settings > Setup > Keep my setup in a folder', 'Keep docket-setup.json in a folder a cloud service copies between your computers, like Google Drive for desktop. Docket writes it when a desk, schedule or setting changes and takes in what the others change, item by item; the newer one wins, and it asks when both changed. Docket signs in to no cloud service'],
     ['pr-merge', 'Merge', 'Add what the file has and update what differs. Desks and schedules the file lacks stay'],
     ['pr-replace', 'Replace', 'Make this computer match the file: also remove the desks and schedules it lacks. A desk with sessions running stays'],
     ['pr-path', 'Folder on this computer', 'This path was written on another computer and is not on this one. Use this folder instead; Docket remembers the answer'],
-    ['pr-mine', "Keep this computer's", "Keep this computer's version. It is written to the profile folder, and the other computers take it in"],
+    ['pr-mine', "Keep this computer's", "Keep this computer's version. It is written to the setup folder, and the other computers take it in"],
     ['pr-theirs', "Take the other computer's", "Use the version the other computer wrote, in place of this computer's"],
-    ['pr-folder', 'Profile folder', 'Keep docket-profile.json in this folder. The cloud service\'s own app copies it to your other computers'],
+    ['pr-folder', 'Setup folder', 'Keep docket-setup.json in this folder. The cloud service\'s own app copies it to your other computers'],
     ['pr-other', 'Another folder', 'The full path of any folder, like a network share or a synced folder Docket did not find'],
-    ['menu-gauges', 'Gauges', 'AI Usage, the memory and disk Docket uses, and the screen control log'],
+    ['menu-gauges', 'Gauges', 'AI Usage, the memory and disk Docket uses, how often Summary\'s checks find changes, and the screen control log'],
     ['menu-usage', 'Gauges > AI Usage', 'What the AI has cost, by day, account, desk, group and session, with charts (opens in its own window)'],
     ['menu-machine', 'Gauges > Memory and Disk', 'How much memory Docket and its sessions use right now, and how much disk space its folders take'],
     ['mu-again', 'Refresh', 'Memory and disk: measure the folder sizes again now, instead of showing the last measurement'],
@@ -2098,7 +2153,7 @@ const HELP = [
     ['menu-key', 'Help > Key', 'What the dots, colors and sounds mean'],
     ['menu-help', 'Help > Instructions', 'What every button and symbol does (shortcut: ?)'],
     ['menu-tour', 'Help > Show me around', 'A five-step tour of the main parts of the page'],
-    ['menu-settings', 'Docket settings', 'Settings for all of Docket on this computer, whichever desk is open: default color, sound, theme, stuck steps, crashes, sleep, resting idle sessions, starting Docket, the autopilot and your profile. A desk\'s own settings are under ☰ > Desks > its name'],
+    ['menu-settings', 'Docket settings', 'Settings for all of Docket on this computer, whichever desk is open: default color, sound, theme, stuck steps, crashes, sleep, resting idle sessions, starting Docket, the autopilot and your setup. A desk\'s own settings are under ☰ > Desks > its name'],
     ['menu-sound', 'Docket settings > Sound', () => soundTip()],
     ['menu-theme', 'Docket settings > Theme', 'Pick default (follows the computer), light or dark'],
     ['menu-theme-default', 'Docket settings > Theme > Default', 'Follow the computer\'s light or dark setting, changing when it changes'],
@@ -2108,6 +2163,7 @@ const HELP = [
     ['menu-autocontinue', 'Docket settings > Continue after a crash', 'On: when Docket stops without warning partway through a turn (a crash, a power cut, a forced restart), it continues each session it cut off by itself once it is back, with a note to check what state things are in first. Each cut-off gets one try; the rest show a banner with Continue.'],
     ['menu-startup', 'Docket settings > Starting Docket', 'Whether Docket starts by itself when you sign in to this computer, or only from its shortcut, and a switch between them. A page pinned in the browser cannot start Docket.'],
     ['menu-rest', 'Docket settings > Rest idle sessions', 'How long a session sits idle, with nothing running or waiting on you, before Docket releases it from memory (its claude process, connected services and browser). It stays in the list with a hollow dot and wakes on its next message. 0 means never; the default, 60, matches the prompt cache.'],
+    ['menu-usagestats', 'Docket settings > Usage stats', 'On: once a day Docket sends anonymous counts of how it is used (sessions started, desks, groups, which switches are on) to Docket\'s own counter, so its makers can see how many computers use it and which features matter. Never names, emails, folder paths, titles, prompts, costs or repo names. Click to see every field, or to turn it off. DOCKET_NO_USAGE=1 also turns it off.'],
     ['menu-autopause', 'Docket settings > Pause on sleep', 'On: when the computer is about to sleep, hibernate or shut down, Docket pauses every working session by itself, and resumes them when it wakes or starts again. A pause you made with the ⏸ button always waits for you.'],
     ['menu-about', 'About', 'Which version of Docket this is, and its updates from GitHub'],
     ['menu-restartdocket', 'Restart Docket', 'Start Docket over to free everything it holds: it stops every session program, connected service and private browser, and the session runner, then starts again. Not a page reload. It says first which sessions are working or waiting on you; those show under "Open when the portal stopped" with Continue afterwards, and nothing continues by itself'],
@@ -2116,6 +2172,11 @@ const HELP = [
     ['menu-update', 'About > Check for updates', 'Look on GitHub for a newer Docket now'],
     ['upd-every', 'Check every', 'How often Docket looks on GitHub for a newer version'],
     ['menu-screen', 'Desks > desk > Screen control', 'On: this desk\'s sessions get tools to take screenshots, move and click the mouse and type, in any program on this computer (and on a remote desk\'s computer where it is on too). A last resort for programs with no better way in. Every action is logged, a bar shows while a session is in control, and Stop halts it. Off by default; sessions started or woken after you turn it on get the tools. Kept on this computer only'],
+    ['menu-summarychecks', 'Gauges > Summary checks', "How often Summary's check of the facts found something changed since the last reply, by how long ago that reply was, on the desk on view. Its threshold, when a summary checks first, is set there too"],
+    ['sc-hours', 'Hours', 'A summary checks the facts first when the last reply is at least this many hours old. 0 means every time. Below it, 1 in 4 summaries check anyway, so the numbers stay fresh'],
+    ['sc-save', 'Save', 'Use this threshold for summaries on this desk from now on'],
+    ['summary-apply', 'Change it', "Summaries on this desk check first after the suggested time. Change it any time in ☰ > Gauges > Summary checks"],
+    ['summary-later', 'Not now', 'Keep the threshold. The same change is offered again only after 10 more checks in that range'],
     ['menu-screenlog', 'Gauges > Screen control log', 'Open the folder with the log of every screen action, on every desk (one file a day: session, time, action) and the picture of the screen taken before each click or drag. Kept 30 days'],
     ['screen-stop', 'Stop', 'Stop this session using the mouse and keyboard now. Its running action ends at once, and its screen tools are refused until you next write to it'],
     ['menu-signins', 'Desks > desk > Private browser sign-ins', 'The sites this desk is signed in to (it opens that desk first) in its private browser, the one its sessions use: add a sign-in or delete one. The same as the 🌐 button'],
@@ -2176,7 +2237,7 @@ const HELP = [
     ['term-shell', 'Open a terminal', 'Open this kind of terminal in the folder shown, signed in as this desk. The ticked one is the last used'],
     ['term-cli', 'Start an AI program', 'Open the ticked terminal in the folder shown, signed in as this desk, and start this AI program in it. The terminal stays open when the program exits'],
     ['term-choose', 'Choose folder…', 'Pick another folder, and the kind of terminal, before it opens'],
-    ['cache-yes', 'Make it 1 hour', 'Start this desk\'s new Claude sessions with the 1-hour prompt cache. Sessions already running keep theirs. Change it back in ☰ > Desks > this desk > Desk settings'],
+    ['cache-yes', 'Make it 1 hour', 'Start this desk\'s new Claude sessions with the 1-hour prompt cache. Sessions already running keep theirs. Change it back in ☰ > Desks > Manage'],
     ['cache-later', 'Not now', 'Ask again in 30 days at the earliest, and only if pauses of 5 to 60 minutes keep costing a re-read'],
     ['cache-ok', 'OK', 'Close this note'],
     ['cache-never', 'Never', 'Never ask about this desk\'s prompt cache again'],
@@ -2271,11 +2332,13 @@ const HELP = [
     ['rd-setup-cancel', 'Cancel', 'Keep the authenticator you had, or none'],
     ['rd-desk', 'Desk it may use', 'The one desk another computer may use. Its sign-ins and costs stay on this computer'],
     ['rd-on', 'Turn on / Turn off', 'While on, computers on the office network can ask to connect (with a code from the authenticator app, and only after someone here clicks Allow). While off, nothing on the network can reach Docket here'],
-    ['pilot-icon', '✈ Autopilot flying', 'The autopilot is on: short pilot runs on its own desk answer what waits on you, under the rules on this computer, and everything they answer says "answered by pilot". Click to see its runs and log, or to turn it off'],
-    ['pilot-screen', 'Turn on', "Let the autopilot's runs see and act on this computer's screen when a job needs it. Turn it off again in ☰ > Desks > the autopilot's desk > Screen control"],
-    ['pilot-brand', "Pilot's brand", "The brand and starting gear each pilot run uses: only brands the autopilot's desk is signed in to. A run starts on this gear and shifts up to the top gear to judge. Pick one, then Save brand; the next run uses it, and a run going now keeps its own"],
-    ['pilot-desk', "Autopilot's desk", "The desk the pilot works on: its own sign-ins, bill, memory and files, apart from the desks where work happens. What waits on it stays with you. Docket makes an Autopilot desk the first time you turn the autopilot on; pick another desk here and Save desk to use that one instead"],
-    ['menu-autopilot', 'Docket settings > Autopilot', 'One switch for all of Docket: the autopilot works across all desks from its own Autopilot desk, in short runs there, and while it is on the label names the pilot\'s brand. Let the pilot answer what waits on you (permission prompts, question forms, cards) under rules kept on this computer. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the desk, the pilot\'s brand, its runs, what waits now and the log of its answers'],
+    ['pilot-icon', 'Autopilot flying', 'The autopilot is on: short pilot runs on its own desk answer what waits on you, under the rules on this computer, and everything they answer says "answered by pilot". It pulses softly while something comes in, glows while a run works, and flickers once on each answer. Click to see what it is doing and its recent answers, or to turn it off'],
+    ['pilot-brand', 'Runs on', "The brand each pilot run uses, always on its top model, billed to the autopilot's own desk. Only brands that desk is signed in to can be picked. The next run uses it; a run going now keeps its own"],
+    ['pilot-accept', 'Accept', "Answer this the way the autopilot suggests, as your own answer. The autopilot learns from it either way"],
+    ['pilot-promote', 'I got this', "Let the autopilot answer this kind of item on this desk itself from now on. If it ever answers one in a way you would not, press Not my pick and it goes back to suggesting"],
+    ['pilot-miss', 'Not my pick', "You would have answered this differently: the autopilot goes back to suggesting this kind of item on this desk, and you pick"],
+    ['pilot-on', 'Autopilot on', "On: short pilot runs on the autopilot's own desk answer what its rules allow, and the 🤖 shows in the top bar. The first time, Docket makes the Autopilot desk. Off: every pilot tool refuses, and no run starts"],
+    ['menu-autopilot', 'Docket settings > Autopilot', 'One switch for all of Docket: the autopilot answers what waits on you (permission prompts, question forms, cards) on every desk, under rules kept on this computer, in short runs on its own Autopilot desk, on the top model of the brand picked there. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the brand, what it is doing and its recent answers'],
     ['rc-icon', '📡 Remote connection on', 'Another computer is using a desk here, or this computer is using a desk on another computer. Click the 📡 at the bottom left to see which, and to Disconnect'],
     ['rd-drop', 'Disconnect', 'End this computer\'s connection now. It needs a new code and an Allow to come back'],
     ['rd-revoke', 'Revoke', 'End this pilot key now. The autopilot on that computer can no longer reach this desk until someone here allows a new one'],
@@ -2715,6 +2778,7 @@ async function init() {
     if (firstVisit && $('dlg').hidden && $('wiz').hidden) startTour();
   }, 400);
   api('/api/startup').then(showStartupBanner).catch(() => {});
+  setTimeout(showUsageFirst, 3000);
   loadPageSettings(); checkProfilePending();
   showPlanOffer();
   showReasonOffer();
@@ -2990,7 +3054,7 @@ function renderSpend(r) {
   el.innerHTML = `<span data-p="today">Today </span><b>${money(r.cost)}</b>${r.budget ? ` / ${whole(r.budget)}` : ''}<span data-p="agent"> · ${spanText(r.agent)} agent</span><span data-p="you"> · ${spanText(r.user)} you</span><span data-p="lines"> · ${todayLines(r)}</span>`;
   el.title = `${name} today at API prices: ${exact(r.cost)}` + (r.budget
     ? ` of a ${exact(r.budget)} daily budget (${Math.round(share * 100)}%). ${r.cost > r.budget ? exact(r.cost - r.budget) + ' over.' : exact(r.budget - r.cost) + ' left.'}`
-    : '. No daily budget set (☰ > Desks > this desk > Desk settings).')
+    : '. No daily budget set (☰ > Desks > Manage).')
     + `\nAgent time ${spanText(r.agent)}, waiting on you ${spanText(r.wait)}, your typing ${spanText(r.user)}, added up over every session today.`
     + `\nLines added ${(r.added || 0).toLocaleString()}, removed ${(r.removed || 0).toLocaleString()}, by the sessions' file edits today.`
     + '\nClick to open Usage for today.';
@@ -3912,6 +3976,7 @@ function renderSummaryCtl() {
   $('sumCtl').classList.toggle('off', busy);
   $('sumBtn').textContent = deep ? 'Deep summary' : 'Summary';
   $('sumBtn').disabled = $('sumModeBtn').disabled = busy;
+  $('sumBtn').title = tipText('summary') + summaryWhen(s);
   if (busy || !n) sumMenu(false);
 }
 const sumMenuOpen = () => !$('sumMenu').hidden;
@@ -5760,8 +5825,8 @@ async function setFeedbackDestination() {
   const repo = document.getElementById('fbDestRepo').value.trim(), token = document.getElementById('fbDestToken').value.trim();
   try { await api('/api/feedback/destination', { repo, token }); } catch (err) { tell(err.message); }
 }
-// ---------- ☰ > Docket settings > Profile: desks, schedules and settings to another computer (#837) ----------
-// Export saves docket-profile.json; Import reads one and shows what it would change first; Keep my profile in a folder keeps it
+// ---------- ☰ > Docket settings > Setup: desks, schedules and settings to another computer (#837) ----------
+// Export saves docket-setup.json; Import reads one (or an older docket-profile.json) and shows what it would change first; Keep my setup in a folder keeps it
 // in a folder a cloud service's own app copies between computers. No sign-ins, keys or tokens are ever in the file.
 const PROFILE_KINDS = [['desk', 'Desks'], ['schedule', 'Schedules'], ['setting', 'Settings']];
 const profileAction = { add: 'add', change: 'change', remove: 'remove' };
@@ -5785,9 +5850,9 @@ async function exportProfile() {
     const { profile, dropped } = await api('/api/my-profile/export');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([JSON.stringify(profile, null, 2) + '\n'], { type: 'application/json' }));
-    a.download = 'docket-profile.json'; document.body.append(a); a.click(); a.remove();
+    a.download = 'docket-setup.json'; document.body.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-    tell(`Saved docket-profile.json (your browser's downloads). It has no sign-ins: each computer signs in again.${dropped.length ? ` Left out because they look like keys or tokens: ${dropped.join(', ')}.` : ''}`);
+    tell(`Saved docket-setup.json (your browser's downloads). It has no sign-ins: each computer signs in again.${dropped.length ? ` Left out because they look like keys or tokens: ${dropped.join(', ')}.` : ''}`);
   } catch (err) { tell(err.message); }
 }
 function importProfile() {
@@ -5803,7 +5868,7 @@ function importProfile() {
       $('prList').innerHTML = profileChangesHtml(pv, answers);
       $('prFrom').textContent = pv.by ? `Saved on ${pv.by}${pv.savedAt ? ', ' + new Date(pv.savedAt).toLocaleString() : ''}.` : '';
     };
-    const done = dialog({ title: 'Import profile', body: `<div id="prFrom" class="meta"></div>
+    const done = dialog({ title: 'Import setup', body: `<div id="prFrom" class="meta"></div>
       <div class="prof-modes"><label><input type="radio" name="prMode" value="merge" checked${tip('pr-merge')}> Merge: add and update, keep what the file lacks</label>
       <label><input type="radio" name="prMode" value="replace"${tip('pr-replace')}> Replace: also remove desks and schedules the file lacks</label></div>
       <div id="prList" class="prof-list">Reading…</div>`, buttons: [{ label: 'Cancel', value: null }, { label: 'Apply', value: 'ok', primary: true, tip: 'Make these changes on this computer' }] });
@@ -5812,22 +5877,22 @@ function importProfile() {
     if (!await done) return;
     try {
       const r = await api('/api/my-profile/import', { text, mode, answers: profileAnswers() });
-      tell(r.problems.length ? `Imported, except: ${r.problems.join('; ')}` : 'Profile imported.');
+      tell(r.problems.length ? `Imported, except: ${r.problems.join('; ')}` : 'Setup imported.');
     } catch (err) { tell(err.message); }
   };
   inp.click();
 }
-// Keep my profile in a folder: the cloud folders found, in Google Drive, OneDrive, Dropbox and iCloud Drive order, or any folder.
+// Keep my setup in a folder: the cloud folders found, in Google Drive, OneDrive, Dropbox and iCloud Drive order, or any folder.
 async function keepProfileIn() {
   let v; try { v = await api('/api/my-profile'); } catch (err) { tell(err.message); return; }
   const opts = v.suggestions.map((s, i) => `<label class="prof-pick"><input type="radio" name="prFolder" value="${i}"${s.path === v.folder ? ' checked' : ''}${tip('pr-folder')}> ${esc(s.name)} <span class="meta">${esc(s.path)}</span></label>`).join('');
   const other = v.folder && !v.suggestions.some((s) => s.path === v.folder) ? v.folder : '';
   const status = v.folder ? `<div class="meta">Kept in ${esc(v.folder)} now.${v.lastWrite ? ` Last written ${new Date(v.lastWrite).toLocaleString()}.` : ''}${v.lastRead ? ` Last read ${new Date(v.lastRead).toLocaleString()}.` : ''}</div>${v.error ? `<div class="err">${esc(v.error)}</div>` : ''}` : '';
-  const shown = dialog({ title: 'Keep my profile in a folder', body: `<div>Docket keeps your desks, schedules and settings in docket-profile.json in this folder, and takes in changes other computers make there. The cloud service's own app (like Google Drive for desktop) copies the file; Docket signs in to nothing. No sign-ins, keys or tokens go in it.</div>${status}
+  const shown = dialog({ title: 'Keep my setup in a folder', body: `<div>Docket keeps your desks, schedules and settings in docket-setup.json in this folder, and takes in changes other computers make there. The cloud service's own app (like Google Drive for desktop) copies the file; Docket signs in to nothing. No sign-ins, keys or tokens go in it.</div>${status}
     <div class="prof-list">${opts || '<div class="meta">No Google Drive, OneDrive, Dropbox or iCloud Drive folder found on this computer.</div>'}
     <label class="prof-pick"><input type="radio" name="prFolder" value="other"${other ? ' checked' : ''}${tip('pr-folder')}> Another folder:</label>
     <input type="text" id="prOther" data-pick="here" placeholder="Full path of a folder" aria-label="Another folder" value="${esc(other)}"${tip('pr-other')}></div>`,
-    buttons: [{ label: 'Cancel', value: null }, ...(v.folder ? [{ label: 'Stop', value: 'stop', tip: 'Stop keeping the profile in a folder. The file stays where it is' }] : []), { label: 'Save', value: 'ok', primary: true, tip: 'Keep the profile in the folder picked' }] });
+    buttons: [{ label: 'Cancel', value: null }, ...(v.folder ? [{ label: 'Stop', value: 'stop', tip: 'Stop keeping the setup in a folder. The file stays where it is' }] : []), { label: 'Save', value: 'ok', primary: true, tip: 'Keep the setup in the folder picked' }] });
   $('prOther').oninput = () => { document.querySelector('[name=prFolder][value=other]').checked = true; }; // typing a folder picks it
   const pick = await shown;
   if (!pick) return;
@@ -5836,7 +5901,7 @@ async function keepProfileIn() {
   if (pick === 'ok' && !folder) { tell('Pick a folder first'); return; }
   try {
     const r = await api('/api/my-profile/folder', { folder });
-    tell(folder ? `Your profile is kept in ${folder}.${r.error ? ' ' + r.error : ''}` : 'Your profile is no longer kept in a folder.');
+    tell(folder ? `Your setup is kept in ${folder}.${r.error ? ' ' + r.error : ''}` : 'Your setup is no longer kept in a folder.');
     if (r.pending) showProfilePending(r);
   } catch (err) { tell(err.message); }
 }
@@ -5846,15 +5911,15 @@ async function showProfilePending(v) {
   if (profileAsking || !v?.pending) return;
   profileAsking = true;
   try {
-    const ok = await dialog({ title: 'Profile changes from another computer', body: `<div>These came in through ${esc(v.folder)}. Check them before they are applied here.</div><div class="prof-list">${profileChangesHtml(v.pending)}</div>`,
-      buttons: [{ label: 'Later', value: null, tip: 'Leave these waiting. ☰ > Docket settings > Profile > Keep my profile in a folder shows them again' }, { label: 'Apply', value: 'ok', primary: true, tip: 'Apply these here, with the folders and choices above' }] });
+    const ok = await dialog({ title: 'Setup changes from another computer', body: `<div>These came in through ${esc(v.folder)}. Check them before they are applied here.</div><div class="prof-list">${profileChangesHtml(v.pending)}</div>`,
+      buttons: [{ label: 'Later', value: null, tip: 'Leave these waiting. ☰ > Docket settings > Setup > Keep my setup in a folder shows them again' }, { label: 'Apply', value: 'ok', primary: true, tip: 'Apply these here, with the folders and choices above' }] });
     if (!ok) return;
     const r = await api('/api/my-profile/resolve', { answers: profileAnswers(), choices: profileChoices() });
     if (r.problems?.length) tell(`Applied, except: ${r.problems.join('; ')}`);
   } catch (err) { tell(err.message); } finally { profileAsking = false; }
 }
 async function checkProfilePending() { try { const v = await api('/api/my-profile'); if (v.pending) showProfilePending(v); } catch {} }
-// The page's own settings (main color, theme, sound) go to the app when they change, so the profile carries them;
+// The page's own settings (main color, theme, sound) go to the app when they change, so the setup carries them;
 // one that changed on another computer comes back and is put in place here.
 const PAGE_KEYS = ['accent', 'theme', 'sound'];
 const pageSettingNow = (k) => k === 'theme' ? store.get('theme', null) : k === 'sound' ? soundOn() : store.get('accent', null);
@@ -5886,8 +5951,46 @@ async function setRestMinutes() {
   try { S.restMinutes = (await api('/api/rest-minutes', { minutes: document.getElementById('restMin').value })).minutes; } catch (err) { tell(err.message); }
 }
 const autoPauseLabel = () => `Pause on sleep: ${S.autoPause === false ? 'off' : 'on'}`;
+// ---------- Anonymous usage stats (#848, usage.mjs) ----------
+// One window says exactly what is sent: every field by group, what is never sent, where and when it goes, and the exact
+// report this computer would send today. It opens by itself once, at the first start after this was added, and
+// nothing is sent until it is answered; ☰ > Docket settings > Usage stats opens it again. DOCKET_NO_USAGE=1 turns it
+// off where Docket starts, and then the window cannot turn it on.
+const usageLabel = () => `Usage stats: ${!S.usageStats ? '…' : S.usageStats.on ? 'on' : 'off'}`;
+function usageBody(v, first) {
+  const fields = (g) => v.fields.filter((f) => f[2] === g).map(([k, d]) => `<li><code>${esc(k)}</code>: ${esc(d)}</li>`).join('');
+  const now = v.envOff ? 'Off: DOCKET_NO_USAGE is set where Docket starts, so nothing is counted or sent. Remove it and restart Docket to turn this on.'
+    : first ? 'Nothing has been sent from this computer. Nothing is sent until you choose below.'
+    : v.on ? `On. ${v.sentAt ? `Last sent ${new Date(v.sentAt).toLocaleString()}.` : 'Nothing sent yet.'}` : 'Off: nothing is counted or sent from this computer.';
+  return `<p>Docket can send a small report of how it is used to Docket's own counter, so its makers can see how many computers use it and which features matter. It never says who you are, who you work for or what you work on: it is counts and on/off settings only.</p>
+    <p><b>${esc(now)}</b></p>
+    <div><b>Every field sent</b></div>
+    ${v.groups.map(([g, name]) => `<div class="meta">${esc(name)}</div><ul class="ps-found">${fields(g)}</ul>`).join('')}
+    <div><b>Never sent</b></div><p>${esc(v.never)}. The counter stores no IP address.</p>
+    <div><b>Where and when</b></div><p>To <code>${esc(v.to)}</code>, Docket's own counter (a Cloudflare Worker). A few times a day while Docket runs, the same day's report again; the counter keeps the last one for each day. Nothing is sent on days Docket does not run. Installing Docket sends one more request carrying only <code>windows</code> or <code>mac</code>.</p>
+    ${v.report ? `<details><summary>The exact report this computer would send today</summary><pre class="usage-report">${esc(JSON.stringify(v.report, null, 2))}</pre></details>` : ''}
+    <p class="meta">Change it any time in ☰ > Docket settings > Usage stats. Setting DOCKET_NO_USAGE=1 where Docket starts turns it off as well, including the install count. The same list is in the README, under Usage stats.</p>`;
+}
+async function showUsageStats({ first = false } = {}) {
+  let v; try { v = S.usageStats = await api('/api/usage-stats'); } catch (err) { if (!first) tell(err.message); return; }
+  if (first && (v.noticeDone || v.envOff)) return;
+  const tipOn = 'Usage stats stay on: the report above is sent a few times a day. Turn it off any time in ☰ > Docket settings > Usage stats.';
+  const tipOff = 'Nothing is counted or sent from this computer. Turn it back on any time in ☰ > Docket settings > Usage stats.';
+  const to = await dialog({ title: 'Anonymous usage stats', body: usageBody(v, first),
+    buttons: v.envOff ? [{ label: 'Close', value: null, primary: true }]
+      : first ? [{ label: 'Turn off', value: 'off', tip: tipOff }, { label: 'Keep on', value: 'on', primary: true, tip: tipOn }]
+      : [{ label: 'Close', value: null }, v.on ? { label: 'Turn off', value: 'off', tip: tipOff } : { label: 'Turn on', value: 'on', primary: true, tip: tipOn }] });
+  if (!to) return; // closed with no answer: on the first start, it opens again next time and nothing is sent meanwhile
+  try { S.usageStats = await api('/api/usage-stats', { on: to === 'on' }); } catch (err) { tell(err.message); }
+}
+// The first time: once nothing else is open (the setup wizard, the tour, another dialog).
+function showUsageFirst() {
+  if (POPOUT) return;
+  if (!$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden) { setTimeout(showUsageFirst, 20000); return; }
+  showUsageStats({ first: true });
+}
 // The ☰ menu: Desks (Manage, and one group per desk with everything that desk has), a few things you open often, then
-// groups that open to the side (Tools, Gauges, Help, Docket settings, About), and Docket settings > Theme and Profile open
+// groups that open to the side (Tools, Gauges, Help, Docket settings, About), and Docket settings > Theme and Setup open
 // one more level. A group opens on hover, on click, and with → or Enter; ← or Escape closes it.
 // Where there is no room beside the menu (a narrow window) a group opens under its name instead.
 // Anything that acts on one desk is in that desk's group or names the desk in its label (#879).
@@ -5895,7 +5998,7 @@ const autoPauseLabel = () => `Pause on sleep: ${S.autoPause === false ? 'off' : 
 const menuText = (b, t) => { (b.querySelector('.mi-t') || b).textContent = t; }; // a label redrawn in place, its icon kept
 const colorSquare = (c = store.get('accent', null) || 'var(--accent-default)') => `<span class="mi-sq" style="background:${esc(c)}"></span>`;
 const colorLabel = () => { const own = S.clients.find((c) => c.id === S.client && c.color); return own ? `Default color (${own.name} has its own)` : 'Default color'; };
-const deskItems = (c) => [['profile:' + c.id, 'Inspector'], ...(c.planSystem === 'folder' ? [['plantree:' + c.id, 'Plan tree']] : []), ...(c.remote ? [] : [['deskedit:' + c.id, 'Desk settings']]), ['signins:' + c.id, 'Private browser sign-ins'], ...(c.remote ? [] : [['screen:' + c.id, screenLabel(c.id)], ['bringin:' + c.id, 'Bring in Past Sessions']])];
+const deskItems = (c) => [['profile:' + c.id, 'Inspector'], ...(c.planSystem === 'folder' ? [['plantree:' + c.id, 'Plan tree']] : []), ['signins:' + c.id, 'Private browser sign-ins'], ...(c.remote ? [] : [['screen:' + c.id, screenLabel(c.id)], ['bringin:' + c.id, 'Bring in Past Sessions']])];
 $('menuBtn').onclick = (e) => {
   e.stopPropagation();
   if (document.getElementById('ctx')) { closeMenu(); return; }
@@ -5903,11 +6006,11 @@ $('menuBtn').onclick = (e) => {
   // beside its name, an empty icon place for none), hidden desks left out. The desk you are on is tinted like its desk tab (#890).
   const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage', null, ''], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk', null, '']] : []), ...(S.remoteOn ? [['remote', 'Remote Desks', null, '']] : []), 'hr',
     ...shownDesks().map((c) => ['desk:' + c.id, c.name, deskItems(c), c.color ? colorSquare(c.color) : ''])]], ['history', 'Recently viewed'], 'hr',
-    ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk'], ...(S.clients.some((c) => !c.remote) ? [['screenlog', 'Screen control log']] : [])]],
+    ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk'], ['summarychecks', 'Summary checks'], ...(S.clients.some((c) => !c.remote) ? [['screenlog', 'Screen control log']] : [])]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
     ['settings', 'Docket settings', [['color', colorLabel(), null, colorSquare()], ['sound', soundLabel(), null, soundIcon()], ['theme', themeLabel(), themeItems(), '◐'], 'hr',
-      ['stall', stallLabel(), null, ''], ['autocontinue', autoContinueLabel(), null, ''], ['autopause', autoPauseLabel(), null, ''], ['rest', restLabel(), null, ''], ['startup', startupLabel(), null, ''], ['autopilot', pilotLabel(), null, ''], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination', null, '']] : []), 'hr',
-      ['myprofile', 'Profile', [['pexport', 'Export profile'], ['pimport', 'Import profile'], ['psync', 'Keep my profile in a folder']], '']]],
+      ['stall', stallLabel(), null, ''], ['autocontinue', autoContinueLabel(), null, ''], ['autopause', autoPauseLabel(), null, ''], ['rest', restLabel(), null, ''], ['usagestats', usageLabel(), null, ''], ['startup', startupLabel(), null, ''], ['autopilot', pilotLabel(), null, ''], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination', null, '']] : []), 'hr',
+      ['myprofile', 'Setup', [['pexport', 'Export setup'], ['pimport', 'Import setup'], ['psync', 'Keep my setup in a folder']], '']]],
     ['about', 'About', [['update', 'Check for updates']]], 'hr', ['restartdocket', 'Restart Docket']];
   const icon = (x) => x[3] === undefined ? '' : `<span class="mi-ic${x[0] === 'theme' ? ' mi-glyph' : ''}" aria-hidden="true">${x[3]}</span>`;
   const label = (x) => x[3] === undefined ? esc(x[1]) : `${icon(x)}<span class="mi-t">${esc(x[1])}</span>`;
@@ -5927,6 +6030,7 @@ $('menuBtn').onclick = (e) => {
   api('/api/startup').then((r) => { S.startup = r; redraw('startup', startupLabel()); }).catch(() => {});
   api('/api/rest-minutes').then((r) => { S.restMinutes = r.minutes; redraw('rest', restLabel()); }).catch(() => {});
   api('/api/auto-pause').then((r) => { S.autoPause = r.on; redraw('autopause', autoPauseLabel()); }).catch(() => {});
+  api('/api/usage-stats').then((r) => { S.usageStats = r; redraw('usagestats', usageLabel()); }).catch(() => {});
   for (const b of m.querySelectorAll('[data-mact^="screen:"]')) {
     const desk = b.dataset.mact.slice(7);
     api(`/api/screen?client=${encodeURIComponent(desk)}`).then((r) => { S.screenOn[desk] = r.on; menuText(b, screenLabel(desk)); }).catch(() => {});
@@ -5999,6 +6103,7 @@ $('menuBtn').onclick = (e) => {
       return;
     }
     if (act === 'restartdocket') { closeMenu(); restartDocketAsk(); return; }
+    if (act === 'usagestats') { closeMenu(); showUsageStats(); return; }
     if (act === 'autopause') { // stays open and shows the new state
       const b = ev.target.closest('button');
       try { S.autoPause = (await api('/api/auto-pause', { on: S.autoPause === false })).on; } catch (err) { tell(err.message); }
@@ -6032,7 +6137,6 @@ $('menuBtn').onclick = (e) => {
     if (act.startsWith('bringin:')) { const desk = act.slice(8); if (desk !== S.client) selectClient(desk); showBringIn(); } // it brings them in to the desk shown
     if (act === 'copydesk') copyDesk(S.clients.find((c) => c.id === S.client && !c.remote)?.id || S.clients.find((c) => !c.remote)?.id); // starts on this desk
     if (act.startsWith('profile:')) openProfile(act.slice(8));
-    if (act.startsWith('deskedit:')) editCompanies(undefined, '', undefined, undefined, act.slice(9));
     if (act.startsWith('signins:')) { const desk = act.slice(8); if (desk !== S.client) selectClient(desk); openSites(); } // its sign-ins show on its own page
     if (act === 'color') pickMainColor();
     if (act === 'fbdest') setFeedbackDestination();
@@ -6047,6 +6151,7 @@ $('menuBtn').onclick = (e) => {
     if (act === 'history') showViewHistory();
     if (act.startsWith('plantree:')) openPlanTree(act.slice(9));
     if (act === 'machine') showMachineUse();
+    if (act === 'summarychecks') showSummaryChecks();
     if (act === 'startup') showStartupSettings();
     if (act === 'autopilot') showAutopilot();
     if (act === 'usage') window.open('/usage?' + new URLSearchParams({ client: S.client }), 'docket-usage');
@@ -6370,6 +6475,45 @@ async function showMachineUse() {
   document.querySelector('#dlg .dlg').classList.remove('wide'); $('dlgBody').style.maxHeight = '';
 }
 
+// ---------- ☰ > Gauges > Summary checks (#919): how often a summary's check found changes, by age of the last reply ----------
+// Each desk has its own threshold and its own numbers; the window shows the desk on view (or the one a card names).
+// A range under the threshold has only the sampled checks (1 in 4 summaries there), marked with a dot.
+S.summaryHours = {}; // desk id -> hours, for the Summary button's tooltip
+const hoursText = (h) => h === 0 ? 'every time' : h >= 24 && h % 24 === 0 ? `${h / 24} day${h === 24 ? '' : 's'}` : `${h} hour${h === 1 ? '' : 's'}`;
+const SC_TOP = { '<1h': 1, '1-4h': 4, '4-24h': 24, '>1d': Infinity };
+function summaryChecksHtml(r) {
+  const row = (x) => `<div class="sc-row${SC_TOP[x.range] <= r.hours ? ' below' : ''}"><span>${esc(x.range)}</span><span>${x.checks}</span><span class="sc-bar" aria-hidden="true"><i style="width:${x.pct || 0}%"></i></span><span>${x.pct === null ? '–' : `${x.pct}% (${x.changed})`}</span></div>`;
+  const total = r.rows.reduce((n, x) => n + x.checks, 0);
+  return `<div class="mu-note" style="margin-top:0">${esc(r.name)}: ${r.hours === 0 ? 'every summary checks the facts first.' : `a summary checks the facts first when the last reply is at least ${esc(hoursText(r.hours))} old, and 1 in ${Math.round(1 / r.sample)} summaries check anyway below that (•).`}</div>
+    <div class="sc-row head"><span>Last reply</span><span>Checks</span><span></span><span>Found changes</span></div>
+    ${r.rows.map(row).join('')}
+    <div class="mu-note">${total ? `${total} check${total === 1 ? '' : 's'} since ${new Date(r.since).toLocaleDateString()}.` : 'No checks yet on this desk.'} Docket offers to move the threshold when these numbers say so.</div>
+    <div class="sc-set"><label for="scHours">Check first after</label><input type="number" id="scHours" min="0" step="1" value="${r.hours}"${tip('sc-hours')}> hours <button id="scSave"${tip('sc-save')}>Save</button></div>`;
+}
+async function showSummaryChecks(client = S.client) {
+  const pending = dialog({ title: 'Summary checks', body: '<div class="mu" id="scBody"><div class="mu-note">Looking…</div></div>', buttons: [{ label: 'Close', value: null, primary: true }] });
+  const draw = (r) => {
+    const body = document.getElementById('scBody'); if (!body) return;
+    S.summaryHours[r.client] = r.hours; renderSummaryCtl();
+    body.innerHTML = summaryChecksHtml(r);
+    document.getElementById('scSave').onclick = async () => {
+      try { draw(await api('/api/summary-check', { client, hours: document.getElementById('scHours').value })); } catch (err) { tell(err.message); }
+    };
+  };
+  try { draw(await api('/api/summary-check?' + new URLSearchParams({ client }))); }
+  catch (err) { const b = document.getElementById('scBody'); if (b) b.innerHTML = `<div class="mu-note">${esc(err.message)}</div>`; }
+  await pending;
+}
+// The Summary button's tooltip says whether this summary will check first (#919).
+function summaryWhen(s) {
+  const h = S.summaryHours[S.client], at = s.stats?.at || +new Date(s.lastModified || 0);
+  if (h === undefined) { if (!S.summaryHoursAsked?.[S.client]) { (S.summaryHoursAsked ||= {})[S.client] = true; api('/api/summary-check?' + new URLSearchParams({ client: S.client })).then((r) => { S.summaryHours[r.client] = r.hours; renderSummaryCtl(); }).catch(() => {}); } return ''; }
+  if (!at) return `\nIt checks the facts first: the last reply's time is not known.`;
+  const ageH = (Date.now() - at) / 3600000;
+  const when = ago(at) === 'now' ? 'just now' : ago(at) + ' ago';
+  return ageH >= h ? `\nLast reply ${when}, so it will check the facts first.` : `\nLast reply ${when}: it checks the facts first after ${hoursText(h)} (and 1 in 4 times before that).`;
+}
+
 // ---------- the gauges in the top bar: Docket's CPU, memory and file space ----------
 // Asked every 15 seconds while the page is in view; the app keeps each reading 10 seconds and the folder sizes
 // from its last measurement, so this never waits on a count. CPU turns amber over 80% two readings in a row.
@@ -6637,80 +6781,144 @@ function startupHtml(v) {
 }
 // ☰ > Docket settings > Starting Docket: the state, and buttons to switch to each of the others.
 // ---------- ☰ > Docket settings > Autopilot (#821) ----------
-// The pilot answers what waits on you, under the rules in the file shown here, in short runs on its own desk (#881):
-// a fresh session for each batch, archived when done. The ✈ in the top bar shows while it is flying (switch on, desk
-// set), and opens this. What it answered says "answered by pilot" on the card.
-S.pilot = { on: false, flying: false };
+// The pilot answers what waits on you, under the rules on this computer, in short runs on its own desk (#881): a
+// fresh session for each batch, on the top model of the brand picked here. The 🤖 in the top bar shows while it is
+// flying (switch on, desk set), and opens this. What it answered says "answered by pilot" on the card. The panel is
+// one switch, the brand, a status line and the recent answers; while it is open those parts are updated in place,
+// and only when their content changed, so nothing flickers.
+S.pilot = { on: false, flying: false, state: 'off' };
 // While on it names the pilot's brand, and the run going now when there is one (#879, #881).
 const pilotLabel = () => S.pilot.on ? `Autopilot: on (${S.pilot.brandName || 'Claude'}${S.pilot.session ? ', running' : ''})` : 'Autopilot: off';
-function drawPilot(p) {
+// decided: the pilot answered something just now, for one brief flash.
+function drawPilot(p, decided) {
   if (!p) return;
-  S.pilot = { on: !!p.on, flying: !!p.flying, session: p.session, title: p.title, brand: p.brand, gear: p.gear, brandName: p.brandName };
-  const b = $('pilotBtn'); b.hidden = !S.pilot.flying;
+  S.pilot = { on: !!p.on, flying: !!p.flying, session: p.session, title: p.title, brand: p.brand, gear: p.gear, brandName: p.brandName, state: p.state || 'off' };
+  const b = $('pilotBtn');
+  if (b.hidden !== !S.pilot.flying) b.hidden = !S.pilot.flying;
   b.title = `Autopilot flying on ${S.pilot.brandName || 'Claude'}${S.pilot.session ? `, running now: ${S.pilot.title}` : ''}. ${tipText('pilot-icon')}`;
+  // What it is doing shows as a quiet animation on the 🤖 in the top bar and the autopilot desk's 🤖, wherever drawn.
+  if (document.body.dataset.pilot !== S.pilot.state) document.body.dataset.pilot = S.pilot.state;
+  if (decided) pilotFlash();
+  if (decided?.session) S.pilotDecided = { ...decided, at: Date.now() };
+  S.pilot.holding = p.holding || [];
+  drawPilotHere(decided?.session === S.selected);
+  pilotPanelLater();
+}
+// The autopilot in a session's chat: while the run going now has an item from this session in hand, a band above the
+// typing box says it is thinking, with a calm wave, wherever the chat is scrolled. When it answers, a lightning sweep
+// runs once along the top of the typing box, the bolt flickers once and the band flashes once, then says what it did
+// until the run moves on. Drawn in place: the band's content changes only when its text does.
+const PILOT_WAVE = '<svg class="pl-wave" viewBox="0 0 200 14" preserveAspectRatio="none" aria-hidden="true"><path d="M0 7 Q6 1 12 7 T24 7 T36 7 T48 7 T60 7 T72 7 T84 7 T96 7 T108 7 T120 7 T132 7 T144 7 T156 7 T168 7 T180 7 T192 7 T204 7 T216 7 T228 7"/></svg>';
+// What the pilot's answer reads as in the band: "allowed npm test".
+const PILOT_DID = { allow: 'allowed', always: 'always allowed', deny: 'denied', skip: 'skipped', new: 'started a new session for', here: 'kept here', start: 'started', dismiss: 'dismissed', continue: 'continued', send: 'sent', stop: 'stopped', merge: 'said merge on' };
+function drawPilotHere(flash) {
+  const sid = S.selected, holding = !!sid && (S.pilot.holding || []).includes(sid);
+  const d = S.pilotDecided, said = d && d.session === sid && d.run && d.run === S.pilot.session ? d : null;
+  const did = said && (/^answered /.test(said.answer) ? 'answered' : PILOT_DID[said.answer] || said.answer);
+  const key = said ? `said ${did} ${said.what} ${said.at}` : holding ? 'thinking' : '';
+  const band = $('plBand');
+  if (band.dataset.key !== key) {
+    band.dataset.key = key;
+    band.innerHTML = key === 'thinking' ? `<span>🤖 Autopilot is thinking…</span>${PILOT_WAVE}`
+      : said ? `${flash ? '<span class="pl-zap" aria-hidden="true">⚡</span>' : ''}<span class="pl-said">🤖 Autopilot ${esc(did)} ${esc(said.what)} · just now</span>` : '';
+  }
+  if (band.hidden !== !key) band.hidden = !key;
+  if (flash && said) for (const [el, c] of [[band, 'pl-flash'], [$('composer'), 'pl-bolt']]) { el.classList.remove(c); void el.offsetWidth; el.classList.add(c); }
+}
+// Another session opened: its own band.
+new MutationObserver(() => { if (S.pilot.holding?.length || !$('plBand').hidden) drawPilotHere(); }).observe($('events'), { childList: true });
+function pilotFlash() {
+  const c = document.body.classList;
+  c.remove('pilot-decided'); void document.body.offsetWidth; c.add('pilot-decided'); // restarts the flash
+  clearTimeout(pilotFlash.t); pilotFlash.t = setTimeout(() => c.remove('pilot-decided'), 900);
 }
 const PILOT_WHEN = (t) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const pilotRunLink = (id, text) => `<a href="#session:${esc(id)}"${tip('open-session')}>${esc(text)}</a>`;
-function autopilotHtml(v, msg = '') {
-  const desks = [...(v.pilotDesk ? [] : [`<option value="">None yet: Docket makes an Autopilot desk when you turn it on</option>`]),
-    ...v.desks.map((d) => `<option value="${esc(d.id)}"${d.id === v.pilotDesk?.id ? ' selected' : ''}>${d.id === v.pilotDesk?.id ? '🤖 ' : ''}${esc(d.name)}</option>`)];
-  // While on: the sign-in step for the pilot's brand when it is not signed in there, and a one-click Turn on for
-  // screen control, which the pilot never turns on itself (#886).
+// The parts of the panel that change while it is open: the status line, the sign-in step when the brand is not
+// signed in on the autopilot's desk, and the recent answers, each linking to its session and its run.
+function autopilotParts(v, msg = '') {
   const mine = v.brands.find((b) => b.brand === v.brand);
   const signin = v.on && v.pilotDesk && mine && !mine.signedIn ? `<div class="pl-ask"><b>${esc(v.pilotDesk.name)} is not signed in to ${esc(v.brandName)}</b>, so no run can start. Sign in here; the first run then starts on its own.
     <span class="co-sign" data-sign-client="${esc(v.pilotDesk.id)}" data-sign-engine="${esc(v.brand)}" data-unsaved="">${coSignHtml(v.pilotDesk.id, v.brand, '')}</span></div>` : '';
-  const screen = v.on && v.pilotDesk && !v.screen ? `<div class="pl-ask pl-row">Screen control is off for the autopilot.<button data-pilot-screen${tip('pilot-screen')}>Turn on</button></div>` : '';
-  // The pilot's brand and starting gear: only brands the autopilot's desk has signed in, plus the one set now if it is not.
-  const groups = v.brands.filter((b) => b.signedIn || b.brand === v.brand).map((b) => `<optgroup label="${esc(b.name)}${b.signedIn ? '' : ' (not signed in)'}">${b.gears.map((g, i) =>
-    `<option value="${esc(`${b.brand}:${g.key}`)}"${b.brand === v.brand && g.key === v.gear ? ' selected' : ''}${b.signedIn ? '' : ' disabled'}>${esc(`${b.name}, starting on ${g.name}`)}${i === 0 ? ' (lowest)' : ''}</option>`).join('')}</optgroup>`);
-  if (!v.brands.some((b) => b.brand === v.brand)) groups.unshift(`<option value="" selected disabled>${esc(`${v.brandName} (${v.pilotDesk ? `${v.pilotDesk.name} does not use it` : 'once the desk is made'})`)}</option>`);
-  const may = { allow: 'pilot may answer', deny: 'pilot may only decline', ask: 'stays with you' };
-  const own = (w) => w.may === 'ask' && /autopilot's own desk/.test(w.why || '') ? ": the autopilot's own desk" : '';
-  const waiting = v.waiting.length ? v.waiting.map((w) => `<div><b>${esc(w.desk)}</b> · ${esc(w.kind)} · ${esc(w.what || w.title)} <span class="${w.may === 'ask' ? 'pl-no' : 'by-pilot'}">(${may[w.may]}${own(w)})</span></div>`).join('') : '<div>Nothing waits on you now.</div>';
-  const runs = v.runs.length ? v.runs.map((r) => `<div>${esc(PILOT_WHEN(r.at))} · ${pilotRunLink(r.id, r.title)} · ${esc(BRAND_NAMES[r.brand] || r.brand)} · ${r.items} item${r.items === 1 ? '' : 's'} · ${r.ended ? `ended: ${esc(r.why || '')}` : r.id === v.session ? '<b>running now</b>' : 'stopped'}</div>`).join('') : '<div>No run yet. One starts when something comes in that the rules let the pilot answer.</div>';
-  const log = v.log.length ? v.log.map((l) => l.kind === 'run'
-    ? `<div>${esc(PILOT_WHEN(l.at))} · ${pilotRunLink(l.run, 'run')} ${esc(l.answer)}${l.what ? ` · ${esc(l.what)}` : ''}</div>`
-    : `<div>${esc(PILOT_WHEN(l.at))} · <b>${esc(l.kind)}</b> · ${esc(l.answer)} · ${esc(l.what || l.title)}${l.ok ? '' : ` <span class="pl-no">refused: ${esc(l.why)}</span>`}${l.run ? ` · ${pilotRunLink(l.run, 'its run')}` : ''}</div>`).join('') : '<div>The pilot has answered nothing yet.</div>';
-  return `<div class="pilot-dlg"><div>The pilot answers what waits on you, on every desk on this computer: permission prompts, question forms and cards. It is ${v.on ? '<b>on</b>' : '<b>off</b>'}${v.flying ? ', and flying' : ''}. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them.</div>
-    ${msg ? `<div class="pl-no" style="margin-top:8px">${esc(msg)}</div>` : ''}
-    ${v.problem && !signin ? `<div class="pl-no" style="margin-top:8px">${esc(v.problem)}</div>` : ''}${signin}${screen}
-    <div class="pl-row"><label for="pilotDesk">Autopilot's desk</label><select id="pilotDesk"${tip('pilot-desk')}>${desks.join('')}</select></div>
-    <div class="meta" style="margin-top:4px">The pilot works on this desk, with its own sign-ins, bill and files. What waits on it stays with you.</div>
-    <div class="pl-row"><label for="pilotBrand">Pilot's brand</label><select id="pilotBrand"${tip('pilot-brand')}>${groups.join('')}</select></div>
-    <div class="meta" style="margin-top:4px">Each run is a fresh session on ${v.pilotDesk ? esc(v.pilotDesk.name) : "the autopilot's desk"}: it starts when something comes in that the rules let the pilot answer, handles what came in close together, then ends and is archived. One run at a time; what comes in during a run goes to the next. The next run uses the brand saved here. It starts on the gear picked, and shifts up to the top gear to judge.</div>
-    <div class="meta" style="margin-top:8px">Rules (allow, deny or ask, per kind and per desk): <code>${esc(v.rulesFile)}</code>${v.notesFile ? `<br>The pilot's notes, which every run reads: <code>${esc(v.notesFile)}</code>` : ''}</div>
-    <h4>Waiting on you now</h4><div class="pl-list">${waiting}</div>
-    <h4>Runs</h4><div class="pl-list">${runs}</div>
-    <h4>The pilot's answers</h4><div class="pl-list">${log}</div></div>`;
+  const last = v.runs.find((r) => r.id !== v.session);
+  const lastRun = last ? `Last run ${esc(PILOT_WHEN(last.at))}: ${pilotRunLink(last.id, last.title)}, ${last.items} item${last.items === 1 ? '' : 's'}.` : 'No run yet.';
+  const now = !v.on ? 'Off.' : v.state === 'working' && v.session ? `Working: ${pilotRunLink(v.session, v.title || 'the run going now')}.`
+    : v.state === 'waking' ? 'Something came in: a run starts in a moment.' : 'On, waiting for something it may answer.';
+  const why = msg || (signin ? '' : v.problem);
+  const status = `${now} ${v.on || last ? lastRun : ''}${why ? `<div class="pl-no">${esc(why)}</div>` : ''}`;
+  const answers = v.log.filter((l) => l.kind !== 'run').slice(0, 20);
+  const log = answers.length ? answers.map((l) => `<div>${esc(PILOT_WHEN(l.at))} · <b>${esc(l.kind)}</b> · ${esc(l.answer)} · ${l.session ? pilotRunLink(l.session, l.what || l.title || 'its session') : esc(l.what || l.title)}${l.ok ? '' : ` <span class="pl-no">refused: ${esc(l.why)}</span>`}${l.run ? ` · ${pilotRunLink(l.run, 'run')}` : ''}</div>`).join('')
+    : '<div>The pilot has answered nothing yet.</div>';
+  // "I got this" (#917): the kinds on desks where its suggestions have matched your answers often enough.
+  const offers = (v.offers || []).map((o) => `<div class="pl-ready">Its suggestions matched your last ${o.matched} of ${o.total} answers to ${esc(PILOT_KIND_NAMES[o.kind] || o.kind)} on ${esc(o.deskName)}.<button data-pilot-promote="${esc(o.desk)}" data-kind="${esc(o.kind)}"${tip('pilot-promote')}>I got this</button></div>`).join('');
+  return { plStatus: status, plAsk: signin + offers, plLog: log };
+}
+function autopilotHtml(v) {
+  const p = autopilotParts(v);
+  // The brand: those the autopilot's desk has set up; one not signed in there can't be picked.
+  const brands = v.brands.map((b) => `<option value="${esc(b.brand)}"${b.brand === v.brand ? ' selected' : ''}${b.signedIn || b.brand === v.brand ? '' : ' disabled'}>${esc(b.name)}${b.signedIn ? '' : ' (not signed in)'}</option>`).join('')
+    || `<option value="${esc(v.brand)}" selected>${esc(v.brandName)}</option>`;
+  return `<div class="pilot-dlg">
+    <label class="pl-row"><input type="checkbox" id="pilotOn"${v.on ? ' checked' : ''}${tip('pilot-on')}> <b>Autopilot on</b></label>
+    <div class="meta" style="margin-top:4px">It answers what waits on you on every desk, as far as the rules on this computer let it, on the top model of the brand below. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting and outside services stay with you.</div>
+    <div class="pl-row"><label for="pilotBrand">Runs on</label><select id="pilotBrand"${tip('pilot-brand')}>${brands}</select></div>
+    <div class="pl-status" id="plStatus">${p.plStatus}</div><div id="plAsk">${p.plAsk}</div>
+    <h4>Recent answers</h4><div class="pl-list" id="plLog">${p.plLog}</div>
+    <details class="pl-more"><summary>Rules and notes</summary><div class="meta">Rules (allow, deny or ask, per kind and per desk): <code>${esc(v.rulesFile)}</code>${v.notesFile ? `<br>The pilot's notes, which every run reads: <code>${esc(v.notesFile)}</code>` : ''}</div></details></div>`;
+}
+// The panel while it is open: v, the view last fetched, and html, the parts as last drawn, so a part is only
+// rewritten when it changed.
+let pilotPanel = null, pilotPanelTimer = null;
+function fillAutopilot(v, msg = '') {
+  const box = pilotPanel && $('dlgBody').querySelector('.pilot-dlg');
+  if (!box) return;
+  for (const [id, html] of Object.entries(autopilotParts(v, msg))) {
+    if (pilotPanel.html[id] === html) continue;
+    pilotPanel.html[id] = html; box.querySelector('#' + id).innerHTML = html;
+  }
+  const on = box.querySelector('#pilotOn'), sel = box.querySelector('#pilotBrand');
+  if (!on.disabled && on.checked !== v.on) on.checked = v.on;
+  if (!sel.disabled && document.activeElement !== sel && sel.value !== v.brand) sel.value = v.brand;
+}
+// A pilot broadcast while the panel is open: look again, once for a burst of them.
+function pilotPanelLater() {
+  if (!pilotPanel || pilotPanelTimer) return;
+  pilotPanelTimer = setTimeout(async () => {
+    pilotPanelTimer = null;
+    const v = await api('/api/pilot').catch(() => null);
+    if (v && pilotPanel) { pilotPanel.v = v; fillAutopilot(v); }
+  }, 400);
 }
 async function showAutopilot() {
-  // msg: why the last save was refused, shown in the dialog itself (#875).
-  let msg = '';
-  for (;;) {
-    let v; try { v = await api('/api/pilot'); } catch (err) { tell(err.message); return; }
-    drawPilot(v);
-    const pick = await dialog({ title: 'Autopilot', body: autopilotHtml(v, msg), buttons: [
-      { label: v.on ? 'Turn off' : 'Turn on', value: 'switch', tip: v.on ? 'Every pilot tool refuses, and no run starts, until you turn it on again' : "The pilot may answer what its rules allow, in short runs. The first time, Docket makes the Autopilot desk" },
-      { label: 'Save desk', value: 'desk', tip: "Make the desk picked above the autopilot's desk" },
-      { label: 'Save brand', value: 'brand', tip: 'The next run uses the brand and starting gear picked above. A run going now keeps its own' },
-      { label: 'Close', value: null, primary: true }] });
-    if (!pick) return;
-    const deskPick = document.getElementById('pilotDesk').value, brandPick = document.getElementById('pilotBrand').value;
-    if ((pick === 'desk' && !deskPick) || (pick === 'brand' && !brandPick)) { msg = ''; continue; }
-    const [brand, gear] = brandPick.split(':');
-    const body = pick === 'switch' ? { on: !v.on } : pick === 'desk' ? { desk: deskPick } : { brand, gear };
-    try { const r = await api('/api/pilot', body); drawPilot(r); msg = r.note || ''; } catch (err) { msg = err.message; }
-    if (pick === 'switch') await reloadClients().catch(() => {}); // the desk may be new, and shows first
-  }
+  let v; try { v = await api('/api/pilot'); } catch (err) { tell(err.message); return; }
+  drawPilot(v);
+  const shown = dialog({ title: 'Autopilot', body: autopilotHtml(v), buttons: [{ label: 'Close', value: null, primary: true }] });
+  pilotPanel = { v, html: autopilotParts(v) };
+  const box = $('dlgBody');
+  // The switch and the brand save as they change; the panel stays open.
+  const save = async (el, body, undo) => {
+    el.disabled = true;
+    try { const r = await api('/api/pilot', body); pilotPanel.v = r; drawPilot(r); fillAutopilot(r); if ('on' in body) reloadClients().catch(() => {}); }
+    catch (err) { undo(); fillAutopilot(pilotPanel.v, err.message); }
+    el.disabled = false;
+  };
+  const on = box.querySelector('#pilotOn'), sel = box.querySelector('#pilotBrand');
+  on.onchange = () => save(on, { on: on.checked }, () => { on.checked = !on.checked; });
+  sel.onchange = () => { const was = pilotPanel.v.brand; save(sel, { brand: sel.value }, () => { sel.value = was; }); };
+  await shown;
+  pilotPanel = null;
 }
-// The panel's Turn on for screen control (#886): one click turns it on for the autopilot's desk, and the panel shows again.
-document.addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-pilot-screen]'); if (!b) return;
-  b.disabled = true;
-  try { const v = await api('/api/pilot'); if (v.pilotDesk) { await api('/api/screen', { client: v.pilotDesk.id, on: true }); S.screenOn[v.pilotDesk.id] = true; } } catch (err) { tell(err.message); }
-  b.closest('.pl-ask')?.remove();
-});
 $('pilotBtn').onclick = () => showAutopilot();
+// Accept, I got this and Not my pick, on a card or in the panel (#917).
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-pilot-accept], [data-pilot-promote], [data-pilot-miss]'); if (!b) return;
+  b.disabled = true;
+  try {
+    if (b.dataset.pilotAccept) await api('/api/pilot/accept', { id: b.dataset.pilotAccept });
+    else if (b.dataset.pilotPromote) { tell((await api('/api/pilot/promote', { desk: b.dataset.pilotPromote, kind: b.dataset.kind })).text); b.closest('.pl-ready')?.remove(); }
+    else { tell((await api('/api/pilot/miss', { id: b.dataset.pilotMiss })).text); b.replaceWith(Object.assign(document.createElement('span'), { className: 'meta', textContent: '· noted' })); }
+  } catch (err) { tell(err.message); b.disabled = false; }
+});
 
 async function showStartupSettings() {
   for (;;) {
@@ -7069,7 +7277,7 @@ const mainColorUnasked = () => localStorage.getItem('accent') === null && !store
 async function pickMainColor({ first = false } = {}) {
   const own = S.clients.find((c) => c.id === S.client && c.color);
   const note = [first ? 'Pick a main color for Docket. You can change it later in ☰ > Docket settings > Default color.' : '',
-    own ? `${own.name} has its own color (☰ > Desks > ${own.name} > Desk settings), so Docket shows that while it is open. This one is for desks without a color.` : ''].filter(Boolean).join(' ');
+    own ? `${own.name} has its own color (set in ☰ > Desks > Manage), so Docket shows that while it is open. This one is for desks without a color.` : ''].filter(Boolean).join(' ');
   const c = await pickAccent(store.get('accent', null), { note });
   if (first) store.set('accentAsked', true);
   if (c !== undefined) { store.set('accent', c); showAccent(); pageSettingChanged('accent'); }
@@ -7147,16 +7355,13 @@ const coCheckPanel = (c, i) => {
     <small class="muted">Checked ${esc(new Date(r.at).toLocaleString())}. It only reads; nothing was changed.</small> ${again}</div>`;
 };
 // start: the list as it was when the screen first opened, kept across a trip to a company's color window.
-// openId: a desk whose settings start open and in view (☰ > Desks > <desk> > Desk settings).
-async function editCompanies(rows, error = '', start, scrollTo, openId) {
+async function editCompanies(rows, error = '', start, scrollTo) {
   rows ||= (await api('/api/clients/edit')).map(({ env, ...c }) => ({ ...c, envRows: Object.entries(env || {}), jiraUrl: c.links?.jira?.url || '', jiraKeys: (c.links?.jira?.keys || []).join(', '), adoOrg: c.links?.azureDevOps?.org || '', adoProject: c.links?.azureDevOps?.project || '',
     ...Object.fromEntries(Object.entries(c.startGear || {}).map(([e, k]) => ['startGear_' + e, k])),
     // A LiteLLM gateway, edited as flat fields like the links above.
     gatewayUrl: c.gateway?.url || '', gatewayClaudeRoute: c.gateway?.claudeRoute || '', gatewayLogin: c.gateway?.login || '', gatewayLite: c.gateway?.lite || '',
     ...Object.fromEntries(Object.entries(c.gateway?.models?.claude || {}).map(([k, v]) => ['gatewayModel_claude_' + k, v])) }));
   if (rows.length === 1) coOpen.add(rows[0]); // one desk: nothing to look past, so its settings start open
-  const opened = openId && rows.find((c) => c.id === openId);
-  if (opened) { coOpen.add(opened); scrollTo = rows.indexOf(opened); }
   const roots = await api('/api/clients/home-roots').catch(() => null);
   const gears = await api('/api/gears').catch(() => null); // Shift's gears per brand
   // One Start gear choice per ticked brand: the model its Shift sessions start on.
@@ -8256,11 +8461,25 @@ function docketHtml(ev) {
   return `<div class="msg-user msg-docket" data-ev data-from="docket">${inner}</div>${msgWhen(ev, ' left')}`;
 }
 // What the autopilot answered says so (#821), after the card's own record of the answer.
-const byPilot = (ev) => ev.by === 'pilot' ? ' <span class="by-pilot">· answered by pilot</span>' : '';
+// An answer the pilot gave itself to an item that takes judgment can be marked Not my pick (#917): it goes back to
+// suggesting that kind on that desk.
+const byPilot = (ev) => ev.by === 'pilot' ? ` <span class="by-pilot">· answered by pilot</span>${ev.pilotItem ? ` <button class="pl-miss" data-pilot-miss="${esc(ev.pilotItem)}"${tip('pilot-miss')}>Not my pick</button>` : ''}` : '';
+// The autopilot's suggestion on a card still waiting (#917): what it would pick, with Accept, and "I got this" once
+// it has matched the person's answers to that kind on that desk often enough.
+const PILOT_KIND_NAMES = { permission: 'permission prompts', question: 'question forms', plan: 'plans', offer: 'New session / Do it here cards', card: 'suggested sessions', handoff: 'handoff cards' };
+function pilotSuggestHtml(ev) {
+  const s = ev.suggest;
+  return `<div class="pl-suggest">🤖 Autopilot would pick: <b>${esc(s.label)}</b>${s.why ? ` <span class="meta">· ${esc(s.why)}</span>` : ''}<button data-pilot-accept="${esc(s.id)}"${tip('pilot-accept')}>Accept</button>`
+    + (s.ready ? `<div class="pl-ready">It matched your last ${s.ready.matched} of ${s.ready.total} answers to ${esc(PILOT_KIND_NAMES[s.kind] || s.kind)} on ${esc(s.deskName || 'this desk')}.<button data-pilot-promote="${esc(s.desk)}" data-kind="${esc(s.kind)}"${tip('pilot-promote')}>I got this</button></div>` : '') + '</div>';
+}
 function eventHtml(ev) {
+  const h = eventHtmlOf(ev);
+  return ev.suggest && !ev.by && ['pending', 'open'].includes(ev.state) ? h.replace(/<\/div>(\s*)$/, `${pilotSuggestHtml(ev)}</div>$1`) : h;
+}
+function eventHtmlOf(ev) {
   switch (ev.k) {
     case 'user': if (ev.from === 'docket' && /<session-report>/.test(ev.text)) return reportHtml(ev);
-      if (ev.from === 'pilot') return `<div class="msg-user msg-from" data-ev data-from="pilot"><div class="mf-head">✈ Sent by the autopilot</div>${esc(ev.text)}</div>${msgWhen(ev, ' left')}`;
+      if (ev.from === 'pilot') return `<div class="msg-user msg-from" data-ev data-from="pilot"><div class="mf-head">🤖 Sent by the autopilot</div>${esc(ev.text)}</div>${msgWhen(ev, ' left')}`;
       if (ev.from === 'docket') return docketHtml(ev);
       if (ev.from === 'session' || ev.from === 'brief') return sentHtml(ev);
       return `<div class="msg-user" data-ev${ev.from ? ` data-from="${esc(ev.from)}"` : ''}>${esc(ev.text)}${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}</div>${ev.at ? `<div class="msg-when">${stamp(ev.at)}</div>` : ''}`;
@@ -10389,7 +10608,7 @@ function connect() {
     const m = JSON.parse(e.data);
     const mine = m.id === S.selected;
     if (m.t === 'remote-features') { setRemoteOn(m.on); return; }
-    if (m.t === 'pilot') { drawPilot(m.pilot); return; }
+    if (m.t === 'pilot') { drawPilot(m.pilot, m.decided); return; }
     if (m.t === 'remote-ask') { if (S.remoteOn) { S.remoteAsks[m.ask.id] = m.ask; drawRemoteAsks(); } return; }
     if (m.t === 'remote-asked') { delete S.remoteAsks[m.id]; drawRemoteAsks(); return; }
     if (m.t === 'screen') { S.screenActive[m.client] = m.active || []; drawScreenBar(); return; }
@@ -10486,6 +10705,8 @@ function connect() {
       showCacheOffer(m.offers);
     } else if (m.t === 'setup-offers') {
       showSetupOffer(m.offers);
+    } else if (m.t === 'summary-offers') {
+      showSummaryOffer(m.offers);
     } else if (m.t === 'start-offers') {
       showStartOffer(m.offers);
     } else if (m.t === 'forms-offers') {
@@ -11209,6 +11430,39 @@ $('startOffer').onclick = async (e) => {
 };
 for (const id of ['cacheOffer', 'planOffer', 'setupOffer']) new MutationObserver(() => showStartOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 api('/api/start-offers').then(showStartOffer).catch(() => {});
+// The summary check card (#919): the server reads each desk's summary log and lists the desks where moving the
+// threshold one step would fit how often the checks found changes; the card asks about one desk at a time (the one on
+// view first), and waits while another corner card holds the corner. Change it sets the threshold; Not now holds the
+// same change until there are 10 more checks in that range.
+let summaryOfferList = [];
+function showSummaryOffer(list) {
+  if (list) summaryOfferList = list;
+  const el = $('summaryOffer');
+  const o = summaryOfferList.find((x) => x.client === S.client) || summaryOfferList[0];
+  if (!o || POPOUT || ['cacheOffer', 'planOffer', 'setupOffer', 'startOffer'].some((id) => !$(id).hidden)) { el.hidden = true; return; }
+  el.dataset.client = o.client;
+  el.innerHTML = `<span class="ico" aria-hidden="true">⏲</span><div class="t" id="summaryOfferTitle">${esc(o.title)}</div>
+    <div class="d">${esc(o.line)}</div>
+    <div class="d">${esc(o.ask)} <a href="#" data-summary="gauge"${tip('menu-summarychecks')}>See the numbers</a></div>
+    <div class="b"><button data-summary="later"${tip('summary-later')}>Not now</button><button class="primary" data-summary="apply"${tip('summary-apply')}>Change it</button></div>`;
+  el.hidden = false;
+}
+$('summaryOffer').onclick = async (e) => {
+  const b = e.target.closest('[data-summary]'), el = $('summaryOffer');
+  if (!b) return;
+  e.preventDefault();
+  const client = el.dataset.client, answer = b.dataset.summary;
+  if (answer === 'gauge') return showSummaryChecks(client);
+  for (const x of el.querySelectorAll('button')) x.disabled = true;
+  let r; try { r = await api('/api/summary-offers/answer', { client, answer }); }
+  catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return tell(err.message); }
+  summaryOfferList = summaryOfferList.filter((o) => o.client !== client);
+  S.summaryHours[client] = r.hours;
+  showSummaryOffer(); renderSummaryCtl();
+  if (answer === 'apply') tell(`Summaries on ${S.clients.find((c) => c.id === client)?.name || 'this desk'} check first after ${hoursText(r.hours)} now. Change it in ☰ > Gauges > Summary checks.`);
+};
+for (const id of ['cacheOffer', 'planOffer', 'setupOffer', 'startOffer']) new MutationObserver(() => showSummaryOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+api('/api/summary-offers').then(showSummaryOffer).catch(() => {});
 // The one-time question-forms card (#850): the server lists each desk whose card is due (a day after this update came,
 // and a few new sessions on the desk since); the card asks about one desk at a time, the one on view first, and waits
 // while another corner card, the setup wizard, the tour or a dialog is up. Any button or × answers it for good on that
@@ -11218,7 +11472,7 @@ function showFormsOffer(list) {
   if (list) formsOfferList = list;
   const el = $('formsOffer');
   const o = formsOfferList.find((x) => x.client === S.client) || formsOfferList[0];
-  const busy = POPOUT || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer'].some((id) => !$(id).hidden);
+  const busy = POPOUT || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'summaryOffer'].some((id) => !$(id).hidden);
   if (!o || busy) { if (!el.hidden) el.hidden = true; return; }
   if (!el.hidden && el.dataset.client === o.client) return; // already showing it: keep the keyboard where it is
   el.dataset.client = o.client;

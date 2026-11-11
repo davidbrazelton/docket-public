@@ -16,3 +16,4 @@ grok-home/
 publish/windows/out/
 pilot-rules*.json
 pilot-log*.jsonl
+usage-worker/.wrangler/

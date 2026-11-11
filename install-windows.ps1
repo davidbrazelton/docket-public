@@ -44,3 +44,8 @@ $old = Join-Path $deskDir 'Docket.lnk'
 if ((Test-Path $old) -and $shell.CreateShortcut($old).TargetPath -like '*\start-docket.cmd') { Remove-Item $old }
 if ($ShortcutOnly) { Write-Host "Docket's shortcuts point at $folder. It does not start at sign-in; open it from the Start menu or the desktop, which starts it if needed." }
 else { Write-Host "Docket installed from $folder. It starts at sign-in; open it from the Start menu." }
+# One anonymous count of a finished install, carrying only the platform (README.md, "Usage stats"). Never stops or
+# slows the install by more than a few seconds; DOCKET_NO_USAGE=1 skips it. Docket's own reruns of this script skip it.
+if (-not $env:DOCKET_RERUN -and (-not $env:DOCKET_NO_USAGE -or $env:DOCKET_NO_USAGE -match '^(0|false|no|off)$')) {
+  try { Invoke-WebRequest -UseBasicParsing -Method Post -TimeoutSec 5 -ContentType 'application/json' -Body '{"platform":"windows"}' -Uri 'https://docket-usage.dbrazelton.workers.dev/v1/install' | Out-Null } catch {}
+}

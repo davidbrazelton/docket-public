@@ -114,6 +114,45 @@ Docket updates itself from this repo. Every 5 minutes it checks GitHub for new g
 
 The ☰ menu shows the version and when it last checked. Docket never updates over your own changes: if you edit files in the Docket folder, it skips the update and the menu says why.
 
+## Usage stats
+
+Docket sends anonymous usage stats, so its makers can see roughly how many computers run it and which features get used. Nothing in them says who you are, who you work for or what you work on.
+
+- **Asked first:** the first time Docket starts with this, a window lists every field below, what is never sent, where it goes, and the exact report the computer would send that day, with **Keep on** and **Turn off**. Nothing is sent until you answer it.
+- **When:** after that, a few times a day while Docket runs, the same day's report again (the counter keeps the last one per day). Nothing is sent on days Docket does not run. A send that fails is dropped quietly and never slows Docket down.
+- **Where:** Docket's own counter, a Cloudflare Worker that stores the reports in a database (`usage-worker/` in this repo). It stores no IP address.
+- **Install count:** `install-windows.ps1` (and so Docket-Setup.exe) and `install-mac.sh` send one request when an install finishes, carrying only `windows` or `mac`.
+
+Every field in the daily report:
+
+| Field | What it is |
+|---|---|
+| `id` | a random install ID, made once on this computer; it is in nothing else Docket sends |
+| `version` | the Docket version |
+| `platform` | `windows`, `mac` or `other` |
+| `firstSeen` | the day this install first counted |
+| `day` | the day the counts are for (UTC) |
+| `sessions` | sessions started that day, by brand (claude, codex, grok) |
+| `children` | sessions started by another session |
+| `shiftSessions` | sessions started in Shift mode |
+| `gears` | how many times sessions shifted to each gear (haiku, sonnet, opus, ...) |
+| `plans` | plans made |
+| `ask` | questions asked of another desk |
+| `handoff` | pieces of work handed to another desk |
+| `pages` | times the Usage and Plans pages were opened |
+| `desks` | desks in total and by brand |
+| `remoteDesks` | remote desks |
+| `groups` | groups in total |
+| `schedules` | schedules in total |
+| `signinDesks` | desks with private-browser sign-ins saved (how many desks, not which sites) |
+| `remoteControl` | whether Remote Control is on |
+| `updateMode` | whether updates are taken by themselves (`auto`) or never checked (`off`) |
+| `theme` | `light`, `dark` or `system` |
+
+**Never sent:** names, emails, folder or file paths, desk, group or session titles, prompts, chat or file contents, costs, repo names, the sites you sign in to.
+
+**To turn it off:** ☰ > Docket settings > Usage stats > Turn off (or Turn off in the window the first time). Nothing is then counted or sent from that computer. To turn it off before Docket ever starts, and for the install count too, set `DOCKET_NO_USAGE=1` in the environment Docket starts in (in PowerShell: `[Environment]::SetEnvironmentVariable('DOCKET_NO_USAGE', '1', 'User')`, then sign out and in; on a Mac, `export DOCKET_NO_USAGE=1` before running `install-mac.sh`, which also writes it into the LaunchAgent).
+
 ## License
 
 MIT. See LICENSE and CONTRIBUTING.md.

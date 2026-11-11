@@ -1,16 +1,21 @@
 // Tests for the autopilot's rules (pilot.mjs, #821): the rules check and the hard stops. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, STOPS, DEFAULT_RULES, cleanRules, permissionStops, itemStops, ruleFor, mayAnswer, logLine, runLine, pilotDeskEntry, pilotSessionRefusal, OWN_DESK, runStep, runDone, pilotSetting, pilotSettingRefusal } from '../pilot.mjs';
+import { KINDS, STOPS, DEFAULT_RULES, cleanRules, permissionStops, itemStops, ruleFor, mayAnswer, logLine, runLine, pilotDeskEntry, pilotSessionRefusal, OWN_DESK, runStep, runDone, pilotSetting, pilotSettingRefusal, runsToArchive, RUN_KEEP_MS, pilotState,
+  JUDGMENT, upgradeRules, maySuggest, sameAnswer, answerLabel, learnLine, confidence, promotable, setDeskLevel, pastAnswers, LEARN, stricter } from '../pilot.mjs';
 import { GEARS } from '../gears.mjs';
 
 const perm = (command, extra = {}) => ({ id: 'permission:1', kind: 'permission', desk: 'acme', tool: 'Bash', input: { command }, ...extra });
 
-test('the safe defaults let the pilot answer prompts and forms, and keep cards, merges and sign-ins with the person', () => {
+test('the safe defaults let the pilot answer prompts, suggest for the judgment kinds, and keep merges and sign-ins with the person', () => {
   assert.equal(mayAnswer(DEFAULT_RULES, perm('npm test'), 'allow').ok, true);
-  assert.equal(mayAnswer(DEFAULT_RULES, { kind: 'question', desk: 'acme' }, 'answer').ok, true);
-  assert.equal(mayAnswer(DEFAULT_RULES, { kind: 'offer', desk: 'acme' }, 'new').ok, true);
-  for (const kind of ['card', 'handoff', 'inbox', 'cross', 'merge', 'signin', 'remote', 'plan']) {
+  for (const kind of JUDGMENT) {
+    const a = mayAnswer(DEFAULT_RULES, { kind, desk: 'acme' }, KINDS[kind].answers[0]);
+    assert.equal(a.ok, false, kind);
+    assert.match(a.why, /only suggests/, kind);
+    assert.equal(maySuggest(DEFAULT_RULES, { kind, desk: 'acme' }, KINDS[kind].answers[0]).ok, true, kind);
+  }
+  for (const kind of ['inbox', 'cross', 'merge', 'signin', 'remote']) {
     const a = mayAnswer(DEFAULT_RULES, { kind, desk: 'acme' }, KINDS[kind].answers[0]);
     assert.equal(a.ok, false, kind);
     assert.match(a.why, /stays with the person/, kind);
@@ -201,22 +206,114 @@ test('a run is done when its turn ends with nothing left, or its session ends, o
   assert.match(runDone(s({ status: 'running' }), { at: 0, now: 31 * 60000 }), /more than 30 minutes/);
 });
 
-test("the pilot's brand: Claude on its lowest gear by default, and only a brand its desk has signed in", () => {
-  assert.deepEqual(pilotSetting(undefined, GEARS), { brand: 'claude', gear: 'haiku' });
-  assert.deepEqual(pilotSetting({ brand: 'grok' }, GEARS), { brand: 'grok', gear: 'fast' });
-  assert.deepEqual(pilotSetting({ brand: 'codex', gear: 'sol' }, GEARS), { brand: 'codex', gear: 'sol' });
-  assert.deepEqual(pilotSetting({ brand: 'nope', gear: 'opus' }, GEARS), { brand: 'claude', gear: 'opus' });
-  assert.deepEqual(pilotSetting({ brand: 'claude', gear: 'fast' }, GEARS), { brand: 'claude', gear: 'haiku' }, "another brand's gear is the lowest");
+test("the pilot's brand: Claude unless picked, always on that brand's top gear, and only a brand its desk has signed in", () => {
+  assert.deepEqual(pilotSetting(undefined, GEARS), { brand: 'claude', gear: 'opus' });
+  assert.deepEqual(pilotSetting({ brand: 'grok' }, GEARS), { brand: 'grok', gear: 'full' });
+  assert.deepEqual(pilotSetting({ brand: 'codex', gear: 'luna' }, GEARS), { brand: 'codex', gear: 'astra' }, 'a gear saved before is not used');
+  assert.deepEqual(pilotSetting({ brand: 'nope' }, GEARS), { brand: 'claude', gear: 'opus' });
   const offered = [{ brand: 'claude', signedIn: false }, { brand: 'grok', signedIn: true }];
-  assert.equal(pilotSettingRefusal({ brand: 'grok', gear: 'fast' }, offered, GEARS), '');
-  assert.match(pilotSettingRefusal({ brand: 'claude', gear: 'haiku' }, offered, GEARS), /not signed in to claude/);
-  assert.match(pilotSettingRefusal({ brand: 'codex', gear: 'luna' }, offered, GEARS), /does not use codex/);
-  assert.match(pilotSettingRefusal({ brand: 'grok', gear: 'opus' }, offered, GEARS), /not a gear of grok/);
+  assert.equal(pilotSettingRefusal({ brand: 'grok' }, offered, GEARS), '');
+  assert.match(pilotSettingRefusal({ brand: 'claude' }, offered, GEARS), /not signed in to claude/);
+  assert.match(pilotSettingRefusal({ brand: 'codex' }, offered, GEARS), /does not use codex/);
   assert.match(pilotSettingRefusal({ brand: 'x' }, offered, GEARS), /not a brand/);
+});
+
+test('finished runs stay a week in the list, then are archived', () => {
+  const now = 100 * RUN_KEEP_MS, old = now - RUN_KEEP_MS - 1, fresh = now - 1000;
+  const sessions = { a: { client: 'ap', createdAt: old }, b: { client: 'ap', createdAt: fresh }, c: { client: 'ap', createdAt: old, archived: true },
+    d: { client: 'acme', createdAt: old }, e: { client: 'ap', createdAt: old }, f: { client: 'ap' } };
+  assert.deepEqual(runsToArchive(sessions, 'ap', 'e', now), ['a'], 'only old, unarchived runs of that desk, never the one going now');
+  assert.deepEqual(runsToArchive(undefined, 'ap', null, now), []);
+});
+
+test('what the autopilot is doing: off, idle, waking while a batch fills, working while a run goes', () => {
+  assert.equal(pilotState({ flying: false, running: true, filling: true }), 'off');
+  assert.equal(pilotState({ flying: true, running: false, filling: false }), 'idle');
+  assert.equal(pilotState({ flying: true, running: false, filling: true }), 'waking');
+  assert.equal(pilotState({ flying: true, running: true, filling: true }), 'working');
 });
 
 test('the log links each run: its answers carry the run, and the run has lines of its own', () => {
   assert.equal(logLine({ at: 1, item: { id: 'permission:k', kind: 'permission', desk: 'acme' }, answer: 'allow', ok: true, why: '', run: 'r1' }).run, 'r1');
   assert.equal('run' in logLine({ at: 1, item: { id: 'x', kind: 'card', desk: 'acme' }, answer: 'start', ok: true, why: '' }), false);
   assert.deepEqual(runLine({ at: 2, run: 'r1', answer: 'started', what: '2 items', brand: 'grok', gear: 'fast' }), { at: 2, kind: 'run', run: 'r1', answer: 'started', what: '2 items', ok: true, brand: 'grok', gear: 'fast' });
+});
+
+test('suggest: only for kinds a card can show it on, never past a hard stop, and checked like an answer', () => {
+  const rules = { kinds: { merge: 'suggest', permission: 'suggest' } };
+  assert.equal(ruleFor(rules, { kind: 'merge', desk: 'acme' }).level, 'ask', 'a merge cannot be suggested');
+  assert.equal(ruleFor(rules, perm('npm test')).level, 'suggest');
+  assert.equal(ruleFor(rules, perm('git push origin main')).level, 'ask', 'hard stops stay as they are');
+  assert.equal(maySuggest(rules, perm('npm test'), 'allow').ok, true);
+  assert.match(maySuggest(rules, perm('npm test'), 'nope').why, /not an answer/);
+  assert.match(maySuggest(DEFAULT_RULES, perm('npm test'), 'allow').why, /answer it with pilot_answer/);
+  assert.match(maySuggest(DEFAULT_RULES, { kind: 'merge', desk: 'acme' }, 'merge').why, /no suggestion/);
+  assert.equal(ruleFor({ desks: { acme: { kinds: { plan: 'allow' } } } }, { kind: 'plan', desk: 'acme' }).level, 'allow', 'a desk promoted');
+  assert.equal(stricter('suggest', 'allow'), 'suggest');
+  assert.equal(stricter('suggest', 'ask'), 'ask');
+  assert.equal(stricter('deny', 'suggest'), 'suggest');
+});
+
+test('a rules file from before keeps the levels the person chose, and its old defaults become suggest once', () => {
+  const old = { kinds: { permission: 'allow', question: 'allow', plan: 'deny', offer: 'allow', card: 'ask' }, desks: { acme: { kinds: { question: 'allow' } } } };
+  const { rules, changed } = upgradeRules(old);
+  assert.equal(changed, true);
+  assert.deepEqual(rules.kinds, { permission: 'allow', question: 'suggest', plan: 'deny', offer: 'suggest', card: 'suggest', handoff: 'suggest' });
+  assert.deepEqual(rules.desks, old.desks, 'per-desk choices are kept');
+  assert.equal(rules.version, 2);
+  assert.equal(upgradeRules(rules).changed, false, 'only once');
+  assert.equal(upgradeRules(null).changed, false);
+});
+
+test('a suggestion is compared with what the person answered, and logged', () => {
+  assert.equal(sameAnswer({ answer: 'new' }, { answer: 'new' }), true);
+  assert.equal(sameAnswer({ answer: 'new' }, { answer: 'here' }), false);
+  assert.equal(sameAnswer({ answer: 'answer', answers: { 'Which?': 'A, B' } }, { answer: 'answer', answers: { 'Which? ': 'B,A' } }), true, 'multi-select in any order');
+  assert.equal(sameAnswer({ answer: 'answer', answers: { 'Which?': 'A' } }, { answer: 'answer', answers: { 'Which?': 'B' } }), false);
+  assert.equal(sameAnswer({ answer: 'answer', answers: { q: 'A' } }, { answer: 'answer', answers: { q: 'A', r: 'B' } }), false);
+  assert.equal(answerLabel('handoff', { answer: 'here' }), 'Keep going here');
+  assert.equal(answerLabel('offer', { answer: 'here' }), 'Do it here');
+  assert.equal(answerLabel('question', { answer: 'answer', answers: { a: 'Yes', b: 'Later' } }), 'Yes · Later');
+  const item = { id: 'offer:o1', kind: 'offer', desk: 'acme', session: 's1', what: 'Fix the login' };
+  assert.deepEqual(learnLine({ at: 5, item, suggested: { answer: 'new' }, user: { answer: 'new' } }),
+    { at: 5, id: 'offer:o1', kind: 'offer', desk: 'acme', session: 's1', what: 'Fix the login', suggested: { answer: 'new' }, user: { answer: 'new' }, match: true, how: 'user' });
+  assert.equal(learnLine({ item, suggested: { answer: 'new' }, user: { answer: 'here' } }).match, false);
+  assert.equal(learnLine({ item, user: { answer: 'here' } }).match, null, 'nothing to compare without a suggestion');
+  assert.equal(learnLine({ item, suggested: { answer: 'new' }, how: 'miss' }).match, false);
+});
+
+test('"I got this" is offered once the last suggestions agree, and a miss holds it back', () => {
+  const line = (match, kind = 'plan', desk = 'acme') => ({ desk, kind, match, user: { answer: 'allow' }, suggested: { answer: 'allow' } });
+  const nine = Array.from({ length: 9 }, () => line(true));
+  assert.deepEqual(confidence(nine, 'acme', 'plan'), { ready: false, matched: 9, total: 9 }, 'not enough yet');
+  assert.equal(confidence([...nine, line(true)], 'acme', 'plan').ready, true);
+  assert.equal(confidence([line(false), ...nine], 'acme', 'plan').ready, true, '9 of 10, the miss long ago');
+  assert.equal(confidence([...nine.slice(0, 8), line(false), line(true)], 'acme', 'plan').ready, false, 'a recent miss holds it back');
+  assert.equal(confidence([line(false), line(false), ...Array.from({ length: 8 }, () => line(true))], 'acme', 'plan').ready, false, 'under 90%');
+  const ten = Array.from({ length: LEARN.n }, () => line(true));
+  assert.deepEqual(promotable([...ten, line(null, 'card'), line(true, 'plan', 'beta')], DEFAULT_RULES), [{ desk: 'acme', kind: 'plan', matched: 10, total: 10 }]);
+  // Promoted: the desk's plan is allow, so it is not offered again; a miss sets it back to suggest.
+  const up = setDeskLevel(DEFAULT_RULES, 'acme', 'plan', 'allow');
+  assert.equal(ruleFor(up, { kind: 'plan', desk: 'acme' }).level, 'allow');
+  assert.equal(ruleFor(up, { kind: 'plan', desk: 'beta' }).level, 'suggest', 'other desks keep learning');
+  assert.deepEqual(promotable(ten, up), []);
+  const down = setDeskLevel(up, 'acme', 'plan', 'suggest');
+  assert.equal(ruleFor(down, { kind: 'plan', desk: 'acme' }).level, 'suggest');
+  assert.deepEqual(down.stops, DEFAULT_RULES.stops, 'the rest of the file is kept');
+  assert.equal(promotable([...ten, line(false)], down).length, 0, 'the miss holds it back');
+});
+
+test("each run's brief carries the person's own past answers for its kinds and desks", () => {
+  const lines = [
+    { at: Date.UTC(2026, 10, 1), desk: 'acme', kind: 'offer', what: 'Fix login', user: { answer: 'here' }, suggested: { answer: 'new' }, match: false, how: 'user' },
+    { at: Date.UTC(2026, 10, 2), desk: 'acme', kind: 'offer', what: 'Add tests', user: { answer: 'new' }, suggested: null, match: null, how: 'user' },
+    { at: Date.UTC(2026, 10, 3), desk: 'beta', kind: 'offer', what: 'Other desk', user: { answer: 'new' }, match: null, how: 'user' },
+    { at: Date.UTC(2026, 10, 4), desk: 'acme', kind: 'plan', what: 'A plan', suggested: { answer: 'allow' }, match: false, how: 'miss' },
+  ];
+  const text = pastAnswers(lines, [{ kind: 'offer', desk: 'acme' }, { kind: 'plan', desk: 'acme' }, { kind: 'permission', desk: 'acme' }], (d) => d.toUpperCase());
+  assert.deepEqual(text, [
+    '- 2026-11-02 offer on ACME: "Add tests": the user picked New session',
+    '- 2026-11-01 offer on ACME: "Fix login": the user picked Do it here (you suggested New session: missed)',
+    '- 2026-11-04 plan on ACME: "A plan": the pilot answered Allow and the user marked it as not their pick',
+  ]);
 });

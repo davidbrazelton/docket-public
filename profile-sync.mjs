@@ -1,10 +1,14 @@
-// Docket's profile (#837): one computer's desks, schedules and settings as docket-profile.json, for ☰ > Docket settings > Profile >
-// Export and Import, and kept in a folder a cloud service's own app copies between computers (☰ > Docket settings > Profile > Keep my
-// profile in…). Docket signs in to nothing and hosts nothing: the file is the person's, on their own storage.
+// Docket's setup (#837, called the profile until #910): one computer's desks, schedules and settings as docket-setup.json, for
+// ☰ > Docket settings > Setup > Export and Import, and kept in a folder a cloud service's own app copies between computers
+// (☰ > Docket settings > Setup > Keep my setup in…). Docket signs in to nothing and hosts nothing: the file is the person's, on their own storage.
 // Only works things out; server.mjs reads and writes the files and applies the result.
 import crypto from 'node:crypto';
 
-export const PROFILE_FILE = 'docket-profile.json';
+export const PROFILE_FILE = 'docket-setup.json';
+// The name before #910. A folder may still hold it, and computers not yet updated still read and write it, so a kept
+// folder has both, with the same content; whichever changed last is the one read (newestFolderFile).
+export const OLD_PROFILE_FILE = 'docket-profile.json';
+export const FOLDER_FILES = [PROFILE_FILE, OLD_PROFILE_FILE];
 export const PROFILE_VERSION = 1;
 
 // The settings that travel, with the words the preview uses. The first four are the app's own (☰ > Docket settings); the
@@ -93,12 +97,19 @@ export function profileFile({ items, meta = {}, machine, platform, home, now, ke
   return { docketProfile: PROFILE_VERSION, savedAt: now, by: machine, items: out };
 }
 
-// A profile file's text: { profile } or { error } in words for the person.
+// The file in a kept folder to read: of [{ file, text, mtime }] (text '' when it is not there), the one changed last,
+// docket-setup.json when both changed at once. undefined when neither is there.
+export function newestFolderFile(found) {
+  return found.filter((x) => x.text).reduce((a, x) => (!a || x.mtime > a.mtime ? x : a), undefined);
+}
+
+// A setup file's text (docket-setup.json, or an older docket-profile.json: the same inside): { profile } or { error }
+// in words for the person.
 export function readProfile(text) {
   let p;
-  try { p = JSON.parse(String(text).replace(/^﻿/, '')); } catch { return { error: 'That file is not a Docket profile (it is not JSON).' }; }
-  if (!p || typeof p !== 'object' || !p.docketProfile || !p.items || typeof p.items !== 'object') return { error: 'That file is not a Docket profile (docket-profile.json).' };
-  if (p.docketProfile > PROFILE_VERSION) return { error: 'That profile was saved by a newer Docket. Update this one first (☰ > About > Check for updates).' };
+  try { p = JSON.parse(String(text).replace(/^﻿/, '')); } catch { return { error: 'That file is not a Docket setup (it is not JSON).' }; }
+  if (!p || typeof p !== 'object' || !p.docketProfile || !p.items || typeof p.items !== 'object') return { error: 'That file is not a Docket setup (docket-setup.json).' };
+  if (p.docketProfile > PROFILE_VERSION) return { error: 'That setup was saved by a newer Docket. Update this one first (☰ > About > Check for updates).' };
   const items = {};
   for (const [key, r] of Object.entries(p.items)) {
     const kind = key.split(':')[0];

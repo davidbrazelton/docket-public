@@ -68,7 +68,7 @@ cat > "$plist" <<EOF
   <array><string>$(esc "$node")</string><string>$(esc "$folder/supervisor.mjs")</string></array>
   <key>WorkingDirectory</key><string>$(esc "$folder")</string>
   <key>EnvironmentVariables</key>
-  <dict><key>PATH</key><string>$(esc "$PATH")</string>$portenv${DOCKET_GITHUB_USER:+<key>DOCKET_GITHUB_USER</key><string>$(esc "$DOCKET_GITHUB_USER")</string>}${AZURE_DEVOPS_EXT_PAT:+<key>AZURE_DEVOPS_EXT_PAT</key><string>$(esc "$AZURE_DEVOPS_EXT_PAT")</string>}</dict>
+  <dict><key>PATH</key><string>$(esc "$PATH")</string>$portenv${DOCKET_GITHUB_USER:+<key>DOCKET_GITHUB_USER</key><string>$(esc "$DOCKET_GITHUB_USER")</string>}${AZURE_DEVOPS_EXT_PAT:+<key>AZURE_DEVOPS_EXT_PAT</key><string>$(esc "$AZURE_DEVOPS_EXT_PAT")</string>}${DOCKET_NO_USAGE:+<key>DOCKET_NO_USAGE</key><string>$(esc "$DOCKET_NO_USAGE")</string>}</dict>
   <key>RunAtLoad</key><true/>
   <key>AbandonProcessGroup</key><true/>
   <key>ProcessType</key><string>Interactive</string>
@@ -89,3 +89,9 @@ else
   launchctl bootstrap "gui/$(id -u)" "$plist"
   echo "Docket installed from $folder and started. It starts by itself at sign-in; open it with Docket.command in ~/Applications or http://localhost:$port."
 fi
+
+# One anonymous count of a finished install, carrying only the platform (README.md, "Usage stats"). Never stops or
+# slows the install by more than a few seconds; DOCKET_NO_USAGE=1 skips it. Docket's own reruns of this script skip it.
+[ -n "${DOCKET_RERUN:-}" ] || case "${DOCKET_NO_USAGE:-}" in
+  ''|0|false|no|off) curl -s -m 5 -o /dev/null -X POST -H 'content-type: application/json' -d '{"platform":"mac"}' https://docket-usage.dbrazelton.workers.dev/v1/install || true ;;
+esac
