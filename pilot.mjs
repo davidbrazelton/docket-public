@@ -306,18 +306,37 @@ export const learnLine = ({ at = Date.now(), item, suggested = null, user = null
   match: how === 'miss' ? false : suggested && user ? sameAnswer(suggested, user) : null, how,
 });
 
+// What the person's past sessions say about a kind on a desk (#920, pilot-history.mjs): lines with source: history,
+// which have no suggestion to compare (match: null), so they never count as matches. When at least min of them give
+// the same answer at least rate of the time, they lean that way. A question form's picks differ question by question,
+// so its history only goes in the brief. Returns { answer, agree, total } or null.
+export const HISTORY = { min: 10, rate: 0.9, n: 3 };
+export function historyLean(lines, desk, kind, h = HISTORY) {
+  if (kind === 'question') return null;
+  const past = (lines || []).filter((l) => l.source === 'history' && l.desk === desk && l.kind === kind && l.user?.answer);
+  if (past.length < h.min) return null;
+  const counts = {};
+  for (const l of past) counts[l.user.answer] = (counts[l.user.answer] || 0) + 1;
+  const [answer, agree] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  return agree / past.length >= h.rate ? { answer, agree, total: past.length } : null;
+}
 // How sure the pilot can be of a kind on a desk: of the last n lines with a suggestion to compare (oldest first in
-// lines), how many matched. ready: at least n of them, at least rate matched, and the last recent all matched, so a
-// miss holds it back until the person has seen it right again.
+// lines), how many matched. ready: at least need of them, at least rate matched, and the last recent all matched, so a
+// miss holds it back until the person has seen it right again. need is n, or h.n (never below recent) when the
+// person's past sessions lean one way and every live answer so far gave that same answer: history can shorten the
+// wait, but only live matches make it ready.
 export const LEARN = { n: 10, rate: 0.9, recent: 3 };
-export function confidence(lines, desk, kind, o = LEARN) {
+export function confidence(lines, desk, kind, o = LEARN, h = HISTORY) {
   const last = (lines || []).filter((l) => l.desk === desk && l.kind === kind && typeof l.match === 'boolean').slice(-o.n);
   const matched = last.filter((l) => l.match).length;
-  const ready = last.length >= o.n && matched / last.length >= o.rate && last.slice(-o.recent).every((l) => l.match);
-  return { ready, matched, total: last.length };
+  const lean = historyLean(lines, desk, kind, h);
+  const need = lean && last.length && last.every((l) => l.user?.answer === lean.answer) ? Math.max(o.recent, h.n, 1) : o.n;
+  const ready = last.length >= need && matched / last.length >= o.rate && last.slice(-o.recent).every((l) => l.match);
+  return { ready, matched, total: last.length, need, history: lean ? lean.total : 0 };
 }
 // The kinds on desks the pilot may now offer to take over: where the rules say suggest and it is ready.
-// Returns [{ desk, kind, matched, total }].
+// Returns [{ desk, kind, matched, total, history }]
+// (history: how many past answers shortened the wait, 0 when none did).
 export function promotable(lines, rules, o = LEARN) {
   const r = cleanRules(rules), seen = new Set(), out = [];
   for (const l of lines || []) {
@@ -326,7 +345,7 @@ export function promotable(lines, rules, o = LEARN) {
     seen.add(key);
     if ((r.desks[l.desk]?.kinds[l.kind] || r.kinds[l.kind]) !== 'suggest') continue;
     const c = confidence(lines, l.desk, l.kind, o);
-    if (c.ready) out.push({ desk: l.desk, kind: l.kind, matched: c.matched, total: c.total });
+    if (c.ready) out.push({ desk: l.desk, kind: l.kind, matched: c.matched, total: c.total, history: c.need < o.n ? c.history : 0 });
   }
   return out;
 }
@@ -339,19 +358,27 @@ export function setDeskLevel(raw, desk, kind, level) {
   d.kinds = { ...(d.kinds || {}), [kind]: level };
   return r;
 }
-// The person's own past answers for the kinds and desks of these items, newest first, at most n of each, for a run's
-// brief. deskName: id -> its name. Returns lines of text.
-export function pastAnswers(lines, items, deskName = (d) => d, n = 6) {
+// The person's own past answers for the kinds and desks of these items, for a run's brief: the live ones newest first,
+// at most n of each, then at most nHistory from their past sessions (#920), the most like these items first, marked
+// as such. Permission prompts are included where the run is to suggest for them. deskName: id -> its name.
+// Returns lines of text.
+const words = (t) => new Set(String(t || '').toLowerCase().match(/[a-z0-9_#.-]{3,}/g) || []);
+export function pastAnswers(lines, items, deskName = (d) => d, n = 6, nHistory = 4) {
   const out = [];
-  for (const key of new Set(items.filter((i) => JUDGMENT.includes(i.kind)).map((i) => `${i.desk}\n${i.kind}`))) {
+  const asked = items.filter((i) => JUDGMENT.includes(i.kind) || (i.kind === 'permission' && i.may === 'suggest'));
+  for (const key of new Set(asked.map((i) => `${i.desk}\n${i.kind}`))) {
     const [desk, kind] = key.split('\n');
-    const mine = (lines || []).filter((l) => l.desk === desk && l.kind === kind && (l.user || l.how === 'miss')).slice(-n).reverse();
-    for (const l of mine) {
-      const when = new Date(l.at).toISOString().slice(0, 10);
+    const these = asked.filter((i) => i.desk === desk && i.kind === kind);
+    const mine = (lines || []).filter((l) => l.desk === desk && l.kind === kind && (l.user || l.how === 'miss'));
+    const line = (l, them, you = '') => `- ${new Date(l.at).toISOString().slice(0, 10)} ${kind} on ${deskName(desk)}${l.source === 'history' ? ' (past session)' : ''}: "${String(l.what).slice(0, 100)}": ${them}${you}`;
+    for (const l of mine.filter((x) => x.source !== 'history').slice(-n).reverse()) {
       const them = l.how === 'miss' ? `the pilot answered ${answerLabel(kind, l.suggested)} and the user marked it as not their pick` : `the user picked ${answerLabel(kind, l.user)}`;
-      const you = l.how === 'miss' || !l.suggested ? '' : ` (you suggested ${answerLabel(kind, l.suggested)}: ${l.match ? 'matched' : 'missed'})`;
-      out.push(`- ${when} ${kind} on ${deskName(desk)}: "${String(l.what).slice(0, 100)}": ${them}${you}`);
+      out.push(line(l, them, l.how === 'miss' || !l.suggested ? '' : ` (you suggested ${answerLabel(kind, l.suggested)}: ${l.match ? 'matched' : 'missed'})`));
     }
+    const want = words(these.map((i) => i.what).join(' ')), tools = new Set(these.map((i) => i.tool).filter(Boolean));
+    const score = (l) => (l.tool && tools.has(l.tool) ? 3 : 0) + [...words(l.what)].filter((w) => want.has(w)).length;
+    const past = mine.filter((x) => x.source === 'history').map((l, i) => ({ l, s: score(l), i })).sort((a, b) => b.s - a.s || b.i - a.i).slice(0, nHistory);
+    for (const { l } of past) out.push(line(l, `the user picked ${answerLabel(kind, l.user)}`));
   }
   return out;
 }

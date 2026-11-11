@@ -285,13 +285,13 @@ test('a suggestion is compared with what the person answered, and logged', () =>
 test('"I got this" is offered once the last suggestions agree, and a miss holds it back', () => {
   const line = (match, kind = 'plan', desk = 'acme') => ({ desk, kind, match, user: { answer: 'allow' }, suggested: { answer: 'allow' } });
   const nine = Array.from({ length: 9 }, () => line(true));
-  assert.deepEqual(confidence(nine, 'acme', 'plan'), { ready: false, matched: 9, total: 9 }, 'not enough yet');
+  assert.deepEqual(confidence(nine, 'acme', 'plan'), { ready: false, matched: 9, total: 9, need: 10, history: 0 }, 'not enough yet');
   assert.equal(confidence([...nine, line(true)], 'acme', 'plan').ready, true);
   assert.equal(confidence([line(false), ...nine], 'acme', 'plan').ready, true, '9 of 10, the miss long ago');
   assert.equal(confidence([...nine.slice(0, 8), line(false), line(true)], 'acme', 'plan').ready, false, 'a recent miss holds it back');
   assert.equal(confidence([line(false), line(false), ...Array.from({ length: 8 }, () => line(true))], 'acme', 'plan').ready, false, 'under 90%');
   const ten = Array.from({ length: LEARN.n }, () => line(true));
-  assert.deepEqual(promotable([...ten, line(null, 'card'), line(true, 'plan', 'beta')], DEFAULT_RULES), [{ desk: 'acme', kind: 'plan', matched: 10, total: 10 }]);
+  assert.deepEqual(promotable([...ten, line(null, 'card'), line(true, 'plan', 'beta')], DEFAULT_RULES), [{ desk: 'acme', kind: 'plan', matched: 10, total: 10, history: 0 }]);
   // Promoted: the desk's plan is allow, so it is not offered again; a miss sets it back to suggest.
   const up = setDeskLevel(DEFAULT_RULES, 'acme', 'plan', 'allow');
   assert.equal(ruleFor(up, { kind: 'plan', desk: 'acme' }).level, 'allow');

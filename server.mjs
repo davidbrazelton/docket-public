@@ -24,6 +24,7 @@ import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, r
 import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from './keep-warm.mjs';
 import { WAITS, CONDITIONS, parseWait, waitWhat, prVerdict, sessionVerdict, portVerdict, portAnswers, timeoutLine, nextLook, waitInline, kindOf, checksOf, stateLine, branchPr } from './waits.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
+import { historyFiles as pilotHistoryFiles, readHistory as readPilotHistory, cardDecisions as pilotCardDecisions, notByPilot as pilotNotByPilot, newHistory as newPilotHistory } from './pilot-history.mjs';
 import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
@@ -5332,11 +5333,38 @@ function writePilotRulesIfMissing() {
 // learning log (data/pilot-learn.jsonl) keeps their answer beside it. Runs read the person's past answers from it, and
 // once a kind on a desk agrees often enough the card and the panel offer "I got this".
 const PILOT_LEARN = path.join(DATA_DIR, 'pilot-learn.jsonl');
+// Every line from past sessions (#920; source: history, written once and capped) and the last n live ones.
 function readPilotLearn(n = 3000) {
-  try { return fs.readFileSync(PILOT_LEARN, 'utf8').trim().split('\n').slice(-n).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; }
+  let lines;
+  try { lines = fs.readFileSync(PILOT_LEARN, 'utf8').trim().split('\n').map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; }
+  return [...lines.filter((l) => l.source === 'history'), ...lines.filter((l) => l.source !== 'history').slice(-n)];
 }
 function appendPilotLearn(line) {
   try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.appendFileSync(PILOT_LEARN, JSON.stringify(line) + '\n'); } catch {}
+}
+// A head start from past sessions (#920): once, when the person asks in the Autopilot panel, Docket reads the
+// transcripts in every desk's Claude home and its own chat records (pilot-history.mjs, no model, nothing leaves the
+// computer) and adds the person's past answers to the learning log as source: history. state.pilot.history: { at,
+// count } once read. Safe to run again: only answers not in the log yet are added.
+const pilotHistoryRun = { running: false };
+const pilotHistoryDesks = () => CLIENTS.filter((c) => c.home && c.id !== pilotDesk()?.id).map((c) => ({ id: c.id, home: c.home }));
+const pilotHistoryThere = () => pilotHistoryFiles(pilotHistoryDesks(), CHATS, (id) => state.sessions[id]?.client).length > 0;
+async function learnPilotHistory() {
+  if (pilotHistoryRun.running) return;
+  pilotHistoryRun.running = true;
+  pilotBroadcast();
+  try {
+    const skip = pilotDesk()?.id;
+    const files = pilotHistoryFiles(pilotHistoryDesks(), CHATS, (id) => state.sessions[id]?.client);
+    const found = pilotNotByPilot([...await readPilotHistory(files, { skipDesks: [skip] }), ...pilotCardDecisions(state.sessions).filter((d) => d.desk !== skip)], pilotLogTail(5000));
+    const add = newPilotHistory(readPilotLearn(), found);
+    if (add.length) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.appendFileSync(PILOT_LEARN, add.map((l) => JSON.stringify(l) + '\n').join('')); }
+    const count = readPilotLearn().filter((l) => l.source === 'history').length;
+    (state.pilot ||= { on: false, session: null }).history = { at: Date.now(), count };
+    saveState();
+    logEvent('autopilot: learned from past sessions', `${count} past answers (${add.length} new) from ${files.length} transcripts`);
+  } catch (e) { logEvent('autopilot: could not read past sessions', e.message); }
+  finally { pilotHistoryRun.running = false; pilotBroadcast(); }
 }
 // The card an item is: its event in the chat, which shows the suggestion and, once answered, "answered by pilot".
 function pilotCardEv(item) {
@@ -5704,7 +5732,7 @@ ${notes || '(none yet)'}
 Your last answers (the log, ${PILOT_LOG}):
 ${last.join('\n') || '(none yet)'}
 
-The user's own past answers to items like these (the learning log, ${PILOT_LEARN}):
+The user's own past answers to items like these (the learning log, ${PILOT_LEARN}). Those marked (past session) were read from their sessions before the autopilot watched; when they disagree with the newer ones, go with the newer:
 ${pilotPastAnswers(readPilotLearn(), items, (id) => companyName(id) || id).join('\n') || '(none yet)'}
 
 The rules (allow, deny or ask, per kind and per desk) are in ${PILOT_RULES_FILE}; only the user changes them.`;
@@ -5828,7 +5856,9 @@ async function pilotView() {
     brands: await pilotBrands(d), problem: pilotOn() ? pilotRun.problem?.why || '' : '', runs, screen: d ? screenOn(d.id) : false,
     rulesFile: PILOT_RULES_FILE, notesFile: d ? pilotNotesFile(d) : '', rules: pilotRules(), log: pilotLogTail(), waiting,
     // "I got this" (#917): the kinds on desks the pilot is ready to answer itself.
-    offers: pilotPromotable(readPilotLearn(), pilotRules()).map((o) => ({ ...o, deskName: companyName(o.desk) || o.desk })) };
+    offers: pilotPromotable(readPilotLearn(), pilotRules()).map((o) => ({ ...o, deskName: companyName(o.desk) || o.desk })),
+    // The head start from past sessions (#920): read (count), being read, or there to read.
+    history: state.pilot?.history || null, historyReading: pilotHistoryRun.running, historyThere: !state.pilot?.history && !pilotHistoryRun.running && pilotHistoryThere() };
 }
 // The pilot's tools: offered only to the session marked as pilot (see portalToolDefs).
 function pilotToolDefs(parent) {
@@ -9963,6 +9993,8 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, text: p === '/api/pilot/promote' ? promotePilotKind(String(b.desk || ''), String(b.kind || '')) : pilotMiss(String(b.id || '')) });
       } catch (e) { return json(res, 400, { error: e.message }); }
     }
+    // Learn from your past sessions (#920): started here, read in the background; the panel hears when it is done.
+    if (req.method === 'POST' && p === '/api/pilot/history') { learnPilotHistory(); return json(res, 200, { ok: true }); }
     // ☰ > Docket settings > Autopilot: the switch, the brand, the runs, the rules file, what waits now and the log.
     if (p === '/api/pilot') {
       if (req.method === 'GET') return json(res, 200, await pilotView());

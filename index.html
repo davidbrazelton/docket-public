@@ -502,6 +502,8 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .cbox-bar .ib:hover { background: var(--panel); }
 .cbox-bar .ib.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .cbox-bar .ib.primary.idle { opacity: .4; cursor: default; filter: none; }
+#stopBtn { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+#stopBtn:hover { background: color-mix(in srgb, var(--accent) 28%, var(--panel)); }
 .slash { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); max-height: 280px; overflow: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 4px; z-index: 30; }
 .slash .sl { display: flex; gap: 10px; align-items: baseline; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
 .slash .sl.on { background: color-mix(in srgb, var(--accent) 14%, transparent); }
@@ -1289,6 +1291,7 @@ header.top .pilot-btn[hidden] { display: none; }
 .pl-suggest { margin-top: 8px; padding-top: 6px; border-top: 1px dashed var(--line); font-size: 12px; }
 .pl-suggest button, .pl-ready button { margin-left: 8px; }
 .pl-ready { margin-top: 6px; }
+.pilot-dlg .pl-history { margin-top: 6px; }
 .pl-miss { margin-left: 6px; font-size: 11px; padding: 1px 6px; }
 .pilot-dlg .pl-more { margin-top: 10px; font-size: 12px; }
 .pilot-dlg .pl-more summary { cursor: pointer; color: var(--muted); }
@@ -2335,6 +2338,7 @@ const HELP = [
     ['pilot-icon', 'Autopilot flying', 'The autopilot is on: short pilot runs on its own desk answer what waits on you, under the rules on this computer, and everything they answer says "answered by pilot". It pulses softly while something comes in, glows while a run works, and flickers once on each answer. Click to see what it is doing and its recent answers, or to turn it off'],
     ['pilot-brand', 'Runs on', "The brand each pilot run uses, always on its top model, billed to the autopilot's own desk. Only brands that desk is signed in to can be picked. The next run uses it; a run going now keeps its own"],
     ['pilot-accept', 'Accept', "Answer this the way the autopilot suggests, as your own answer. The autopilot learns from it either way"],
+    ['pilot-history', 'Learn from your past sessions', "Read the answers you gave in your past sessions on this computer (permission prompts you turned down, question forms, plans, New session / Do it here, suggested sessions and handoffs), so the autopilot's suggestions start from how you answered before. It runs in the background and nothing leaves this computer"],
     ['pilot-promote', 'I got this', "Let the autopilot answer this kind of item on this desk itself from now on. If it ever answers one in a way you would not, press Not my pick and it goes back to suggesting"],
     ['pilot-miss', 'Not my pick', "You would have answered this differently: the autopilot goes back to suggesting this kind of item on this desk, and you pick"],
     ['pilot-on', 'Autopilot on', "On: short pilot runs on the autopilot's own desk answer what its rules allow, and the 🤖 shows in the top bar. The first time, Docket makes the Autopilot desk. Off: every pilot tool refuses, and no run starts"],
@@ -6850,8 +6854,12 @@ function autopilotParts(v, msg = '') {
   const log = answers.length ? answers.map((l) => `<div>${esc(PILOT_WHEN(l.at))} · <b>${esc(l.kind)}</b> · ${esc(l.answer)} · ${l.session ? pilotRunLink(l.session, l.what || l.title || 'its session') : esc(l.what || l.title)}${l.ok ? '' : ` <span class="pl-no">refused: ${esc(l.why)}</span>`}${l.run ? ` · ${pilotRunLink(l.run, 'run')}` : ''}</div>`).join('')
     : '<div>The pilot has answered nothing yet.</div>';
   // "I got this" (#917): the kinds on desks where its suggestions have matched your answers often enough.
-  const offers = (v.offers || []).map((o) => `<div class="pl-ready">Its suggestions matched your last ${o.matched} of ${o.total} answers to ${esc(PILOT_KIND_NAMES[o.kind] || o.kind)} on ${esc(o.deskName)}.<button data-pilot-promote="${esc(o.desk)}" data-kind="${esc(o.kind)}"${tip('pilot-promote')}>I got this</button></div>`).join('');
-  return { plStatus: status, plAsk: signin + offers, plLog: log };
+  const offers = (v.offers || []).map((o) => `<div class="pl-ready">Its suggestions matched your last ${o.matched} of ${o.total} answers to ${esc(PILOT_KIND_NAMES[o.kind] || o.kind)} on ${esc(o.deskName)}${o.history ? `, the way ${o.history} of your past answers went` : ''}.<button data-pilot-promote="${esc(o.desk)}" data-kind="${esc(o.kind)}"${tip('pilot-promote')}>I got this</button></div>`).join('');
+  // A head start from past sessions (#920): one quiet line, while there are past sessions it has not read.
+  const hist = v.historyReading ? '<div class="pl-history meta">Reading your past sessions…</div>'
+    : v.history ? `<div class="pl-history meta">Learned from ${v.history.count} past answer${v.history.count === 1 ? '' : 's'}.</div>`
+    : v.historyThere ? `<div class="pl-history meta"><button data-pilot-history="1"${tip('pilot-history')}>Learn from your past sessions</button></div>` : '';
+  return { plStatus: status, plAsk: signin + offers + hist, plLog: log };
 }
 function autopilotHtml(v) {
   const p = autopilotParts(v);
@@ -6911,10 +6919,11 @@ async function showAutopilot() {
 $('pilotBtn').onclick = () => showAutopilot();
 // Accept, I got this and Not my pick, on a card or in the panel (#917).
 document.addEventListener('click', async (e) => {
-  const b = e.target.closest('[data-pilot-accept], [data-pilot-promote], [data-pilot-miss]'); if (!b) return;
+  const b = e.target.closest('[data-pilot-accept], [data-pilot-promote], [data-pilot-miss], [data-pilot-history]'); if (!b) return;
   b.disabled = true;
   try {
     if (b.dataset.pilotAccept) await api('/api/pilot/accept', { id: b.dataset.pilotAccept });
+    else if (b.dataset.pilotHistory) await api('/api/pilot/history', {}); // the panel hears when it starts and ends
     else if (b.dataset.pilotPromote) { tell((await api('/api/pilot/promote', { desk: b.dataset.pilotPromote, kind: b.dataset.kind })).text); b.closest('.pl-ready')?.remove(); }
     else { tell((await api('/api/pilot/miss', { id: b.dataset.pilotMiss })).text); b.replaceWith(Object.assign(document.createElement('span'), { className: 'meta', textContent: '· noted' })); }
   } catch (err) { tell(err.message); b.disabled = false; }
