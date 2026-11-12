@@ -42,7 +42,7 @@ test('every action from the old header and the old right-click menu is in it', (
 });
 
 test('items come and go with the session', () => {
-  assert.deepEqual(keys({}), ['newunder', 'hr', 'archive', 'unread', 'pin', 'hr', 'popout', 'terminal', 'view', 'chime', 'hr', 'group', 'parent', 'auto-group', 'rename', 'hr', 'end', 'delete']);
+  assert.deepEqual(keys({}), ['newunder', 'hr', 'archive', 'unread', 'pin', 'hr', 'popout', 'terminal', 'view', 'chime', 'hr', 'group', 'parent', 'auto-group', 'rename', 'hr', 'refresh', 'end', 'delete']);
   assert.deepEqual(keys({ archived: true, live: false, cwd: '' }), ['restore', 'hr', 'popout', 'view', 'chime', 'hr', 'group', 'rename', 'hr', 'delete']);
   assert.ok(!keys({ midReply: true }).includes('continue'), 'Continue moved to the banner over the session');
   assert.ok(!keys({ working: true }).includes('unread'));

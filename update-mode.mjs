@@ -25,4 +25,8 @@ export const TYPING_QUIET_MS = 60000;
 export const TYPING_PING_MS = 5000;
 export const TYPING_RETRY_MS = 5000;
 export const typingNow = (last, now) => last > 0 && now >= last && now - last < TYPING_QUIET_MS;
-export const TYPING_HOLD = 'you are typing in a session; the update is taken in once you stop for a minute';
+// Typing holds one wait (a restart waiting for a quiet moment, or a held update) for at most TYPING_CAP_MS from
+// when that wait began (since), so pings that keep coming can never hold it for hours (#965). since 0: no cap.
+export const TYPING_CAP_MS = 15 * 60000;
+export const typingHolds = (last, now, since = 0) => typingNow(last, now) && !(since > 0 && now - since >= TYPING_CAP_MS);
+export const TYPING_HOLD = 'you are typing in a session; the update is taken in once you stop for a minute, or after 15 minutes at most';

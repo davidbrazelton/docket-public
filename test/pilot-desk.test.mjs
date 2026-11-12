@@ -12,7 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts, stopTree } from './free-port.mjs';
+import { freePorts, stopTree, TEST_DOCKET_ENV } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -56,12 +56,17 @@ const answeredBy = async (session) => (await view()).log.find((l) => l.kind === 
 
 before(async () => {
   const c = { id: 't1', name: 'T1', home: path.join(tmp, 't1', 'claude-home'), folder: path.join(tmp, 't1', 'work'), grokHome: path.join(tmp, 't1', 'grok-home'), defaultEngine: 'grok' };
-  for (const d of [c.home, c.folder, c.grokHome]) fs.mkdirSync(d, { recursive: true });
-  fs.writeFileSync(CLIENTS, JSON.stringify([c]));
+  // Two more desks for keeping clients apart (#914): T2 signed in to Grok, and T3 signed in to nothing (its Grok home
+  // marked signed out for the stand-in agent), whose runs fall back to the autopilot's desk.
+  const c2 = { id: 't2', name: 'T2', home: path.join(tmp, 't2', 'claude-home'), folder: path.join(tmp, 't2', 'work'), grokHome: path.join(tmp, 't2', 'grok-home'), defaultEngine: 'grok' };
+  const c3 = { id: 't3c', name: 'T3', home: path.join(tmp, 't3', 'claude-home'), folder: path.join(tmp, 't3', 'work'), grokHome: path.join(tmp, 't3', 'grok-home'), defaultEngine: 'grok' };
+  for (const x of [c, c2, c3]) for (const d of [x.home, x.folder, x.grokHome]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(c3.grokHome, 'signed-out'), '');
+  fs.writeFileSync(CLIENTS, JSON.stringify([c, c2, c3]));
   fs.writeFileSync(STATE, JSON.stringify({ sessions: {}, updates: { minutes: 0 } }));
   server = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
-    env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_REMOTE_PORT: String(REMOTE_PORT), PORTAL_CLIENTS: CLIENTS,
+    env: { ...process.env, ...TEST_DOCKET_ENV, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_REMOTE_PORT: String(REMOTE_PORT), PORTAL_CLIENTS: CLIENTS,
       PORTAL_STATE: STATE, PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: DATA, PORTAL_PILOT_BATCH_MS: '1500', FAKE_ACP_SIGNED_IN: '1',
       PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });
@@ -81,7 +86,7 @@ test('the pilot is its own desk and works in short runs on the brand set for it'
   let v = await view();
   assert.equal(v.on, false);
   assert.equal(v.pilotDesk, null);
-  assert.deepEqual([v.brand, v.gear, v.state], ['claude', 'opus', 'off'], 'Claude on its top gear by default');
+  assert.deepEqual([v.brand, v.gear, v.state], ['desk', null, 'off'], "each desk's own brand by default (#914)");
   assert.match((await api('/api/pilot', { brand: 'grok' })).json.error, /no desk yet/);
 
   // The first enable makes the Autopilot desk, filled in as Add a desk does, and starts nothing until something comes in.
@@ -101,7 +106,7 @@ test('the pilot is its own desk and works in short runs on the brand set for it'
   assert.equal(v.desks, undefined, 'no desk to pick');
   assert.equal((await api('/api/pilot', { desk: 't1' })).json.pilotDesk.id, ap.id, 'the desk cannot be bound by hand');
   assert.deepEqual(fs.readdirSync(DATA).filter((f) => /rules/.test(f)), ['pilot-rules.json'], 'the rules stay one file on this computer');
-  assert.equal(v.notesFile, path.join(ap.folder, 'pilot-notes.md'));
+  assert.equal(v.notesFile, path.join(DATA, 'pilot-notes'), 'notes kept per desk (#914)');
 
   // The autopilot's desk is special (#886): first in the list, marked as the pilot's, set up by Docket and locked.
   assert.equal(desks()[0].id, ap.id, 'first in the desk list');
@@ -125,37 +130,29 @@ test('the pilot is its own desk and works in short runs on the brand set for it'
   assert.equal((await view()).screen, true);
   await api('/api/screen', { client: ap.id, on: false });
 
-  // Settings offers the desk's brands, signed in or not, and refuses one it is not signed in to.
+  // Settings offers the autopilot desk's brands for the one-brand mode, signed in or not, and refuses one it is not
+  // signed in to.
   assert.deepEqual(v.brands.map((b) => [b.brand, b.signedIn]), [['claude', false], ['grok', true]]);
   r = await api('/api/pilot', { brand: 'claude' });
   assert.equal(r.status, 400);
   assert.match(r.json.error, /not signed in to Claude/);
 
-  // On Claude, not signed in there, an allowed item starts no run, and Settings says why.
+  // Each desk (#914): T1's prompt is judged by a run on T1 itself, on its own brand (Grok) and top model, not a Shift
+  // session; the run answers it, ends, stays in T1's list (its cost is T1's) and is quiet there.
+  const t1Notes = path.join(DATA, 'pilot-notes', 't1.md');
   const w1 = await prompt('t1');
-  await waitFor('the prompt to wait', async () => (await view()).waiting.some((i) => i.kind === 'permission' && i.desk === 'T1' && i.may === 'allow'));
-  v = await waitFor('Settings to say why no run started', async () => { const x = await view(); return x.problem && x; });
-  assert.match(v.problem, /not signed in to Claude/);
-  assert.equal(v.session, null);
-  assert.deepEqual(v.runs, []);
-
-  // Changing the brand makes the next run use it: on Grok's top model, not a Shift session, the run answers the
-  // prompt and ends, and stays in the desk's list.
-  r = await api('/api/pilot', { brand: 'grok' });
-  assert.equal(r.status, 200, JSON.stringify(r.json));
-  assert.deepEqual([r.json.brand, r.json.gear, r.json.problem], ['grok', 'full', '']);
   const run1 = await waitFor('the prompt to be answered by a run', () => answeredBy(w1.id));
   assert.equal((await permCard(w1.id, 't1')).by, 'pilot', 'the page shows answered by pilot');
   v = await waitFor('the run to end', async () => { const x = await view(); return x.runs[0]?.ended && x; });
-  assert.deepEqual([v.runs.length, v.runs[0].id, v.runs[0].brand, v.runs[0].gear, v.runs[0].items, v.runs[0].why], [1, run1, 'grok', 'full', 1, 'its turn ended']);
+  assert.deepEqual([v.runs.length, v.runs[0].id, v.runs[0].desk, v.runs[0].host, v.runs[0].brand, v.runs[0].gear, v.runs[0].items, v.runs[0].why], [1, run1, 't1', 't1', 'grok', 'full', 1, 'its turn ended']);
   assert.equal(v.session, null);
   assert.equal(v.state, 'idle');
   await waitFor('the run to be ended', async () => saved(run1)?.running === false);
-  assert.deepEqual([saved(run1).archived, saved(run1).settings.model], [undefined, 'grok-4.7'], 'kept in the list, on the top model');
-  assert.deepEqual(v.log.filter((l) => l.kind === 'run' && l.run === run1).map((l) => l.answer), ['ended', 'started'], 'the log links the run');
-  const brief = (await events(run1, ap.id)).find((e) => e.k === 'user')?.text || '';
-  assert.match(brief, /one short run/);
-  assert.ok(brief.includes(path.join(ap.folder, 'pilot-notes.md')), 'the run is told where its notes are');
+  assert.deepEqual([saved(run1).client, saved(run1).pilotRun, saved(run1).archived, saved(run1).settings.model, saved(run1).waiting], ['t1', 't1', undefined, 'grok-4.7', undefined], "a session of T1, on the top model, kept in its list, quiet");
+  assert.deepEqual(v.log.filter((l) => l.kind === 'run' && l.run === run1).map((l) => [l.answer, l.desk]), [['ended', 't1'], ['started', 't1']], 'the log links the run, tagged with its desk');
+  const brief = (await events(run1, 't1')).find((e) => e.k === 'user')?.text || '';
+  assert.match(brief, /one short run for the desk T1\. This run is a session of T1, on its own sign-in/);
+  assert.ok(brief.includes(t1Notes), 'the run is told where its desk\'s notes are');
   assert.doesNotMatch(brief, /low gear|shift_gear/, 'no starting low');
 
   // Two items close together go in one run.
@@ -166,20 +163,21 @@ test('the pilot is its own desk and works in short runs on the brand set for it'
   v = await waitFor('the second run to end', async () => { const x = await view(); return x.runs[0]?.ended && x; });
   assert.deepEqual([v.runs.length, v.runs[0].items], [2, 2]);
 
-  // One run at a time: a run kept going (its notes say so) answers its item; what comes in meanwhile waits for the
-  // next run. Meanwhile it may write its notes.
-  fs.writeFileSync(path.join(ap.folder, 'pilot-notes.md'), 'PILOT_SLOW 10000\n');
+  // One run at a time on a desk: a run kept going (its notes say so) answers its item; what comes in meanwhile waits
+  // for the next run. Meanwhile it may write its notes, and its desk's 🤖 shows it working.
+  fs.mkdirSync(path.dirname(t1Notes), { recursive: true });
+  fs.writeFileSync(t1Notes, 'PILOT_SLOW 10000\n');
   const w4 = await prompt('t1');
   const run4 = await waitFor('w4 answered', () => answeredBy(w4.id));
   const w5 = await prompt('t1');
   await waitFor('w5 to wait', async () => (await view()).waiting.some((i) => i.desk === 'T1' && i.kind === 'permission' && i.may === 'allow'));
   v = await view();
-  assert.equal(v.session, run4, 'the first run is still going');
-  assert.equal(v.state, 'working');
+  assert.deepEqual([v.session, v.going.map((g) => [g.id, g.desk])], [run4, [[run4, 't1']]], 'the first run is still going');
+  assert.deepEqual([v.state, v.deskStates.t1], ['working', 'working']);
   const notes = await pilotTool(run4, 'pilot_notes', { add: 'remember this' });
   assert.equal(notes.error, false, notes.text);
-  assert.match(fs.readFileSync(path.join(ap.folder, 'pilot-notes.md'), 'utf8'), /^PILOT_SLOW 10000\n- remember this\n$/);
-  fs.writeFileSync(path.join(ap.folder, 'pilot-notes.md'), '');
+  assert.match(fs.readFileSync(t1Notes, 'utf8'), /^PILOT_SLOW 10000\n- remember this\n$/);
+  fs.writeFileSync(t1Notes, '');
   const run5 = await waitFor('w5 answered', () => answeredBy(w5.id), 40000);
   assert.notEqual(run5, run4, 'what came in during a run went to the next');
   v = await waitFor('the last run to end', async () => { const x = await view(); return x.runs[0]?.ended && x; });
@@ -188,15 +186,99 @@ test('the pilot is its own desk and works in short runs on the brand set for it'
   assert.ok(r5.at >= r4.ended, 'the next run started only after the one before it ended');
   for (const id of [run1, run2, run4, run5]) await waitFor(`run ${id} to be ended`, async () => saved(id)?.running === false && !saved(id).archived);
 
+  // One brand on the autopilot's desk: the next run for T1's items goes there, in a folder of T1's runs, billed there.
+  r = await api('/api/pilot', { brand: 'grok' });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.deepEqual([r.json.brand, r.json.gear, r.json.problem], ['grok', 'full', '']);
+  const w7 = await prompt('t1');
+  const run7 = await waitFor('w7 answered on the autopilot desk', () => answeredBy(w7.id));
+  await waitFor('the run saved', async () => saved(run7));
+  assert.deepEqual([saved(run7).client, saved(run7).pilotRun, saved(run7).cwd], [ap.id, 't1', path.join(ap.folder, 'runs', 't1')]);
+  assert.match((await events(run7, ap.id)).find((e) => e.k === 'user')?.text || '', /on the autopilot's own desk/);
+  await waitFor('that run to end', async () => (await view()).runs[0]?.ended);
+  r = await api('/api/pilot', { brand: 'desk' });
+  assert.equal(r.json.brand, 'desk');
+
   // With the switch off, no run starts, and the desk and its files stay.
   await api('/api/pilot', { on: false });
   const w6 = await prompt('t1');
   await waitFor('w6 to wait', async () => (await view()).waiting.some((i) => i.session === w6.id));
   await sleep(2500);
   v = await view();
-  assert.deepEqual([v.runs.length, v.state], [4, 'off'], 'no run while off');
+  assert.deepEqual([v.runs.length, v.state], [5, 'off'], 'no run while off');
   assert.ok(desks().some((d) => d.id === ap.id) && fs.existsSync(ap.folder), 'the desk stays');
 
+  await api('/api/pilot', { on: false });
+});
+
+test('keeping clients apart (#914): a run on each desk sees, answers and remembers only that desk', async () => {
+  const notesOf = (d) => path.join(DATA, 'pilot-notes', `${d}.md`);
+  fs.mkdirSync(path.join(DATA, 'pilot-notes'), { recursive: true });
+  // Both runs stay going until the checks below are done (PILOT_HOLD), not for a set time: T1's run may start well
+  // before T2's (on an item the test before left waiting), so a fixed time could end it before T2's is going.
+  const release = path.join(tmp, 'release-runs').replace(/\\/g, '/');
+  fs.writeFileSync(notesOf('t1'), `PILOT_HOLD ${release}\n- T1_SECRET_NOTE\n`);
+  fs.writeFileSync(notesOf('t2'), `PILOT_HOLD ${release}\n- T2_SECRET_NOTE\n`);
+  let r = await api('/api/pilot', { on: true });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.brand, 'desk');
+  const ap = desks()[0];
+
+  // A prompt on each of two desks at once: one run per desk, each a session of its own desk.
+  const [a1, b1] = await Promise.all([prompt('t1'), prompt('t2')]);
+  const [runA, runB] = await Promise.all([waitFor('T1 answered', () => answeredBy(a1.id)), waitFor('T2 answered', () => answeredBy(b1.id))]);
+  assert.notEqual(runA, runB, 'one run per desk');
+  for (const id of [runA, runB]) await waitFor('the run saved', async () => saved(id));
+  assert.deepEqual([saved(runA).client, saved(runA).pilotRun, saved(runB).client, saved(runB).pilotRun], ['t1', 't1', 't2', 't2'], 'each on its own desk, billed there');
+  let v = await view();
+  assert.deepEqual(v.going.map((g) => g.desk).sort(), ['t1', 't2'], 'both going at once');
+  assert.deepEqual([v.deskStates.t1, v.deskStates.t2], ['working', 'working']);
+
+  // Each brief holds its own desk's items and notes, and nothing of the other's.
+  const briefA = (await events(runA, 't1')).find((e) => e.k === 'user')?.text || '';
+  const briefB = (await events(runB, 't2')).find((e) => e.k === 'user')?.text || '';
+  assert.ok(briefA.includes('T1_SECRET_NOTE'));
+  assert.doesNotMatch(briefA, /T2_SECRET_NOTE|T2\b|t2\.md/);
+  assert.doesNotMatch(briefB, /T1_SECRET_NOTE|T1\b|t1\.md/);
+  assert.ok(briefB.includes('T2_SECRET_NOTE'));
+
+  // While both run, a new prompt on T2 waits for T2's next run; T1's run neither sees nor answers it.
+  const b2 = await prompt('t2');
+  const b2Item = await waitFor('the T2 item to wait', async () => (await view()).waiting.find((i) => i.session === b2.id && i.may === 'allow'));
+  const listed = await pilotTool(runA, 'pilot_pending', { all: true });
+  assert.equal(listed.error, false, listed.text);
+  assert.ok(!listed.text.includes(b2Item.id) && !/"desk": "t2"|T2/.test(listed.text), 'pilot_pending lists only its own desk');
+  const tried = await pilotTool(runA, 'pilot_answer', { id: b2Item.id, answer: 'allow' });
+  assert.equal(tried.error, true);
+  assert.match(tried.text, /Not answered: Nothing on T1 with that id is waiting now \(answered meanwhile, gone, or on another desk\)/);
+  const sug = await pilotTool(runA, 'pilot_suggest', { id: b2Item.id, answer: 'allow' });
+  assert.equal(sug.error, true);
+  assert.match(sug.text, /Not suggested: Nothing on T1/);
+  assert.equal((await permCard(b2.id, 't2')).state, 'pending', 'still waiting on T2');
+  // Its notes go to its own desk's file only.
+  assert.equal((await pilotTool(runA, 'pilot_notes', { add: 'about T1 only' })).error, false);
+  assert.match(fs.readFileSync(notesOf('t1'), 'utf8'), /about T1 only/);
+  assert.doesNotMatch(fs.readFileSync(notesOf('t2'), 'utf8'), /about T1 only/);
+  // A session that is no run gets nothing from the pilot tools.
+  assert.match((await pilotTool(a1.id, 'pilot_pending')).text, /No tool named pilot_pending/);
+
+  // T2's next run picks up its own item.
+  fs.writeFileSync(notesOf('t1'), ''); fs.writeFileSync(notesOf('t2'), ''); fs.writeFileSync(release, '');
+  const runB2 = await waitFor('T2 answered by its next run', () => answeredBy(b2.id), 40000);
+  await waitFor('the run saved', async () => saved(runB2));
+  assert.deepEqual([saved(runB2).client, saved(runB2).pilotRun], ['t2', 't2']);
+  // Every answer and run line in the log is tagged with its desk.
+  v = await view();
+  for (const l of v.log.filter((x) => [runA, runB, runB2].includes(x.run))) assert.equal(l.desk, saved(l.run).pilotRun, JSON.stringify(l));
+
+  // A desk with no brand signed in (T3: Claude only, not signed in) falls back to a run on the autopilot's desk, in a
+  // folder of its own, and the panel says so in one line.
+  const c1 = await prompt('t3c');
+  const runC = await waitFor('T3 answered on the autopilot desk', () => answeredBy(c1.id), 40000);
+  await waitFor('the run saved', async () => saved(runC));
+  assert.deepEqual([saved(runC).client, saved(runC).pilotRun, saved(runC).cwd], [ap.id, 't3c', path.join(ap.folder, 'runs', 't3c')]);
+  assert.deepEqual((await view()).fallback, ['T3']);
+  await waitFor('every run to end', async () => (await view()).going.length === 0);
   await api('/api/pilot', { on: false });
 });
 
@@ -206,20 +288,21 @@ test('learning first (#917): the pilot suggests, the person accepts, and after e
   // An old rules file (no version) has its judgment kinds moved to suggest when the switch goes on; permission
   // prompts on T1 are set to suggest here, so the stand-in pilot can be tried on them.
   fs.writeFileSync(rulesFile, JSON.stringify({ kinds: { permission: 'allow', question: 'allow', plan: 'ask' }, desks: { t1: { kinds: { permission: 'suggest' } } } }));
-  fs.writeFileSync(path.join(desks()[0].folder, 'pilot-notes.md'), '');
+  fs.writeFileSync(path.join(DATA, 'pilot-notes', 't1.md'), '');
   let r = await api('/api/pilot', { on: true });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   assert.deepEqual([rules().version, rules().kinds.question, rules().kinds.plan, rules().kinds.permission], [2, 'suggest', 'suggest', 'allow'], 'upgraded once, the person\'s levels kept');
 
   // Ten prompts close together: one run suggests Allow on each card, and answers none.
   const ws = await Promise.all(Array.from({ length: 10 }, () => prompt('t1')));
-  for (const w of ws) await waitFor(`a suggestion on ${w.id}`, async () => (await permCard(w.id, 't1'))?.suggest);
+  // Ten sessions starting at once can take 20 s on a busy computer before the run even begins.
+  for (const w of ws) await waitFor(`a suggestion on ${w.id}`, async () => (await permCard(w.id, 't1'))?.suggest, 60000);
   const card = await permCard(ws[0].id, 't1');
   assert.deepEqual([card.state, card.suggest.label, card.suggest.why, card.by], ['pending', 'Allow', 'stand-in pilot', undefined], 'suggested, not answered');
   let v = await view();
   assert.ok(v.log.some((l) => l.suggest && l.answer === 'suggested Allow'), 'the suggestion is in the pilot log');
   assert.equal(v.waiting.find((i) => i.session === ws[0].id).may, 'suggest');
-  const brief = (await events(v.runs[0].id, desks()[0].id)).find((e) => e.k === 'user')?.text || '';
+  const brief = (await events(v.runs[0].id, v.runs[0].host)).find((e) => e.k === 'user')?.text || '';
   assert.match(brief, /pilot_suggest/);
 
   // Accept on each card answers it as the person, and each is logged as a match. Nothing is offered until ten.

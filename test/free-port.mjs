@@ -15,6 +15,13 @@ export const freePorts = async (n) => {
   return ports;
 };
 
+// The environment every throwaway Docket in the tests starts with. PORTAL_TEST_RUN leaves out the helpers no test uses
+// (the private browser's server, the power watch, the check of how Docket starts): with every test file starting a
+// Docket at once they took the whole computer, and tests timed out waiting for replies. DOCKET_NO_USAGE keeps the
+// first-start usage stats window from opening over a page a test drives: it opened at a moment that depended on how
+// busy the computer was, and once it stayed open it blocked every click after it.
+export const TEST_DOCKET_ENV = { PORTAL_TEST_RUN: '1', DOCKET_NO_USAGE: '1' };
+
 // Stops a test Docket's runner together with what it started (the stand-in agents), at once. Killing the runner
 // alone leaves them to notice their input closed, and until they do they keep the test's temp folder in use, so
 // removing it fails with EPERM when many test files run at once.

@@ -151,11 +151,9 @@ export function configChanges(before = {}, after = {}) {
 // The line added to a session's next turn when its rules files changed.
 export const rulesNote = (files) => `(From Docket: your rules file changed since this session started; re-read ${files.join(', ')}.)`;
 // The line added to the first turn after a reload.
-export const reloadNote = (changes) => `(From Docket: Docket restarted this session while it was idle, with the same conversation, to load changed config: ${changes.join('; ')}.)`;
-// Why a session must start again for screen control (#877): had, whether its tool list has the screen tools (undefined
-// before it asked for the list); on, whether its desk has screen control now. null when nothing changed.
-export const screenChange = (had, on) => had === undefined || had === on ? null
-  : `Screen control turned ${on ? 'on' : 'off'} for this desk: screen tools ${on ? 'added' : 'removed'}`;
+// why: what the restart was for, as "to load changed config: ..." (reloadNote) or a tool change (tool-watch.mjs).
+export const restartNote = (why) => `(From Docket: Docket restarted this session while it was idle, with the same conversation, ${why}.)`;
+export const reloadNote = (changes) => restartNote(`to load changed config: ${changes.join('; ')}`);
 
 // What to do about a session now. 'reload': restart its process now. 'wait': it is working, so not yet. 'ask': it is
 // idle, but its desk is set to Ask and nobody pressed Reload. 'none': nothing to take in, or it is not a Claude session.

@@ -121,7 +121,7 @@ test('the server gives the phases to plan_read, the plan tools and the Plan pane
   assert.match(src, /tool\('plan_set_phases'/);
   assert.match(src, /phaseProgress: store\.phaseRollup\(p\.id, all\)/);
   assert.match(src, /store\.create\(\{ title, goal, tasks, phases,/);
-  assert.match(src, /\{ state: st, note, links, kind, waitsOn, forUser, phase, after \}/);
+  assert.match(src, /\{ state: st, note, links, kind, waitsOn, forUser, phase, after[,\s}]/);
   const md = fs.readFileSync(path.join(root, 'prompts', 'optional', 'plans.md'), 'utf8');
   assert.match(md, /more than about eight tasks is grouped into phases/);
   assert.match(md, /plan_set_phases/);

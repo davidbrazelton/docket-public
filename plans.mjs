@@ -42,6 +42,24 @@ const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 // them on one "- Phases: Setup | Build | Ship" line, so a name never holds "|". Plans without phases are unchanged.
 const phaseName = (s) => oneLine(String(s ?? '').replace(/\|/g, '/'));
 const PHASE_SEP = ' | ';
+// Decisions asked in the chat (#929): a user's decision step carries the number its question has in the chat (Q7, from
+// its coordinator's question counter, questions.mjs), the answers to offer (the first is the one the coordinator
+// suggests), and once the user has answered, the answer and when. One "- Options: A | B" line, so an option never
+// holds "|". The answer keeps the user's own words, on as many lines as they wrote.
+const optionList = (a) => (a || []).map((o) => oneLine(String(o ?? '').replace(/\|/g, '/'))).filter((o, i, all) => o && all.indexOf(o) === i).slice(0, 6);
+export const isDecision = (t) => !!t?.q;
+// The plan's decisions for the user, in question order: { q, id, title, options, answer, answeredAt, state }.
+export const decisions = (plan) => plan.tasks.filter(isDecision).sort((a, b) => a.q - b.q)
+  .map((t) => ({ q: t.q, id: t.id, title: t.title, options: t.options, answer: t.answer, answeredAt: t.answeredAt, state: t.state }));
+export const maxQuestion = (plan) => Math.max(0, ...plan.tasks.map((t) => t.q || 0));
+// The tasks a user's answers can go to: the plan's decisions not dropped, by their number.
+export const decisionByQ = (plan, q) => plan.tasks.find((t) => t.q === Number(q) && t.state !== 'dropped') || null;
+// A question number not yet used in the plan: the next from the counter, else one past the plan's highest.
+function questionAfter(plan, used, nextQ) {
+  let n = nextQ ? Number(nextQ()) || 0 : 0;
+  for (let i = 0; !n || used.has(n); i++) n = nextQ && i < 100 ? Number(nextQ()) || 0 : Math.max(0, ...used) + 1;
+  return n;
+}
 
 // "<session id> (<title>)" both ways.
 const who = (id, title) => id ? `${id}${title ? ` (${oneLine(title).replace(/[()]/g, '')})` : ''}` : '';
@@ -74,11 +92,11 @@ export function parsePlan(text, file = '') {
     }
     const t = line.match(TASK_LINE);
     if (t) {
-      task = { id: t[2], title: t[3].trim(), kind: '', forUser: false, state: t[1] === ' ' ? 'open' : 'done', holder: '', holderTitle: '', claimedAt: '', after: [], waitsOn: '', brief: '', note: '', links: [], plan: '', phase: '' };
+      task = { id: t[2], title: t[3].trim(), kind: '', forUser: false, state: t[1] === ' ' ? 'open' : 'done', holder: '', holderTitle: '', claimedAt: '', after: [], waitsOn: '', brief: '', note: '', links: [], plan: '', phase: '', q: 0, options: [], answer: '', answeredAt: '' };
       plan.tasks.push(task); key = null; continue;
     }
     if (!task) continue;
-    const d = line.match(/^ {2}- (State|Kind|Owner|Phase|Held by|After|Waits on|Brief|Note|Link|Plan): ?(.*)$/);
+    const d = line.match(/^ {2}- (State|Kind|Owner|Phase|Question|Options|Answer|Answered|Held by|After|Waits on|Brief|Note|Link|Plan): ?(.*)$/);
     if (d) {
       key = d[1];
       const v = d[2];
@@ -88,6 +106,10 @@ export function parsePlan(text, file = '') {
       else if (key === 'Kind') task.kind = v.trim().toLowerCase();
       else if (key === 'Owner') task.forUser = v.trim().toLowerCase() === USER_OWNER;
       else if (key === 'Phase') task.phase = phaseName(v);
+      else if (key === 'Question') task.q = Number(v.match(/\d+/)?.[0] || 0);
+      else if (key === 'Options') task.options = optionList(v.split('|'));
+      else if (key === 'Answer') task.answer = v;
+      else if (key === 'Answered') task.answeredAt = v.trim();
       else if (key === 'Waits on') task.waitsOn = oneLine(v);
       else if (key === 'After') task.after = v.match(TASK_IDS) || [];
       else if (key === 'Brief') task.brief = v;
@@ -96,7 +118,7 @@ export function parsePlan(text, file = '') {
       else if (key === 'Plan') task.plan = v.match(PLAN_ID)?.[0] || '';
       continue;
     }
-    if (/^ {4}/.test(line) && (key === 'Brief' || key === 'Note')) { task[key.toLowerCase()] += '\n' + line.slice(4); continue; }
+    if (/^ {4}/.test(line) && (key === 'Brief' || key === 'Note' || key === 'Answer')) { task[key.toLowerCase()] += '\n' + line.slice(4); continue; }
     if (line.trim()) key = null;
   }
   plan.goal = goal.join('\n').trim();
@@ -125,6 +147,10 @@ export function formatPlan(p, fileOf = (id) => id) {
     if (t.kind) out.push(`  - Kind: ${t.kind}`);
     if (t.forUser) out.push(`  - Owner: ${USER_OWNER}`);
     if (t.phase) out.push(`  - Phase: ${phaseName(t.phase)}`);
+    if (t.q) out.push(`  - Question: Q${t.q}`);
+    if (t.options?.length) out.push(`  - Options: ${optionList(t.options).join(PHASE_SEP)}`);
+    if (t.answer) out.push(`  - Answer: ${more(t.answer.trim())}`);
+    if (t.answeredAt) out.push(`  - Answered: ${t.answeredAt}`);
     out.push(`  - State: ${STATE_WORDS[t.state] || 'open'}${t.claimedAt && t.state !== 'open' ? ` since ${t.claimedAt}` : ''}`);
     if (t.holder) out.push(`  - Held by: ${who(t.holder, t.holderTitle)}`);
     if (t.after.length) out.push(`  - After: ${t.after.join(', ')}`);
@@ -254,7 +280,9 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   // New tasks for a plan, numbered after the highest number it has ever used. "after" names tasks by id (T1) or by
   // their place in this same list (1 for the first new task), so a whole plan with its order can be made in one call.
   // "replaces" names a task this one takes the place of: that task is dropped, and tasks waiting on it wait on this.
-  function newTasks(plan, specs) {
+  // A user's decision gets its question number from nextQ (its coordinator's counter), or the one given as q when
+  // it was already asked by that number.
+  function newTasks(plan, specs, nextQ) {
     const pre = prefixOf(plan), mine = new RegExp(`^${pre.replace(/\./g, '\\.')}(\\d+)$`);
     let n = Math.max(0, ...plan.tasks.map((t) => Number(t.id.match(mine)?.[1] || 0)));
     // Every task without a kind is named at once, so one retry fixes them all (#858).
@@ -267,7 +295,16 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       if (!KINDS.includes(k)) throw new Error(`${what} has the kind "${oneLine(s.kind)}", which is not one of build, test, decision or research.`);
     }
     const made = specs.map((s) => ({ id: `${pre}${++n}`, title: oneLine(s.title), kind: String(s.kind).trim().toLowerCase(), forUser: !!s.for_user, state: 'open', holder: '', holderTitle: '', claimedAt: '',
-      after: [], waitsOn: '', brief: String(s.brief || '').trim(), note: '', links: (s.links || []).map(oneLine).filter(Boolean), plan: '', phase: '' }));
+      after: [], waitsOn: '', brief: String(s.brief || '').trim(), note: '', links: (s.links || []).map(oneLine).filter(Boolean), plan: '', phase: '',
+      q: 0, options: optionList(s.options), answer: '', answeredAt: '' }));
+    const used = new Set(plan.tasks.map((t) => t.q).filter(Boolean));
+    made.forEach((t, i) => {
+      if (!t.forUser || t.kind !== 'decision') { if (t.options.length) throw new Error(`Task "${t.title}" has options, which only a decision for the user has (kind decision, for_user true).`); return; }
+      const given = Number(specs[i].q) || 0;
+      if (given && used.has(given)) throw new Error(`Q${given} is already a decision in this plan (${plan.tasks.find((x) => x.q === given)?.id || 'another new task'}).`);
+      t.q = given || questionAfter(plan, used, nextQ);
+      used.add(t.q);
+    });
     specs.forEach((s, i) => {
       if (!phaseName(s.phase)) return;
       made[i].phase = findPhase(plan, s.phase);
@@ -303,7 +340,7 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   }
 
   // A new plan. parent { plan, task } hangs it off that task, and the task names it back.
-  function create({ title, goal = '', tasks = [], phases = [], coordinator, coordinatorTitle = '', parent = null }) {
+  function create({ title, goal = '', tasks = [], phases = [], coordinator, coordinatorTitle = '', parent = null, nextQ }) {
     if (!oneLine(title)) throw new Error('A plan needs a title.');
     return locked(() => {
       let id; do id = 'p-' + randomBytes(4).toString('hex').slice(0, 6); while (fileOf(id));
@@ -316,18 +353,18 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
         if (t.plan) throw new Error(`Task ${t.id} of plan ${parent.plan} already has its own plan, ${t.plan}.`);
         plan.parent = { plan: up.id, task: t.id };
       }
-      plan.tasks = newTasks(plan, tasks);
+      plan.tasks = newTasks(plan, tasks, nextQ);
       if (t) t.plan = plan.id;
       write(plan);
       if (up) write(up);
       return plan;
     });
   }
-  function addTasks(id, specs, actor) {
+  function addTasks(id, specs, actor, nextQ) {
     return locked(() => {
       const p = must(id);
       if (actor && p.coordinator && actor !== p.coordinator) throw new Error(`Only the plan's coordinator adds tasks to ${id}.`);
-      const made = newTasks(p, specs);
+      const made = newTasks(p, specs, nextQ);
       p.tasks.push(...made);
       write(p);
       return { plan: p, added: made };
@@ -369,7 +406,10 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
   // mistake, to dropped or back to open, with a note saying why; the note then starts "Corrected from done:".
   // phase moves a task to another of the plan's phases ('' takes it out of any): the coordinator's to say (#869).
   // after replaces the tasks it waits on, so a chain that is not truly needed can be loosened (#889): the coordinator's too.
-  function update(id, taskId, { state, note, links, kind, waitsOn, forUser, phase, after } = {}, actor, actorTitle = '') {
+  // options and answer (#929) are the coordinator's, on a user's decision: options to offer in the chat, and an answer
+  // the user gave some other way (answered, the step is done). A task made the user's decision gets its question
+  // number from nextQ.
+  function update(id, taskId, { state, note, links, kind, waitsOn, forUser, phase, after, options, answer, nextQ } = {}, actor, actorTitle = '') {
     if (state && !STATES.includes(state)) throw new Error(`State must be one of ${STATES.join(', ')}.`);
     const k = kind === undefined ? '' : String(kind).trim().toLowerCase();
     if (kind !== undefined && !KINDS.includes(k)) throw new Error(`The kind "${oneLine(kind)}" is not one of build, test, decision or research.`);
@@ -415,8 +455,15 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
         const loop = findLoop(p.tasks.map((x) => x === t ? { ...x, after: aft } : x));
         if (loop) throw new Error(`That makes a loop: ${loop.join(' after ')}.`);
       }
+      const decides = (forUser ?? t.forUser) && (k || t.kind) === 'decision';
+      if ((options !== undefined || answer !== undefined) && !isCoord) throw new Error(`Only the plan's coordinator sets the options or the answer of ${t.id}.`);
+      if ((options?.length || oneLine(answer)) && !decides) throw new Error(`${t.id} is not a decision for the user (kind decision, for_user true), so it has no options or answer.`);
+      if (oneLine(answer) && (t.state === 'dropped' || state === 'dropped')) throw new Error(`${t.id} is dropped, so it takes no answer.`);
       const before = new Set(readyTasks(p).map((x) => x.id));
       if (aft) t.after = aft;
+      if (decides && !t.q) t.q = questionAfter(p, new Set(p.tasks.map((x) => x.q).filter(Boolean)), nextQ);
+      if (options !== undefined) t.options = optionList(options);
+      if (oneLine(answer)) { setAnswer(t, answer); if (!state) state = 'done'; }
       if (state) {
         if (state === 'open') { t.holder = ''; t.holderTitle = ''; t.claimedAt = ''; }
         // A task set going or done with no holder records the session that set it, so the plan says who did it. A
@@ -435,6 +482,20 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       for (const l of links || []) if (oneLine(l) && !t.links.includes(oneLine(l))) t.links.push(oneLine(l));
       write(p);
       return { plan: p, task: t, nowReady: readyTasks(p).filter((x) => !before.has(x.id)) };
+    });
+  }
+  // The user answered decision q (#929), in the chat: the answer is saved on its task, which is done. A second
+  // answer replaces the first. Returns the task, the answer it had before ('' for none), and the tasks it freed.
+  function answerDecision(id, q, text) {
+    if (!String(text ?? '').trim()) throw new Error('An answer cannot be empty.');
+    return locked(() => {
+      const p = must(id), t = decisionByQ(p, q);
+      if (!t) throw new Error(`Plan ${id} has no decision Q${q} to answer.`);
+      const before = new Set(readyTasks(p).map((x) => x.id)), had = t.answer;
+      setAnswer(t, text);
+      if (t.state !== 'done') { t.state = 'done'; t.claimedAt = t.answeredAt; }
+      write(p);
+      return { plan: p, task: t, had, nowReady: readyTasks(p).filter((x) => !before.has(x.id)) };
     });
   }
   // A fresh session takes over as coordinator.
@@ -541,5 +602,6 @@ export function createPlanStore({ dir, now = Date.now, staleMs = 30000, waitMs =
       dropped: p.tasks.filter((t) => t.state === 'dropped').length,
       subs: subs.map((t) => t.id), subTotal: subs.reduce((n, t) => n + rollup(t.plan, all).total, 0) };
   }
-  return { dir, read, list, create, addTasks, claim, update, setCoordinator, passTasks, setGoal, setPhases, markReviewed, rollup, phaseRollup, breakdown, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
+  function setAnswer(t, text) { t.answer = String(text).replace(/\r\n/g, '\n').trim(); t.answeredAt = stamp(now()); }
+  return { dir, read, list, create, addTasks, claim, update, answerDecision, setCoordinator, passTasks, setGoal, setPhases, markReviewed, rollup, phaseRollup, breakdown, fileOf: (id) => { const f = fileOf(id); return f ? path.join(dir, f) : ''; } };
 }

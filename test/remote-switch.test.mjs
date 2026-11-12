@@ -9,7 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts, stopTree } from './free-port.mjs';
+import { freePorts, stopTree, TEST_DOCKET_ENV } from './free-port.mjs';
 import net from 'node:net';
 import WebSocket from 'ws';
 
@@ -65,7 +65,7 @@ const refused = async () => {
 function startDocket() {
   server = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
-    env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_REMOTE_PORT: String(REMOTE_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
+    env: { ...process.env, ...TEST_DOCKET_ENV, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_REMOTE_PORT: String(REMOTE_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: STATE, PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
       PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });

@@ -16,7 +16,7 @@ test('groupProcesses: the app, the runner, the session programs under the runner
     P(11, 10, 'chrome', 60), // the sign-in browser the app opened
     P(30, 1, 'claude', 5000), // a Claude started outside Docket
   ];
-  const { rows, total, cpu } = groupProcesses(list.map((p) => ({ ...p, cpu: 1 })), { appPid: 10, runnerPid: 20 });
+  const { rows, total, pids } = groupProcesses(list, { appPid: 10, runnerPid: 20 });
   assert.deepEqual(rows, [
     { label: 'Docket app', count: 1, mem: 700 },
     { label: 'Session runner', count: 1, mem: 100 },
@@ -27,15 +27,34 @@ test('groupProcesses: the app, the runner, the session programs under the runner
     { key: 'other', label: 'Other helpers', count: 1, mem: 1 },
   ]);
   assert.equal(total, 700 + 100 + 500 + 40 + 55 + 110 + 1);
-  assert.equal(cpu, 11); // the processor time of the 11 Docket programs, not explorer or the outside Claude
+  // the 11 Docket programs, not explorer or the outside Claude
+  assert.deepEqual(pids.sort((a, b) => a - b), [10, 11, 20, 21, 22, 23, 24, 25, 26, 27, 28]);
 });
 
+// A reading as machineNow keeps it: every program's processor time so far, and which of them are Docket's.
+const R = (at, times, pids = Object.keys(times).map(Number)) => ({ at, pids, byPid: new Map(Object.entries(times).map(([p, s]) => [Number(p), s])) });
+
 test('cpuPercent: the share of all cores between two readings; none until there are two', () => {
-  assert.equal(cpuPercent(null, { cpu: 5, at: 1000 }, 4), null);
-  assert.equal(cpuPercent({ cpu: 10, at: 0 }, { cpu: 12, at: 10_000 }, 4), 5); // 2 s of processor in 10 s on 4 cores
-  assert.equal(cpuPercent({ cpu: 10, at: 0 }, { cpu: 8, at: 10_000 }, 4), 0); // a program ended in between
-  assert.equal(cpuPercent({ cpu: 0, at: 0 }, { cpu: 100, at: 1000 }, 2), 100);
-  assert.equal(cpuPercent({ cpu: 0, at: 5 }, { cpu: 1, at: 5 }, 2), null);
+  assert.equal(cpuPercent(null, R(1000, { 1: 5 }), 4), null);
+  assert.equal(cpuPercent(R(0, { 1: 10 }), R(10_000, { 1: 12 }), 4), 5); // 2 s of processor in 10 s on 4 cores
+  assert.equal(cpuPercent(R(0, { 1: 0 }), R(1000, { 1: 100 }), 2), 100);
+  assert.equal(cpuPercent(R(5, { 1: 0 }), R(5, { 1: 1 }), 2), null);
+  assert.equal(cpuPercent(R(0, {}), R(10_000, { 7: 4 }), 4), 10); // a program that started in between used all of its time then
+});
+
+test('cpuPercent: a runner missed in one reading and found in the next does not count its past again (#936)', () => {
+  // The app (1), the runner (2) and a session (3) with 1500 s of processor between them; 20 s apart on 4 cores.
+  const all = { 1: 100, 2: 400, 3: 1000, 99: 5000 }; // 99 is not Docket's
+  const missed = R(0, all, [1]); // the runner's health check timed out: only the app is Docket's
+  const found = R(20_000, { 1: 101, 2: 401, 3: 1002, 99: 5100 }, [1, 2, 3]);
+  assert.equal(cpuPercent(missed, found, 4), 5); // 4 s in 20 s on 4 cores, not 100
+  assert.equal(cpuPercent(R(0, all, [1, 2, 3]), R(20_000, { 1: 101, 2: 401, 3: 1002 }, [1]), 4), 1); // and missed again
+});
+
+test('cpuPercent: a session that ends does not take the others down to 0 (#936)', () => {
+  const before = R(0, { 1: 100, 2: 400, 3: 1000 }); // session 3 has used 1000 s
+  const after = R(20_000, { 1: 102, 2: 402 }); // it ended; the app and runner used 2 s each
+  assert.equal(cpuPercent(before, after, 4), 5);
 });
 
 test('diskKeeper: a count is saved to the file and there at once for the next keeper (after a restart)', async () => {

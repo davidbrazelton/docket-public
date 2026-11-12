@@ -945,3 +945,35 @@ export function profilePathCandidates(file, { from, platform = process.platform,
   if (!inHome && !fromWin && platform === 'win32' && norm.startsWith('/')) add(p.join('C:\\', ...parts(norm)));
   return out;
 }
+
+// Whether this computer runs on its battery, and how full that is, for ☰ > Gauges > Performance (#935). Windows: one
+// PowerShell call to Win32_Battery (a desktop has none and prints nothing). macOS: pmset -g batt, whose first line
+// says what it draws from ('AC Power', 'Battery Power' or 'UPS Power'). Elsewhere: none.
+export function batteryCommand(platform = process.platform) {
+  if (platform === 'win32') return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command',
+    'Get-CimInstance Win32_Battery | Select-Object BatteryStatus,EstimatedChargeRemaining | ConvertTo-Json -Compress'] };
+  if (platform === 'darwin') return { cmd: 'pmset', args: ['-g', 'batt'] };
+  return null;
+}
+// The output of batteryCommand as { battery, onBattery, percent }: battery false (and the others null) when the
+// computer has none. Win32_Battery's BatteryStatus is 1 while discharging, 4 or 5 when low or critical (still
+// discharging), and 2, 3 or 6–11 on mains power; with two batteries, either discharging means on battery.
+export function parseBattery(text, platform = process.platform) {
+  const none = { battery: false, onBattery: null, percent: null };
+  if (platform === 'win32') {
+    let l; try { l = JSON.parse(String(text).trim() || 'null'); } catch { return none; }
+    const list = (Array.isArray(l) ? l : [l]).filter(Boolean);
+    if (!list.length) return none;
+    const pcts = list.map((b) => Number(b.EstimatedChargeRemaining)).filter((n) => Number.isFinite(n));
+    return { battery: true, onBattery: list.some((b) => [1, 4, 5].includes(Number(b.BatteryStatus))),
+      percent: pcts.length ? Math.round(pcts.reduce((a, b) => a + b, 0) / pcts.length) : null };
+  }
+  if (platform === 'darwin') {
+    const t = String(text);
+    const from = /drawing from '([^']+)'/i.exec(t)?.[1] || '';
+    const pct = /InternalBattery[^\n]*?(\d{1,3})%/.exec(t);
+    if (!pct) return none; // a desktop Mac (a UPS line alone does not count as a battery here)
+    return { battery: true, onBattery: /battery/i.test(from), percent: Number(pct[1]) };
+  }
+  return none;
+}

@@ -129,3 +129,39 @@ test('the update arrow: no card and no modes; nothing busy updates at once, busy
   assert.match(page, /prefers-reduced-motion: reduce\) \{ header\.top \.upd-btn\.waiting svg \{ animation: none/);
   assert.match(page, /\['about', 'About', \[\['update', 'Check for updates'\]\]\]/);
 });
+
+// #937: the app's restart loses no question (a form or permission lives in the runner, an offer or crossing card is
+// saved), so a session only waiting on the person does not hold it; the runner's own restart still waits on it.
+test('a session waiting only on the person holds the runner restart but not the app restart', async () => {
+  // The app's row for it: status requires_action with a question pending reads as not busy, asks 1.
+  const waiting = { ...quiet, busy: false, asks: 1 };
+  assert.equal(restartBlocked([waiting], now), true, 'the runner waits');
+  assert.equal(notQuiet([waiting], now), '1 session waiting on an answer');
+  assert.equal(notQuiet([waiting], now, { asks: false }), '', 'the app does not');
+  assert.equal(busyHow(waiting, now, { asks: false }), '', 'and does not list it under the update arrow');
+  assert.equal(notQuiet([{ ...waiting, scheduled: true }], now, { asks: false }), '', 'nor a scheduled run waiting on the person');
+  // Answered, and working again: it holds the app restart as before.
+  assert.equal(notQuiet([{ ...quiet, busy: true }], now, { asks: false }), '1 session replying');
+  assert.equal(busyHow({ ...waiting, held: true }, now, { asks: false }), 'background work running', 'background work still holds it');
+  assert.equal(busyHow({ ...waiting, lastAt: now - 1000 }, now, { asks: false }), 'active in the last minute');
+  const fs = await import('node:fs');
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8');
+  assert.match(server, /busy: \['starting', 'running'\]\.includes\(s\.status\) \|\| !!s\.compacting \|\| \(s\.status === 'requires_action' && !s\.pendingAsks\?\.size\)/, 'requires_action is busy only with no question known');
+  assert.match(server, /notQuiet\(quietRows\(\), Date\.now\(\), \{ jobs: appJobs, asks: false \}\)/);
+  assert.match(server, /busyHow\(r, now, \{ asks: false \}\)/);
+  const runner = fs.readFileSync(new URL('../runner.mjs', import.meta.url), 'utf8');
+  assert.match(runner, /if \(restartBlocked\(open\)\) return;/, 'the runner keeps the full rule');
+});
+
+test('the waiting list is sent again when the sessions it names change, not only its words', () => {
+  const timers = fakeTimers();
+  let who = 'A (replying, Desk)', changes = 0;
+  const w = restartWaiter({ check: () => '1 session replying', names: () => who, go: () => {}, changed: () => changes++, timers });
+  w.want({});
+  assert.equal(changes, 1);
+  timers.tick();
+  assert.equal(changes, 1, 'nothing new: nothing sent');
+  who = 'B (replying, Desk)'; // A finished as B started: same count, same words
+  timers.tick();
+  assert.equal(changes, 2);
+});

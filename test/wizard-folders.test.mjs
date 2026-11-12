@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts, stopTree } from './free-port.mjs';
+import { freePorts, stopTree, TEST_DOCKET_ENV } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -37,7 +37,7 @@ before(async () => {
   fs.writeFileSync(path.join(tmp, 'state.json'), JSON.stringify({ sessions: {}, updates: { minutes: 0 } }));
   server = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
-    env: { ...process.env, USERPROFILE: user, HOME: user, APPDATA: path.join(user, 'AppData', 'Roaming'), CODEX_HOME: '', GROK_HOME: '',
+    env: { ...process.env, ...TEST_DOCKET_ENV, USERPROFILE: user, HOME: user, APPDATA: path.join(user, 'AppData', 'Roaming'), CODEX_HOME: '', GROK_HOME: '',
       PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
       PORTAL_CLAUDE_EXE: path.join(tmp, 'no-such-claude.exe'),

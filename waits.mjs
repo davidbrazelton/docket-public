@@ -129,8 +129,9 @@ export async function waitInline(c, look, { ms = WAITS.inlineSec * 1000, now = (
 
 // ---------- the state line ----------
 // One line, at most about 200 characters, on the notes Docket sends a session: its branch, the pull request from
-// that branch, and the sessions under it still working or waiting on the user. A part left out means there is
-// none. at: when the branch and pull request were read (the children are read as the note goes).
+// that branch, the sessions under it still working or waiting on the user, and the number its next question to the
+// user takes (question, questions.mjs, #928). A part left out means there is none. at: when the branch and pull
+// request were read (the children are read as the note goes).
 const PR_WORDS = { open: 'open', conflict: 'open with conflicts', merged: 'merged', closed: 'closed', unknown: 'state unknown' };
 const clock = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 const cut = (s, n) => s.length > n ? s.slice(0, n - 1) + '…' : s;
@@ -141,15 +142,15 @@ export function branchPr(prs = [], branch = '') {
   return mine.find((p) => p.status === 'open' || p.status === 'conflict') || mine.slice().sort((a, b) => (b.number || 0) - (a.number || 0))[0] || null;
 }
 
-export function stateLine({ branch = '', pr = null, kids = [], at = Date.now(), max = 200 } = {}) {
+export function stateLine({ branch = '', pr = null, kids = [], question = '', at = Date.now(), max = 200 } = {}) {
   const parts = [];
   if (branch) parts.push(`branch ${cut(branch, 40)}`);
   if (pr) parts.push(`PR #${pr.number} ${pr.draft && pr.status === 'open' ? 'draft' : PR_WORDS[pr.status] || pr.status}${pr.checks ? `, checks ${pr.checks}` : ''}`);
   const working = kids.filter((k) => k.state === 'working'), waiting = kids.filter((k) => k.state === 'waiting');
   const group = (list, word, n) => list.length ? `${list.length} ${word}${n ? ` (${list.slice(0, 3).map((k) => `"${cut(k.title || 'Session', n)}"`).join(', ')}${list.length > 3 ? ', …' : ''})` : ''}` : '';
   const kidsPart = (n) => [group(working, 'working', n), group(waiting, 'waiting on the user', n)].filter(Boolean).join(', ');
-  if (!parts.length && !kids.length) return '';
-  const make = (n) => `(Docket state at ${clock(at)}: ${[...parts, ...(kids.length ? [`sessions under you: ${kidsPart(n)}`] : [])].join('; ')}.)`;
+  if (!parts.length && !kids.length && !question) return '';
+  const make = (n) => `(Docket state at ${clock(at)}: ${[...parts, ...(kids.length ? [`sessions under you: ${kidsPart(n)}`] : []), ...(question ? [question] : [])].join('; ')}.)`;
   for (const n of [24, 14, 0]) { const line = make(n); if (line.length <= max) return line; }
   return make(0).slice(0, max - 2) + '…)';
 }

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { parentHeldGear, belowTop } from '../gears.mjs';
 import { shiftUpFor } from '../shift-up.mjs';
 import { reportIsNews, lowGearNote } from '../reports.mjs';
-import { freePorts, stopTree } from './free-port.mjs';
+import { freePorts, stopTree, TEST_DOCKET_ENV } from './free-port.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(HERE);
@@ -98,7 +98,7 @@ before(async () => {
   fs.writeFileSync(path.join(tmp, 'state.json'), JSON.stringify({ sessions: {}, updates: { minutes: 0 } }));
   server = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
-    env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
+    env: { ...process.env, ...TEST_DOCKET_ENV, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_REPORT_DEBOUNCE: '{"quietMs":0,"maxMs":0}', PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: path.join(tmp, 'data'),
       PORTAL_GROK_EXE: path.join(HERE, '..', 'test-fixtures', 'fake-acp-agent.mjs') },
   });

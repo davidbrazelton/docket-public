@@ -200,6 +200,19 @@ export const turnLabelOf = (input) => input?.label || input?.state || '';
 // final reply, never after it. Text written just before a tool call may be kept only as a shortened narration, so a
 // reply followed by mark_turn and a closing line showed only that line.
 export const BEFORE_REPLY = 'Call it before your final reply: the full reply is the last thing in the turn, with no tool call after it.';
+// Why mark_turn with label "merge" is refused for the pull request as GitHub sees it now (#951), or '' to mark it. p: one
+// pull request from fetchPRStatus ({ status, draft, checks }), or null when GitHub could not say. A conflict is the
+// usual one: another pull request merged first with its own version bump, and the Merge card then never showed.
+export function mergeAskRefusal(p, pr) {
+  const again = 'then call mark_turn with label "merge" again';
+  if (!p || p.status === 'unknown') return '';
+  if (p.status === 'merged') return `Not marked: pull request #${pr} is already merged. Say so instead of asking to merge it.`;
+  if (p.status === 'closed') return `Not marked: pull request #${pr} is closed. For anything other than a plain ask to merge one open pull request, use "reply".`;
+  if (p.status === 'conflict') return `Not marked: pull request #${pr} has a conflict with its base branch, so it cannot merge and no Merge button would show. Fetch the base branch, merge it into the pull request's branch, resolve the conflict (for a version bump in package.json, take the newer version and bump past it), run the tests, push, ${again}.`;
+  if (p.draft) return `Not marked: pull request #${pr} is a draft. Mark it ready for review first (gh pr ready ${pr}) if it is ready, ${again}; otherwise use "reply".`;
+  if (p.checks === 'fail') return `Not marked: pull request #${pr} has failing checks, so no Merge button would show. Fix them and push, ${again}; or, if the user should decide, use "reply" and say which checks fail.`;
+  return '';
+}
 
 // ---------- a turn that ends with background jobs still running (#713) ----------
 // The turn is held: it reports when its jobs end, since a session often ends a turn on purpose to wait for a

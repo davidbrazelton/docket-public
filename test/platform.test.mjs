@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, treeListCommand, parseTreeList, descendants, killCommand, commandLineCommand, relaunchesApp, leftBehind,
-  keyCodes, fitShot, shotArea, toScreen, screenScript, screenCommand, screenBadgeCommand, SCREEN_BADGE, cloudFolders, profilePathCandidates } from '../platform.mjs';
+  keyCodes, fitShot, shotArea, toScreen, screenScript, screenCommand, screenBadgeCommand, SCREEN_BADGE, cloudFolders, profilePathCandidates, batteryCommand, parseBattery } from '../platform.mjs';
 
 test('cloudFolders on Windows: Google Drive on any drive letter first, then OneDrive, Dropbox and iCloud Drive', () => {
   const there = new Set(['H:\\My Drive', 'C:\\Users\\pat\\OneDrive', 'C:\\Users\\pat\\OneDrive - Acme', 'C:\\Users\\pat\\Dropbox', 'C:\\Users\\pat\\iCloudDrive']);
@@ -837,4 +837,28 @@ test('the Windows screen script lists the monitors in physical pixels', { skip: 
     assert.ok(r.screens.length >= 1 && r.screens.some((s) => s.primary));
     for (const s of r.screens) assert.ok(s.w > 0 && s.h > 0 && s.scale >= 1, JSON.stringify(s));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('batteryCommand and parseBattery on Windows: Win32_Battery, discharging or on mains, none on a desktop', () => {
+  assert.equal(batteryCommand('win32').cmd, 'powershell.exe');
+  assert.match(batteryCommand('win32').args.at(-1), /Win32_Battery/);
+  assert.deepEqual(parseBattery('{"BatteryStatus":1,"EstimatedChargeRemaining":54}', 'win32'), { battery: true, onBattery: true, percent: 54 });
+  assert.deepEqual(parseBattery('{"BatteryStatus":2,"EstimatedChargeRemaining":100}', 'win32'), { battery: true, onBattery: false, percent: 100 });
+  assert.deepEqual(parseBattery('{"BatteryStatus":6,"EstimatedChargeRemaining":80}', 'win32'), { battery: true, onBattery: false, percent: 80 }, 'charging');
+  assert.deepEqual(parseBattery('{"BatteryStatus":4,"EstimatedChargeRemaining":8}', 'win32'), { battery: true, onBattery: true, percent: 8 }, 'low');
+  assert.deepEqual(parseBattery('[{"BatteryStatus":2,"EstimatedChargeRemaining":90},{"BatteryStatus":1,"EstimatedChargeRemaining":70}]', 'win32'),
+    { battery: true, onBattery: true, percent: 80 }, 'two batteries');
+  assert.deepEqual(parseBattery('', 'win32'), { battery: false, onBattery: null, percent: null }, 'a desktop prints nothing');
+  assert.deepEqual(parseBattery('not json', 'win32'), { battery: false, onBattery: null, percent: null });
+});
+
+test('batteryCommand and parseBattery on a Mac: pmset -g batt, AC or battery, none on a desktop', () => {
+  assert.deepEqual(batteryCommand('darwin'), { cmd: 'pmset', args: ['-g', 'batt'] });
+  assert.equal(batteryCommand('linux'), null);
+  assert.deepEqual(parseBattery("Now drawing from 'Battery Power'\n -InternalBattery-0 (id=4653155)\t72%; discharging; 4:31 remaining present: true\n", 'darwin'),
+    { battery: true, onBattery: true, percent: 72 });
+  assert.deepEqual(parseBattery("Now drawing from 'AC Power'\n -InternalBattery-0 (id=4653155)\t100%; charged; 0:00 remaining present: true\n", 'darwin'),
+    { battery: true, onBattery: false, percent: 100 });
+  assert.deepEqual(parseBattery("Now drawing from 'AC Power'\n", 'darwin'), { battery: false, onBattery: null, percent: null }, 'a Mac mini');
+  assert.deepEqual(parseBattery('anything', 'linux'), { battery: false, onBattery: null, percent: null });
 });

@@ -1,7 +1,9 @@
 // When Docket may restart to take in a change, kept apart so it can be tested. The runner (runner.mjs) and the
 // app (server.mjs) use the same rule: a session holds the restart while a reply is in progress, a question
 // waits, something was said in the last minute, or it has background commands or subagents running (the app marks
-// those held). The app adds its own in-app jobs (an ask_desk run, say).
+// those held). The app adds its own in-app jobs (an ask_desk run, say), and does not wait on a question alone
+// (asks: false): its restart loses none of them. A permission or question form lives in the runner and is sent
+// again when the app reconnects; an offer or crossing card is saved and found again when the tool call is resent.
 export const QUIET_MS = 60000;
 
 const askCount = (r) => (typeof r.asks === 'number' ? r.asks : r.asks?.size || 0);
@@ -10,9 +12,10 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 // What keeps it from being quiet, in words for the log and the ☰ menu; '' when it is quiet.
 // sessions: [{ ended, busy, held, asks (a Map or a count), lastAt, scheduled }]; jobs: the app's own runs still going.
 // scheduled (the app knows it): a scheduled task's run, counted as a scheduled task while it works.
-export function notQuiet(sessions, now = Date.now(), { jobs = 0 } = {}) {
+// asks: false leaves a waiting question out (the app's rule); the runner's own rule keeps it.
+export function notQuiet(sessions, now = Date.now(), { jobs = 0, asks = true } = {}) {
   const count = { scheduled: 0, asking: 0, replying: 0, background: 0, recent: 0 };
-  for (const r of sessions) { const k = busyKind(r, now); if (k) count[k]++; }
+  for (const r of sessions) { const k = busyKind(r, now, asks); if (k) count[k]++; }
   return [
     count.replying && `${plural(count.replying, 'session', 'sessions')} replying`,
     count.asking && `${plural(count.asking, 'session', 'sessions')} waiting on an answer`,
@@ -24,10 +27,11 @@ export function notQuiet(sessions, now = Date.now(), { jobs = 0 } = {}) {
 }
 
 // Which of notQuiet's counts one session falls in, or '' when it holds nothing.
-function busyKind(r, now) {
+function busyKind(r, now, asks = true) {
   if (r.ended) return '';
-  if (r.scheduled && (r.busy || r.held || askCount(r))) return 'scheduled';
-  if (askCount(r)) return 'asking';
+  const asking = asks && askCount(r) > 0;
+  if (r.scheduled && (r.busy || r.held || asking)) return 'scheduled';
+  if (asking) return 'asking';
   if (r.busy) return 'replying';
   if (r.held) return 'background';
   if (now - (r.lastAt || 0) < QUIET_MS) return 'recent';
@@ -35,7 +39,7 @@ function busyKind(r, now) {
 }
 const HOW = { scheduled: 'scheduled task running', asking: 'waiting on an answer', replying: 'replying', background: 'background work running', recent: 'active in the last minute' };
 // What one session is doing that holds the restart, in words for the update arrow's list; '' when nothing.
-export const busyHow = (r, now = Date.now()) => HOW[busyKind(r, now)] || '';
+export const busyHow = (r, now = Date.now(), { asks = true } = {}) => HOW[busyKind(r, now, asks)] || '';
 
 export function restartBlocked(sessions, now = Date.now()) {
   return !!notQuiet(sessions, now);
@@ -43,8 +47,9 @@ export function restartBlocked(sessions, now = Date.now()) {
 
 // The app's wait for a quiet moment before it restarts. check() says what is still working ('' = quiet);
 // go(pending, how) does the restart, how saying why now. It looks again every `every` ms and never gives up: only
-// now() (Restart now) skips the wait. log(why) is called once, when the wait starts; changed() each time the reason changes.
-export function restartWaiter({ check, go, log = () => {}, changed = () => {}, every = 5000, timers = { setTimeout, clearTimeout } }) {
+// now() (Restart now) skips the wait. log(why) is called once, when the wait starts; changed() each time the reason
+// changes, or names() does (the sessions it waits on, by name: one can finish as another starts, same count, same words).
+export function restartWaiter({ check, go, log = () => {}, changed = () => {}, names = () => '', every = 5000, timers = { setTimeout, clearTimeout } }) {
   let pending = null, timer = null;
   const fire = (forced) => {
     timers.clearTimeout(timer); timer = null;
@@ -57,14 +62,15 @@ export function restartWaiter({ check, go, log = () => {}, changed = () => {}, e
     const why = check();
     if (!why) return fire(false);
     if (!pending.waited) { pending.waited = true; log(why); }
-    if (pending.why !== why) { pending.why = why; changed(); }
+    const who = names();
+    if (pending.why !== why || pending.who !== who) { pending.why = why; pending.who = who; changed(); }
     timer = timers.setTimeout(look, every);
   };
   return {
     // Asked again while waiting: the reasons add up, and the wait goes on.
     want(reason) {
       if (pending) { pending.reasons.push(reason); return; }
-      pending = { since: Date.now(), reasons: [reason], why: '', waited: false };
+      pending = { since: Date.now(), reasons: [reason], why: '', who: '', waited: false };
       look();
     },
     now() { if (pending) fire(true); },

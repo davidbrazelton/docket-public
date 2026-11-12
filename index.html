@@ -60,6 +60,8 @@ button:hover { background: var(--panel-2); }
 button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 button.primary:hover { filter: brightness(1.08); }
 button.ghost { border-color: transparent; }
+/* A one-shot control just pressed, busy until its work is done (#931): it greys out in the click itself */
+.acked, .acked:hover { opacity: .55; cursor: progress; filter: none; transition: none; }
 input, textarea { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; }
 input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 
@@ -165,7 +167,7 @@ aside.side { position: relative; border-right: 1px solid var(--divider); backgro
 .row .tag.plan-tag { border-color: transparent; padding: 0; margin-left: 0; font-size: 11px; font-weight: 600; }
 /* Ticket and pull request tags sit last, after the brand logo, in a column that starts at the same spot on every row.
    The space is only held while some row in the list has a tag, so titles keep their room otherwise. Every row's column is
-   as wide as the widest row's tags (--chips-w, set by fitChips), up to a cap; past the cap a row's tags are cut off. */
+   as wide as the widest row's tags (--chips-w, set by fitColumns), up to a cap; past the cap a row's tags are cut off. */
 .row .chips { flex: none; display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 3px; } /* nowrap: the attachment .chips rule below wraps */
 #list:has(.row .chips:not(:empty)) .row .chips { width: var(--chips-w, 44px); overflow: hidden; }
 .row .chips .tkb, .row .chips .prb { flex: none; margin-left: 0; } /* never squeezed, so a too-wide row is cut off, not crushed */
@@ -340,6 +342,27 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .last-msg .lm-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; max-width: 816px; margin: 0 auto; word-wrap: break-word; }
 .last-msg .lm-label { color: var(--muted); font-weight: 600; margin-right: 6px; }
 #events .lm-flash { outline: 2px solid var(--accent); outline-offset: 2px; scroll-margin-top: 12px; }
+/* A plan decision asked in the chat (#929): the coordinator's "Q7: ..." line becomes a card with its options as
+   buttons (the suggested one solid) and an Other box; answered, it folds to a one-line record. A line quoting a saved
+   answer ("Q7 answered: ...") gets the record's green bar. */
+.msg-text .qask { border: 1px solid var(--accent); border-radius: 8px; padding: 6px 10px; margin: 6px 0; }
+.msg-text li.qask { list-style: none; margin-left: -20px; }
+.msg-text .qask .qn, .msg-text .qquote .qn { font-weight: 700; color: var(--accent); }
+.qdec .qopts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+.qdec .qopts button { padding: 3px 10px; font-size: 13px; }
+.qdec .qopts .rec { font-size: 11px; font-weight: 600; opacity: .85; margin-left: 4px; }
+.qdec .qother { flex: 1 1 140px; min-width: 110px; min-height: 28px; border: 1px solid var(--line); border-radius: 8px; padding: 3px 8px; background: var(--panel-2); color: var(--text); font: inherit; font-size: 13px; }
+.qdec.busy { opacity: .6; pointer-events: none; }
+.msg-text .qask.qanswered { border: none; padding: 0; }
+.qask.qanswered > .qtext { display: none; }
+.qrec, .msg-text .qquote { display: flex; align-items: center; gap: 6px; font-size: 13px; padding: 4px 10px; border-left: 3px solid var(--ok); background: var(--panel-2); border-radius: 4px 8px 8px 4px; margin: 6px 0; }
+.msg-text li.qquote { list-style: none; margin-left: -20px; }
+.msg-text .qquote { display: block; }
+.qrec .ok { color: var(--ok); font-weight: 700; }
+.qrec .a { font-weight: 600; }
+.qrec .sp { flex: 1; }
+.qrec .when { font-size: 11px; color: var(--muted); }
+.qrec button { min-height: 22px; font-size: 11px; padding: 0 8px; }
 /* Cards waiting on you (#774): one line per card, above the chat, at most four lines before it scrolls on its own. The
    line is a link to its card; its buttons are the card's own two, the main one solid. */
 .card-strip { border-bottom: 1px solid var(--line); background: var(--accent); color: var(--on-accent); max-height: 128px; overflow: auto; }
@@ -417,6 +440,10 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .code-wrap .code-btns button { font-size: 12px; padding: 2px 8px; background: var(--panel); }
 .reply-actions { display: flex; justify-content: flex-end; align-items: center; }
 .reply-actions .copy-btn { opacity: 0; transition: opacity .15s; }
+/* Off-screen chat items skip layout and paint (#949); auto keeps each one's last drawn height. Not list rows:
+   fitColumns and the glide measure every row, and skipped rows made each list redraw about 3x slower. */
+.reply { content-visibility: auto; contain-intrinsic-size: auto 80px; }
+details.tool, details.steps { content-visibility: auto; contain-intrinsic-size: auto 28px; }
 .reply:hover .reply-actions .copy-btn, .reply-actions .copy-btn:focus-visible { opacity: 1; }
 .reply-actions .copy-btn { font-size: 12px; padding: 0 8px; border-color: transparent; color: var(--muted); }
 @media (hover: none) { .reply-actions .copy-btn { opacity: 1; } }
@@ -650,6 +677,15 @@ aside.tasks.hidden { display: none; }
 .plan-pause:hover { background: var(--panel-2); }
 .tag.plan-tag .pm { color: var(--c); font-weight: 600; }
 .plan-legend { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11px; color: var(--muted); }
+/* The plan's decisions for the user (#929): read-only, open ones first, each by its question number */
+.plan-decs { padding: 0 14px 8px; font-size: 12px; }
+.plan-decs .pd-h { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 6px 0 2px; }
+.plan-decs .pd { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 0 8px; padding: 3px 6px; border-radius: 6px; }
+.plan-decs .pd:hover { background: var(--panel-2); }
+.plan-decs .pd .id { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--warn); }
+.plan-decs .pd.ans .id { color: var(--ok); }
+.plan-decs .pd .a { grid-column: 2; color: var(--muted); }
+.plan-decs .pd .a b { color: var(--text); font-weight: 600; }
 .plan-legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
 /* Active and Done are filters (DESIGN.md): bordered; on, a soft tint with a main-color border */
 .plan-flts { display: flex; align-items: center; gap: 4px; padding: 0 14px 8px; }
@@ -868,6 +904,7 @@ button.plink { cursor: pointer; }
 /* the Suggest a feature panel, and its speech bubble button in the top bar */
 header.top #feedbackBtn { padding: 4px 8px; display: inline-flex; align-items: center; }
 header.top #feedbackBtn svg { width: 18px; height: 18px; }
+header.top #feedbackBtn[hidden] { display: none; }
 .fb-title-ic { width: 16px; height: 16px; vertical-align: -3px; margin-right: 6px; }
 .fb textarea { width: 100%; min-height: 110px; resize: vertical; color: var(--text); }
 .fb input[type=text] { width: 100%; color: var(--text); }
@@ -930,6 +967,29 @@ header.top #feedbackBtn svg { width: 18px; height: 18px; }
 .sc-bar i { display: block; height: 100%; background: var(--muted); }
 .sc-row.below span:first-child::after { content: ' •'; color: var(--muted); }
 .sc-set { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+/* ☰ > Gauges > Performance (#935): an indicator too. One line per figure in the main color, stretches on battery
+   shaded, a dashed line at the limit, and one crosshair across all of them that the readout above follows. */
+.pf-now { font-size: 13px; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.pf-now b { color: var(--warn); font-weight: 600; }
+.pf-cmp { display: grid; grid-template-columns: 1fr 120px 120px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.pf-cmp > span { padding: 3px 0; border-top: 1px solid var(--line); }
+.pf-cmp > span:nth-child(3n+2), .pf-cmp > span:nth-child(3n) { text-align: right; padding-left: 10px; }
+@media (max-width: 640px) { .pf-cmp { grid-template-columns: 1fr 90px 90px; } }
+.pf-cmp > .h { color: var(--muted); font-size: 12px; border-top: 0; }
+.pf-read { min-height: 18px; margin: 14px 0 4px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pf-charts { cursor: crosshair; }
+.pf-chart { margin-bottom: 6px; }
+.pf-chart .t { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.pf-chart .t span:first-child { color: var(--text); }
+.pf-chart svg { display: block; width: 100%; height: 44px; overflow: visible; }
+.pf-chart .bat { fill: color-mix(in srgb, var(--warn) 14%, transparent); }
+.pf-chart .ln { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.pf-chart .lim { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.pf-chart .base { stroke: var(--line); stroke-width: 1; }
+.pf-chart .x { stroke: var(--muted); stroke-width: 1; }
+.pf-key { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 4px; flex-wrap: wrap; }
+.pf-key i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.pf-key i.lim { height: 0; border-top: 1px dashed var(--muted); border-radius: 0; background: none; vertical-align: 3px; }
 .sc-set input { width: 6em; }
 /* The usage stats window (#848): the exact report, scrolled when long. */
 .usage-report { max-height: 220px; overflow: auto; font-size: 12px; background: var(--panel-2); border-radius: 8px; padding: 8px; }
@@ -1304,6 +1364,13 @@ header.top .pilot-btn[hidden] { display: none; }
 body[data-pilot="waking"] :is(#pilotBtn, .pilot-mark) { animation: pilot-pulse 1.6s ease-in-out infinite; }
 body[data-pilot="working"] :is(#pilotBtn, .pilot-mark) { filter: drop-shadow(0 0 3px var(--accent)); }
 body.pilot-decided :is(#pilotBtn, .pilot-mark) { animation: pilot-zap .8s steps(1) 1; }
+/* A desk with a pilot run for its own items (#914): a 🤖 on its tab (an indicator) while its batch fills or its run
+   works, flickering once when that run answers. Shown only then; drawn in place. */
+.desk-pm { display: inline-block; margin-left: 4px; border-radius: 8px; }
+.desk-pm[hidden] { display: none; }
+.desk-pm[data-st="waking"] { animation: pilot-pulse 1.6s ease-in-out infinite; }
+.desk-pm[data-st="working"] { filter: drop-shadow(0 0 3px var(--accent)); }
+.desk-pm.zap { animation: pilot-zap .8s steps(1) 1; }
 /* The autopilot in a session's chat: a band above the typing box while a run has this session's item in hand, with
    a calm wave; on an answer a lightning sweep runs once along the top of the typing box, the bolt flickers once and
    the band flashes once, then says what it did until the run moves on. */
@@ -1322,7 +1389,9 @@ body.pilot-decided :is(#pilotBtn, .pilot-mark) { animation: pilot-zap .8s steps(
   background: linear-gradient(90deg, transparent, var(--accent) 45%, var(--panel) 50%, var(--accent) 55%, transparent); background-size: 200% 100%; animation: pl-sweep .9s linear 1 both; }
 @keyframes pl-sweep { from { background-position: 150% 0; } to { background-position: -50% 0; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  body[data-pilot] :is(#pilotBtn, .pilot-mark), .pl-band, .pl-band .pl-zap, .pl-band .pl-wave path { animation: none; }
+  body[data-pilot] :is(#pilotBtn, .pilot-mark), .desk-pm, .pl-band, .pl-band .pl-zap, .pl-band .pl-wave path { animation: none; }
+  .desk-pm[data-st="waking"] { background: var(--panel-2); }
+  .desk-pm[data-st="working"] { filter: none; background: var(--accent-soft); }
   .composer.pl-bolt::before { display: none; }
   .pl-band .pl-wave { display: none; }
   body[data-pilot="waking"] :is(#pilotBtn, .pilot-mark) { background: var(--panel-2); }
@@ -1493,6 +1562,10 @@ html.no-list aside.side .pane-close, html.no-details aside.tasks .pane-close { d
 .cfg-banner { display: flex; align-items: center; gap: 12px; padding: 6px 18px; border-bottom: 1px solid var(--warn); color: var(--warn); font-size: 13px; }
 .cfg-banner[hidden] { display: none; }
 .cfg-banner span { flex: 1; }
+/* The desk's daily budget is reached (#959): a warning line like the config one, with Continue today (an action) and Raise budget (a link) */
+.budget-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 18px; border-bottom: 1px solid var(--warn); color: var(--warn); font-size: 13px; }
+.budget-banner[hidden] { display: none; }
+.budget-banner span { flex: 1 1 320px; }
 .tag.cfg { border-color: var(--warn); color: var(--warn); flex: none; }
 header.top #reloadAllBtn { padding: 5px 8px; color: var(--warn); }
 .cut-banner span { flex: 1; }
@@ -1728,6 +1801,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
       <div class="preview-body"><div class="md-body" id="pvBody"></div></div>
     </section>
     <div class="main-head" id="head"></div>
+    <div class="budget-banner" id="budgetBanner" role="status" hidden><span id="budgetText"></span><button id="budgetContinue" data-tip="budget-continue">Continue today</button><button class="ghost" id="budgetRaise" data-tip="budget-raise">Raise budget</button></div>
     <div class="cfg-banner" id="cfgBanner" role="status" hidden><span id="cfgText"></span><button id="cfgReload" data-tip="cfg-reload">Reload</button></div>
     <div class="cut-banner" id="cutBanner" role="status" hidden><span id="cutWhy">Docket stopped unexpectedly partway through this session's turn, so its reply was cut off.</span><button id="cutContinue" data-tip="cut-continue">Continue</button></div>
     <div class="cross-strip" id="crossStrip" role="status" hidden></div>
@@ -1917,7 +1991,9 @@ const HELP = [
     ['new-group', '+ New group', 'Make a named group to sort sessions into'],
     ['show-empty', '👁 > Show empty groups', 'Show empty groups: list groups that have no sessions too', 'Groups with no sessions are listed too. Turn it off to hide them.'],
     ['group-head', 'A group header', 'Click to fold or unfold the group. Drag it to change the order. Right-click to rename it, set its start folder, archive or delete it.'],
-    ['today-spend', 'Today $… / $… · … agent · … you · +… / −…', 'What this desk has spent today at API prices, against its daily budget if it has one (set in ☰ > Desks > Manage). Amber from 80% of the budget, red at 100%. Then the time its sessions spent working (agent) and the time you spent typing to them (you), each added up over every session; the time they stood waiting on you is in the hover text. Last, the lines their file edits added (green) and removed (red) today, the same as the Lines column on the Usage page. Click to open Usage for today.'],
+    ['today-spend', 'Today $… / $… · … agent · … you · +… / −…', 'What this desk has spent today at API prices, against its daily budget if it has one (set in ☰ > Desks > Manage). Amber from 80% of the budget, red at 100%, where Docket holds new turns on this desk until you choose Continue today or raise the budget. Then the time its sessions spent working (agent) and the time you spent typing to them (you), each added up over every session; the time they stood waiting on you is in the hover text. Last, the lines their file edits added (green) and removed (red) today, the same as the Lines column on the Usage page. Click to open Usage for today.'],
+    ['budget-continue', 'Continue today', 'Lift the daily budget stop for this desk until the end of today, and send the messages it held now. Tomorrow the budget stops it again once reached.'],
+    ['budget-raise', 'Raise budget', 'Open this desk\'s settings at its daily budget. A higher budget, or none, lets the held messages go.'],
     ['activity', '● 3 ● 1 ● 9 and a line', 'This desk\'s live sessions by the color of their dot: blue working, orange waiting on you, green idle. Then a line of how many were working through today, midnight to now, in 5-minute steps. The hover text says today\'s peak and how long at least one was working. Click to open Usage › Activity, with the day by state and a week\'s busy hours.'],
     ['foot-more', '⋯', 'What a narrow list leaves out of the line above: the pieces that did not fit, then links to Usage › Activity and Usage for today. The line drops lines added and removed first, then the activity line, your time, the counts, agent time and the word Today; the dollar figure always stays.'],
     ['foot-go-activity', 'Open Usage › Activity', 'Opens Usage on its Activity part: when sessions worked, hour by hour'],
@@ -1976,6 +2052,7 @@ const HELP = [
     ['ctx-mute', 'Mute chime', 'Turn the picked sessions\' sounds off, or back on'],
     ['ctx-use-plan', 'Use a plan for this work', 'Tell this session to make a plan for its work: a checklist of tasks it hands to sessions of their own, shown in the Plan section'],
     ['ctx-rename', 'Rename', 'Give it a new title'],
+    ['ctx-refresh', 'Refresh', 'Start this session again with the same conversation, so it loads Docket\'s tools and its setup afresh. Now if it is idle, else when its turn ends.'],
     ['ctx-end', 'End', 'Close this session (it stays under Earlier and can be resumed)'],
     ['ctx-delete', 'Delete…', 'Delete it and its conversation for good. Docket asks first.'],
   ]],
@@ -1994,6 +2071,7 @@ const HELP = [
     ['last-msg', 'Your last message', 'Jump to this message in the conversation'],
     ['card-strip-go', 'A card waiting on you', 'Jump to this card in the conversation'],
     ['card-strip-answer', 'Answer', 'Jump to the questions to pick your answers'],
+    ['card-strip-other', 'Other answer', 'Jump to this question to type your own answer'],
     ['card-strip-kid', 'Waiting in a session under this one', 'Open the session under this one where a card or a prompt waits on you'],
     ['jump-new', 'Jump to new', 'Scroll to the line above what came in since you last looked'],
     ['copy-reply', 'Copy reply', 'Copy this whole reply'],
@@ -2150,6 +2228,7 @@ const HELP = [
     ['menu-gauges', 'Gauges', 'AI Usage, the memory and disk Docket uses, how often Summary\'s checks find changes, and the screen control log'],
     ['menu-usage', 'Gauges > AI Usage', 'What the AI has cost, by day, account, desk, group and session, with charts (opens in its own window)'],
     ['menu-machine', 'Gauges > Memory and Disk', 'How much memory Docket and its sessions use right now, and how much disk space its folders take'],
+    ['menu-perf', 'Gauges > Performance', 'The last hour, every 30 seconds: on battery or plugged in, CPU, free memory, working sessions, how long the app and this page were held up. Averages on battery and plugged in side by side'],
     ['mu-again', 'Refresh', 'Memory and disk: measure the folder sizes again now, instead of showing the last measurement'],
     ['mu-fold', 'Show or hide', 'Memory and disk: show or hide the programs counted in this line'],
     ['menu-helps', 'Help', 'The Key, the Instructions, and the tour of the page'],
@@ -2335,14 +2414,14 @@ const HELP = [
     ['rd-setup-cancel', 'Cancel', 'Keep the authenticator you had, or none'],
     ['rd-desk', 'Desk it may use', 'The one desk another computer may use. Its sign-ins and costs stay on this computer'],
     ['rd-on', 'Turn on / Turn off', 'While on, computers on the office network can ask to connect (with a code from the authenticator app, and only after someone here clicks Allow). While off, nothing on the network can reach Docket here'],
-    ['pilot-icon', 'Autopilot flying', 'The autopilot is on: short pilot runs on its own desk answer what waits on you, under the rules on this computer, and everything they answer says "answered by pilot". It pulses softly while something comes in, glows while a run works, and flickers once on each answer. Click to see what it is doing and its recent answers, or to turn it off'],
-    ['pilot-brand', 'Runs on', "The brand each pilot run uses, always on its top model, billed to the autopilot's own desk. Only brands that desk is signed in to can be picked. The next run uses it; a run going now keeps its own"],
+    ['pilot-icon', 'Autopilot flying', 'The autopilot is on: short pilot runs, one per desk, answer what waits on you, under the rules on this computer, and everything they answer says "answered by pilot". It pulses softly while something comes in, glows while a run works, and flickers once on each answer. Click to see what it is doing and its recent answers, or to turn it off'],
+    ['pilot-brand', 'Runs on', "Where each pilot run goes, always on its brand's top model. Each desk: the run for a desk's items is a session of that desk, on its own default brand and sign-in, and its cost shows on that desk (a desk with no brand signed in uses the Autopilot desk). Or one brand on the Autopilot desk, billed there; only brands that desk is signed in to can be picked. The next run uses it; a run going now keeps its own"],
     ['pilot-accept', 'Accept', "Answer this the way the autopilot suggests, as your own answer. The autopilot learns from it either way"],
     ['pilot-history', 'Learn from your past sessions', "Read the answers you gave in your past sessions on this computer (permission prompts you turned down, question forms, plans, New session / Do it here, suggested sessions and handoffs), so the autopilot's suggestions start from how you answered before. It runs in the background and nothing leaves this computer"],
     ['pilot-promote', 'I got this', "Let the autopilot answer this kind of item on this desk itself from now on. If it ever answers one in a way you would not, press Not my pick and it goes back to suggesting"],
     ['pilot-miss', 'Not my pick', "You would have answered this differently: the autopilot goes back to suggesting this kind of item on this desk, and you pick"],
-    ['pilot-on', 'Autopilot on', "On: short pilot runs on the autopilot's own desk answer what its rules allow, and the 🤖 shows in the top bar. The first time, Docket makes the Autopilot desk. Off: every pilot tool refuses, and no run starts"],
-    ['menu-autopilot', 'Docket settings > Autopilot', 'One switch for all of Docket: the autopilot answers what waits on you (permission prompts, question forms, cards) on every desk, under rules kept on this computer, in short runs on its own Autopilot desk, on the top model of the brand picked there. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the brand, what it is doing and its recent answers'],
+    ['pilot-on', 'Autopilot on', "On: short pilot runs, one per desk, answer what its rules allow, and the 🤖 shows in the top bar. The first time, Docket makes the Autopilot desk. Off: every pilot tool refuses, and no run starts"],
+    ['menu-autopilot', 'Docket settings > Autopilot', 'One switch for all of Docket: the autopilot answers what waits on you (permission prompts, question forms, cards) on every desk, under rules kept on this computer, in short runs, one per desk, each seeing only the items of that desk, on the top model of the brand of that desk or of the one brand picked there. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the brand, what it is doing and its recent answers'],
     ['rc-icon', '📡 Remote connection on', 'Another computer is using a desk here, or this computer is using a desk on another computer. Click the 📡 at the bottom left to see which, and to Disconnect'],
     ['rd-drop', 'Disconnect', 'End this computer\'s connection now. It needs a new code and an Allow to come back'],
     ['rd-revoke', 'Revoke', 'End this pilot key now. The autopilot on that computer can no longer reach this desk until someone here allows a new one'],
@@ -2405,12 +2484,25 @@ function isShellBlock(inner) {
 const mdc = (t) => md(t).replace(/<pre>([\s\S]*?)<\/pre>/g, (_, inner) => '<div class="code-wrap"><div class="code-btns">'
   + (isShellBlock(inner) ? '<button class="run-btn" title="Ask this session to run the command itself and tell you the result">Run</button>' : '')
   + `<button class="copy-btn" data-copy="pre" title="Copy to clipboard">Copy</button></div><pre>${inner}</pre></div>`);
+// A finished reply never changes, so a full chat redraw re-uses its markdown (#949): kept per event id, checked against the text.
+const mdcMemo = new Map();
+function mdcOf(ev) {
+  const hit = mdcMemo.get(ev.id);
+  if (hit && hit.text === ev.text) return hit.html;
+  const html = mdc(ev.text);
+  if (!window.marked || !window.DOMPurify) return html; // the plain fallback is not kept: markdown may still be loading
+  if (mdcMemo.size >= 5000) mdcMemo.clear();
+  mdcMemo.set(ev.id, { text: ev.text, html });
+  return html;
+}
 // Links to outside pages open in a new tab so Docket stays put; # links (#session: and actions) stay inside Docket.
 if (window.DOMPurify) DOMPurify.addHook('afterSanitizeAttributes', (n) => { if (n.tagName === 'A' && n.hasAttribute('href') && !n.getAttribute('href').startsWith('#')) { n.setAttribute('target', '_blank'); n.setAttribute('rel', 'noopener noreferrer'); } });
 const md = (t) => (window.marked && window.DOMPurify) ? DOMPurify.sanitize(marked.parse(t || '')) : `<p style="white-space:pre-wrap">${esc(t)}</p>`;
 const ago = (ms) => { const s = Math.round((Date.now() - ms) / 1000); if (s < 60) return 'now'; if (s < 3600) return Math.floor(s / 60) + 'm'; if (s < 86400) return Math.floor(s / 3600) + 'h'; return Math.floor(s / 86400) + 'd'; };
 // A time as this computer shows it (Docket keeps UTC): today's time, or the date and time for an earlier day.
-const stamp = (ms) => { if (!ms) return ''; const d = new Date(ms); const day = d.toDateString() === new Date().toDateString() ? '' : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' '; return day + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+// The formats are made once: toLocale…String builds a new one on every call, which a long chat feels (#949).
+const STAMP_DAY = new Intl.DateTimeFormat([], { month: 'short', day: 'numeric' }), STAMP_TIME = new Intl.DateTimeFormat([], { hour: 'numeric', minute: '2-digit' });
+const stamp = (ms) => { if (!ms) return ''; const d = new Date(ms); const day = d.toDateString() === new Date().toDateString() ? '' : STAMP_DAY.format(d) + ' '; return day + STAMP_TIME.format(d); };
 // How long a step usually takes in its repo (#847): "usually ~2m 30s (12 runs)", or, once it has run twice that and a
 // minute over, "well past its usual ~2m 30s". u: { ms, runs, failed } from the server; refreshed every second by tick.
 const roughTime = (ms) => { const s = Math.round(ms / 1000); if (s < 60) return `~${s < 20 ? s : Math.round(s / 5) * 5}s`; if (s < 3600) { const r = Math.round(s / 10) * 10, x = r % 60; return `~${Math.floor(r / 60)}m${x ? ` ${x}s` : ''}`; } const m = Math.round(s / 60); return `~${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}`; };
@@ -2635,7 +2727,42 @@ const rowDot = (s, c = dotClass(s)) => !S.reasonDot || (c !== 'needs' && c !== '
   : c === 'failed' ? reasonIcon('problem', dotTip(s, c)) : reasonIcon(needLabel(s, openPR(s.id)));
 const failedTip = (s) => `Last reply ended in an error: ${s.lastError.text.replace(/[.\s]+$/, '')}. Open it to read the error; send a message to try again.`;
 
-async function api(path, body) {
+// ---------- every click acknowledged at once (#931) ----------
+// A one-shot control (a button, a card's answer, Merge, a menu action) greys out and shows busy in the click itself,
+// before any handler's await, so a slow page or a slow reply never makes a press look lost. It stays so while the api
+// calls that click started to change something (posts) are out: a failure frees it at once, a success after a short
+// beat (a card the reply replaces simply goes). Look-ups (a desk switch loading its list) free it at once, like a link. A second press while it is busy is dropped, so nothing is sent twice. A click that starts no api call
+// (opening a menu or a panel) is freed before the page paints, so it never flickers. Toggles, filters, tabs and menu
+// openers (aria-pressed, aria-expanded, aria-haspopup, role=tab) are left alone, as is anything marked data-noack.
+const ACK_ON = 'button, [role="button"], [role="menuitem"]';
+const ACK_OFF = '[aria-pressed], [aria-expanded], [aria-haspopup], [role="tab"], [aria-disabled="true"], [data-noack]';
+const ACK_BEAT = 800; // ms a control stays busy after its call succeeded, for the reply's redraw to land
+let ackNow = null; // the click being handled: { el, calls }
+function ackFree(a) {
+  a.el.classList.remove('acked');
+  if (a.busy) a.el.removeAttribute('aria-busy');
+}
+window.addEventListener('click', (e) => {
+  const el = e.target.closest?.(ACK_ON);
+  if (!el || el.disabled || el.matches(ACK_OFF)) return;
+  if (el.classList.contains('acked')) { e.preventDefault(); e.stopImmediatePropagation(); return; }
+  const a = ackNow = { el, calls: 0, busy: !el.hasAttribute('aria-busy'), over: false };
+  el.classList.add('acked');
+  if (a.busy) el.setAttribute('aria-busy', 'true');
+  // The end of this click's handlers: the window's own bubble listener runs last; the timer covers a stopped click.
+  const over = () => { if (a.over) return; a.over = true; window.removeEventListener('click', over); if (ackNow === a) ackNow = null; if (!a.calls) ackFree(a); };
+  window.addEventListener('click', over); setTimeout(over);
+}, true);
+function ackTrack(p) {
+  const a = ackNow; if (!a) return p;
+  a.calls++;
+  const settle = () => { if (!--a.calls && a.over) ackFree(a); };
+  p.then(() => setTimeout(settle, ACK_BEAT), settle);
+  return p;
+}
+
+function api(path, body) { const p = apiFetch(path, body); return body ? ackTrack(p) : p; }
+async function apiFetch(path, body) {
   const r = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.statusText);
@@ -2819,6 +2946,9 @@ function waitingCount(clientId) {
 function shownDesks() { return S.clients.filter((c) => !c.hidden); }
 // The autopilot's desk (#886) shows a robot wherever desks are named; the server lists it first.
 const deskName = (c) => `${c.pilot ? '<span class="pilot-mark" aria-label="Autopilot desk">🤖</span> ' : ''}${esc(c.name)}`;
+// Any other desk's tab shows a 🤖 while a pilot run works on its own items, or a batch for it fills (#914); drawPilot
+// keeps it in step without redrawing the tabs.
+const deskPilotMark = (c) => { const st = !c.pilot && S.pilot?.desks?.[c.id]; return c.pilot ? '' : `<span class="desk-pm" data-pm="${esc(c.id)}"${st ? ` data-st="${st}"` : ' hidden'} aria-label="Autopilot run on this desk">🤖</span>`; };
 const deskArrived = {}; // desk id -> when work handed over from another desk arrived there: its tab flashes (#904)
 function renderClients() {
   if (menuHold(renderClients)) return; // waits while a menu is open (menu hold)
@@ -2826,7 +2956,7 @@ function renderClients() {
     const n = waitingCount(c.id);
     const rc = remoteMarkTip(c);
     const arrived = Date.now() - (deskArrived[c.id] || 0) < 3000 && c.id !== S.client;
-    return `<button class="${c.id === S.client ? 'on' : ''}${arrived ? ' arrived' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${deskName(c)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+    return `<button class="${c.id === S.client ? 'on' : ''}${arrived ? ' arrived' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${deskName(c)}${deskPilotMark(c)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
   }).join('');
   const total = waitingCount(S.client);
   const name = S.clients.find((c) => c.id === S.client)?.name;
@@ -2989,7 +3119,7 @@ function refreshSpend(delay = 0) {
   clearTimeout(spendTimer);
   spendTimer = setTimeout(async () => {
     const id = S.client; if (!id) return;
-    if (S.clients.find((c) => c.id === id)?.remote) { $('todaySpend').hidden = true; fitFoot(); return; } // a remote desk's cost stays on its own computer
+    if (S.clients.find((c) => c.id === id)?.remote) { $('todaySpend').hidden = true; $('budgetBanner').hidden = true; fitFoot(); return; } // a remote desk's cost stays on its own computer
     const d = new Date(), day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     loadCosts();
     let r; try { r = await api(`/api/usage/today?client=${encodeURIComponent(id)}&day=${day}`); } catch { return; }
@@ -3064,10 +3194,25 @@ function renderSpend(r) {
     + '\nClick to open Usage for today.';
   el.hidden = false;
   fitFoot();
+  showBudgetStop(r);
 }
 let spendDay = null; // the last /api/usage/today answer, for the ⋯ menu
 const todayLines = (r) => `<span class="ln-add">+${(r.added || 0).toLocaleString()}</span> / <span class="ln-del">−${(r.removed || 0).toLocaleString()}</span>`;
 setInterval(() => refreshSpend(), 60000);
+// The desk's daily budget is reached (#959): Docket holds new turns on it (the person's messages too) until Continue
+// today, a higher budget or tomorrow. A turn already running finishes. Shown from the same answer as today's spend.
+function showBudgetStop(r) {
+  const on = !!r.stopped && r.client === S.client;
+  $('budgetBanner').hidden = !on;
+  if (!on) return;
+  const name = S.clients.find((c) => c.id === r.client)?.name || 'This desk';
+  $('budgetText').textContent = `${name} has reached today's budget: ${money(r.cost)} of ${money(r.budget)}. New turns are held${r.held ? ` (${plural(r.held, 'message')} waiting)` : ''} until you continue; a turn already running finishes.`;
+}
+$('budgetContinue').onclick = async () => {
+  try { await api('/api/budget/continue', { client: S.client }); } catch (err) { tell(`Docket could not lift the stop: ${err.message}`); }
+  refreshSpend();
+};
+$('budgetRaise').onclick = () => editCompanies(undefined, '', undefined, undefined, S.client);
 // ---------- session activity (#805) ----------
 // On today's spend line, at the right: the desk's live sessions by the color of their dot (working, waiting on you, idle), then a line
 // of how many worked through today, midnight to now. The counts come from the list itself, so they move with the
@@ -4311,7 +4456,9 @@ const groupMembers = (gid) => allSessionRows().filter((s) => (s.groupId || '') =
 // and every section is shown open (the saved collapsed state is left alone).
 // The archive keeps the same grouped-or-flat choice and order: grouped, each archived session sits
 // under its own group, open or archived, then No group; flat, one list.
-const collapsed = () => store.get('collapsedGroups', {});
+// Which sections are collapsed is kept per desk (#952): No group is `__none` on every desk, so one shared
+// map opened or closed it on all of them at once.
+const collapsed = () => deskStore.get('collapsedGroups', {});
 // A session that newly lands in a collapsed group (started here, started by another session,
 // or moved in) opens that group, so it never seems to vanish. Each company's sessions are
 // remembered with the group they were last in; the first look only takes note.
@@ -4329,7 +4476,7 @@ function openGroupsOnArrival(rows, sectionOf) {
     const key = sectionOf(s) || '__none';
     if (c[key]) { delete c[key]; opened = true; }
   }
-  if (opened) store.set('collapsedGroups', c);
+  if (opened) deskStore.set('collapsedGroups', c);
 }
 function renderGroupView(q = '') {
   const match = sessionMatch(q);
@@ -4392,7 +4539,7 @@ $('list').addEventListener('click', async (e) => {
   const sec = e.target.closest('.gsec'); if (!sec) return;
   if ($('search').value.trim()) return; // every section is open while searching
   const c = collapsed(); const key = sec.dataset.gid || '__none'; if (c[key]) delete c[key]; else c[key] = true;
-  store.set('collapsedGroups', c); renderList();
+  deskStore.set('collapsedGroups', c); renderList();
 });
 $('list').addEventListener('contextmenu', (e) => {
   const sec = e.target.closest('.gsec[data-gid]'); if (!sec || !sec.dataset.gid) return;
@@ -5065,40 +5212,72 @@ function setList(html) {
   if (listHeld()) { S.listWanted = true; return; }
   S.listWanted = false;
   if (html === S.listHtml) { if (hover.id) showHoverCard(hover.id); return; } // the card can change when the row did not
+  const old = S.listHtml;
   S.listHtml = html;
   const list = $('list');
   // Only a redraw of the same view glides: a new company, mode, view or search simply replaces the list.
   const view = [S.client, S.mode, S.groupView, S.showArchived, S.attn, $('search').value.trim()].join('\n');
-  const glide = glideView === view && !glideOff();
+  const same = glideView === view, glide = same && !glideOff();
   glideView = view;
   const before = glide ? glidePlaces(list) : null;
-  list.innerHTML = html;
-  fitChips(list);
+  if (same) patchKids(list, html, old); else list.innerHTML = html;
+  fitColumns(list);
   if (hover.id) showHoverCard(hover.id); // before the glide, so the card sits by the row's new place, not where it slides from
   if (before) glideList(list, before);
 }
 // One width for every row's tag column, so the time and brand logo line up on every row: the widest row's tags,
 // at least 44px and at most CHIPS_MAX, so one very wide row cannot squeeze every title.
 const CHIPS_MAX = 96;
-function fitChips(list) {
-  list.style.removeProperty('--chips-w'); // measure each row's own tags, not the width the last fit gave them
-  let w = 0;
-  for (const c of list.querySelectorAll('.row .chips:not(:empty)')) if (c.lastElementChild) w = Math.max(w, c.lastElementChild.getBoundingClientRect().right - c.getBoundingClientRect().left);
-  if (w) list.style.setProperty('--chips-w', Math.min(CHIPS_MAX, Math.max(44, Math.ceil(w))) + 'px');
-  fitColumns(list);
-}
 // The plan badge, reason tag and time columns (#686): each as wide as its widest entry in the list, so they line up. Only
 // while a title keeps TITLE_MIN of room: a list too narrow for that lets each row's badges take just their own width.
+// Each cell's own width is kept by its content, so a redraw measures only cells it has not seen, at min-width 0 (all set
+// before any is read), and writes a variable only when a column's widest entry changed: the list is laid out once (#945).
 const TITLE_MIN = 90;
-function fitColumns(list) {
-  const cols = [['--plan-w', '.row .cplan > *'], ['--need-w', '.row .cneed > *'], ['--cost-w', '.row .ccost'], ['--meta-w', '.row .meta']];
-  for (const [v] of cols) list.style.removeProperty(v);
-  const ws = cols.map(([, sel]) => Math.max(0, ...[...list.querySelectorAll(sel)].map((el) => el.getBoundingClientRect().width)));
-  cols.forEach(([v], i) => { if (ws[i]) list.style.setProperty(v, Math.ceil(ws[i]) + 'px'); });
+const LIST_COLS = [['--chips-w', '.row .chips:not(:empty)'], ['--plan-w', '.row .cplan > *'], ['--need-w', '.row .cneed > *'], ['--cost-w', '.row .ccost'], ['--meta-w', '.row .meta']];
+let colSeen = new Map(), colFit = '';
+function fitColumns(list, fresh) {
+  if (fresh) colSeen = new Map();
+  const cols = LIST_COLS.map(([v, sel]) => ({ v, seen: colSeen.get(v) || new Map(), cells: [...list.querySelectorAll(sel)].map((el) => ({ el, k: el.className + '\n' + el.innerHTML })) }));
+  const todo = cols.flatMap((c) => c.cells.filter((x) => !c.seen.has(x.k)).map((x) => ({ ...x, c, style: x.el.getAttribute('style') })));
+  for (const x of todo) x.el.setAttribute('style', (x.style || '') + ';min-width:0'); // not el.style: that leaves style="" behind
+  for (const x of todo) x.w = x.c.v === '--chips-w' ? (x.el.lastElementChild ? x.el.lastElementChild.getBoundingClientRect().right - x.el.getBoundingClientRect().left : 0) : x.el.getBoundingClientRect().width;
+  for (const x of todo) { x.style == null ? x.el.removeAttribute('style') : x.el.setAttribute('style', x.style); x.c.seen.set(x.k, x.w); }
+  colSeen = new Map(cols.map((c) => [c.v, new Map(c.cells.map((x) => [x.k, c.seen.get(x.k)]))])); // only what the list shows now
+  const vals = cols.map((c) => { const w = Math.max(0, ...c.cells.map((x) => colSeen.get(c.v).get(x.k))); return !w ? '' : Math.ceil(c.v === '--chips-w' ? Math.min(CHIPS_MAX, Math.max(44, w)) : w) + 'px'; });
+  const fit = vals.join() + '|' + list.clientWidth;
+  if (fit === colFit && !fresh) return; // same widths in a list as wide: the variables already set are right
+  colFit = fit;
+  cols.forEach((c, i) => { if (list.style.getPropertyValue(c.v) !== vals[i]) vals[i] ? list.style.setProperty(c.v, vals[i]) : list.style.removeProperty(c.v); });
   const t = list.querySelector('.row:not(.child) .t');
-  if (t && t.getBoundingClientRect().width < TITLE_MIN) for (const [v] of cols) list.style.removeProperty(v);
+  if (t && t.getBoundingClientRect().width < TITLE_MIN) for (const [v] of LIST_COLS.slice(1)) list.style.removeProperty(v);
 }
-document.fonts?.ready.then(() => fitChips($('list'))); // tag text measured before the font arrived is too narrow
+// Makes el's children match html, keeping every node that did not change, so the browser lays out only the changed rows.
+// When only rows changed (the same rows, in the same headers), only the changed rows' HTML is parsed (#945).
+const parseHtml = (html) => { const t = document.createElement('template'); t.innerHTML = html; return t.content; };
+function rowSpans(h) { // where each row is in the list's HTML (rows hold no div)
+  const out = [];
+  for (let i = h.indexOf('<div class="row '); i >= 0; i = h.indexOf('<div class="row ', i)) { const e = h.indexOf('</div>', i) + 6; out.push([i, e]); i = e; }
+  return out;
+}
+const rowFrame = (h, rs) => rs.map(([s], i) => h.slice(i ? rs[i - 1][1] : 0, s)).join('\0') + h.slice(rs.at(-1)?.[1] || 0);
+function patchKids(el, html, old) {
+  const a = old != null && rowSpans(old), b = rowSpans(html), els = el.querySelectorAll('div[class^="row "]');
+  if (a && a.length === b.length && els.length === b.length && rowFrame(old, a) === rowFrame(html, b)) {
+    b.forEach(([s, e], i) => { if (html.slice(s, e) !== old.slice(...a[i])) patchNode(els[i], parseHtml(html.slice(s, e)).firstChild); });
+  } else patchNode(el, parseHtml(html), true);
+}
+function patchNode(n, m, kidsOnly) {
+  if (!kidsOnly) {
+    if (n.isEqualNode(m)) return;
+    if (n.nodeType !== 1 || n.nodeName !== m.nodeName) return n.replaceWith(m);
+    for (const { name } of [...n.attributes]) if (!m.hasAttribute(name)) n.removeAttribute(name);
+    for (const { name, value } of m.attributes) if (n.getAttribute(name) !== value) n.setAttribute(name, value);
+  }
+  const ak = [...n.childNodes], bk = [...m.childNodes];
+  if (ak.length !== bk.length) return n.replaceChildren(...bk);
+  ak.forEach((x, i) => patchNode(x, bk[i]));
+}
+document.fonts?.ready.then(() => fitColumns($('list'), true)); // tag text measured before the font arrived is too narrow
 // Rows glide to their new place instead of jumping, the FLIP way: measure each row before the redraw and
 // again after, put each moved row back where it was with a transform, then let it slide to where it now belongs.
 const glideOff = () => document.visibilityState !== 'visible' || matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -5619,7 +5798,7 @@ function sessionMenuItems(f) {
   if (!f.archived && f.plansOn && !f.hasPlan) items.push(['use-plan', 'Use a plan for this work']);
   if (f.planOpen) items.push([f.planPaused ? 'plan-resume' : 'plan-pause', f.planPaused ? 'Resume plan' : 'Pause plan']);
   items.push(['rename', 'Rename'], ['hr']);
-  if (f.live) items.push(['end', 'End']);
+  if (f.live) items.push(['refresh', 'Refresh'], ['end', 'End']);
   items.push(['delete', 'Delete…']);
   return items.map(([k, label, o]) => (k === 'hr' ? ['hr'] : [k, label, { checked: o?.checked, disabled: !!o?.disabled, ...(o?.stated && { stated: true }), ...(o?.sub && { sub: o.sub }), ...(o?.tip && { tip: o.tip }) }]));
 }
@@ -5730,6 +5909,7 @@ function openSessionMenu(id, at) {
     if (act === 'terminal') terminalButton({ stopPropagation() {}, currentTarget: { getBoundingClientRect: () => where } }, s?.cwd, id); // its shells, AI programs and Choose folder…
     const ed = act.startsWith('editor-') && S.editors.find((x) => 'editor-' + x.id === act);
     if (ed) await openInEditor(id, ed);
+    if (act === 'refresh') { try { const r = await api(`/api/sessions/${id}/refresh`, {}); if (r?.decision === 'wait') tell('It restarts, with the same conversation, once its turn ends.'); } catch (err) { tell(err.message); } }
     if (act === 'end') { try { await api(`/api/sessions/${id}/end`, {}); } catch (err) { tell(err.message); } }
     if (act === 'delete') await deleteSession(id);
     if (act === 'rename') { await open(); renameInline(); }
@@ -6010,7 +6190,7 @@ $('menuBtn').onclick = (e) => {
   // beside its name, an empty icon place for none), hidden desks left out. The desk you are on is tinted like its desk tab (#890).
   const items = [...(narrow('no-list') ? [['sessions', 'Sessions']] : []), ['desks', 'Desks', [['companies', 'Manage', null, ''], ...(S.clients.some((c) => !c.remote) ? [['copydesk', 'Copy a Desk', null, '']] : []), ...(S.remoteOn ? [['remote', 'Remote Desks', null, '']] : []), 'hr',
     ...shownDesks().map((c) => ['desk:' + c.id, c.name, deskItems(c), c.color ? colorSquare(c.color) : ''])]], ['history', 'Recently viewed'], 'hr',
-    ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk'], ['summarychecks', 'Summary checks'], ...(S.clients.some((c) => !c.remote) ? [['screenlog', 'Screen control log']] : [])]],
+    ['gauges', 'Gauges', [['usage', 'AI Usage'], ['machine', 'Memory and Disk'], ['perf', 'Performance'], ['summarychecks', 'Summary checks'], ...(S.clients.some((c) => !c.remote) ? [['screenlog', 'Screen control log']] : [])]],
     ['helps', 'Help', [['key', 'Key'], ['help', 'Instructions'], ['tour', 'Show me around']]],
     ['settings', 'Docket settings', [['color', colorLabel(), null, colorSquare()], ['sound', soundLabel(), null, soundIcon()], ['theme', themeLabel(), themeItems(), '◐'], 'hr',
       ['stall', stallLabel(), null, ''], ['autocontinue', autoContinueLabel(), null, ''], ['autopause', autoPauseLabel(), null, ''], ['rest', restLabel(), null, ''], ['usagestats', usageLabel(), null, ''], ['startup', startupLabel(), null, ''], ['autopilot', pilotLabel(), null, ''], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination', null, '']] : []), 'hr',
@@ -6155,6 +6335,7 @@ $('menuBtn').onclick = (e) => {
     if (act === 'history') showViewHistory();
     if (act.startsWith('plantree:')) openPlanTree(act.slice(9));
     if (act === 'machine') showMachineUse();
+    if (act === 'perf') showPerformance();
     if (act === 'summarychecks') showSummaryChecks();
     if (act === 'startup') showStartupSettings();
     if (act === 'autopilot') showAutopilot();
@@ -6479,6 +6660,97 @@ async function showMachineUse() {
   document.querySelector('#dlg .dlg').classList.remove('wide'); $('dlgBody').style.maxHeight = '';
 }
 
+// ---------- ☰ > Gauges > Performance (#935): the app's samples of the last hour ----------
+// Each page counts its own long tasks (over 50 ms) and slow frames, and sends them every 30 seconds; the app adds the
+// pages up in its next sample. A browser without these observers sends nothing for them.
+(() => {
+  let tasks = 0, ms = 0, frames = 0;
+  try { new PerformanceObserver((l) => { for (const e of l.getEntries()) { tasks++; ms += e.duration; } }).observe({ type: 'longtask' }); } catch {}
+  try { new PerformanceObserver((l) => { frames += l.getEntries().length; }).observe({ type: 'long-animation-frame' }); } catch {}
+  setInterval(() => {
+    const r = { tasks, ms: Math.round(ms), frames, visible: document.visibilityState === 'visible' };
+    tasks = 0; ms = 0; frames = 0;
+    api('/api/perf/page', r).catch(() => {});
+  }, 30000);
+})();
+// The figures, in the order they are drawn: key, title, unit, and the limit the app logs at (perf.mjs: LIMITS).
+const PF_FIGS = [['cpu', 'CPU (this computer)', '%', 'cpu'], ['freeMb', 'Free memory', ' MB'], ['working', 'Working sessions', ''],
+  ['loopP99', 'App lag (slowest 1%)', ' ms', 'loopP99'], ['pageTasks', 'Page long tasks', '/min', 'pageTasks']];
+const pfVal = (v, unit) => v == null ? '–' : `${Math.round(v).toLocaleString()}${unit}`;
+const pfPower = (x) => x.onBattery == null ? 'no battery' : x.onBattery ? `on battery${x.battery != null ? ' ' + x.battery + '%' : ''}` : `plugged in${x.battery != null ? ' ' + x.battery + '%' : ''}`;
+const pfTime = (at) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+function pfChart(v, [key, title, unit, lim]) {
+  const W = 600, H = 44, list = v.samples, t0 = v.since, span = v.now - v.since;
+  const vals = list.map((x) => x[key]).filter((n) => n != null);
+  const limit = lim ? v.limits[lim] : null;
+  const top = Math.max(key === 'cpu' ? 100 : 1, ...vals, limit && vals.some((n) => n >= limit * 0.5) ? limit : 0) * 1.05;
+  const X = (at) => ((at - t0) / span) * W, Y = (n) => H - (n / top) * H;
+  // A gap of more than two samples (Docket stopped, the computer asleep) breaks the line.
+  let d = '', prev = null;
+  for (const x of list) {
+    if (x[key] == null) { prev = null; continue; }
+    d += `${prev && x.at - prev.at <= v.every * 2.5 ? 'L' : 'M'}${X(x.at).toFixed(1)},${Y(x[key]).toFixed(1)}`;
+    prev = x;
+  }
+  let bands = '';
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].onBattery !== true) continue;
+    const a = X(list[i].at - v.every / 2), b = X(Math.min(v.now, list[i].at + v.every / 2));
+    bands += `<rect class="bat" x="${Math.max(0, a).toFixed(1)}" y="0" width="${Math.max(0.5, b - Math.max(0, a)).toFixed(1)}" height="${H}"/>`;
+  }
+  const last = list.at(-1)?.[key];
+  return `<div class="pf-chart"><div class="t"><span>${esc(title)}</span><span>${vals.length ? `now ${pfVal(last, unit)} · high ${pfVal(Math.max(...vals), unit)}` : 'no readings yet'}</span></div>
+    <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${esc(title)}, last hour">${bands}
+    <line class="base" x1="0" x2="${W}" y1="${H}" y2="${H}" vector-effect="non-scaling-stroke"/>
+    ${limit && limit < top ? `<line class="lim" x1="0" x2="${W}" y1="${Y(limit).toFixed(1)}" y2="${Y(limit).toFixed(1)}" vector-effect="non-scaling-stroke"/>` : ''}
+    <path class="ln" d="${d}" vector-effect="non-scaling-stroke"/><line class="x" y1="0" y2="${H}" x1="-10" x2="-10" vector-effect="non-scaling-stroke"/></svg></div>`;
+}
+function performanceHtml(v) {
+  const n = v.samples.at(-1);
+  const names = { cpu: 'CPU', app: 'app lag', page: 'page lag' };
+  const now = n ? `<div class="pf-now">Now: ${esc(pfPower(n))} · CPU ${pfVal(n.cpu, '%')}${n.docketCpu != null ? ` (Docket ${pfVal(n.docketCpu, '%')})` : ''} · ${pfVal(n.freeMb, ' MB')} free · ${n.working} working of ${n.live} live, ${n.resting} resting · app lag ${pfVal(n.loopP99, ' ms')} · page long tasks ${pfVal(n.pageTasks, '/min')}${v.slow.length ? ` · <b>slow: ${esc(v.slow.map((k) => names[k]).join(', '))}</b>` : ''}</div>`
+    : '<div class="mu-note" style="margin-top:0">No samples yet: the first comes 30 seconds after Docket starts.</div>';
+  const row = (label, key, unit) => `<span>${label}</span><span>${pfVal(v.battery[key], unit)}</span><span>${pfVal(v.plugged[key], unit)}</span>`;
+  const cmp = `<div class="pf-cmp"><span class="h">Average, last hour</span><span class="h">On battery${v.battery.samples ? ` (${v.battery.minutes} min)` : ''}</span><span class="h">Plugged in${v.plugged.samples ? ` (${v.plugged.minutes} min)` : ''}</span>
+    ${row('CPU, this computer', 'cpu', '%')}${row('CPU, Docket and its sessions', 'docketCpu', '%')}${row('Free memory', 'freeMb', ' MB')}${row('Working sessions', 'working', '')}${row('Live sessions', 'live', '')}
+    ${row('App lag (slowest 1%)', 'loopP99', ' ms')}${row('Page long tasks', 'pageTasks', '/min')}${row('Page held up', 'pageMs', ' ms/min')}${row('Page slow frames', 'pageFrames', '/min')}</div>`;
+  return `${now}${cmp}<div class="pf-read" id="pfRead">${v.samples.length ? 'Point at a chart for the figures at that time.' : ''}</div>
+    <div class="pf-charts" id="pfCharts">${PF_FIGS.map((f) => pfChart(v, f)).join('')}</div>
+    <div class="pf-key"><span><i></i>on battery</span><span><i class="lim"></i>where Docket logs it as slow (2 minutes over)</span><span>${pfTime(v.since)} – ${pfTime(v.now)}</span></div>
+    <div class="mu-note">CPU, Docket and its sessions is measured only while the gauges or Memory and Disk are open. Slow stretches are also written to the event log.</div>`;
+}
+// The crosshair: the sample nearest the pointer, in every chart and in the readout.
+function pfHover(v) {
+  const box = document.getElementById('pfCharts'); if (!box || !v.samples.length) return;
+  const read = document.getElementById('pfRead'), idle = read.textContent;
+  const lines = [...box.querySelectorAll('line.x')];
+  box.onmousemove = (e) => {
+    const r = box.getBoundingClientRect(), at = v.since + ((e.clientX - r.left) / r.width) * (v.now - v.since);
+    const x = v.samples.reduce((a, b) => Math.abs(b.at - at) < Math.abs(a.at - at) ? b : a);
+    const px = ((x.at - v.since) / (v.now - v.since)) * 600;
+    for (const l of lines) { l.setAttribute('x1', px); l.setAttribute('x2', px); }
+    read.textContent = `${new Date(x.at).toLocaleTimeString()} · ${pfPower(x)} · ${PF_FIGS.map(([k, t, u]) => `${t.replace(/ \(.*\)/, '')} ${pfVal(x[k], u)}`).join(' · ')}`;
+  };
+  box.onmouseleave = () => { for (const l of lines) { l.setAttribute('x1', -10); l.setAttribute('x2', -10); } read.textContent = idle; };
+}
+async function showPerformance() {
+  const pending = dialog({ title: 'Performance', body: '<div class="mu" id="pfBody"><div class="mu-note">Looking…</div></div>', buttons: [{ label: 'Close', value: null, primary: true }] });
+  document.querySelector('#dlg .dlg').classList.add('wide'); $('dlgBody').style.maxHeight = '75vh';
+  let timer = null;
+  const load = async () => {
+    let v; try { v = await api('/api/perf'); } catch (err) { const b = document.getElementById('pfBody'); if (b) b.innerHTML = `<div class="mu-note">${esc(err.message)}</div>`; return; }
+    const body = document.getElementById('pfBody'); if (!body) return;
+    body.innerHTML = performanceHtml(v);
+    pfHover(v);
+    timer = setTimeout(load, 30000);
+  };
+  load();
+  await pending;
+  clearTimeout(timer);
+  const b = document.getElementById('pfBody'); if (b) b.id = '';
+  document.querySelector('#dlg .dlg').classList.remove('wide'); $('dlgBody').style.maxHeight = '';
+}
+
 // ---------- ☰ > Gauges > Summary checks (#919): how often a summary's check found changes, by age of the last reply ----------
 // Each desk has its own threshold and its own numbers; the window shows the desk on view (or the one a card names).
 // A range under the threshold has only the sampled checks (1 in 4 summaries there), marked with a dot.
@@ -6790,18 +7062,25 @@ function startupHtml(v) {
 // flying (switch on, desk set), and opens this. What it answered says "answered by pilot" on the card. The panel is
 // one switch, the brand, a status line and the recent answers; while it is open those parts are updated in place,
 // and only when their content changed, so nothing flickers.
-S.pilot = { on: false, flying: false, state: 'off' };
-// While on it names the pilot's brand, and the run going now when there is one (#879, #881).
-const pilotLabel = () => S.pilot.on ? `Autopilot: on (${S.pilot.brandName || 'Claude'}${S.pilot.session ? ', running' : ''})` : 'Autopilot: off';
+S.pilot = { on: false, flying: false, state: 'off', going: [], desks: {} };
+// While on it names where runs go, and says when a run is going (#879, #881).
+const pilotLabel = () => S.pilot.on ? `Autopilot: on (${S.pilot.brandName || 'Claude'}${S.pilot.going?.length ? ', running' : ''})` : 'Autopilot: off';
 // decided: the pilot answered something just now, for one brief flash.
 function drawPilot(p, decided) {
   if (!p) return;
-  S.pilot = { on: !!p.on, flying: !!p.flying, session: p.session, title: p.title, brand: p.brand, gear: p.gear, brandName: p.brandName, state: p.state || 'off' };
+  S.pilot = { on: !!p.on, flying: !!p.flying, session: p.session, title: p.title, going: p.going || [], desks: p.deskStates || {}, brand: p.brand, gear: p.gear, brandName: p.brandName, state: p.state || 'off' };
   const b = $('pilotBtn');
   if (b.hidden !== !S.pilot.flying) b.hidden = !S.pilot.flying;
-  b.title = `Autopilot flying on ${S.pilot.brandName || 'Claude'}${S.pilot.session ? `, running now: ${S.pilot.title}` : ''}. ${tipText('pilot-icon')}`;
-  // What it is doing shows as a quiet animation on the 🤖 in the top bar and the autopilot desk's 🤖, wherever drawn.
+  b.title = `Autopilot flying on ${S.pilot.brandName || 'Claude'}${S.pilot.going.length ? `, running now for ${S.pilot.going.map((g) => g.deskName).join(', ')}` : ''}. ${tipText('pilot-icon')}`;
+  // What it is doing shows as a quiet animation on the 🤖 in the top bar and the autopilot desk's 🤖, wherever drawn,
+  // and on the 🤖 of each desk with a run for its own items (#914).
   if (document.body.dataset.pilot !== S.pilot.state) document.body.dataset.pilot = S.pilot.state;
+  for (const m of document.querySelectorAll('.desk-pm[data-pm]')) {
+    const st = S.pilot.desks[m.dataset.pm] || '';
+    if ((m.dataset.st || '') !== st) { if (st) m.dataset.st = st; else delete m.dataset.st; }
+    if (m.hidden !== !st) m.hidden = !st;
+    if (decided?.desk === m.dataset.pm) { m.classList.remove('zap'); void m.offsetWidth; m.classList.add('zap'); }
+  }
   if (decided) pilotFlash();
   if (decided?.session) S.pilotDecided = { ...decided, at: Date.now() };
   S.pilot.holding = p.holding || [];
@@ -6817,7 +7096,7 @@ const PILOT_WAVE = '<svg class="pl-wave" viewBox="0 0 200 14" preserveAspectRati
 const PILOT_DID = { allow: 'allowed', always: 'always allowed', deny: 'denied', skip: 'skipped', new: 'started a new session for', here: 'kept here', start: 'started', dismiss: 'dismissed', continue: 'continued', send: 'sent', stop: 'stopped', merge: 'said merge on' };
 function drawPilotHere(flash) {
   const sid = S.selected, holding = !!sid && (S.pilot.holding || []).includes(sid);
-  const d = S.pilotDecided, said = d && d.session === sid && d.run && d.run === S.pilot.session ? d : null;
+  const d = S.pilotDecided, said = d && d.session === sid && d.run && S.pilot.going.some((g) => g.id === d.run) ? d : null;
   const did = said && (/^answered /.test(said.answer) ? 'answered' : PILOT_DID[said.answer] || said.answer);
   const key = said ? `said ${did} ${said.what} ${said.at}` : holding ? 'thinking' : '';
   const band = $('plBand');
@@ -6844,12 +7123,14 @@ function autopilotParts(v, msg = '') {
   const mine = v.brands.find((b) => b.brand === v.brand);
   const signin = v.on && v.pilotDesk && mine && !mine.signedIn ? `<div class="pl-ask"><b>${esc(v.pilotDesk.name)} is not signed in to ${esc(v.brandName)}</b>, so no run can start. Sign in here; the first run then starts on its own.
     <span class="co-sign" data-sign-client="${esc(v.pilotDesk.id)}" data-sign-engine="${esc(v.brand)}" data-unsaved="">${coSignHtml(v.pilotDesk.id, v.brand, '')}</span></div>` : '';
-  const last = v.runs.find((r) => r.id !== v.session);
-  const lastRun = last ? `Last run ${esc(PILOT_WHEN(last.at))}: ${pilotRunLink(last.id, last.title)}, ${last.items} item${last.items === 1 ? '' : 's'}.` : 'No run yet.';
-  const now = !v.on ? 'Off.' : v.state === 'working' && v.session ? `Working: ${pilotRunLink(v.session, v.title || 'the run going now')}.`
+  const going = v.going || [], last = v.runs.find((r) => !going.some((g) => g.id === r.id));
+  const lastRun = last ? `Last run ${esc(PILOT_WHEN(last.at))}: ${pilotRunLink(last.id, last.deskName ? `${last.deskName} · ${last.title}` : last.title)}, ${last.items} item${last.items === 1 ? '' : 's'}.` : 'No run yet.';
+  const now = !v.on ? 'Off.' : going.length ? `Working: ${going.map((g) => pilotRunLink(g.id, g.deskName)).join(', ')}.`
     : v.state === 'waking' ? 'Something came in: a run starts in a moment.' : 'On, waiting for something it may answer.';
   const why = msg || (signin ? '' : v.problem);
-  const status = `${now} ${v.on || last ? lastRun : ''}${why ? `<div class="pl-no">${esc(why)}</div>` : ''}`;
+  // A desk with no brand signed in has its runs on the autopilot's desk instead (#914): one quiet line.
+  const fallback = v.fallback?.length ? `<div class="meta">${esc(v.fallback.join(', '))} ${v.fallback.length === 1 ? 'has' : 'have'} no brand signed in, so ${v.fallback.length === 1 ? 'its runs go' : 'their runs go'} to the Autopilot desk and are billed there.</div>` : '';
+  const status = `${now} ${v.on || last ? lastRun : ''}${fallback}${why ? `<div class="pl-no">${esc(why)}</div>` : ''}`;
   const answers = v.log.filter((l) => l.kind !== 'run').slice(0, 20);
   const log = answers.length ? answers.map((l) => `<div>${esc(PILOT_WHEN(l.at))} · <b>${esc(l.kind)}</b> · ${esc(l.answer)} · ${l.session ? pilotRunLink(l.session, l.what || l.title || 'its session') : esc(l.what || l.title)}${l.ok ? '' : ` <span class="pl-no">refused: ${esc(l.why)}</span>`}${l.run ? ` · ${pilotRunLink(l.run, 'run')}` : ''}</div>`).join('')
     : '<div>The pilot has answered nothing yet.</div>';
@@ -6863,16 +7144,17 @@ function autopilotParts(v, msg = '') {
 }
 function autopilotHtml(v) {
   const p = autopilotParts(v);
-  // The brand: those the autopilot's desk has set up; one not signed in there can't be picked.
-  const brands = v.brands.map((b) => `<option value="${esc(b.brand)}"${b.brand === v.brand ? ' selected' : ''}${b.signedIn || b.brand === v.brand ? '' : ' disabled'}>${esc(b.name)}${b.signedIn ? '' : ' (not signed in)'}</option>`).join('')
-    || `<option value="${esc(v.brand)}" selected>${esc(v.brandName)}</option>`;
+  // Where runs go (#914): each desk on its own brand (the default), or one brand the autopilot's desk has set up; one
+  // not signed in there can't be picked.
+  const brands = `<option value="desk"${v.brand === 'desk' ? ' selected' : ''}>Each desk (its own brand, billed there)</option>`
+    + v.brands.map((b) => `<option value="${esc(b.brand)}"${b.brand === v.brand ? ' selected' : ''}${b.signedIn || b.brand === v.brand ? '' : ' disabled'}>${esc(b.name)} on the Autopilot desk${b.signedIn ? '' : ' (not signed in)'}</option>`).join('');
   return `<div class="pilot-dlg">
     <label class="pl-row"><input type="checkbox" id="pilotOn"${v.on ? ' checked' : ''}${tip('pilot-on')}> <b>Autopilot on</b></label>
-    <div class="meta" style="margin-top:4px">It answers what waits on you on every desk, as far as the rules on this computer let it, on the top model of the brand below. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting and outside services stay with you.</div>
+    <div class="meta" style="margin-top:4px">It answers what waits on you on every desk, as far as the rules on this computer let it, on the top model of the brand below, in a short run for each desk that sees only that desk's items. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting and outside services stay with you.</div>
     <div class="pl-row"><label for="pilotBrand">Runs on</label><select id="pilotBrand"${tip('pilot-brand')}>${brands}</select></div>
     <div class="pl-status" id="plStatus">${p.plStatus}</div><div id="plAsk">${p.plAsk}</div>
     <h4>Recent answers</h4><div class="pl-list" id="plLog">${p.plLog}</div>
-    <details class="pl-more"><summary>Rules and notes</summary><div class="meta">Rules (allow, deny or ask, per kind and per desk): <code>${esc(v.rulesFile)}</code>${v.notesFile ? `<br>The pilot's notes, which every run reads: <code>${esc(v.notesFile)}</code>` : ''}</div></details></div>`;
+    <details class="pl-more"><summary>Rules and notes</summary><div class="meta">Rules (allow, deny or ask, per kind and per desk): <code>${esc(v.rulesFile)}</code>${v.notesFile ? `<br>The pilot's notes, one file per desk, each read only by that desk's runs: <code>${esc(v.notesFile)}</code>` : ''}</div></details></div>`;
 }
 // The panel while it is open: v, the view last fetched, and html, the parts as last drawn, so a part is only
 // rewritten when it changed.
@@ -7364,13 +7646,15 @@ const coCheckPanel = (c, i) => {
     <small class="muted">Checked ${esc(new Date(r.at).toLocaleString())}. It only reads; nothing was changed.</small> ${again}</div>`;
 };
 // start: the list as it was when the screen first opened, kept across a trip to a company's color window.
-async function editCompanies(rows, error = '', start, scrollTo) {
+async function editCompanies(rows, error = '', start, scrollTo, budgetFor) {
   rows ||= (await api('/api/clients/edit')).map(({ env, ...c }) => ({ ...c, envRows: Object.entries(env || {}), jiraUrl: c.links?.jira?.url || '', jiraKeys: (c.links?.jira?.keys || []).join(', '), adoOrg: c.links?.azureDevOps?.org || '', adoProject: c.links?.azureDevOps?.project || '',
     ...Object.fromEntries(Object.entries(c.startGear || {}).map(([e, k]) => ['startGear_' + e, k])),
     // A LiteLLM gateway, edited as flat fields like the links above.
     gatewayUrl: c.gateway?.url || '', gatewayClaudeRoute: c.gateway?.claudeRoute || '', gatewayLogin: c.gateway?.login || '', gatewayLite: c.gateway?.lite || '',
     ...Object.fromEntries(Object.entries(c.gateway?.models?.claude || {}).map(([k, v]) => ['gatewayModel_claude_' + k, v])) }));
   if (rows.length === 1) coOpen.add(rows[0]); // one desk: nothing to look past, so its settings start open
+  const budgetRow = budgetFor && rows.find((c) => c.id === budgetFor); // Raise budget (#959): that desk open at its budget
+  if (budgetRow) coOpen.add(budgetRow);
   const roots = await api('/api/clients/home-roots').catch(() => null);
   const gears = await api('/api/gears').catch(() => null); // Shift's gears per brand
   // One Start gear choice per ticked brand: the model its Shift sessions start on.
@@ -7407,7 +7691,7 @@ async function editCompanies(rows, error = '', start, scrollTo) {
       <label for="co${i}defaultEngine">Default brand for new sessions</label><select id="co${i}defaultEngine" data-i="${i}" data-k="defaultEngine"${tip('co-default-engine')}>${coUses(c, 'claude') ? '<option value="">Claude</option>' : ''}${CO_BRANDS.filter(([e]) => e !== 'claude' && coUses(c, e)).map(([e, n]) => `<option value="${e}" ${c.defaultEngine === e ? 'selected' : ''}>${n}</option>`).join('')}</select>
       ${gearRows(c, i)}
       ${coUses(c, 'claude') ? `<label for="co${i}promptCacheTtl">Prompt cache</label><select id="co${i}promptCacheTtl" data-i="${i}" data-k="promptCacheTtl"${tip('co-cache')}><option value="">Automatic (Claude Code picks)</option><option value="1h" ${c.promptCacheTtl === '1h' ? 'selected' : ''}>1 hour</option>${c.promptCacheTtl === '5m' ? '<option value="5m" selected>5 minutes</option>' : ''}</select>` : ''}
-      ${field(i, 'budget', 'Daily budget ($)', 'Dollars a day at API prices, like 50; today\'s spend turns amber at 80% and red at 100% (optional)')}
+      ${field(i, 'budget', 'Daily budget ($)', 'Dollars a day at API prices, like 50; today\'s spend turns amber at 80% and red at 100%, and at 100% new turns on this desk wait until you choose Continue today (optional)')}
       ${field(i, 'folder', 'Working folder', 'Where new sessions start (optional)', ' data-pick="here"')}
       ${field(i, 'jiraKeys', 'Jira project keys', 'Ticket keys found in branch names, like ABC, XYZ; empty is any key in capitals. Needs a jira MCP server in this Claude home (optional)')}
       ${field(i, 'jiraUrl', 'Jira address', 'Like https://example.atlassian.net; empty is the one the jira MCP server uses (optional)')}
@@ -7466,6 +7750,8 @@ async function editCompanies(rows, error = '', start, scrollTo) {
   document.querySelector('#dlg .dlg').classList.add('wide');
   $('dlgBtns').firstElementChild.style.marginRight = 'auto';
   if (scrollTo !== undefined) $('dlgBody').querySelectorAll('.co')[scrollTo]?.scrollIntoView({ block: 'nearest' });
+  const budgetBox = budgetRow && $(`co${rows.indexOf(budgetRow)}budget`);
+  if (budgetBox) { budgetBox.scrollIntoView({ block: 'center' }); budgetBox.focus(); budgetBox.select(); }
   showSignin(); // a sign-in under way moves here from the left column
   // Each saved desk's Desk check: its last report (or a first one), redrawn in place when it comes.
   const drawCheck = (id) => {
@@ -8492,7 +8778,7 @@ function eventHtmlOf(ev) {
       if (ev.from === 'docket') return docketHtml(ev);
       if (ev.from === 'session' || ev.from === 'brief') return sentHtml(ev);
       return `<div class="msg-user" data-ev${ev.from ? ` data-from="${esc(ev.from)}"` : ''}>${esc(ev.text)}${(ev.images || []).map((src) => `<img src="${src}" alt="Attached image">`).join('')}${ev.files?.length ? `<div class="files">📎 ${ev.files.map(esc).join(', ')}</div>` : ''}</div>${ev.at ? `<div class="msg-when">${stamp(ev.at)}</div>` : ''}`;
-    case 'text': return `<div class="reply"><div class="msg-text" data-text="${esc(ev.id)}">${mdc(ev.text)}</div><div class="reply-actions">${ev.at ? `<span class="reply-when">${stamp(ev.at)}</span>` : ''}<button class="copy-btn" data-copy="reply" data-id="${esc(ev.id)}"${tip('copy-reply')}>Copy reply</button></div></div>`;
+    case 'text': return `<div class="reply"><div class="msg-text" data-text="${esc(ev.id)}">${mdcOf(ev)}</div><div class="reply-actions">${ev.at ? `<span class="reply-when">${stamp(ev.at)}</span>` : ''}<button class="copy-btn" data-copy="reply" data-id="${esc(ev.id)}"${tip('copy-reply')}>Copy reply</button></div></div>`;
     case 'tool': {
       const ic = ev.status === 'running' ? ['running', '●'] : ev.status === 'error' ? ['error', '✕'] : ['done', '✓'];
       const body = JSON.stringify(ev.input ?? {}, null, 2) + (ev.result ? '\n\n── result ──\n' + ev.result : '');
@@ -8593,13 +8879,15 @@ $('lastMsg').onclick = () => {
 // does; the rest of the line scrolls to the card. Like the last-message strip, it follows whatever is in #events.
 // Below them, one line per session under this one (at any depth) with a card or a prompt waiting in it, which opens that
 // session: a child's card otherwise shows only in the child's own chat and as its row's reason in the list.
-const STRIP_CARDS = '.scard[data-card]:not(.done):not(.slim), .perm[data-perm]:not(.done), .qform[data-qform]';
-const stripKey = (el) => el.dataset.card ? 'c:' + el.dataset.card : 'p:' + el.dataset.perm;
-const stripCard = (key) => $('events').querySelector(`[data-${key[0] === 'c' ? 'card' : 'perm'}="${CSS.escape(key.slice(2))}"]`);
+const STRIP_CARDS = '.scard[data-card]:not(.done):not(.slim), .perm[data-perm]:not(.done), .qform[data-qform], .qask:not(.qanswered)';
+const stripKey = (el) => el.dataset.qask ? 'q:' + el.dataset.qask : el.dataset.card ? 'c:' + el.dataset.card : 'p:' + el.dataset.perm;
+// a decision asked more than once: its last asking
+const stripCard = (key) => [...$('events').querySelectorAll(`[data-${{ c: 'card', p: 'perm', q: 'qask' }[key[0]]}="${CSS.escape(key.slice(2))}"]`)].pop();
 // The card's own buttons the line presses: its main one and the one that turns it down. A question form's answers can
 // only be picked on the form, so its line has no main button of the card's; Answer takes you there.
 function stripBtns(el) {
   if (el.matches('.qform')) return [null, el.querySelector('[data-qskip]')];
+  if (el.matches('.qask')) return [el.querySelector('.qdec button.primary'), el.querySelector('.qdec .qother')];
   if (el.matches('.perm')) return [el.querySelector('[data-answer="allow"]'), el.querySelector('[data-answer="deny"]')];
   const row = [...el.querySelectorAll('.sbtn')].find((r) => r.querySelector('button.primary'));
   return row ? [row.querySelector('button.primary'), row.querySelector('[data-xh="back"]') || [...row.querySelectorAll('button:not(.primary)')].pop()] : [null, null];
@@ -8608,6 +8896,7 @@ function stripBtns(el) {
 function stripText(el) {
   const txt = (x) => (x?.textContent || '').replace(/\s+/g, ' ').trim();
   if (el.matches('.qform')) return [`${openBrand()}'s questions`, [...el.querySelectorAll('.qq')].map(txt).join(' · ')];
+  if (el.matches('.qask')) return [`Q${el.dataset.qask}`, txt(el.querySelector('.qtext')).replace(/^\**Q\d+\**\s*[:.)\-–—]?\s*/, '').replace(/^([^?]{8,}?\?).*$/, '$1')]; // the question, not its reasons
   if (el.matches('.perm')) return ['Allow this?', txt(el.querySelector('.pt'))];
   if (el.matches('.xh')) return [txt(el.querySelector('.xh-pill')), txt(el.querySelector('.st'))]; // work handed to another desk (#904)
   // a question beside the buttons (a handoff's "Archive this session now?") is what the card asks now
@@ -8623,12 +8912,13 @@ function kidsWaiting(id) {
 }
 let stripDrawn = '';
 function renderCardStrip() {
-  const box = $('cardStrip'), cards = [...$('events').querySelectorAll(STRIP_CARDS)].filter((el) => stripBtns(el).some(Boolean));
+  const box = $('cardStrip'), cards = [...$('events').querySelectorAll(STRIP_CARDS)].filter((el, i, all) => stripBtns(el).some(Boolean) && !all.slice(i + 1).some((x) => stripKey(x) === stripKey(el)));
   const btn = (b, act) => b ? `<button${b.classList.contains('primary') ? ' class="primary"' : ''} data-strip-act="${act}"${b.disabled ? ' disabled' : ''} title="${esc(b.title)}">${esc(b.textContent)}</button>` : '';
   const html = cards.map((el) => {
     const [ok, no] = stripBtns(el), [kind, title] = stripText(el);
     const main = ok ? btn(ok, 'ok') : `<button class="primary" data-strip-act="go"${tip('card-strip-answer')}>Answer</button>`;
-    return `<div class="cs-row" data-strip="${esc(stripKey(el))}"><button class="cs-go"${tip('card-strip-go')}><span class="cs-k">${esc(kind)}</span><span class="cs-t">${esc(title)}</span></button>${main}${btn(no, 'no')}</div>`;
+    const other = el.matches('.qask') ? `<button data-strip-act="go"${tip('card-strip-other')}>Other…</button>` : btn(no, 'no');
+    return `<div class="cs-row" data-strip="${esc(stripKey(el))}"><button class="cs-go"${tip('card-strip-go')}><span class="cs-k">${esc(kind)}</span><span class="cs-t">${esc(title)}</span></button>${main}${other}</div>`;
   }).join('') + kidsWaiting(S.selected).map((k) => {
     const kind = k.status === 'requires_action' ? 'Waiting on you in' : 'Card waiting in';
     return `<div class="cs-row" data-strip="${esc('s:' + k.id)}"><button class="cs-go"${tip('card-strip-kid')}><span class="cs-k">${esc(kind)}</span><span class="cs-t">${esc(k.title || 'Untitled')}</span></button><button class="primary" data-strip-act="go"${tip('card-strip-kid')}>Open</button></div>`;
@@ -8656,8 +8946,103 @@ $('cardStrip').addEventListener('click', (e) => {
   setTimeout(() => el.classList.remove('lm-flash'), 1500);
   if (act === 'go') el.querySelector('input')?.focus({ preventScroll: true });
 });
+// ---------- plan decisions in the chat (#929) ----------
+// The open session coordinates a plan with decisions for the person, each with its question number. A line of a reply
+// that starts with that number ("Q7: Keep the CSV export?") gets the decision's options as buttons and an Other box;
+// pressing one sends "Q7 Keep both", as if typed, and Docket saves it on the plan. Answered, the line folds to
+// "Q7 answered: …" with a Change button. A line that quotes a saved answer ("Q7 answered: …") gets the same green bar.
+const planDecisions = (id) => (S.plans.on && !S.plans.folder && S.plans.plans.find((p) => p.coordinator === id)?.decisions) || [];
+// "Q7: …" (or "Q7 —", "**Q7.**") asks; "Q7 answered: …" quotes; "Q7 and Q8 are open" is neither.
+const Q_LINE = /^\s*\**Q(\d{1,3})(?:\**\s+(?:already\s+)?(answered)\b|\s*[:.)\-–—]|\**\s*[:.)\-–—])/;
+S.qChange = {}; // question number -> true while its answer is being changed
+const qWhen = (at) => { const d = at && new Date(at.replace(' ', 'T') + 'Z'); return d && !isNaN(d) ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; };
+function qdecHtml(d) {
+  if (d.answer && !S.qChange[d.q]) return `<div class="qrec"><span class="ok">✓</span><span><span class="qn">Q${d.q}</span> answered: <span class="a">${esc(d.answer.replace(/\n/g, ' / '))}</span></span><span class="sp"></span><span class="when">${esc(qWhen(d.answeredAt))}</span><button data-qchange title="Answer again: the coordinator is told the new answer">Change</button></div>`;
+  return `<div class="qopts">${d.options.map((o, i) => `<button${i ? '' : ' class="primary"'} data-qans="${esc(o)}" title="Answer Q${d.q}: ${esc(o)}">${esc(o)}${i ? '' : '<span class="rec"> · suggested</span>'}</button>`).join('')}<input class="qother" data-qother placeholder="${d.options.length ? 'Other…' : 'Your answer…'}" aria-label="Your own answer to Q${d.q}" title="Type your own answer and press Enter"></div>`;
+}
+function decorateDecisions() {
+  const decs = new Map(planDecisions(S.selected).filter((d) => d.state !== 'dropped').map((d) => [d.q, d]));
+  if (!decs.size) return;
+  for (const el of $('events').querySelectorAll('.msg-text p, .msg-text li')) {
+    if (el.matches('li') && el.querySelector(':scope > p')) continue; // a loose list item: its paragraphs are the lines
+    const m = el.textContent.match(Q_LINE), d = m && decs.get(Number(m[1]));
+    if (!d) continue;
+    if (m[2]) { if (!el.classList.contains('qquote')) el.classList.add('qquote'); continue; } // the coordinator quoting a saved answer
+    if (!el.dataset.qask) { // first time: its own words go in .qtext, the answer card after them
+      el.dataset.qask = d.q;
+      const t = document.createElement('span'); t.className = 'qtext';
+      while (el.firstChild) t.appendChild(el.firstChild);
+      t.innerHTML = t.innerHTML.replace(/^(\s*\**)(Q\d+)/, '$1<span class="qn">$2</span>');
+      const box = document.createElement('div'); box.className = 'qdec'; box.dataset.qdec = d.q;
+      el.append(t, box); el.classList.add('qask');
+    }
+    const box = el.querySelector(':scope > .qdec'), html = qdecHtml(d);
+    if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; box.classList.remove('busy'); }
+    const folded = !!d.answer && !S.qChange[d.q];
+    if (el.classList.contains('qanswered') !== folded) el.classList.toggle('qanswered', folded);
+  }
+}
+let qSoon = 0;
+const decorateLater = () => { cancelAnimationFrame(qSoon); qSoon = requestAnimationFrame(decorateDecisions); };
+new MutationObserver(decorateLater).observe($('events'), { childList: true, subtree: true });
+function answerDecision(box, text) {
+  text = String(text || '').trim(); if (!text) return;
+  const q = box.dataset.qdec;
+  delete S.qChange[q];
+  box.classList.add('busy'); // until the plan says it is saved
+  send(`Q${q} ${text}`);
+}
+$('events').addEventListener('click', (e) => {
+  const b = e.target.closest('.qdec [data-qans], .qdec [data-qchange]'); if (!b) return;
+  const box = b.closest('.qdec');
+  if (b.hasAttribute('data-qchange')) { S.qChange[box.dataset.qdec] = true; decorateDecisions(); box.querySelector('.qother')?.focus(); return; }
+  answerDecision(box, b.dataset.qans);
+});
+$('events').addEventListener('keydown', (e) => {
+  const inp = e.target.closest?.('.qdec [data-qother]'); if (!inp || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
+  e.preventDefault(); answerDecision(inp.closest('.qdec'), inp.value);
+});
 function atBottom() { const t = $('transcript'); return t.scrollHeight - t.scrollTop - t.clientHeight < 80; }
-function scrollDown(force) { const t = $('transcript'); if (force) t.scrollTop = t.scrollHeight; }
+// Off-screen chat items take their real height only as they come near the screen (#949), so a chat sent to the
+// bottom stays pinned there while its last items grow, until you scroll away or press anything in it (opening a step).
+let pinned = false; // the scrollTop it was pinned at, or false
+// Observed afresh on each pin: a chat drawn again can end at the height it had, which would not count as a resize.
+const pinBox = new ResizeObserver(() => { if (pinned === false) return; const t = $('transcript'); t.scrollTop = t.scrollHeight; pinned = t.scrollTop; });
+function scrollDown(force) { const t = $('transcript'); if (force) { t.scrollTop = t.scrollHeight; pinned = t.scrollTop; pinBox.unobserve($('events')); pinBox.observe($('events')); } }
+$('transcript').addEventListener('scroll', () => { if (pinned !== false && $('transcript').scrollTop < pinned - 1) pinned = false; }, { passive: true });
+for (const type of ['pointerdown', 'keydown']) $('transcript').addEventListener(type, () => { pinned = false; }, { passive: true });
+// Streamed replies (#947): deltas draw once per frame, and only the open tail is parsed again. The finished blocks end at a blank line
+// outside a code fence whose next line starts a new top-level block (not indented, a list item, a quote, HTML or a link reference),
+// so parsing them apart gives the same HTML; the full reply is drawn again when it ends ('replace').
+const streamDue = new Set(); let streamFrame = 0;
+function streamSoon(id) { streamDue.add(id); streamFrame ||= requestAnimationFrame(drawStreams); }
+function drawStreams() {
+  streamFrame = 0; const stick = atBottom();
+  for (const id of streamDue) {
+    const ev = S.events.find((x) => x.k === 'text' && x.id === id), el = document.querySelector(`[data-text="${CSS.escape(id)}"]`);
+    if (ev && el) drawStream(el, ev.text);
+  }
+  streamDue.clear(); scrollDown(stick);
+}
+function streamCut(t, from) {
+  let cut = from, fence = null, blank = false;
+  for (let p = from, q; (q = t.indexOf('\n', p)) >= 0; p = q + 1) {
+    const line = t.slice(p, q);
+    if (fence) { if (line.trimStart().startsWith(fence) && !line.trim().slice(fence.length).replace(/[`~]/g, '')) fence = null; blank = false; continue; }
+    if (blank && !/^(?:\s|[-+*]\s|\d{1,9}[.)](?:\s|$)|[<>[]|$)/.test(line)) cut = p;
+    const f = /^ {0,3}(`{3,}|~{3,})/.exec(line); if (f) fence = f[1];
+    blank = !line.trim();
+  }
+  return cut;
+}
+function drawStream(el, text) {
+  let st = el._stream;
+  if (!st || st.done > text.length) { st = el._stream = { done: 0, keep: 0 }; el.textContent = ''; }
+  while (el.childNodes.length > st.keep) el.lastChild.remove();
+  const cut = streamCut(text, st.done);
+  if (cut > st.done) { el.insertAdjacentHTML('beforeend', mdc(text.slice(st.done, cut))); st.done = cut; st.keep = el.childNodes.length; }
+  el.insertAdjacentHTML('beforeend', mdc(text.slice(st.done)));
+}
 // ---------- new since you last looked, and folded quiet turns (#672) ----------
 // A parent's turn that ended quietly (report_quiet: its Done line says quiet) folds, with the quiet turns beside it, into
 // one line. A turn holding anything that needs the person never folds: their own message, an error, a question or
@@ -8753,19 +9138,33 @@ const chatViewChange = (act, v) => act.startsWith('preset-') ? CHAT_PRESETS.find
   : act.startsWith('look-') ? { look: act.slice(5) } : { [act.slice(5)]: !v[act.slice(5)] };
 S.openSteps = new Set(); // groups the person opened, by session and their first step
 S.shutSteps = new Set(); // steps the person closed in Opened, so a new step does not open them again
-function stepsView() {
+// latest: a line just came in, so only the latest turn is marked again (#946), from turnStart down.
+function stepsView(latest) {
   const box = $('events'), v = chatView(), look = v.steps ? (v.look === 'notes' && !v.notes ? 'group' : v.look) : '';
   box.classList.toggle('steps-hide', !v.steps);
   box.classList.toggle('notes-hide', !v.notes);
   box.classList.toggle('msgs-hide', !v.msgs);
   box.classList.toggle('done-hide', !v.done);
-  if (look === 'open') for (const d of box.querySelectorAll('details.tool:not([open])')) if (!S.shutSteps.has(d.dataset.tool)) d.open = true;
-  const boxes = [box, ...box.querySelectorAll('.qf-body')];
-  for (const c of boxes) markNarration(c);
-  if (look === 'group' || look === 'notes') for (const c of boxes) groupSteps(c, look === 'notes');
+  const from = latest ? turnStart(box, look === 'notes') : null;
+  if (look === 'open') for (const d of linesIn(box, 'details.tool:not([open])', from)) if (!S.shutSteps.has(d.dataset.tool)) d.open = true;
+  const boxes = from ? [box] : [box, ...box.querySelectorAll('.qf-body')];
+  for (const c of boxes) markNarration(c, from);
+  if (look === 'group' || look === 'notes') for (const c of boxes) groupSteps(c, look === 'notes', from);
   markLatestStep();
-  markFinished(box);
+  markFinished(box, from);
 }
+// Where the latest turn starts among the chat's lines (#946): the last Done line above the newest line, or, when Done
+// lines are hidden, the nearest line above it that breaks a run of steps (see groupSteps). A new line changes nothing
+// above it. Null while the chat has no Done line yet, for the whole chat.
+function turnStart(box, notes) {
+  let el = box.lastElementChild?.previousElementSibling;
+  while (el && !el.matches('.done-line')) el = el.previousElementSibling;
+  while (el && (el.matches('details.tool, details.steps, .tl-w') || (notes && el.matches('.reply.narr')) || hiddenHere(el))) el = el.previousElementSibling;
+  return el || null;
+}
+// The lines among c's children from `from` down (all of them without it), and with sel, what in them matches sel.
+const linesFrom = (c, from) => { if (!from) return [...c.children]; const a = []; for (let el = from; el; el = el.nextElementSibling) a.push(el); return a; };
+const linesIn = (c, sel, from) => from ? linesFrom(c, from).flatMap((el) => [...(el.matches(sel) ? [el] : []), ...el.querySelectorAll(sel)]) : c.querySelectorAll(sel);
 // What the chat leaves out with a checkmark off (the CSS for #events.*-hide below), so a run of steps folds across it.
 const hiddenHere = (el) => {
   const c = $('events').classList;
@@ -8777,10 +9176,10 @@ const hiddenHere = (el) => {
 // Docket's bookkeeping steps (BOOKKEEPING, #799) come after a session's answer, so they never make a reply narration, even
 // with one more line after them ('Waiting on your choice above.'): the answer before them stays a reply (#842).
 const BOOKKEEPING = /^mcp__portal__(mark_turn|report_quiet|rename_session|suggest_title|present_file|dismiss_proposal|close_session|send_to_session|start_session|propose_handoff|propose_to_desk|link_session|set_parent|needs_signin|remove_folder_later|recycle)$/;
-function markNarration(c) {
+function markNarration(c, from) {
   let said = [];
   const narr = () => { for (const r of said) r.classList.add('narr'); said = []; };
-  for (const el of c.children) {
+  for (const el of linesFrom(c, from)) {
     if (el.matches('.reply')) said.push(el);
     else if (el.matches('details.tool:not([data-book]), details.steps:has(details.tool:not([data-book]))')) narr();
     else if (el.matches('.done-line')) said = [];
@@ -8789,7 +9188,7 @@ function markNarration(c) {
 // Folds each run of steps among c's children into one group, adding to a group already there; with notes (Group), the
 // narration between them joins the run. A run folds when it holds a step and something more. The timeline's woven
 // lines, and what a checkmark leaves out, do not break a run; anything else does.
-function groupSteps(c, notes) {
+function groupSteps(c, notes, from) {
   let run = [];
   const flush = () => {
     const steps = run.flatMap((el) => el.matches('.steps') ? [...el.querySelector('.steps-body').children] : [el]);
@@ -8810,7 +9209,7 @@ function groupSteps(c, notes) {
     }
     run = [];
   };
-  for (const el of [...c.children]) {
+  for (const el of linesFrom(c, from)) {
     if (el.matches('details.tool, details.steps') || (notes && el.matches('.reply.narr'))) run.push(el);
     else if (!el.matches('.tl-w') && !hiddenHere(el)) flush();
   }
@@ -8852,10 +9251,11 @@ function stepsWhen(evs) {
 // The chat's newest step line, while its turn is still running, also says how long ago it finished; only that one, so
 // the chat stays uncluttered. Run from stepsView and every second from tick.
 function markLatestStep() {
-  const box = $('events');
-  const tops = [...box.querySelectorAll('details.tool, details.steps')].filter((el) => !el.parentElement.closest('details.steps'));
-  const last = tops[tops.length - 1], done = [...box.querySelectorAll('.done-line')].pop();
-  const latest = S.live[S.selected]?.status === 'running' && last && !(done && last.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING) ? last : null;
+  const box = $('events'), sel = 'details.tool, details.steps, .done-line';
+  let last = null; // the chat's last step or Done line, looked for from the bottom up so a long chat stays quick (#946)
+  if (S.live[S.selected]?.status === 'running') for (let el = box.lastElementChild; el && !last; el = el.previousElementSibling)
+    last = el.matches(sel) ? el : [...el.querySelectorAll(sel)].filter((x) => !x.parentElement.closest('details.steps')).pop();
+  const latest = last?.matches('details') ? last : null;
   for (const el of box.querySelectorAll('.latest-step')) if (el !== latest) el.classList.remove('latest-step');
   const ago = latest?.querySelector(':scope > summary .ago');
   if (!ago) return;
@@ -8893,7 +9293,9 @@ document.addEventListener('toggle', (e) => {
 function renderEvents(force, keep) {
   const t = $('transcript'), stick = atBottom(), top = t.scrollTop;
   const openTools = keep ? new Set([...$('events').querySelectorAll('details.tool[open]')].map((x) => x.dataset.tool)) : null;
+  const typed = keepTyped($('events').querySelectorAll('[data-perm], [data-card]'));
   $('events').innerHTML = chatHtml(S.events, S.lineAt?.id === S.selected ? S.lineAt.at : null) || '<div class="empty">No messages yet.</div>';
+  typed();
   for (const id of openTools || []) { const x = $('events').querySelector(`details.tool[data-tool="${CSS.escape(id)}"]`); if (x) x.open = true; }
   stepsView();
   weave();
@@ -8909,9 +9311,9 @@ function renderEvents(force, keep) {
 const FIN_SENT = /\b(?:ready|safe|fine|ok(?:ay)?|good) to (?:be )?close(?:d)?\b|\bcan (?:now )?be closed\b|\bcomplete and ready\b/i;
 // A ready-to-close sentence that waits on something first ("Two things are left for you, then ...", #764): no band.
 const FIN_LATER = /\b(?:then|once|after|when|until)\b|\bleft for you\b/i;
-function markFinished(box) {
+function markFinished(box, from) {
   let said = false, last = null;
-  for (const el of box.querySelectorAll('details.tool[data-said], .reply, .done-line')) {
+  for (const el of linesIn(box, 'details.tool[data-said], .reply, .done-line', from)) {
     if (el.matches('details.tool')) said = true;
     else if (el.matches('.reply')) last = el;
     else {
@@ -8965,32 +9367,52 @@ function finBand(t) {
 // a draft, without a conflict, with checks passed or none. A click sends "merge" as the person's message, so the session
 // still does the merge. Anything sent after the ask (the button, or words typed) removes the card, and a reload keeps it
 // gone since the chat then holds that message.
+// A final reply that ends on that exact ask counts too when the turn called no mark_turn (#951). When the pull
+// request cannot merge any more (it turned conflicting, say, as another one merged first with its own version
+// bump), the card stays and its button asks the session to fix it, instead of the card going without a word.
 S.mergeSent = new Set(); // asks answered by the button, before the message shows in the chat
+const MERGE_ASK_TEXT = /Say merge and I will merge pull request #(\d+)\.?\s*$/;
 function mergeAskOf(id, evs) {
-  let ask = null, ended = false;
+  let ask = null, ended = false, marked = false, said = null;
   for (const ev of evs) {
-    if (ev.k === 'user') ask = null;
-    else if (ev.k === 'tool' && /mark_turn$/.test(ev.name || '')) { ask = (ev.input?.label || ev.input?.state) === 'merge' && ev.input.pr ? ev : null; ended = false; }
-    else if (ev.k === 'result') ended = true;
+    if (ev.k === 'user') { ask = null; marked = false; said = null; }
+    else if (ev.k === 'tool' && /mark_turn$/.test(ev.name || '')) { ask = (ev.input?.label || ev.input?.state) === 'merge' && ev.input.pr ? ev : null; ended = false; marked = true; }
+    else if (ev.k === 'text') said = ev;
+    else if (ev.k === 'result') {
+      const m = !marked && MERGE_ASK_TEXT.exec(String(said?.text || '').trim());
+      if (m) ask = { id: said.id, input: { pr: Number(m[1]) } };
+      ended = true; marked = false; said = null;
+    }
   }
   if (!ask || !ended || S.mergeSent.has(`${id}:${ask.id}`)) return null;
-  const mine = (S.prs[id] || []).filter((p) => p.mine && ['open', 'conflict', 'draft'].includes(prState(p)));
-  const pr = mine.length === 1 && Number(mine[0].number) === Number(ask.input.pr) ? mine[0] : null;
-  return pr && prState(pr) === 'open' && !['fail', 'pending'].includes(pr.checks) ? { ask, pr } : null;
+  // the asked one among the session's own, even with others of its own still open
+  const pr = (S.prs[id] || []).find((p) => p.mine && Number(p.number) === Number(ask.input.pr) && ['open', 'conflict'].includes(prState(p)));
+  if (!pr) return null;
+  if (prState(pr) === 'conflict') return { ask, pr, fix: 'conflict' };
+  if (pr.checks === 'fail') return { ask, pr, fix: 'checks' };
+  return pr.checks === 'pending' ? null : { ask, pr };
 }
+const MERGE_FIX = {
+  conflict: { note: 'Conflict with its base branch', btn: 'Fix conflict', say: (n) => `Pull request #${n} now has a conflict with its base branch, so it cannot merge. Bring the base branch in, resolve the conflict, run the tests, push, and ask me to merge again.` },
+  checks: { note: 'Checks failed', btn: 'Fix checks', say: (n) => `Pull request #${n} has failing checks, so it cannot merge. Find out why, fix them, push, and ask me to merge again.` },
+};
 function mergeAsk() {
   const box = $('events');
   box.querySelector('.merge-ask')?.remove();
   const m = mergeAskOf(S.selected, S.events);
   if (!m) return;
-  const { ask, pr } = m;
-  box.insertAdjacentHTML('beforeend', `<div class="merge-ask" data-merge-ask="${esc(ask.id)}"><div class="ma-t"><b>#${esc(pr.number)}</b> ${esc(pr.title || 'Pull request')}<small>${pr.checks === 'pass' ? 'Checks passed' : 'No checks'} · the session does the merge</small></div><button class="primary" data-merge-go title="Send &quot;merge&quot; to the session as your message">Merge</button>${pr.url ? `<a class="ma-link" href="${esc(pr.url)}" target="_blank" rel="noopener" title="Open the pull request on GitHub">View PR</a>` : ''}</div>`);
+  const { ask, pr } = m, fix = MERGE_FIX[m.fix];
+  const btn = fix ? `<button class="primary" data-merge-go="${esc(m.fix)}" title="Ask the session to fix it, as your message">${fix.btn}</button>`
+    : '<button class="primary" data-merge-go title="Send &quot;merge&quot; to the session as your message">Merge</button>';
+  const note = fix ? `${fix.note} · the session fixes it, then asks again` : `${pr.checks === 'pass' ? 'Checks passed' : 'No checks'} · the session does the merge`;
+  box.insertAdjacentHTML('beforeend', `<div class="merge-ask" data-merge-ask="${esc(ask.id)}" data-merge-pr="${esc(pr.number)}"><div class="ma-t"><b>#${esc(pr.number)}</b> ${esc(pr.title || 'Pull request')}<small>${note}</small></div>${btn}${pr.url ? `<a class="ma-link" href="${esc(pr.url)}" target="_blank" rel="noopener" title="Open the pull request on GitHub">View PR</a>` : ''}</div>`);
 }
 document.addEventListener('click', (e) => {
   const b = e.target.closest('[data-merge-go]'); if (!b) return;
-  S.mergeSent.add(`${S.selected}:${b.closest('[data-merge-ask]').dataset.mergeAsk}`);
-  b.closest('.merge-ask').remove();
-  send('merge');
+  const card = b.closest('[data-merge-ask]'), fix = MERGE_FIX[b.dataset.mergeGo];
+  S.mergeSent.add(`${S.selected}:${card.dataset.mergeAsk}`);
+  card.remove();
+  send(fix ? fix.say(card.dataset.mergePr) : 'merge');
 });
 // end of merge ask
 function appendEvent(ev) {
@@ -8998,8 +9420,8 @@ function appendEvent(ev) {
   const stick = atBottom();
   if ($('events').querySelector('.empty')) $('events').innerHTML = '';
   $('events').insertAdjacentHTML('beforeend', atHtml(ev));
-  if (ev.k === 'tool' || ev.k === 'text') stepsView(); // a new reply makes the one before a bookkeeping step narration (#799)
-  if (ev.k === 'result') markFinished($('events'));
+  if (ev.k === 'tool' || ev.k === 'text') stepsView(true); // a new reply makes the one before a bookkeeping step narration (#799)
+  if (ev.k === 'result') markFinished($('events'), turnStart($('events')));
   mergeAsk(); // stays under the last reply, or goes once something is sent
   scrollDown(stick);
   if (ev.login) showSignin();
@@ -9315,6 +9737,40 @@ function questionFormHtml(ev) {
   }).join('');
   return `<div class="qform" data-perm="${esc(ev.id)}" data-qform>${body}<div class="qb"><button class="primary" data-qsubmit${tip('q-submit')}>Submit answers</button><button data-qskip${tip('q-skip')}>Answer in the chat instead</button><span class="hint" data-qhint></span></div></div>`;
 }
+// What the person has put into cards so far (#942): picks, typed text, focus and caret. A card drawn again (the
+// autopilot's suggestion arriving, the card's state changing, the chat drawn again) gets them back, so their own answer
+// is never wiped. Returns a function that puts them back once the new cards are in.
+function keepTyped(cards) {
+  const a = document.activeElement, kept = [], on = (i) => i.type === 'radio' || i.type === 'checkbox';
+  for (const card of cards) {
+    const ins = [...card.querySelectorAll('input, textarea')], focus = ins.indexOf(a), vals = ins.map((i) => (on(i) ? i.checked : i.value));
+    if (focus < 0 && !vals.some(Boolean)) continue;
+    const sel = card.dataset.perm != null ? `[data-perm="${CSS.escape(card.dataset.perm)}"]` : `[data-card="${CSS.escape(card.dataset.card)}"]`;
+    kept.push({ sel, vals, focus, caret: focus >= 0 && typeof a.selectionStart === 'number' ? [a.selectionStart, a.selectionEnd] : null });
+  }
+  return () => {
+    for (const k of kept) {
+      const ins = [...(document.querySelector(k.sel)?.querySelectorAll('input, textarea') || [])];
+      if (ins.length !== k.vals.length) continue; // answered or changed meanwhile: nothing to put back
+      ins.forEach((i, n) => { if (on(i)) i.checked = k.vals[n]; else i.value = k.vals[n]; });
+      if (k.focus >= 0) { ins[k.focus].focus({ preventScroll: true }); if (k.caret) try { ins[k.focus].setSelectionRange(...k.caret); } catch {} }
+    }
+  };
+}
+// One card drawn again in place, keeping what the person has put into it.
+function redrawCard(el, html) { const back = keepTyped([el]); el.outerHTML = html; back(); }
+// The person answering a question form, or typing while a merge waits (#942): the server keeps the autopilot from
+// answering it for a few minutes after (it may still suggest beside it). Said at most every 30 s for each.
+const busySaid = {};
+function sayBusy(id) {
+  if (Date.now() - (busySaid[id] || 0) < 30_000) return;
+  busySaid[id] = Date.now(); api('/api/pilot/busy', { id }).catch(() => {});
+}
+for (const t of ['input', 'change', 'focusin']) $('events').addEventListener(t, (e) => {
+  const f = e.target.closest?.('[data-qform]');
+  if (f && e.target.matches('input, textarea')) sayBusy(`question:${f.dataset.perm}`);
+});
+$('input').addEventListener('input', () => { if (S.selected && S.selected !== 'draft' && $('input').value.trim()) sayBusy(`typing:${S.selected}`); });
 function questionFormAnswers(card, ev) {
   const answers = {}, missing = [];
   ev.input.questions.forEach((q, qi) => {
@@ -9464,6 +9920,7 @@ async function loadPlans() {
   S.plans = { client, on: !!d?.on, folder: !!d?.folder, error: d?.error || '', count: d?.count || 0, plans: d?.plans || [], at: Date.now() };
   S.planDetail = {};
   renderList(); if (!S.schedOpen) renderTasks();
+  decorateDecisions(); // its decisions' buttons and answers in the chat (#929)
 }
 // A marker file carries the start of a session id; Docket's own plans carry the whole id.
 const holdsPlan = (p, id) => p.holders.some((h) => h === id || (S.plans.folder && h.length >= 6 && id.startsWith(h)));
@@ -9670,7 +10127,7 @@ function planOpenHtml(t, p, me, u) {
 // "you" tag; a step this session holds has an accent bar on the left. A click opens it; a click on its title closes it.
 function planRowHtml(t, p, me, u, v, depth) {
   const open = u.open.includes(t.id), done = planFinished(t);
-  const cls = ['plan-row', 'st-' + t.state, open && 'open', done && 'done', t.forUser && 'user', t.holder === me && !done && 'mine'].filter(Boolean).join(' ');
+  const cls = ['plan-row', 'st-' + t.state, open && 'open', done && 'done', t.forUser && 'user', t.holder === me && 'mine'].filter(Boolean).join(' ');
   const tag = t.kind || t.forUser ? `<span class="ptag${t.forUser ? ' you' : ''}"${t.forUser ? ' title="Only you can do this step; no session claims it"' : ''}>${t.forUser ? 'you' + (t.kind ? ' · ' : '') : ''}${esc(t.kind)}</span>` : '';
   return `<div class="${cls}" data-id="${esc(t.id)}"${open ? '' : ` title="${esc(planTip(t))}"`}><span class="ic st-${t.state}">${PLAN_ICON[t.state] || '●'}</span><span class="l1">${depth ? `<span class="tw">${' '.repeat(depth - 1)}└</span>` : ''}<span class="id">${esc(t.id)}</span>${esc(t.title)}</span><span class="end">${tag}</span>${v.two && !open ? `<span class="l2">${planSummary(t, me)}</span>` : ''}${open ? planOpenHtml(t, p, me, u) : ''}</div>`;
 }
@@ -9681,7 +10138,9 @@ function planHtml(p, me, ctx) {
   const phases = v.phases ? planPhases(p) : null;
   const active = (t) => t.state === 'claimed' || t.state === 'waiting_outside';
   const base = (t) => (!planFinished(t) || u.done) && (!u.active || active(t) || planFinished(t));
-  const pass = (t) => base(t) || reveal.some((g) => g.includes(t.id));
+  // the steps of the session whose details these are show even when done, so a finished task session sees its own
+  const mine = (t) => !!me && t.holder === me;
+  const pass = (t) => base(t) || mine(t) || reveal.some((g) => g.includes(t.id));
   // the └ shows only under a step that is shown too
   const depth = (t) => { let d = 0; for (let x = parents.get(t.id); x && pass(x) && d < 12; x = parents.get(x.id)) d++; return d; };
   let out = '', run = [];
@@ -9706,7 +10165,7 @@ function planHtml(p, me, ctx) {
     const pr = (p.phaseProgress || []).find((x) => x.name === ph.key), live = ph.steps.filter((t) => t.state !== 'dropped');
     const d = pr ? pr.done : live.filter((t) => t.state === 'done').length, n = pr ? pr.total : live.length;
     const complete = ph.steps.every(planFinished), any = ph.steps.some(pass);
-    const auto = complete && !u.done, shut = u.shut.includes(ph.key) || (auto && !u.unshut.includes(ph.key));
+    const auto = complete && !u.done && !ph.steps.some(mine), shut = u.shut.includes(ph.key) || (auto && !u.unshut.includes(ph.key));
     if (!any && !complete && !v.gaps) continue;
     out += `<div class="plan-phase${shut ? ' shut' : ''}${complete ? ' complete' : ''}${!any && !complete ? ' nomatch' : ''}" data-plan-phase="${esc(ph.key)}"${auto ? ' data-auto' : ''} title="${shut ? 'Show' : 'Fold'} this phase"><span class="car">▾</span><span class="pn">${ph.no ? `<span class="no">${ph.no}</span>` : ''}${esc(ph.name)}</span><span class="pc">${complete ? '✓ done' : `${d}/${n}<span class="mini"><i style="width:${n ? Math.round(d / n * 100) : 0}%"></i></span>`}</span></div>`;
     if (!shut) steps(ph.steps);
@@ -9723,8 +10182,18 @@ function planHtml(p, me, ctx) {
   return `<div class="plan" data-plan="${esc(p.id)}"><div class="plan-head"><div class="t">${esc(p.title)}${review}</div>
     <div class="plan-sub">${p.coordinator ? `Coordinated by ${planSessChip(p.coordinator, p.coordinatorTitle, me)} · ` : ''}${where} · <a href="#" data-plan-tree${tip('plan-tree')}>Plan tree</a></div>
     ${planMotionHtml(p)}${p.tasks.length ? `<div class="plan-bar">${bar}</div><div class="plan-legend"><span style="--c: var(--ok)">${p.done} of ${p.total} done</span><span style="--c: var(--run)">${count('claimed')} in progress</span><span style="--c: var(--muted)">${count('waiting_outside')} waiting outside</span></div>` : ''}</div>
-    <div class="plan-flts"><button class="plan-flt" data-plan-f="active" aria-pressed="${u.active}" title="Only steps in progress or waiting outside Docket">Active<span class="n">${p.tasks.filter(active).length}</span></button><span class="div"></span><button class="plan-flt" data-plan-f="done" aria-pressed="${u.done}" title="${esc(doneTip)}">✓ Done<span class="n">${count('done')}</span></button></div>
+    ${planDecisionsHtml(p)}<div class="plan-flts"><button class="plan-flt" data-plan-f="active" aria-pressed="${u.active}" title="Only steps in progress or waiting outside Docket">Active<span class="n">${p.tasks.filter(active).length}</span></button><span class="div"></span><button class="plan-flt" data-plan-f="done" aria-pressed="${u.done}" title="${esc(doneTip)}">✓ Done<span class="n">${count('done')}</span></button></div>
     <div class="plan-list">${out || `<div class="hint">${empty}</div>`}</div></div>`;
+}
+// The plan's decisions for the person (#929), read-only: open ones first, then answered ones with the answer and when.
+// They are answered in the coordinator's chat, never here.
+function planDecisionsHtml(p) {
+  const decs = (p.tasks || []).filter((t) => t.q && t.state !== 'dropped').sort((a, b) => a.q - b.q);
+  if (!decs.length) return '';
+  const open = decs.filter((t) => !t.answer), done = decs.filter((t) => t.answer);
+  const row = (t) => `<div class="pd${t.answer ? ' ans' : ''}" data-plan-jump="${esc(t.id)}" title="${esc(`${t.id} · ${t.answer ? 'answered' : 'waiting on you'}${t.answer ? '' : '\nAnswer it in the coordinator\'s chat, with a button under the question or by typing "Q' + t.q + ' …"'}`)}"><span class="id">Q${t.q}</span><span class="q">${esc(t.title)}</span>`
+    + `<span class="a">${t.answer ? `<b>${esc(t.answer.replace(/\n/g, ' / '))}</b> · ${esc(qWhen(t.answeredAt))}` : `${esc(t.id)} · answer in the chat${t.options?.length ? `, e.g. “Q${t.q} ${esc(t.options[0])}”` : ''}`}</span></div>`;
+  return `<div class="plan-decs">${open.length ? `<div class="pd-h">Decisions waiting on you · ${open.length}</div>${open.map(row).join('')}` : ''}${done.length ? `<div class="pd-h">Answered · ${done.length}</div>${done.map(row).join('')}` : ''}</div>`;
 }
 // ? shows or hides the Plan key at the top of the section (a link, DESIGN.md).
 const planKeyBtn = () => `<button class="plan-key" data-plan-key aria-expanded="${S.planKey}" title="${S.planKey ? 'Hide the key' : 'Key: what the step icons, colours and tags mean'}">?</button>`;
@@ -9747,7 +10216,7 @@ function planSection(id) {
     const shown = held.map((p) => planDetail(p.id)).filter(Boolean);
     return [held.length === 1 ? `Plan · ${held[0].done} of ${held[0].total} done` : `Plans ${held.length}`, planKeyBox() + (shown.length ? shown.map((p) => folderPlanHtml(p, id)).join('') : '<div class="hint">Loading…</div>'), `<span class="plan-ctl">${planKeyBtn()}</span>`];
   }
-  const ids = [...new Set([ownPlan(id)?.id, ...S.plans.plans.filter((p) => p.holders.includes(id)).map((p) => p.id)].filter(Boolean))];
+  const ids = [...new Set([ownPlan(id)?.id, ...S.plans.plans.filter((p) => (p.members || p.holders).includes(id)).map((p) => p.id)].filter(Boolean))];
   if (!ids.length) return null;
   const shown = ids.map((pid) => planDetail(pid)).filter(Boolean);
   const own = ownPlan(id), ctx = { anyOpen: false };
@@ -10260,14 +10729,15 @@ $('stopBtn').onclick = () => S.live[S.selected] && api(`/api/sessions/${S.select
 const TYPING_IDLE = 60000;
 const typing = { id: null, client: null, since: 0, last: 0, pinged: 0, timer: null, drafts: {} };
 const typingDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
-function typingOn() {
+function typingOn(ping) {
   const id = S.selected;
   if (!id || String(id).startsWith('sched') || document.hidden) return;
   if (!typing.since) Object.assign(typing, { id, client: S.client, since: Date.now() });
   typing.last = Date.now();
   // Tells the app you are typing, so an automatic update (and its restart, which reloads this page) waits until
   // a minute after the last keystroke (update-mode.mjs typingNow). At most every 5 seconds.
-  if (typing.last - typing.pinged >= 5000) { typing.pinged = typing.last; api('/api/typing-now', {}).catch(() => {}); }
+  // Only a keystroke pings (#965): coming back to a page with a draft left in its typing box is not typing.
+  if (ping === true && typing.last - typing.pinged >= 5000) { typing.pinged = typing.last; api('/api/typing-now', { session: typing.id }).catch(() => {}); }
   clearTimeout(typing.timer); typing.timer = setTimeout(() => typingOff(true), TYPING_IDLE);
 }
 // idle: the minute with no keystroke is not typing, so the stretch ends at the last keystroke.
@@ -10281,7 +10751,7 @@ function typingOff(idle) {
 function postTyping(id, client, ms) { if (ms > 0) api(`/api/sessions/${id}/typing`, { client, day: typingDay(), ms }).catch(() => {}); }
 // Back on the session (picked again, or this tab or window again): the clock runs only if its box still has text.
 function typingResume() { if ($('input').value.trim() && !document.hidden && document.hasFocus()) typingOn(); }
-$('input').addEventListener('input', (e) => { if (e.isTrusted) typingOn(); });
+$('input').addEventListener('input', (e) => { if (e.isTrusted) typingOn(true); });
 window.addEventListener('blur', typingOff);
 window.addEventListener('focus', typingResume);
 document.addEventListener('visibilitychange', () => { if (document.hidden) typingOff(); else typingResume(); });
@@ -10595,9 +11065,26 @@ $('pauseBtn').onclick = async () => {
 };
 
 // ---------- live updates ----------
+// A burst of session updates redraws the list and the desk tabs once, on the next frame (#945). The timer covers a
+// hidden page, where frames wait, so the tab title's counts still follow.
+let listDue = false;
+function listSoon() {
+  if (listDue) return;
+  listDue = true;
+  const run = () => { if (!listDue) return; listDue = false; renderList(); renderClients(); };
+  requestAnimationFrame(run); setTimeout(run, 250);
+}
+// The server sends a page the chat messages of the session it has open only (#948): tell it each time that changes.
+let liveSocket = null, openTold;
+function tellOpen() {
+  if (liveSocket?.readyState !== 1 || openTold === S.selected) return;
+  openTold = S.selected; liveSocket.send(JSON.stringify({ t: 'open', id: S.selected }));
+}
+{ let sel = S.selected; Object.defineProperty(S, 'selected', { get: () => sel, set: (v) => { sel = v; tellOpen(); }, enumerable: true }); }
 function connect() {
-  const ws = new WebSocket(`ws://${location.host}/ws`);
+  const ws = liveSocket = new WebSocket(`ws://${location.host}/ws`);
   ws.onopen = async () => {
+    openTold = undefined; tellOpen();
     if ($('restartCover') && S.restartDown) { stashBox(); try { sessionStorage.setItem('docket-reload', JSON.stringify({ client: S.client, selected: S.selected })); } catch {} location.reload(); return; } // back after Restart Docket
     $('conn').hidden = true;
     loadPaused();
@@ -10629,16 +11116,16 @@ function connect() {
       if (before && before.status !== 'idle' && m.session.status === 'idle' && m.session.client === S.client) refreshSpend(5000);
       if (before && before.status !== 'idle' && m.session.status === 'idle') { refreshPRs(); if (m.session.id === S.selected) { refreshFiles(); refreshCost(); } } // a finished turn may have opened one
       if (m.session.id === S.selected) { renderHead(); markSeen('live update'); renderComposerBar(); if (before && before.status !== m.session.status) { tlSoon(); if (!S.schedOpen) renderTasks(); } } // Mark done shows only once the turn has ended
-      renderList(); renderClients(); stripLater(); // a card in a session under the open one shows in its strip
+      listSoon(); stripLater(); // a card in a session under the open one shows in its strip
     } else if (m.t === 'event' && mine) {
       if (S.events.some((x) => x === m.ev)) return;
       S.events.push(m.ev); appendEvent(m.ev);
     } else if (m.t === 'delta' && mine) {
       const ev = S.events.find((x) => x.k === 'text' && x.id === m.evId);
-      if (ev) { ev.text += m.text; const el = document.querySelector(`[data-text="${CSS.escape(m.evId)}"]`); const stick = atBottom(); if (el) el.innerHTML = mdc(ev.text); scrollDown(stick); }
+      if (ev) { ev.text += m.text; streamSoon(m.evId); }
     } else if (m.t === 'replace' && mine) {
       const ev = S.events.find((x) => x.k === 'text' && x.id === m.ev.id);
-      if (ev) { ev.text = m.ev.text; const el = document.querySelector(`[data-text="${CSS.escape(ev.id)}"]`); if (el) el.innerHTML = mdc(ev.text); }
+      if (ev) { ev.text = m.ev.text; streamDue.delete(ev.id); const el = document.querySelector(`[data-text="${CSS.escape(ev.id)}"]`); if (el) { el._stream = null; el.innerHTML = mdc(ev.text); } }
       tlSoon();
     } else if (m.t === 'suggestion' && mine) {
       setSuggestion(m.text);
@@ -10647,12 +11134,12 @@ function connect() {
     } else if (m.t === 'card' && mine) {
       const i = S.events.findIndex((x) => x.id === m.ev.id && x.k === m.ev.k);
       if (i >= 0) S.events[i] = m.ev;
-      const el = document.querySelector(`[data-card="${CSS.escape(m.ev.id)}"]`); if (el) el.outerHTML = eventHtml(m.ev);
+      const el = document.querySelector(`[data-card="${CSS.escape(m.ev.id)}"]`); if (el) redrawCard(el, eventHtml(m.ev));
       if (m.ev.startedId) loadSessions(S.client).then(renderList);
     } else if (m.t === 'permission' && mine) {
       const i = S.events.findIndex((x) => x.k === 'permission' && x.id === m.ev.id);
       if (i >= 0) S.events[i] = m.ev;
-      const el = document.querySelector(`[data-perm="${CSS.escape(m.ev.id)}"]`); if (el) el.outerHTML = eventHtml(m.ev);
+      const el = document.querySelector(`[data-perm="${CSS.escape(m.ev.id)}"]`); if (el) redrawCard(el, eventHtml(m.ev));
     } else if (m.t === 'compact' && mine) {
       const i = S.events.findIndex((x) => x.k === 'compact' && x.id === m.ev.id);
       if (i >= 0) S.events[i] = m.ev;
@@ -10687,9 +11174,11 @@ function connect() {
         if (c.family?.rootId === m.id) c.family.rootTitle = m.title;
         if (!S.schedOpen) renderTasks();
       }
-      renderList(); if (mine) renderHead();
+      listSoon(); if (mine) renderHead();
     } else if (m.t === 'restarting') {
       showRestartCover(m.relaunch);
+    } else if (m.t === 'budget') {
+      if (m.client === S.client) refreshSpend(); // its daily budget stop (#959)
     } else if (m.t === 'paused') {
       showPaused(m.paused);
     } else if (m.t === 'reloads') {
@@ -10700,8 +11189,7 @@ function connect() {
     } else if (m.t === 'waiting') {
       const row = (S.history[m.client] || []).find((r) => r.id === m.id);
       if (row) { row.waiting = m.waiting; if ('why' in m) { row.unreadWhy = m.why; row.unreadSaid = m.said; } } // Mark unread's tag (#771)
-      if (m.client === S.client) { renderList(); if (mine) renderHead(); }
-      renderClients();
+      listSoon(); if (mine && m.client === S.client) renderHead();
     } else if (m.t === 'links') {
       refreshPRs();
     } else if (m.t === 'clients') {

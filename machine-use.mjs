@@ -35,18 +35,20 @@ export function groupProcesses(list, { appPid, runnerPid }) {
   const order = ['claude', 'grok', 'codex', 'node', 'browser', 'other'];
   const rows = [one(appPid, 'Docket app'), one(runnerPid, 'Session runner'),
     ...order.map((k) => groups.get(k)).filter(Boolean)];
-  // The processor time all of them have used so far, for cpuPercent.
-  const cpu = [...seen].reduce((s, pid) => s + (byPid.get(pid)?.cpu || 0), 0);
-  return { rows, total: rows.reduce((s, r) => s + r.mem, 0), cpu };
+  // Docket's programs in this list, for cpuPercent.
+  const pids = [...seen].filter((pid) => byPid.has(pid));
+  return { rows, total: rows.reduce((s, r) => s + r.mem, 0), pids };
 }
 
-// Docket's share of the whole computer's processor between two readings of groupProcesses' cpu ({ cpu, at }), as
-// Task Manager and Activity Monitor's CPU column count it over all cores. A program that ended in between takes
-// its time with it, so a drop reads as 0, not less.
+// Docket's share of the whole computer's processor between two readings ({ byPid: Map pid -> seconds, at }; after
+// also has pids, Docket's programs now), as Task Manager and Activity Monitor's CPU column count it over all cores.
+// Each program counts only what it used in between, so a set of programs that changes does not count their past:
+// a runner missed in the reading before is still in its byPid (every program on the computer), a program that
+// ended takes its time with it, and one that started since used all its time in between.
 export function cpuPercent(before, after, cores) {
   if (!before || !after || after.at <= before.at || !cores) return null;
-  const pct = ((after.cpu - before.cpu) / ((after.at - before.at) / 1000) / cores) * 100;
-  return Math.min(100, Math.max(0, Math.round(pct)));
+  const used = after.pids.reduce((s, pid) => s + Math.max(0, (after.byPid.get(pid) || 0) - (before.byPid.get(pid) ?? 0)), 0);
+  return Math.min(100, Math.max(0, Math.round(used / ((after.at - before.at) / 1000) / cores * 100)));
 }
 
 // The folder sizes: counting them is slow, so the app counts them in the background now and then and keeps

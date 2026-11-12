@@ -9,7 +9,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { freePorts, stopTree } from './free-port.mjs';
+import { freePorts, stopTree, TEST_DOCKET_ENV } from './free-port.mjs';
 import { sessionRows } from '../costs.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -73,7 +73,7 @@ before(async () => {
   put(path.join(DATA, 'usage-index.json'), JSON.stringify({ c1: old('x1', 'c1'), c2: old('x2', 'c2') }));
   server = spawn(process.execPath, [path.join(ROOT, 'server.mjs')], {
     cwd: ROOT, stdio: 'ignore', windowsHide: true,
-    env: { ...process.env, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
+    env: { ...process.env, ...TEST_DOCKET_ENV, PORTAL_PORT: String(PORT), DOCKET_RUNNER_PORT: String(RUNNER_PORT), PORTAL_CLIENTS: path.join(tmp, 'clients.json'),
       PORTAL_STATE: path.join(tmp, 'state.json'), PORTAL_SCHEDULES: path.join(tmp, 'schedules.json'), PORTAL_DATA: DATA,
       AWS_CONFIG_FILE: path.join(tmp, 'aws-config'), CODEX_HOME: path.join(tmp, 'shared-codex'), OPENAI_API_KEY: '', XAI_API_KEY: '' },
   });

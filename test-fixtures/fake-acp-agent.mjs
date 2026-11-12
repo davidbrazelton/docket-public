@@ -16,8 +16,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 if (process.argv[2] === '--version') { process.stdout.write('grok 1.0.70 (fake) [stable]\n'); process.exit(0); } // the setup wizard's check
-// `grok models`, Docket's sign-in check: signed in only with FAKE_ACP_SIGNED_IN, so other tests see a desk not signed in.
-if (process.argv[2] === 'models') { process.stdout.write(process.env.FAKE_ACP_SIGNED_IN ? 'You are logged in with grok.com.\n' : 'You are not authenticated.\n'); process.exit(0); }
+// `grok models`, Docket's sign-in check: signed in only with FAKE_ACP_SIGNED_IN, so other tests see a desk not signed in,
+// and not in a Grok home holding a file signed-out (a desk signed in to nothing, #914).
+const signedIn = process.env.FAKE_ACP_SIGNED_IN && !(process.env.GROK_HOME && fs.existsSync(path.join(process.env.GROK_HOME, 'signed-out')));
+if (process.argv[2] === 'models') { process.stdout.write(signedIn ? 'You are logged in with grok.com.\n' : 'You are not authenticated.\n'); process.exit(0); }
 const MEMORY = process.env.FAKE_ACP_MEMORY, HOW = process.env.FAKE_ACP_RESUME;
 const memoryFile = (sid) => path.join(MEMORY, `${sid}.json`);
 const recall = (sid) => { try { return JSON.parse(fs.readFileSync(memoryFile(sid), 'utf8')); } catch { return null; } };
@@ -130,5 +132,8 @@ async function pilotRun(text) {
   }
   const slow = text.match(/^PILOT_SLOW (\d+)$/m);
   if (slow) await new Promise((r) => setTimeout(r, +slow[1]));
+  // "PILOT_HOLD <file>" keeps it going until the test makes that file (at most a minute), so a test can count on it.
+  const hold = text.match(/^PILOT_HOLD (.+)$/m);
+  for (const until = Date.now() + 60000; hold && !fs.existsSync(hold[1].trim()) && Date.now() < until;) await new Promise((r) => setTimeout(r, 100));
   return `pilot run: ${done.length} answered. ${done.join(' ')}`;
 }
