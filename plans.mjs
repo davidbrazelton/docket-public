@@ -19,8 +19,9 @@ export const KINDS = ['build', 'test', 'decision', 'research'];
 // line was never reviewed (0). New plans start at the current version. 1: the rules of #651 to #655. 2: done means
 // done, and a task set done by mistake is corrected (#663). 3: fewer user steps, checks and other people's work are not
 // the user's, and the coordinator starts everything free at once and gathers the user's decisions (#870). 4: waiting_outside only when someone said so,
-// keep the plan moving in parallel, and pausing is the user's (#889).
-export const PLAN_RULES_VERSION = 4;
+// keep the plan moving in parallel, and pausing is the user's (#889). 5: every question the coordinator asks the user is a
+// plan decision, so the plan's Next for you list shows it (#993).
+export const PLAN_RULES_VERSION = 5;
 // Task names follow the plan tree (#639): T1, T2 in the master plan; T3.1, T3.2 in a plan made for task T3; T3.2.1
 // one level deeper. Numbers are never reused: a dropped task keeps its number and stays in the file.
 const TASK_ID = /T\d+(?:\.\d+)*/;
@@ -48,9 +49,13 @@ const PHASE_SEP = ' | ';
 // holds "|". The answer keeps the user's own words, on as many lines as they wrote.
 const optionList = (a) => (a || []).map((o) => oneLine(String(o ?? '').replace(/\|/g, '/'))).filter((o, i, all) => o && all.indexOf(o) === i).slice(0, 6);
 export const isDecision = (t) => !!t?.q;
-// The plan's decisions for the user, in question order: { q, id, title, options, answer, answeredAt, state }.
+// A decision is settled once it has an answer or its task is done (#990): a coordinator may mark it done with only a
+// note, and it is then no longer waiting on the user.
+export const decisionSettled = (t) => !!t.answer || t.state === 'done';
+// The plan's decisions for the user, in question order: { q, id, title, options, answer, answeredAt, state, note,
+// doneAt } (doneAt: when its task was set done).
 export const decisions = (plan) => plan.tasks.filter(isDecision).sort((a, b) => a.q - b.q)
-  .map((t) => ({ q: t.q, id: t.id, title: t.title, options: t.options, answer: t.answer, answeredAt: t.answeredAt, state: t.state }));
+  .map((t) => ({ q: t.q, id: t.id, title: t.title, options: t.options, answer: t.answer, answeredAt: t.answeredAt, state: t.state, note: t.note, doneAt: t.state === 'done' ? t.claimedAt : '' }));
 export const maxQuestion = (plan) => Math.max(0, ...plan.tasks.map((t) => t.q || 0));
 // The tasks a user's answers can go to: the plan's decisions not dropped, by their number.
 export const decisionByQ = (plan, q) => plan.tasks.find((t) => t.q === Number(q) && t.state !== 'dropped') || null;

@@ -47,6 +47,13 @@ test('one stopped by Restart Docket waits for the person (Continue), even with t
   assert.match(r.why, /Restart Docket/);
 });
 
+test('one stopped by Quit Docket waits for the person (Continue), even with the setting on', () => {
+  const rec = { cutOff: newCutOff('quit', now - 1000, now) };
+  const r = autoContinueCheck({ on: true, rec, mtime: now - 1000, now: now + 10_000 });
+  assert.equal(r.go, false);
+  assert.match(r.why, /Quit Docket/);
+});
+
 test('an old one found at start waits for the person', () => {
   const rec = { cutOff: newCutOff('start', now - RECENT_MS - 60_000, now) };
   assert.equal(autoContinueCheck({ on: true, rec, mtime: rec.cutOff.mtime, now }).go, false);

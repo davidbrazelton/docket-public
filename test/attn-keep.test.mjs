@@ -9,7 +9,7 @@ const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8'
 const start = page.indexOf('// ---------- keeping sessions in needs attention');
 const end = page.indexOf('// end of keeping sessions in needs attention');
 assert.ok(start > 0 && end > start, 'the keeping part of index.html has moved or lost its markers');
-const { ATTN_WINDOWS, attnWindowOf, lastWorkdayStart, keepSince, attnShown } = new Function(page.slice(start, end) + '\nreturn { ATTN_WINDOWS, attnWindowOf, lastWorkdayStart, keepSince, attnShown };')();
+const { ATTN_WINDOWS, attnWindowOf, lastWorkdayStart, keepSince, attnShown, planAttn } = new Function(page.slice(start, end) + '\nreturn { ATTN_WINDOWS, attnWindowOf, lastWorkdayStart, keepSince, attnShown, planAttn };')();
 
 // November 2026, local time: Fri 6, Sat 7, Sun 8, Mon 9, Tue 10, Wed 11; Fri 23 Oct is two weeks before Mon 9.
 const at = (day, h = 0, m = 0, month = 10) => +new Date(2026, month, day, h, m);
@@ -81,6 +81,27 @@ test('the app records a touch when you send or start a session, and archiving ta
   assert.match(server, /p === '\/api\/keep'/);
 });
 
-test('the ✦ count still counts only what needs you', () => {
-  assert.ok(page.includes("const n = allSessionRows().filter((s) => ['needs', 'waiting', 'ending', 'cut'].includes(attnKind(s))).length;"));
+test('the ✦ count still counts only what needs you, a plan waiting on you included', () => {
+  assert.ok(page.includes("const n = allSessionRows().filter((s) => ['needs', 'waiting', 'planwait', 'ending', 'cut'].includes(attnKind(s))).length;"));
+});
+
+test('a plan not yet finished keeps its session in ✦, in every state, until every task is done or dropped (#967)', () => {
+  const plan = (done, total, state) => ({ done, total, motion: state ? { state, why: '' } : null });
+  assert.equal(planAttn(plan(8, 12, 'waiting')), 'planwait');
+  assert.equal(planAttn(plan(8, 12, 'stalled')), 'stalled');
+  assert.equal(planAttn(plan(8, 12, 'moving')), 'plan');
+  assert.equal(planAttn(plan(8, 12, 'paused')), 'plan');
+  assert.equal(planAttn(plan(0, 3)), 'plan', "a plan folder's plan has no state");
+  assert.equal(planAttn(plan(12, 12)), null, 'every task done (dropped ones are not counted in total)');
+  assert.equal(planAttn(plan(0, 0)), null, 'a plan with no tasks');
+  assert.equal(planAttn(undefined), null);
+  assert.equal(planAttn(false), null, 'plans off');
+});
+
+test('attnKind asks the plan the badge shows, a stuck plan above a warm cache, and the list has a section for each', () => {
+  const fn = page.slice(page.indexOf('function attnKind(s) {'), page.indexOf('const attnKindHeld'));
+  assert.ok(fn.includes('planAttn(S.plans.on && ownPlan(s.id))'), 'the same lookup as planBadge');
+  assert.ok(fn.indexOf("plan === 'planwait' || plan === 'stalled'") < fn.indexOf('cacheWarm(s)'), 'stalled or waiting plans sort near the top');
+  assert.ok(fn.trimEnd().endsWith('return plan;\n}'), 'a moving plan comes last of the live kinds');
+  for (const k of ['planwait', 'stalled', 'plan']) assert.ok(page.includes(`['${k}', 'Plan `), `a section for ${k}`);
 });

@@ -40,3 +40,10 @@ CREATE TABLE IF NOT EXISTS installer_runs (
   platform TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS installer_runs_day ON installer_runs (day);
+
+-- The maker's own installs (#982): they keep sending, so reports can be checked end to end, and queries.sql leaves
+-- them out. Add one by hand (see README.md); the IDs live only here, never in the repo.
+CREATE TABLE IF NOT EXISTS excluded (
+  install_id TEXT NOT NULL PRIMARY KEY,
+  note TEXT                       -- which computer
+);

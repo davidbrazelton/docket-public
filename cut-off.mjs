@@ -7,7 +7,7 @@ export const ELSEWHERE_MS = 2 * 60_000; // the page's "may be running in another
 export const GAP_MS = 15_000; // between one automatic continue and the next
 
 // The saved record of a cut-off (state.sessions[id].cutOff). how: 'runner' when the app saw the runner go,
-// 'start' when the app found it at its own start, 'restart' when the person chose ☰ > Restart Docket anyway. mtime: the session file's time when Docket last knew it.
+// 'start' when the app found it at its own start, 'restart' when the person chose ☰ > Restart Docket anyway, 'quit' for ☰ > Quit Docket. mtime: the session file's time when Docket last knew it.
 export const newCutOff = (how, mtime, now = Date.now()) => ({ how, at: how === 'start' && mtime ? mtime : now, mtime: mtime || null });
 
 // Something other than Docket has written to the session since it was cut off (Claude desktop or the CLI may
@@ -24,6 +24,7 @@ export function autoContinueCheck({ on, rec, mtime, now = Date.now(), paused = f
   const cut = rec?.cutOff;
   if (!cut) return { go: false, why: 'not cut off' };
   if (cut.how === 'restart') return { go: false, why: 'it was stopped by Restart Docket, so it waits for the person' };
+  if (cut.how === 'quit') return { go: false, why: 'it was stopped by Quit Docket, so it waits for the person' };
   if (!on) return { go: false, why: 'the setting is off' };
   if (rec.autoContinued) return { go: false, why: 'it was already continued once by itself and was cut off again' };
   if (archived) return { go: false, why: 'it is archived' };

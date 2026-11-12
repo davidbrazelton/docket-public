@@ -214,6 +214,14 @@ export function mergeAskRefusal(p, pr) {
   return '';
 }
 
+// What mark_turn with label "merge" answers once marked. Checks still running (#996): the card shows at once, and its button
+// asks the session to wait for them, then merge.
+export function mergeAskReply(p, pr) {
+  const card = `A Merge button for pull request #${pr} shows under your reply while Docket sees it open, not a draft and without a conflict.`;
+  if (p?.checks === 'pending') return `${card} Its checks are still running, so for now the button says "Merge when checks pass" and sends "merge once the checks on pull request #${pr} pass": then wait for them (mcp__portal__wait_until), merge if they pass, and if one fails say which and why. Once they pass it sends plain "merge".`;
+  return `${card} A click sends "merge" as the user's message.`;
+}
+
 // ---------- a turn that ends with background jobs still running (#713) ----------
 // The turn is held: it reports when its jobs end, since a session often ends a turn on purpose to wait for a
 // build, a test run, a CI Monitor, a subagent or a test server. But a turn the session marked done (mark_turn

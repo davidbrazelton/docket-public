@@ -2,14 +2,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { savedWaiting, unreadAfterRestart, keptReason, markUnreadReason } from '../needs-you.mjs';
+import { savedWaiting, unreadAfterRestart, turnOpenAfterRestart, keptReason, markUnreadReason } from '../needs-you.mjs';
 
 const page = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const start = page.indexOf('// ---------- needs you');
 const end = page.indexOf('// end of needs you');
 assert.ok(start > 0 && end > start, 'the needs you part of index.html has moved or lost its markers');
 const inBackground = (s) => s.live && s.status === 'idle' && (s.runningTasks > 0 || s.background);
-const { needsYou, needLabel } = new Function('inBackground', page.slice(start, end) + '\nreturn { needsYou, needLabel };')(inBackground);
+const S = { client: 'd1', qLevels: {}, openQ: {} }; // numbered questions (#989): the desk's level and open questions
+const { needsYou, needLabel, openQs, questionsWord } = new Function('inBackground', 'S', page.slice(start, end) + '\nreturn { needsYou, needLabel, openQs, questionsWord };')(inBackground, S);
 
 test('a row says why it needs you, from Docket\'s own signals first (#671)', () => {
   const done = { live: true, unread: true, status: 'idle', unreadWhy: 'result' };
@@ -99,4 +100,20 @@ test('Mark unread brings back the tag the row had before it was read (#771)', ()
   assert.match(server, /setUnread\(s, 'mark-unread'\); s\.unreadWhy = back\.why/, 'the live session takes the kept reason back');
   assert.match(server, /rec\.waitingWhy = back/, 'and so does a saved one');
   assert.match(server, /by \$\{s\.unreadBy/, 'the log still says Mark unread turned it orange');
+});
+
+test('an idle session picked up after an app restart keeps its last turn\'s end; a busy or asking one does not (#970)', () => {
+  assert.equal(turnOpenAfterRestart({ busy: false, asks: 0 }), false, 'idle: its Done line and merge ask show');
+  assert.equal(turnOpenAfterRestart({ busy: true, asks: 0 }), true, 'still working');
+  assert.equal(turnOpenAfterRestart({ busy: false, asks: 1 }), true, 'a question open');
+  const server = fs.readFileSync(new URL('../server.mjs', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+  assert.match(server, /if \(!kept && !open\) \{ const ev = endTurn\(\); if \(ev\) ev\[TAIL_END\] = true; \}/, 'the transcript ends its last turn unless told it is open');
+  assert.match(server, /if \(turnOpenAfterRestart\(\{ busy: now\.busy, asks: now\.asks\.length \}\)\) s\.events = s\.events\.filter\(\(e\) => !e\[TAIL_END\]\)/, 'reattaching takes that end off only while the runner is on the turn');
+  // A session just put in live (resumed, reattached) is in live before its transcript is read: each such read says the turn is over.
+  const lines = server.split('\n');
+  lines.forEach((l, i) => {
+    if (!/loadTranscript\(/.test(l) || /^async function loadTranscript/.test(l)) return;
+    const before = lines.slice(Math.max(0, i - 4), i + 1).join('\n');
+    if (/(startSession|makeSession)\(/.test(before)) assert.match(l, /\{ open: false \}/, `line ${i + 1} reads a transcript for a session it just put in live`);
+  });
 });

@@ -1,7 +1,7 @@
 // Keeping plans moving (#889): whether an open plan is moving, waiting on the user, stalled or paused, which of its
 // claimed tasks were left by a session that stopped, and when Docket nudges its coordinator. Kept apart from the
 // server so it can be tested; server.mjs gathers where each session stands and does the waking.
-import { readyTasks, sessionReady, planOpen, whyNoneReady } from './plans.mjs';
+import { readyTasks, sessionReady, planOpen, whyNoneReady, decisionSettled } from './plans.mjs';
 
 // A holder that finished its turn, asks nothing and has done nothing for this long has left its task.
 export const ORPHAN_IDLE_MS = 10 * 60000;
@@ -33,6 +33,45 @@ export function orphanTasks(plan, look, { idleMs = ORPHAN_IDLE_MS } = {}) {
   return out;
 }
 
+// Whether the coordinator's last turn left the user something to answer: it is waiting (a form, a permission ask, a
+// reply ending on a question), or Docket saw its last turn ask the user (asked: a numbered question, mark_turn
+// "question"), and it is not working again since.
+const coordAsks = (coord) => !!coord && coord.st !== 'working' && coord.st !== 'stopped' && (coord.st === 'waiting' || !!coord.asked);
+// A decision still waiting on the user: one of the plan's numbered decisions, not settled (decisionSettled, #990) and
+// not dropped.
+export const openDecision = (t) => !!t.q && !decisionSettled(t) && t.state !== 'dropped';
+
+// What the user does next in a plan (#993), in order, for the "Next for you" block and the motion line, so the two
+// always agree. items: { kind, id, q, title, session } where kind is 'coord' (its coordinator asked something in its
+// chat), 'decision' (an open numbered decision, answered in the coordinator's chat), 'step' (the user's own step, due
+// now) or 'answer' (a task whose session waits on the user's answer); session: the chat to answer in, '' for none.
+// outside: open tasks waiting on someone outside Docket, as { id, waitsOn }.
+export function planNext({ plan, look, coord = null }) {
+  const items = [], open = plan.tasks.filter((t) => t.state !== 'done' && t.state !== 'dropped');
+  const co = plan.coordinator || '';
+  if (coordAsks(coord)) items.push({ kind: 'coord', id: '', q: 0, title: '', session: co });
+  const decs = plan.tasks.filter(openDecision).sort((a, b) => a.q - b.q);
+  for (const t of decs) items.push({ kind: 'decision', id: t.id, q: t.q, title: t.title, session: co });
+  for (const t of readyTasks(plan).filter((t) => t.forUser && !t.q)) items.push({ kind: 'step', id: t.id, q: 0, title: t.title, session: t.holder || co });
+  for (const t of open) {
+    if (t.q && openDecision(t)) continue;
+    if (t.state === 'waiting_on_user' || (t.holder && standing(look, t.holder).st === 'waiting')) items.push({ kind: 'answer', id: t.id, q: 0, title: t.title, session: t.holder || co });
+  }
+  const outside = open.filter((t) => t.state === 'waiting_outside').map((t) => ({ id: t.id, waitsOn: t.waitsOn || '' }));
+  return { items, outside };
+}
+// The motion line's words for what is due, from planNext's items.
+function dueWords(items) {
+  const of = (k) => items.filter((i) => i.kind === k), ids = (l) => l.map((i) => i.id).join(', '), many = (l) => l.length > 1;
+  const decs = of('decision'), steps = of('step'), asking = of('answer');
+  return [
+    of('coord').length && 'its coordinator asked you something',
+    decs.length && `decision${many(decs) ? 's' : ''} ${decs.map((i) => `Q${i.q}`).join(', ')} ${many(decs) ? 'wait' : 'waits'} on you`,
+    steps.length && `your step${many(steps) ? 's' : ''} ${ids(steps)} ${many(steps) ? 'are' : 'is'} due`,
+    asking.length && `${ids(asking)} ${many(asking) ? 'wait' : 'waits'} on your answer`,
+  ].filter(Boolean);
+}
+
 // The plan's state for the user: 'paused', 'waiting' (on you), 'moving' or 'stalled', with a line saying why.
 // null for a plan with nothing left to do. coord: the coordinator's standing ({ st }), or null when it has none.
 // paused: 'plan' (Pause plan), 'docket' (Pause all) or ''.
@@ -41,18 +80,13 @@ export function planMotion({ plan, look, coord = null, paused = '' }) {
   if (paused === 'plan') return { state: 'paused', why: 'Paused with Pause plan: Docket does not nudge its coordinator or wake it for freed tasks until you press Resume plan.' };
   if (paused === 'docket') return { state: 'paused', why: 'Docket is paused (Pause all).' };
   const open = plan.tasks.filter((t) => t.state !== 'done' && t.state !== 'dropped');
-  const ready = readyTasks(plan), free = ready.filter((t) => !t.forUser), yours = ready.filter((t) => t.forUser);
+  const free = readyTasks(plan).filter((t) => !t.forUser);
   const holders = [...new Set(open.filter((t) => t.holder).map((t) => t.holder))];
   const working = holders.filter((id) => standing(look, id).st === 'working');
   const running = working.length ? `${working.length === 1 ? '1 session' : `${working.length} sessions`} working` : '';
   const coordWorks = coord?.st === 'working';
-  // waiting on you: your steps are due, a task waits on your answer, or the coordinator (or a task's session) asked
-  const asking = open.filter((t) => t.state === 'waiting_on_user' || (t.holder && standing(look, t.holder).st === 'waiting'));
-  const due = [
-    coord?.st === 'waiting' && 'its coordinator asked you something',
-    yours.length && `your step${yours.length > 1 ? 's' : ''} ${yours.map((t) => t.id).join(', ')} ${yours.length > 1 ? 'are' : 'is'} due`,
-    asking.length && `${asking.map((t) => t.id).join(', ')} ${asking.length > 1 ? 'wait' : 'waits'} on your answer`,
-  ].filter(Boolean);
+  // waiting on you: what planNext lists (the coordinator asked, open decisions, your steps, a task asking you)
+  const due = dueWords(planNext({ plan, look, coord }).items);
   if (due.length) return { state: 'waiting', why: cap(`${due.join('; ')}${running ? `. Also ${running}` : ''}.`) };
   if (working.length || coordWorks) return { state: 'moving', why: cap(`${[running, coordWorks && 'its coordinator is working'].filter(Boolean).join('; ')}.`) };
   // stalled: nothing running and nothing waits on the user, yet work is open
@@ -81,7 +115,7 @@ export function nudgeFor({ plan, look, coord, paused = '', last = null, graceMs 
   const was = { sig: last?.sig || '', told: last?.told || [] };
   const none = (keep = was) => ({ send: false, free: [], orphans: [], last: keep });
   if (paused || !planOpen(plan) || !coord) return none();
-  if (coord.st !== 'done' || coord.idleMs < graceMs) return none();
+  if (coord.st !== 'done' || coord.idleMs < graceMs || coord.asked) return none();
   const free = sessionReady(plan), sig = planSig(plan);
   const orphans = orphanTasks(plan, look, { idleMs });
   // a task told about and settled since is forgotten, so it is told again if it is left again later

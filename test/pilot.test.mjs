@@ -1,8 +1,8 @@
 // Tests for the autopilot's rules (pilot.mjs, #821): the rules check and the hard stops. Run with: npm test
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { KINDS, STOPS, DEFAULT_RULES, cleanRules, permissionStops, itemStops, ruleFor, mayAnswer, logLine, runLine, pilotDeskEntry, OWN_RUN, runStep, runSteps, runPlace, runBrief, ofDesk, EACH_DESK, runDone, pilotSetting, pilotSettingRefusal, runsToArchive, RUN_KEEP_MS, pilotState,
-  JUDGMENT, upgradeRules, maySuggest, sameAnswer, answerLabel, learnLine, confidence, promotable, setDeskLevel, pastAnswers, LEARN, stricter } from '../pilot.mjs';
+import { KINDS, STOPS, DEFAULT_RULES, cleanRules, permissionStops, itemStops, ruleFor, mayAnswer, logLine, runLine, OWN_RUN, runStep, runSteps, runBrief, ofDesk, runDone, runsToArchive, RUN_KEEP_MS, pilotState,
+  JUDGMENT, upgradeRules, quickEngaged, busyKeys, deskStatus, migratePilot, topGear, resetLine, holdLine, deskKinds, kindChoiceRefusal, offerDesks, runsByDay, maySuggest, sameAnswer, answerLabel, learnLine, confidence, promotable, setDeskLevel, pastAnswers, LEARN, stricter } from '../pilot.mjs';
 import { GEARS } from '../gears.mjs';
 
 const perm = (command, extra = {}) => ({ id: 'permission:1', kind: 'permission', desk: 'acme', tool: 'Bash', input: { command }, ...extra });
@@ -140,20 +140,48 @@ test('what a pilot run raised itself stays with the person, whatever the rules s
   assert.equal(mayAnswer(DEFAULT_RULES, { kind: 'merge', desk: 'acme' }, 'merge', undefined, own).ok, false);
   // No runs: the rules alone.
   assert.equal(mayAnswer(DEFAULT_RULES, perm('npm test', { session: 'run1' }), 'allow').ok, true);
-  // An item on a remote desk that only shares the session id is that computer's, not this autopilot's own.
-  assert.equal(mayAnswer(DEFAULT_RULES, perm('npm test', { session: 'run1', there: 'permission:9' }), 'allow', 'allow', own).ok, true);
 });
 
-test('the Autopilot desk is filled in the way Add a desk fills a new one', () => {
-  const roots = { claude: '/home/a/Docket desks', grok: '/home/a/Docket desks/grok_home', docket: '/home/a/Docket', sep: '/' };
-  assert.deepEqual(pilotDeskEntry(roots, []), { name: 'Autopilot', folder: '/home/a/Docket desks/Autopilot', home: '/home/a/Docket desks/Autopilot/claude-home', grokHome: '/home/a/Docket desks/grok_home/Autopilot', defaultEngine: 'grok' });
-  // A name or folder another desk uses is passed over.
-  const taken = [{ name: 'autopilot', home: '/elsewhere/claude-home' }, { name: 'Other', home: '/home/a/Docket desks/Autopilot 2/claude-home' }];
-  assert.equal(pilotDeskEntry(roots, taken).name, 'Autopilot 3');
-  // No Grok root of its own: grok_home beside the Claude homes, as Add a desk does.
-  assert.equal(pilotDeskEntry({ claude: '/w', docket: '/opt/docket', sep: '/' }, []).grokHome, '/w/grok_home/Autopilot');
-  // Windows paths keep their separator.
-  assert.equal(pilotDeskEntry({ claude: 'C:\\Work', grok: 'C:\\Work\\grok_home', docket: 'C:\\Docket', sep: '\\' }, []).home, 'C:\\Work\\Autopilot\\claude-home');
+// ---------- per desk (#973) ----------
+test('the quick actions engage every desk signed in to a brand, or all but the one open now, or none', () => {
+  const desks = [{ id: 'a', signedIn: true }, { id: 'b', signedIn: true }, { id: 'c', signedIn: false }];
+  assert.deepEqual(quickEngaged('others', desks, 'a'), ['b'], 'all but this desk, and never one with no brand signed in');
+  assert.deepEqual(quickEngaged('all', desks, 'a'), ['a', 'b']);
+  assert.deepEqual(quickEngaged('none', desks, 'a'), []);
+  assert.deepEqual(quickEngaged('nope', desks, 'a'), []);
+  assert.deepEqual(quickEngaged('all', undefined), []);
+});
+
+test("the pilot holds back in a session the person is answering, typing in or using (#942, #965, #973)", () => {
+  assert.deepEqual(busyKeys({ id: 'permission:k', session: 's1' }), ['permission:k', 'typing:s1', 'active:s1']);
+  assert.deepEqual(busyKeys({ id: 'inbox:k', session: null }), ['inbox:k'], 'an item with no session: only itself');
+});
+
+test("each desk's line in the drop-down says what the rules let the pilot do there", () => {
+  assert.equal(deskStatus(DEFAULT_RULES, 'acme'), 'answers prompts, suggests for forms, plans, offers, cards, handoffs');
+  const rules = { kinds: { permission: 'allow', question: 'suggest', plan: 'ask', offer: 'ask', card: 'allow', handoff: 'ask' }, desks: { acme: { kinds: { permission: 'suggest' } } } };
+  assert.equal(deskStatus(rules, 'acme'), 'answers cards, suggests for prompts, forms', "the desk's own rules first");
+  assert.equal(deskStatus(rules, 'globex'), 'answers prompts, cards, suggests for forms');
+  assert.equal(deskStatus({ kinds: Object.fromEntries(JUDGMENT.concat('permission').map((k) => [k, 'ask'])) }, 'x'), 'leaves everything to you');
+});
+
+test('the move to per desk: enabled stays, no desk engaged, the Autopilot desk archived and dropped, runs on desks kept (#973)', () => {
+  const sessions = { a1: { client: 'ap', pilotRun: 't1' }, a2: { client: 'ap' }, a3: { client: 'ap', archived: true }, r1: { client: 't1', pilotRun: 't1' }, w1: { client: 't1' } };
+  const old = { on: true, desk: 'ap', brand: 'grok', gear: 'full', session: null, going: { t1: { id: 'r1', at: 1, host: 't1' }, t2: { id: 'a1', at: 1, host: 'ap' } },
+    runs: [{ id: 'r1' }], suggestions: { 'card:1': { answer: 'start' } }, history: { at: 1, count: 3 } };
+  const m = migratePilot(old, sessions);
+  assert.equal(m.changed, true);
+  assert.deepEqual(m.archive, ['a1', 'a2'], "every session of the Autopilot desk not archived yet, none of another desk's");
+  assert.equal(m.dropDesk, 'ap');
+  assert.deepEqual(m.pilot, { on: true, going: { t1: { id: 'r1', at: 1, host: 't1' } }, runs: [{ id: 'r1' }], suggestions: { 'card:1': { answer: 'start' } }, history: { at: 1, count: 3 },
+    engaged: {}, perDesk: true, movedNote: true }, 'enabled, no desk engaged, the brand gone, a note to show once');
+  // Run again on its own result: nothing changes.
+  assert.deepEqual(migratePilot(m.pilot, sessions), { pilot: m.pilot, archive: [], dropDesk: null, changed: false });
+  // Off before: disabled, and no note.
+  const off = migratePilot({ on: false }, {});
+  assert.deepEqual([off.pilot.on, off.pilot.movedNote, off.dropDesk, off.archive], [false, undefined, null, []]);
+  // Never used: nothing to move.
+  assert.deepEqual(migratePilot(undefined, sessions).changed, false);
 });
 
 // ---------- runs (#881) ----------
@@ -200,16 +228,8 @@ test('items from several desks make one run per desk, each desk one run at a tim
   assert.deepEqual(runSteps({ items, offered: new Set(['a1', 'a2']), since: new Map([['b', 0]]), now: 1000, delay: 1000 }).map((s) => s.desk), ['b']);
 });
 
-test("where a desk's run goes: on that desk and its own brand, else the Autopilot desk; or one brand on the Autopilot desk", () => {
-  const ap = { id: 'ap', brands: ['grok', 'claude'] };
-  // Each desk: its own default brand signed in (listed first), on its top gear, billed there.
-  assert.deepEqual(runPlace(EACH_DESK, { id: 'acme', brands: ['codex', 'claude'] }, ap, GEARS), { host: 'acme', brand: 'codex', gear: 'astra', fallback: false });
-  // No brand signed in on it (or a remote desk): the Autopilot desk, on its own first brand signed in.
-  assert.deepEqual(runPlace(EACH_DESK, { id: 'acme', brands: [] }, ap, GEARS), { host: 'ap', brand: 'grok', gear: 'full', fallback: true });
-  assert.equal(runPlace(EACH_DESK, { id: 'acme', brands: [] }, { id: 'ap', brands: [] }, GEARS), null, 'nowhere signed in: no run');
-  // One brand: every desk's run on the Autopilot desk, only when that desk is signed in to it.
-  assert.deepEqual(runPlace('claude', { id: 'acme', brands: ['codex'] }, { id: 'ap', brands: ['claude'] }, GEARS), { host: 'ap', brand: 'claude', gear: 'opus', fallback: false });
-  assert.equal(runPlace('claude', { id: 'acme', brands: ['claude'] }, { id: 'ap', brands: [] }, GEARS), null);
+test("a desk's run always runs on its brand's top gear", () => {
+  assert.deepEqual(['claude', 'grok', 'codex'].map((b) => topGear(b, GEARS)), ['opus', 'full', 'astra']);
 });
 
 // ---------- keeping clients apart (#914) ----------
@@ -230,12 +250,11 @@ test("a run's brief holds its own desk's items, notes, log and past answers, and
     { at: 2, kind: 'question', desk: 'globex', what: 'Which colour GLOBEX_PAST?', user: { answer: 'answer', answers: { q: 'Red' } }, suggested: null, how: 'user' },
     { at: 3, kind: 'question', desk: 'globex', what: 'Which colour GLOBEX_HISTORY?', user: { answer: 'skip' }, source: 'history', how: 'user' },
   ];
-  const text = runBrief({ desk: 'acme', deskName: 'Acme', onDesk: true, items, notes: '- ACME_NOTE', notesFile: '/data/pilot-notes/acme.md', log, learn, rulesFile: '/data/pilot-rules.json', screen: false });
+  const text = runBrief({ desk: 'acme', deskName: 'Acme', items, notes: '- ACME_NOTE', notesFile: '/data/pilot-notes/acme.md', log, learn, rulesFile: '/data/pilot-rules.json', screen: false });
   for (const own of ['ACME_ITEM', 'ACME_FORM', 'ACME_NOTE', 'ACME_LOG', 'ACME_PAST', '/data/pilot-notes/acme.md']) assert.ok(text.includes(own), own);
   assert.doesNotMatch(text, /GLOBEX|globex/, "nothing of another desk's");
   assert.doesNotMatch(text, /pilot-log|pilot-learn/, 'the shared logs are not named, so the run has no path to them');
   assert.match(text, /^You are Docket's autopilot on this computer, in one short run for the desk Acme\. This run is a session of Acme, on its own sign-in/);
-  assert.match(runBrief({ desk: 'acme', deskName: 'Acme', onDesk: false, items, log, learn }), /on the autopilot's own desk/);
   assert.deepEqual(ofDesk(items, 'globex').map((i) => i.id), ['permission:g1', 'question:g2']);
 });
 
@@ -252,29 +271,16 @@ test('a run is done when its turn ends with nothing left, or its session ends, o
   assert.match(runDone(s({ status: 'running' }), { at: 0, now: 31 * 60000 }), /more than 30 minutes/);
 });
 
-test("where runs go: each desk unless a brand is picked, always on a brand's top gear, and only a brand its desk has signed in", () => {
-  assert.deepEqual(pilotSetting(undefined, GEARS), { brand: EACH_DESK, gear: null }, 'each desk by default (#914)');
-  assert.deepEqual(pilotSetting({ brand: EACH_DESK }, GEARS), { brand: EACH_DESK, gear: null });
-  assert.deepEqual(pilotSetting({ brand: 'grok' }, GEARS), { brand: 'grok', gear: 'full' });
-  assert.deepEqual(pilotSetting({ brand: 'codex', gear: 'luna' }, GEARS), { brand: 'codex', gear: 'astra' }, 'a gear saved before is not used');
-  assert.deepEqual(pilotSetting({ brand: 'nope' }, GEARS), { brand: EACH_DESK, gear: null });
-  assert.equal(pilotSettingRefusal({ brand: EACH_DESK }, [], GEARS), '', 'each desk needs nothing of the Autopilot desk');
-  const offered = [{ brand: 'claude', signedIn: false }, { brand: 'grok', signedIn: true }];
-  assert.equal(pilotSettingRefusal({ brand: 'grok' }, offered, GEARS), '');
-  assert.match(pilotSettingRefusal({ brand: 'claude' }, offered, GEARS), /not signed in to claude/);
-  assert.match(pilotSettingRefusal({ brand: 'codex' }, offered, GEARS), /does not use codex/);
-  assert.match(pilotSettingRefusal({ brand: 'x' }, offered, GEARS), /not a brand/);
-});
-
 test('finished runs stay a week in the list, then are archived', () => {
   const now = 100 * RUN_KEEP_MS, old = now - RUN_KEEP_MS - 1, fresh = now - 1000;
   const sessions = { a: { client: 'ap', createdAt: old }, b: { client: 'ap', createdAt: fresh }, c: { client: 'ap', createdAt: old, archived: true },
     d: { client: 'acme', createdAt: old }, e: { client: 'ap', createdAt: old }, f: { client: 'ap' } };
-  assert.deepEqual(runsToArchive(sessions, 'ap', 'e', now), ['a'], 'only old, unarchived runs of that desk, never the one going now');
-  // Runs on the working desks (#914) are marked, and archived the same way; the desk's own work never is.
+  assert.deepEqual(runsToArchive(sessions, [], now), [], "a desk's own work is never archived as a run");
+  // Runs are marked pilotRun (#914): the old ones are archived, never the one going now.
   const desks = { ...sessions, g: { client: 'acme', createdAt: old, pilotRun: 'acme' }, h: { client: 'acme', createdAt: old, pilotRun: 'acme' }, i: { client: 'acme', createdAt: fresh, pilotRun: 'acme' } };
-  assert.deepEqual(runsToArchive(desks, 'ap', ['e', 'h'], now), ['a', 'g']);
-  assert.deepEqual(runsToArchive(undefined, 'ap', null, now), []);
+  assert.deepEqual(runsToArchive(desks, ['e', 'h'], now), ['g']);
+  assert.deepEqual(runsToArchive(desks, 'h', now), ['g']);
+  assert.deepEqual(runsToArchive(undefined, null, now), []);
 });
 
 test('what the autopilot is doing: off, idle, waking while a batch fills, working while a run goes', () => {
@@ -288,9 +294,8 @@ test('the log links each run: its answers carry the run, and the run has lines o
   assert.equal(logLine({ at: 1, item: { id: 'permission:k', kind: 'permission', desk: 'acme' }, answer: 'allow', ok: true, why: '', run: 'r1' }).run, 'r1');
   assert.equal('run' in logLine({ at: 1, item: { id: 'x', kind: 'card', desk: 'acme' }, answer: 'start', ok: true, why: '' }), false);
   assert.deepEqual(runLine({ at: 2, run: 'r1', answer: 'started', what: '2 items', brand: 'grok', gear: 'fast' }), { at: 2, kind: 'run', run: 'r1', answer: 'started', what: '2 items', ok: true, brand: 'grok', gear: 'fast' });
-  // Tagged with the desk it judged, and where it ran when that was elsewhere (#914).
-  assert.deepEqual([runLine({ run: 'r2', desk: 'acme', host: 'acme', answer: 'ended' })].map((l) => [l.desk, l.host]), [['acme', undefined]]);
-  assert.deepEqual([runLine({ run: 'r3', desk: 'acme', host: 'ap', answer: 'ended' })].map((l) => [l.desk, l.host]), [['acme', 'ap']]);
+  // Tagged with the desk it judged and ran on (#914, #973).
+  assert.equal(runLine({ run: 'r2', desk: 'acme', answer: 'ended' }).desk, 'acme');
 });
 
 test('suggest: only for kinds a card can show it on, never past a hard stop, and checked like an answer', () => {
@@ -370,4 +375,66 @@ test("each run's brief carries the person's own past answers for its kinds and d
     '- 2026-11-01 offer on ACME: "Fix login": the user picked Do it here (you suggested New session: missed)',
     '- 2026-11-04 plan on ACME: "A plan": the pilot answered Allow and the user marked it as not their pick',
   ]);
+});
+
+// ---------- a desk's Autopilot tab (#974) ----------
+test('Train on a kind starts its count over on that desk only', () => {
+  const l = (desk, match) => ({ desk, kind: 'card', match, user: { answer: 'start' }, suggested: { answer: 'start' } });
+  const lines = Array.from({ length: 10 }, () => l('acme', true)).concat(Array.from({ length: 10 }, () => l('globex', true)));
+  assert.equal(confidence(lines, 'acme', 'card').ready, true);
+  const reset = [...lines, resetLine({ at: 1, desk: 'acme', kind: 'card' })];
+  assert.deepEqual([confidence(reset, 'acme', 'card').ready, confidence(reset, 'acme', 'card').total], [false, 0], 'started over');
+  assert.equal(confidence(reset, 'globex', 'card').ready, true, 'another desk keeps its count');
+  assert.equal(confidence([...reset, ...Array.from({ length: 10 }, () => l('acme', true))], 'acme', 'card').ready, true, 'and earns it again');
+});
+
+test("what it handles on a desk: each kind it learns with its level and progress, and Answer only once earned", () => {
+  const rules = { kinds: { permission: 'allow', question: 'suggest', plan: 'ask', offer: 'suggest', card: 'suggest', handoff: 'suggest' }, desks: { acme: { kinds: { handoff: 'allow' } } } };
+  const lines = Array.from({ length: 10 }, () => ({ desk: 'acme', kind: 'card', match: true, user: { answer: 'start' } })).concat([{ desk: 'acme', kind: 'question', match: true }]);
+  const rows = deskKinds(rules, lines, 'acme');
+  assert.deepEqual(rows.map((r) => [r.kind, r.level, r.ready]), [['permission', 'allow', false], ['question', 'suggest', false], ['plan', 'ask', false], ['offer', 'suggest', false], ['card', 'suggest', true], ['handoff', 'allow', false]]);
+  assert.deepEqual([rows[1].matched, rows[1].need], [1, 10]);
+  const row = (k) => rows.find((r) => r.kind === k);
+  assert.equal(kindChoiceRefusal(row('card'), 'allow'), '', 'earned: Answer is I got this');
+  assert.match(kindChoiceRefusal(row('question'), 'allow'), /not earned that yet: 1 of the last 1 matched, and it needs 10/);
+  assert.equal(kindChoiceRefusal(row('permission'), 'allow'), '', 'it answers already');
+  assert.equal(kindChoiceRefusal(row('permission'), 'suggest'), '');
+  assert.equal(kindChoiceRefusal(row('plan'), 'suggest'), '', 'Suggest from anything');
+  assert.equal(kindChoiceRefusal(row('plan'), 'train'), '', 'Train from anything');
+  assert.match(kindChoiceRefusal(row('plan'), 'ask'), /Pick Suggest, Answer or Train/);
+  assert.match(kindChoiceRefusal(undefined, 'allow'), /does not learn/);
+});
+
+test('Suggest on a kind that answers keeps its count, and Answer can be picked again until Train or a miss (#1004)', () => {
+  const rules = (level) => ({ kinds: { permission: 'allow', question: 'suggest', plan: 'suggest', offer: 'suggest', card: 'suggest', handoff: 'suggest' }, desks: { acme: { kinds: { permission: level, card: level } } } });
+  const l = (match) => ({ desk: 'acme', kind: 'card', match, user: { answer: 'start' }, suggested: { answer: 'start' } });
+  const lines = Array.from({ length: 10 }, () => l(true));
+  const row = (lines, k = 'card', level = 'suggest') => deskKinds(rules(level), lines, 'acme').find((r) => r.kind === k);
+  assert.equal(row(lines, 'card', 'allow').held, false, 'answering is not held');
+  const paused = [...lines, holdLine({ desk: 'acme', kind: 'card' }), holdLine({ desk: 'acme', kind: 'permission' })];
+  assert.deepEqual([row(paused).matched, row(paused).total, row(paused).held], [10, 10, true], 'Suggest keeps the count');
+  assert.equal(kindChoiceRefusal(row(paused), 'allow'), '');
+  assert.equal(row(paused, 'permission').total, 0);
+  assert.equal(kindChoiceRefusal(row(paused, 'permission'), 'allow'), '', 'a default answer with no count can go back too');
+  assert.equal(deskKinds(rules('suggest'), paused, 'globex').find((r) => r.kind === 'card').held, false, 'that desk only');
+  const trained = [...paused, resetLine({ desk: 'acme', kind: 'permission' })];
+  assert.match(kindChoiceRefusal(row(trained, 'permission'), 'allow'), /not earned that yet/, 'Train ends the hold');
+  const missed = [...paused, { desk: 'acme', kind: 'card', how: 'miss', match: false }];
+  assert.equal(row(missed).held, false, 'a miss after it ends the hold');
+});
+
+test('the offer to engage counts what has waited long enough on desks not engaged, that the pilot could take', () => {
+  const now = 100 * 60000, seen = new Map([['a', 0], ['b', 0], ['c', now - 60000], ['d', 0], ['e', 0], ['f', 0]]);
+  const items = [{ id: 'a', desk: 'acme', may: 'allow' }, { id: 'b', desk: 'acme', may: 'suggest' }, { id: 'c', desk: 'acme', may: 'allow' },
+    { id: 'd', desk: 'globex', may: 'ask' }, { id: 'e', desk: 'initech', may: 'allow' }, { id: 'f', desk: 'eng', may: 'allow' }, { id: 'g', desk: 'acme', may: 'allow' }];
+  assert.deepEqual(offerDesks(items, seen, { eng: 1 }, now), [{ desk: 'acme', count: 2 }, { desk: 'initech', count: 1 }],
+    'not too new, not one never seen, not one kept with the person, not on an engaged desk');
+  assert.deepEqual(offerDesks(items, seen, {}, now, 120 * 60000), []);
+});
+
+test("a desk's runs by day, newest first, each day with its cost", () => {
+  const day = (t) => `d${Math.floor(t / 10)}`;
+  const days = runsByDay([{ id: 'a', at: 1, cost: 0.1 }, { id: 'b', at: 12, cost: 0.2 }, { id: 'c', at: 15, cost: 0.05 }, { id: 'd', at: 3 }], day);
+  assert.deepEqual(days.map((d) => [d.day, d.cost, d.runs.map((r) => r.id)]), [['d1', 0.25, ['c', 'b']], ['d0', 0.1, ['d', 'a']]]);
+  assert.deepEqual(runsByDay(undefined), []);
 });

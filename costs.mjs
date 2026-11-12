@@ -63,7 +63,7 @@ export function loadPrices(file) {
 }
 export const pricesVersion = () => priceCache.mtime;
 
-const localDate = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+export const localDate = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 // claude-opus-5-5, us.anthropic.claude-opus-5-5 and anthropic.claude-opus-5-5-v1:0 are one model.
 export const modelKey = (model) => String(model || '').replace(/^(?:[a-z]{2,6}\.)?anthropic\./, '').replace(/-v\d+(?::\d+)?$/, '');
 const familyOf = (model) => (/opus/i.test(model) ? 'opus' : /sonnet/i.test(model) ? 'sonnet' : /haiku/i.test(model) ? 'haiku' : null);
@@ -127,7 +127,8 @@ export function editLines(result) {
 // What started a turn, from the words of the message that began it: a report from a session this one started
 // (report), the brief a session was started with (brief), work another session sent (send), a note from Docket about
 // its sessions (notice-coord) or about something else (notice), a background task's result (task), else the person.
-export const CAUSES = ['person', 'brief', 'send', 'report', 'report-quiet', 'notice-coord', 'notice', 'task'];
+// Every turn of an autopilot run is pilot (#976), whatever its messages say: that comes from the session (pilotRows).
+export const CAUSES = ['person', 'brief', 'send', 'report', 'report-quiet', 'notice-coord', 'notice', 'task', 'pilot'];
 // The coordination causes: what parent and child sessions cost each other beyond the work itself.
 export const COORDINATION = ['report', 'report-quiet', 'notice-coord'];
 const COORD_NOTICE = /reports to you|handed its work off|started your proposal|under this one from the portal|now reports to the session|no longer reports|moved .* under/;
@@ -140,6 +141,8 @@ export function turnCause(text) {
   if (t.includes('<task-notification>')) return 'task';
   return 'person';
 }
+// A pilot run's rows (the session is marked pilotRun, #914): each with the cause pilot, the rest as they were.
+export const pilotRows = (rows) => rows.map((r) => (r.Cause === 'pilot' ? r : { ...r, Cause: 'pilot' }));
 const messageText = (content) => (typeof content === 'string' ? content
   : Array.isArray(content) ? content.filter((b) => b.type === 'text').map((b) => b.text).join('\n') : '');
 // A local command (/clear, /model...) or an interruption marker: in the log as a user line, but no turn.
@@ -517,6 +520,24 @@ export function dayRows(client, sessionId, title, priced, compactions, agentCoun
   for (const e of edits) { if (!e.at) continue; const d = localDate(e.at); added[d] = (added[d] || 0) + e.added; removed[d] = (removed[d] || 0) + e.removed; }
   addSeconds(rows, 'LinesAdded', added);
   return addSeconds(rows, 'LinesRemoved', removed);
+}
+
+// Docket's own calls to a model that leave no log (persistSession false): Auto Group and an artifact publish (#977).
+// Each desk and kind keeps its own rows, one per day, model and account (Source 'docket', Cause 'docket:<kind>'),
+// and each call adds to its day's row; Turns counts the calls. call: { client, kind, model, usage (the API's usage
+// fields, as the SDK's result gives them), at, bedrock }. Returns the rows with the call in.
+export const SIDE_TITLES = { 'auto-group': 'Docket: Auto Group', artifact: 'Docket: artifact publish' };
+const SIDE_SUMS = ['Turns', 'InputTokens', 'OutputTokens', 'CacheRead', 'CacheCreate', 'CacheCreate1h', 'Cost', 'PersonalCost', 'HypotheticalCost', 'CacheSaved', 'ToolCalls'];
+export const sideId = (client, kind) => `docket:${kind}:${client}`;
+export function addSideCall(rows, call, prices, billed = {}) {
+  const priced = priceReply({ model: modelKey(call.model), at: call.at || Date.now(), usage: call.usage || {}, tools: new Map(), bedrock: !!call.bedrock, global: false, cause: `docket:${call.kind}` }, prices);
+  const [row] = dayRows(call.client, sideId(call.client, call.kind), SIDE_TITLES[call.kind] || `Docket: ${call.kind}`, [priced], [], 0, prices, billed);
+  row.Source = 'docket';
+  const same = rows.find((r) => r.Date === row.Date && r.Model === row.Model && r.Connection === row.Connection && r.BilledProfile === row.BilledProfile);
+  if (!same) return [...rows, row];
+  for (const k of SIDE_SUMS) same[k] = Math.round(((same[k] || 0) + (row[k] || 0)) * 10000) / 10000;
+  same.AvgTokensPerTurn = same.Turns ? Math.round((same.InputTokens + same.OutputTokens + same.CacheRead + same.CacheCreate) / same.Turns) : 0;
+  return rows;
 }
 
 // A session's replies (sorted by time) priced, with a reply for each compaction and cache expiries marked.

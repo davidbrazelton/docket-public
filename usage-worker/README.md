@@ -32,6 +32,28 @@ npx wrangler d1 execute docket-usage --remote --file queries.sql
 npx wrangler d1 execute docket-usage --remote --command "SELECT version, platform, COUNT(DISTINCT install_id) FROM pings GROUP BY 1, 2"
 ```
 
+## Leave your own computers out
+
+The maker's own computers keep usage stats on (it is the only way to check that reports really reach the counter), so
+their installs are left out when the numbers are read instead: every query in `queries.sql` skips the install IDs in
+the `excluded` table. On each such computer, find its install ID (`usage.id` in `portal-state.json`) from the Docket
+folder:
+
+```
+node -e "console.log(require('./portal-state.json').usage.id)"
+```
+
+and add it from this folder (the note says which computer). A database set up before the table existed needs
+`npx wrangler d1 execute docket-usage --remote --file schema.sql` once first; until then the queries stop with
+"no such table: excluded".
+
+```
+npx wrangler d1 execute docket-usage --remote --command "INSERT INTO excluded (install_id, note) VALUES ('<id>', '<computer>')"
+```
+
+The IDs live only in the database: never put one in this repo, which is published. `installer_runs` carries no install
+ID, so your own installer runs cannot be left out this way; subtract them by hand if they matter.
+
 ## Try it on this computer
 
 ```

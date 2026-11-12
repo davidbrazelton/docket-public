@@ -12,7 +12,7 @@
 <style>
 :root {
   --bg: #e9e7e0; --panel: #fdfcf9; --panel-2: #f1efe9; --line: #e2e0d8; --text: #1f1e1b; --muted: #6b6a64;
-  --accent: #c2410c; --accent-default: #c2410c; --accent-soft: #fde7d9; --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --run: #2563eb; --signin: #ca8a04;
+  --accent: #c2410c; --accent-default: #c2410c; --accent-soft: #fde7d9; --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --run: #2563eb; --signin: #ca8a04; --q: #7c3aed; --q-soft: #efe7fd; /* numbered questions (#989) */
   --on-accent: #fff; --on-warn: #fff; --on-bad: #fff; /* text on those colors, 4.5:1 or better */
   --user-bg: #ece9e1; --code-bg: #f1efe9; --shadow: 0 1px 2px rgba(0,0,0,.06);
   --head: #e5e2d9; --head-text: #45443f;
@@ -24,7 +24,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #121210; --panel: #1d1d1b; --panel-2: #272724; --line: #373633; --text: #f2f1ec; --muted: #a3a29a;
-    --accent: #f97316; --accent-default: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15;
+    --accent: #f97316; --accent-default: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15; --q: #a78bfa; --q-soft: #2c2342;
     --on-accent: #1f1e1b; --on-warn: #1f1e1b; --on-bad: #1f1e1b;
     --user-bg: #2c2b28; --code-bg: #2a2a27; --shadow: none;
     --head: #383733; --head-text: #d4d3cc;
@@ -35,7 +35,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #121210; --panel: #1d1d1b; --panel-2: #272724; --line: #373633; --text: #f2f1ec; --muted: #a3a29a;
-  --accent: #f97316; --accent-default: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15;
+  --accent: #f97316; --accent-default: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --run: #60a5fa; --signin: #facc15; --q: #a78bfa; --q-soft: #2c2342;
     --on-accent: #1f1e1b; --on-warn: #1f1e1b; --on-bad: #1f1e1b;
   --user-bg: #2c2b28; --code-bg: #2a2a27; --shadow: none;
     --head: #383733; --head-text: #d4d3cc;
@@ -360,6 +360,36 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .msg-text .qquote { display: block; }
 .qrec .ok { color: var(--ok); font-weight: 700; }
 .qrec .a { font-weight: 600; }
+/* Numbered questions (#989): a paragraph or list item that starts with its number gets the question color, a bar and a
+   chip; green with the answer under it once answered, gray once settled without one. The tray of open ones sits above
+   the prompt. Chip text is the panel color, which reads on the question color and on green in both themes. */
+.qchip { display: inline-block; font-weight: 700; font-size: 12px; line-height: 18px; color: var(--panel); background: var(--q); border-radius: 8px; padding: 0 6px; margin-right: 6px; vertical-align: 1px; }
+.qchip.faint { background: var(--muted); }
+.msg-text .qhl { border-left: 3px solid var(--q); background: var(--q-soft); padding: 6px 10px; border-radius: 0 8px 8px 0; margin: 8px 0; transition: box-shadow .3s; }
+.msg-text li.qhl { list-style: none; margin-left: -20px; }
+.msg-text .qhl.answered { border-left-color: var(--ok); background: transparent; }
+.msg-text .qhl.answered .qchip { background: var(--ok); }
+.msg-text .qhl.faint .qchip, .msg-text .qhl.settled .qchip { background: var(--muted); }
+.msg-text .qhl.settled { border-left-color: var(--line); background: transparent; }
+.msg-text .qhl.qflash { box-shadow: 0 0 0 2px var(--q); }
+.qans { display: block; font-size: 12px; color: var(--ok); margin-top: 2px; }
+.q-tray { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); margin-bottom: 8px; font-size: 13px; max-height: 32vh; overflow: auto; }
+.q-tray[hidden] { display: none; }
+.q-tray .qt-head { display: flex; align-items: center; gap: 4px 6px; flex-wrap: wrap; padding: 2px 4px 2px 10px; font-weight: 600; }
+.q-tray .qt-head.folded { font-weight: 400; }
+.q-tray .qt-head .n { background: var(--q); color: var(--panel); border-radius: 999px; font-size: 11px; padding: 0 7px; }
+.q-tray .qt-head .qchip { margin-right: 0; }
+.q-tray .sp { flex: 1; }
+.q-tray .qt-fold { border: none; background: none; color: var(--muted); font: inherit; font-size: 12px; font-weight: 500; border-radius: 8px; min-height: 28px; padding: 0 8px; cursor: pointer; }
+.q-tray .qt-fold:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.q-tray .qt-row { display: flex; align-items: flex-start; gap: 6px; padding: 3px 4px; border-top: 1px solid var(--line); }
+.q-tray .qt-row.faint { opacity: .6; }
+.q-tray .qt-go { flex: 1; min-width: 0; display: flex; align-items: flex-start; text-align: left; border: none; background: none; color: var(--text); font: inherit; padding: 3px 6px; border-radius: 8px; cursor: pointer; }
+.q-tray .qt-go:hover { background: var(--panel); }
+.q-tray .qt-go .txt { flex: 1; min-width: 0; }
+.q-tray .opts { display: block; color: var(--muted); font-size: 12px; }
+.q-tray .qt-tick { flex: none; min-width: 32px; height: 28px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: 12px; cursor: pointer; }
+.q-tray .qt-tick:hover { color: var(--ok); }
 .qrec .sp { flex: 1; }
 .qrec .when { font-size: 11px; color: var(--muted); }
 .qrec button { min-height: 22px; font-size: 11px; padding: 0 8px; }
@@ -686,6 +716,15 @@ aside.tasks.hidden { display: none; }
 .plan-decs .pd.ans .id { color: var(--ok); }
 .plan-decs .pd .a { grid-column: 2; color: var(--muted); }
 .plan-decs .pd .a b { color: var(--text); font-weight: 600; }
+/* Next for you (#993): what the user does next in this plan, in order; each item is a link to where to act (DESIGN.md) */
+.plan-next { margin: 6px 0 2px; padding: 6px 8px; border-radius: 8px; background: var(--accent-soft); font-size: 12px; }
+.plan-next .pn-h { font-size: 11px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+.plan-next .pnx { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 0 8px; padding: 3px 6px; border-radius: 8px; color: var(--text); text-decoration: none; cursor: pointer; }
+.plan-next .pnx:hover { background: var(--panel-2); }
+.plan-next .pnx .id { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--warn); }
+.plan-next .pnx .w { grid-column: 2; color: var(--muted); }
+.plan-next .pn-out { color: var(--muted); padding: 3px 6px 0; }
+.plan-next.only-out { background: none; padding: 0; }
 .plan-legend span::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; background: var(--c); }
 /* Active and Done are filters (DESIGN.md): bordered; on, a soft tint with a main-color border */
 .plan-flts { display: flex; align-items: center; gap: 4px; padding: 0 14px 8px; }
@@ -799,6 +838,10 @@ button.plink { cursor: pointer; }
 .nic { flex: none; display: inline-grid; place-items: center; width: 16px; height: 16px; color: var(--muted); }
 .nic svg, .nic .pr-ic { width: 14px; height: 14px; display: block; color: inherit; }
 .nic.need-question, .nic.need-card { color: var(--warn); }
+/* The open questions' count on the row (#989): on the question icon, or beside a stronger word (merge, problem). */
+.nic, .ric { position: relative; }
+.qbadge { position: absolute; top: -6px; right: -8px; min-width: 13px; height: 13px; padding: 0 3px; border-radius: 999px; background: var(--warn); color: var(--on-warn); font-size: 9px; font-weight: 700; line-height: 13px; text-align: center; }
+.qbeside { flex: none; font-size: 11px; font-weight: 600; color: var(--warn); margin-left: 4px; white-space: nowrap; }
 
 .signin { margin: 10px; padding: 10px; border: 1px solid var(--warn); border-radius: 8px; font-size: 12px; }
 .prb { display: inline-flex; align-items: center; gap: 1px; font-size: 11px; font-weight: 600; margin-left: 2px; }
@@ -999,13 +1042,13 @@ header.top #feedbackBtn[hidden] { display: none; }
 /* The one-time offer of 👁 > Reason tags > Icon as session dot (#720): the same card, with an icon tile, a × and a
    sample of rows on the panel color so the icons show in their real colors. */
 /* The one-time card about 👁 > Cost (#806) is the same card again, its sample rows with a cost left of the time. */
-:is(#reasonOffer, #costOffer, #formsOffer) .t { padding-right: 18px; }
-:is(#reasonOffer, #costOffer, #formsOffer) .ic { grid-row: span 2; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--on-accent) 18%, transparent); display: grid; place-items: center; }
+:is(#reasonOffer, #costOffer, #formsOffer, #questionsOffer) .t { padding-right: 18px; }
+:is(#reasonOffer, #costOffer, #formsOffer, #questionsOffer) .ic { grid-row: span 2; width: 36px; height: 36px; border-radius: 10px; background: color-mix(in srgb, var(--on-accent) 18%, transparent); display: grid; place-items: center; }
 #reasonOffer .ic svg { width: 22px; height: 22px; }
 #costOffer .ic { font-size: 20px; font-weight: 700; }
-:is(#reasonOffer, #costOffer, #formsOffer) .x { position: absolute; top: 6px; right: 8px; border: none; padding: 0 6px; font-size: 16px; line-height: 1.4; opacity: .8; color: inherit; }
-:is(#reasonOffer, #costOffer, #formsOffer) .x:hover { opacity: 1; background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
-:is(#reasonOffer, #costOffer, #formsOffer) .x:focus-visible { outline: 2px solid var(--on-accent); outline-offset: 2px; }
+:is(#reasonOffer, #costOffer, #formsOffer, #questionsOffer) .x { position: absolute; top: 6px; right: 8px; border: none; padding: 0 6px; font-size: 16px; line-height: 1.4; opacity: .8; color: inherit; }
+:is(#reasonOffer, #costOffer, #formsOffer, #questionsOffer) .x:hover { opacity: 1; background: color-mix(in srgb, var(--on-accent) 15%, transparent); }
+:is(#reasonOffer, #costOffer, #formsOffer, #questionsOffer) .x:focus-visible { outline: 2px solid var(--on-accent); outline-offset: 2px; }
 :is(#reasonOffer, #costOffer) .ro-sample { grid-column: 1 / -1; margin-top: 6px; background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px; font-size: 13px; }
 :is(#reasonOffer, #costOffer) .ro-row { display: flex; align-items: center; gap: 8px; padding: 3px 10px; }
 #costOffer .ro-row.child { padding-left: 28px; position: relative; }
@@ -1020,12 +1063,20 @@ header.top #feedbackBtn[hidden] { display: none; }
 #reasonOffer .ro-cap { font-size: 11px; color: var(--muted); padding: 2px 10px 0; }
 #reasonOffer .ro-opt { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 4px; cursor: pointer; }
 #reasonOffer .ro-opt input { accent-color: var(--on-accent); margin: 0; }
-:is(#reasonOffer, #costOffer, #formsOffer) .ro-hint { grid-column: 1 / -1; font-size: 11px; opacity: .85; }
+:is(#reasonOffer, #costOffer, #formsOffer, #questionsOffer) .ro-hint { grid-column: 1 / -1; font-size: 11px; opacity: .85; }
 /* The one-time question-forms card (#850): the same card, with its three choices as a short list. */
 #formsOffer .ic { font-size: 18px; font-weight: 700; }
 #formsOffer ul { grid-column: 1 / -1; margin: 2px 0 0; padding-left: 18px; font-size: 13px; }
 #formsOffer .b { grid-column: 1 / -1; flex-wrap: wrap; }
 #formsOffer .b button { white-space: nowrap; }
+/* The one-time numbered-questions card (#989): its sample is a reply and the tray, drawn with the chat's own styles. */
+#questionsOffer .ic .qchip { margin: 0; color: var(--accent); background: var(--on-accent); }
+#questionsOffer .qo-sample { grid-column: 1 / -1; margin-top: 6px; background: var(--panel); color: var(--text); border-radius: 8px; padding: 4px 8px 8px; font-size: 12px; }
+#questionsOffer .qo-sample p { margin: 4px 0; }
+#questionsOffer .qo-sample .q-tray { margin: 6px 0 0; font-size: 12px; }
+#questionsOffer .qo-sample .qt-tick { display: inline-grid; place-items: center; }
+#questionsOffer .b { grid-column: 1 / -1; flex-wrap: wrap; }
+#questionsOffer .b button { white-space: nowrap; }
 .key h4 { margin: 8px 0 2px; font-size: 12px; color: var(--text); }
 .key h4:first-child { margin-top: 0; }
 .key-row { display: grid; grid-template-columns: 96px 1fr 210px; gap: 10px; align-items: baseline; }
@@ -1267,6 +1318,11 @@ a.pv-tab { padding: 3px 5px; }
 .merge-ask .ma-t small { display: block; color: var(--muted); }
 .merge-ask .ma-link { padding: 5px 10px; border-radius: 8px; color: var(--text); text-decoration: none; }
 .merge-ask .ma-link:hover { background: var(--panel-2); }
+/* The Sign in card under a session waiting on a private browser sign-in, and its row's mark (#987) */
+.signin-ask { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; border: 1px solid var(--line); border-left: 3px solid var(--signin); border-radius: 10px; background: var(--panel); padding: 10px 12px; margin-top: 8px; }
+.signin-ask .sa-t { flex: 1; min-width: 180px; overflow-wrap: anywhere; }
+.signin-ask .sa-t small { display: block; color: var(--muted); }
+.tag.signin-wait { border-color: var(--signin); color: var(--signin); font-weight: 600; flex: none; }
 .side-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--panel-2); border-radius: 8px; padding: 3px; }
 .side-tabs button { border: none; padding: 4px 8px; font-size: 13px; color: var(--muted); }
 .side-tabs button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; } /* links: the open tab gets the soft tint (DESIGN.md) */
@@ -1334,9 +1390,55 @@ header.top .upd-btn .dot { position: absolute; top: 3px; right: 4px; width: 7px;
 .upd-pop .b button { white-space: nowrap; }
 .upd-note { position: fixed; z-index: 40; background: var(--text); color: var(--panel); border-radius: 8px; padding: 8px 12px; font-size: 13px; max-width: calc(100vw - 32px); }
 .upd-note[hidden] { display: none; }
-/* the autopilot indicator in the top bar while it is flying (#821) */
-header.top .pilot-btn { border: none; padding: 4px 6px; font-size: 14px; color: var(--accent); min-width: 32px; min-height: 28px; }
-header.top .pilot-btn[hidden] { display: none; }
+/* The 🤖 in the top bar while the autopilot is enabled (#821, #973): a link that opens the drop-down with every desk's
+   engage switch; in the main color with a soft tint while it is engaged on any desk. */
+header.top .pilot-btn { border: none; padding: 4px 8px; font-size: 13px; color: var(--muted); min-width: 32px; min-height: 28px; border-radius: 8px; white-space: nowrap; }
+header.top .pilot-btn.on, header.top .pilot-btn[aria-expanded="true"] { color: var(--accent); background: var(--accent-soft); }
+@media (max-width: 900px) { #pilotBtnText { display: none; } }
+.tl-menu.pl-pop { min-width: 320px; max-width: calc(100vw - 32px); max-height: 70vh; padding: 8px; }
+.pl-pop .pl-quick { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.pl-pop .pl-quick button { font-size: 12px; padding: 3px 8px; }
+.pl-pop .pl-drow { display: flex; align-items: center; gap: 8px; padding: 6px 2px; border-top: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+.pl-pop .pl-drow.off { cursor: default; }
+.pl-pop .pl-drow .pl-dn { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.pl-pop .pl-drow .meta { font-size: 12px; overflow-wrap: anywhere; }
+.pl-pop .pl-drow input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.pl-pop .pl-note { padding: 6px 8px; margin-bottom: 6px; border-radius: 8px; background: var(--accent-soft); font-size: 12px; display: flex; gap: 8px; align-items: center; }
+.pl-pop .pl-note span { flex: 1; }
+.pl-pop .pl-foot { border-top: 1px solid var(--line); padding-top: 6px; font-size: 12px; }
+.pl-pop .pl-no { color: var(--warn); font-size: 12px; }
+.pl-pop .pl-foot button { border: none; background: none; color: var(--accent); padding: 0; font-size: 12px; cursor: pointer; }
+/* A desk's Autopilot tab (#974): the engage head, what it handles there (a Suggest | Answer split control per kind, a
+   filter-like choice), and its runs by day with their cost. */
+.side-tabs:has(#tabPilot:not([hidden])) { grid-template-columns: 1fr 1fr 1.3fr; }
+.side-tabs button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side-tabs .tab-cost { font-size: 11px; opacity: .8; margin-left: 4px; font-weight: 400; }
+.side-tabs [hidden] { display: none; }
+.pt { padding: 4px 8px 16px; font-size: 13px; }
+.pt-head { display: flex; align-items: center; gap: 10px; background: var(--accent-soft); border-radius: 8px; padding: 8px 10px; margin: 4px 0 8px; }
+.pt-head.off { background: var(--panel-2); }
+.pt-head .pt-nm { flex: 1; min-width: 0; }
+.pt-head input { width: 18px; height: 18px; accent-color: var(--accent); flex: none; }
+.pt .meta { color: var(--muted); font-size: 12px; }
+.pt-gh { display: flex; justify-content: space-between; gap: 8px; background: var(--panel-2); color: var(--muted); font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; margin-top: 10px; }
+.pt-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
+.pt-row .t { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.pt-row .t .meta { display: block; }
+.pt-split { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; flex: none; }
+.pt-split button { border: none; border-radius: 0; padding: 3px 10px; font-size: 12px; min-height: 28px; background: none; color: var(--text); }
+.pt-split button + button { border-left: 1px solid var(--line); }
+.pt-split button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.pt-split:has([aria-pressed="true"]) { border-color: var(--accent); }
+.pt-split button:disabled { color: var(--muted); }
+.pt-train { padding: 1px 10px; font-size: 12px; min-height: 24px; margin-top: 3px; }
+.pt-split .rd { font-size: 11px; font-weight: 600; color: var(--accent); margin-left: 4px; }
+.pt-run { display: flex; gap: 8px; padding: 6px 10px 2px; align-items: baseline; }
+.pt-run a { flex: 1; min-width: 0; color: var(--text); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-run a:hover { text-decoration: underline; }
+.pt-ans { padding: 0 10px 6px 18px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.pt-ans a { color: var(--accent); }
+.pt-foot { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; padding: 10px 10px 0; border-top: 1px solid var(--line); margin-top: 10px; }
+.pt .pl-no { color: var(--warn); font-size: 12px; padding: 4px 10px; }
 .by-pilot { color: var(--accent); }
 .pilot-dlg .pl-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 .pilot-dlg select { max-width: 100%; }
@@ -1355,17 +1457,17 @@ header.top .pilot-btn[hidden] { display: none; }
 .pl-miss { margin-left: 6px; font-size: 11px; padding: 1px 6px; }
 .pilot-dlg .pl-more { margin-top: 10px; font-size: 12px; }
 .pilot-dlg .pl-more summary { cursor: pointer; color: var(--muted); }
-/* What the autopilot is doing, on the autopilot desk's 🤖 and the 🤖 in the top bar (indicators): a soft pulse while a
-   batch fills (waking), a steady glow while a run works, and one lightning flicker on each answer; still at rest.
-   Set on body, so nothing redraws. */
-.pilot-mark { display: inline-block; border-radius: 8px; }
+/* What the autopilot is doing, on the 🤖 in the top bar (an indicator): a soft pulse while a batch fills (waking), a
+   steady glow while a run works, and one lightning flicker on each answer; still at rest. Set on body, so nothing
+   redraws. */
 @keyframes pilot-pulse { 50% { opacity: .4; } }
 @keyframes pilot-zap { 0%, 100% { opacity: 1; } 15% { opacity: .2; } 25% { opacity: 1; } 45% { opacity: .35; } 55% { opacity: 1; } }
-body[data-pilot="waking"] :is(#pilotBtn, .pilot-mark) { animation: pilot-pulse 1.6s ease-in-out infinite; }
-body[data-pilot="working"] :is(#pilotBtn, .pilot-mark) { filter: drop-shadow(0 0 3px var(--accent)); }
-body.pilot-decided :is(#pilotBtn, .pilot-mark) { animation: pilot-zap .8s steps(1) 1; }
-/* A desk with a pilot run for its own items (#914): a 🤖 on its tab (an indicator) while its batch fills or its run
-   works, flickering once when that run answers. Shown only then; drawn in place. */
+body[data-pilot="waking"] #pilotBtn { animation: pilot-pulse 1.6s ease-in-out infinite; }
+body[data-pilot="working"] #pilotBtn { filter: drop-shadow(0 0 3px var(--accent)); }
+body.pilot-decided #pilotBtn { animation: pilot-zap .8s steps(1) 1; }
+/* A desk with the autopilot engaged (#973): a 🤖 on its tab (an indicator) and an underline in the main color; the 🤖
+   pulses while its batch fills, glows while its run works (#914) and flickers once when that run answers. Drawn in place. */
+.clients button.pl-on { box-shadow: inset 0 -2px 0 var(--accent); }
 .desk-pm { display: inline-block; margin-left: 4px; border-radius: 8px; }
 .desk-pm[hidden] { display: none; }
 .desk-pm[data-st="waking"] { animation: pilot-pulse 1.6s ease-in-out infinite; }
@@ -1389,16 +1491,14 @@ body.pilot-decided :is(#pilotBtn, .pilot-mark) { animation: pilot-zap .8s steps(
   background: linear-gradient(90deg, transparent, var(--accent) 45%, var(--panel) 50%, var(--accent) 55%, transparent); background-size: 200% 100%; animation: pl-sweep .9s linear 1 both; }
 @keyframes pl-sweep { from { background-position: 150% 0; } to { background-position: -50% 0; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
-  body[data-pilot] :is(#pilotBtn, .pilot-mark), .desk-pm, .pl-band, .pl-band .pl-zap, .pl-band .pl-wave path { animation: none; }
+  body[data-pilot] #pilotBtn, .desk-pm, .pl-band, .pl-band .pl-zap, .pl-band .pl-wave path { animation: none; }
   .desk-pm[data-st="waking"] { background: var(--panel-2); }
   .desk-pm[data-st="working"] { filter: none; background: var(--accent-soft); }
   .composer.pl-bolt::before { display: none; }
   .pl-band .pl-wave { display: none; }
-  body[data-pilot="waking"] :is(#pilotBtn, .pilot-mark) { background: var(--panel-2); }
-  body[data-pilot="working"] :is(#pilotBtn, .pilot-mark) { filter: none; background: var(--accent-soft); }
+  body[data-pilot="waking"] #pilotBtn { background: var(--panel-2); }
+  body[data-pilot="working"] #pilotBtn { filter: none; background: var(--accent-soft); }
 }
-.co.pilot-desk .co-ro { overflow-wrap: anywhere; color: var(--muted); }
-.co.pilot-desk .co-pilot-name { flex: 1; font-weight: 600; }
 .tl-menu.rc-pop { left: auto; right: 0; min-width: 260px; }
 .rc-pop .rc-item { display: flex; align-items: center; gap: 8px; padding: 6px; font-size: 13px; }
 .rc-pop .rc-item span { flex: 1; }
@@ -1768,14 +1868,14 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
   <button id="pauseBtn" data-tip="pause-all" aria-label="Pause all sessions">⏸︎</button>
   <button id="reloadAllBtn" data-tip="reload-all" aria-label="Reload all sessions whose config changed" hidden>⟳<span id="reloadAllN"></span></button>
   <button class="ghost" id="feedbackBtn" data-tip="feedback" aria-label="Suggest a feature" aria-haspopup="dialog" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/></svg></button>
-  <span class="top-icons"><span class="sep" aria-hidden="true"></span><button class="ghost pilot-btn" id="pilotBtn" data-tip="pilot-icon" aria-label="Autopilot flying" hidden>🤖</button><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
+  <span class="top-icons"><span class="sep" aria-hidden="true"></span><div class="rc-wrap" id="pilotWrap" hidden><button class="ghost pilot-btn" id="pilotBtn" data-tip="pilot-icon" aria-haspopup="true" aria-expanded="false">🤖 <span id="pilotBtnText">Autopilot off</span></button><div id="pilotMenu" class="tl-menu rc-pop pl-pop" role="menu" hidden></div></div><div class="rc-wrap" id="rcWrap" hidden><button class="ghost rc-btn" id="rcBtn" data-tip="rc-icon" aria-haspopup="true" aria-expanded="false" aria-label="Remote connection on">📡</button><div id="rcMenu" class="tl-menu rc-pop" role="menu" hidden></div></div><span class="brand-icons" id="brandIcons"></span><button class="ghost sites-btn" id="sitesBtn" data-tip="tab-sites" aria-label="Sites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg></button><span class="sep gsep" aria-hidden="true"></span><span class="gauges"><button class="ghost g-btn" id="gCpu" data-tip="g-cpu" aria-label="Docket CPU"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx=".5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gMem" data-tip="g-mem" aria-label="Docket memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7h18v8H3zM6 15v3M10 15v3M14 15v3M18 15v3"/><path d="M7 10v2M11 10v2M15 10v2"/></svg><span class="gv">–</span></button><button class="ghost g-btn" id="gDisk" data-tip="g-disk" aria-label="Docket file space"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 14h18"/><circle cx="17" cy="16.5" r=".6" fill="currentColor"/></svg><span class="gv">–</span></button></span><span class="sep" aria-hidden="true"></span><button class="ghost pane-btn" id="tasksBtn" data-tip="details" aria-label="Details panel" aria-pressed="true"><svg class="pane-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path class="fillp" d="M15.5 6.5h3v11h-3z" stroke="none"/><path d="M14 4v16"/></svg><span class="badge" id="tasksN" hidden></span></button></span>
 </header>
 <div class="start-banner" id="startBanner" role="status" hidden><span id="startBannerText"></span><button class="primary" id="startSignin" data-tip="start-signin">Start Docket at sign-in (recommended)</button><button id="startShortcut" data-tip="start-shortcut">Just add a shortcut</button><button id="startNever" data-tip="start-never">Don't ask again</button></div>
 <div class="app">
   <aside class="side" id="side">
     <div class="resizer" id="leftResizer" role="separator" aria-orientation="vertical" aria-label="Resize the session list" data-tip="resize-left" tabindex="0"></div>
     <div class="side-head">
-      <div class="side-top"><div class="side-tabs" role="tablist"><button role="tab" data-mode="sessions" class="on" data-tip="tab-sessions">Sessions</button><button role="tab" data-mode="schedules" data-tip="tab-schedules">Schedules</button></div><button class="ghost pane-close" id="sideClose" aria-label="Close the session list" title="Back to the session (Esc)">✕</button></div>
+      <div class="side-top"><div class="side-tabs" role="tablist"><button role="tab" data-mode="sessions" class="on" data-tip="tab-sessions">Sessions</button><button role="tab" data-mode="schedules" data-tip="tab-schedules">Schedules</button><button role="tab" data-mode="pilot" data-tip="tab-pilot" id="tabPilot" hidden>Autopilot<span class="tab-cost" id="tabPilotCost"></span></button></div><button class="ghost pane-close" id="sideClose" aria-label="Close the session list" title="Back to the session (Esc)">✕</button></div>
       <div class="search-row"><button class="primary" id="newBtn" data-tip="new">+ New session</button><input id="search" placeholder="Search sessions" aria-label="Search sessions" data-tip="search"><button id="textSearchBtn" aria-pressed="false" data-tip="textsearch">❝</button></div>
       <div id="searchNote" class="search-note" hidden></div>
       <div class="attn-bar list-bar" id="listBar"><span id="listOpts"></span><span class="attn-ctl" id="attnCtl"><button id="attnBtn" aria-pressed="false" data-tip="attn">✦</button><button id="attnWinBtn" aria-haspopup="menu" aria-expanded="false" data-tip="attn-window"></button><div id="attnMenu" class="tl-menu attn-pop" role="menu" aria-label="Which read sessions ✦ Needs attention also keeps" hidden></div></span><div class="view-menu"><button id="viewBtn" aria-haspopup="true" aria-expanded="false" data-tip="view">👁</button><div id="viewMenu" class="tl-menu view-pop" data-menu hidden></div></div></div>
@@ -1812,6 +1912,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
     <div class="pl-band" id="plBand" role="status" hidden></div>
     <div class="composer" id="composer">
       <div class="inner">
+        <div class="q-tray" id="qTray" role="region" aria-label="Open questions" hidden></div>
         <div class="compose-row">
           <input type="file" id="fileInput" multiple hidden>
           <div class="slash" id="slash" hidden role="listbox" aria-label="Skills and slash commands"></div>
@@ -1856,11 +1957,13 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
 <div class="install-offer" id="reasonOffer" role="dialog" aria-labelledby="reasonOfferTitle" hidden></div>
 <div class="install-offer" id="costOffer" role="dialog" aria-labelledby="costOfferTitle" hidden></div>
 <div class="install-offer" id="cacheOffer" role="dialog" aria-labelledby="cacheOfferTitle" hidden></div>
+<div class="install-offer" id="pilotOffer" role="dialog" aria-labelledby="pilotOfferTitle" hidden></div>
 <div class="install-offer" id="planOffer" role="dialog" aria-labelledby="planOfferTitle" hidden></div>
 <div class="install-offer" id="setupOffer" role="dialog" aria-labelledby="setupOfferTitle" hidden></div>
 <div class="install-offer" id="startOffer" role="dialog" aria-labelledby="startOfferTitle" hidden></div>
 <div class="install-offer" id="summaryOffer" role="dialog" aria-labelledby="summaryOfferTitle" hidden></div>
 <div class="install-offer" id="formsOffer" role="dialog" aria-labelledby="formsOfferTitle" hidden></div>
+<div class="install-offer" id="questionsOffer" role="dialog" aria-labelledby="questionsOfferTitle" hidden></div>
 </div>
 <div class="upd-pop" id="updPop" role="dialog" aria-labelledby="updPopTitle" hidden></div>
 <div class="upd-note" id="updNote" role="status" aria-live="polite" hidden></div>
@@ -1964,15 +2067,16 @@ const HELP = [
     ['g-cpu', 'CPU gauge', "How much of this computer's processor Docket is using: the app, the runner, the sessions and their helpers, as Task Manager counts it. Amber when it stays over 80%. Click for ☰ > Memory and disk"],
     ['g-mem', 'Memory gauge', 'How much memory Docket is using: the app, the runner, the sessions and their helpers. Click for ☰ > Memory and disk'],
     ['g-disk', 'File space gauge', "The size of Docket's folder, as last measured (every 20 minutes). Click for ☰ > Memory and disk"],
-    ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is. Blinks yellow while the session open now needs you to sign in to a site'],
+    ['tab-sites', '🌐 Sites', 'Sites this desk is signed in to in its private browser, to add or delete them. In the main color while any sign-in is saved, muted while none is. Blinks yellow while any session on this desk needs you to sign in to a site'],
     ['new', '+ New session', 'Start a new conversation with the AI'],
     ['search', 'Search box', 'Find sessions by title or folder. Turn on ❝ to search what was said too.'],
     ['view', '👁 View', 'View: how the list is shown (grouped or flat, empty groups), whether rows show why they need you, what sessions and groups cost, and which chips each row shows. Each desk keeps its own.'],
     ['groupview', '👁 > Grouped', 'Grouped: sort sessions into named groups you make. Turn it off for one flat list.', 'Sessions are sorted into your groups. Turn it off for one flat list.'],
-    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that\n• need you (a reply or an error you have not opened yet)\n• wait on your answer\n• are working\n• have a warm cache\nBelow them:\n• the ones you touched lately (sent a message or started; the Keep period on the right of ✦ sets how far back, Workday (the last workday) at first; picking one also turns ✦ on)\n• the ones you pinned (right-click a session)\nA family shows whole: a session started from another one sits under it, its parent shown too.\nThe orange number counts sessions that need you, wait on your answer, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then what you touched lately or pinned. Click to show everything.'],
+    ['attn', '✦ Needs attention', 'Needs attention: show only sessions that\n• need you (a reply or an error you have not opened yet)\n• wait on your answer\n• are working\n• coordinate a plan that is not finished (a stalled plan, or one waiting on you, near the top)\n• have a warm cache\nBelow them:\n• the ones you touched lately (sent a message or started; the Keep period on the right of ✦ sets how far back, Workday (the last workday) at first; picking one also turns ✦ on)\n• the ones you pinned (right-click a session)\nA family shows whole: a session started from another one sits under it, its parent shown too.\nThe orange number counts sessions that need you, wait on your answer, coordinate a plan waiting on you, have a cache about to expire, or were cut off; recent and pinned ones do not add to it.', 'Showing what needs attention, then what you touched lately or pinned. Click to show everything.'],
     ['attn-window', '✦ also keeps', 'Which read, idle sessions ✦ Needs attention also keeps, below the others, by when you last touched them (sent a message or started them; opening one does not count):\n• Off: none\n• 12 hours\n• Yesterday: from the start of yesterday\n• Workday (the last workday): from the start of the last Monday-to-Friday day before today you touched any session, so Friday shows on Monday, weekend work included\n• 7 days\n• Pins: only pinned ones\nPinned sessions show under every choice. Each desk keeps its own.'],
     ['reasontags', '👁 > Reason tags', 'Reason tags: a session that needs you also shows why on its row, as a small word or an icon (question, merge, done or reply; hover an icon for its word) in a column on the right. Only question has color. An error needs no tag: its dot has a red ring and its time says "error". Off: no column. Icon as session dot, beside these, draws the reason icon in place of the dot. Each desk keeps its own.'],
     ['reasondot', '👁 > Reason tags > Icon as session dot', 'Icon as session dot: a session that needs you draws its reason icon (question, merge, done, reply, or a red triangle for an error) in place of its yellow dot; hover it for the word. A session paused on a prompt keeps the "?" dot. Works with Words, Icons or Off, which set the column on the right.', 'The reason icon takes the place of the dot on rows that need you. Turn it off for the plain yellow dot.'],
+    ['qlevel', '👁 > Questions', 'Numbered questions (Q5) on this desk. Off: plain text. Highlight only: each gets a colored bar and chip in the chat, green with your answer under it once you answer it by number or in its form. Highlight + track: also a tray of the open ones above the prompt and their count on the row\'s question tag, which keeps the row in ✦ Needs attention until they close'],
     ['costrows', '👁 > Cost > Sessions', 'Cost on each row, just left of its time, at API prices as in Details > Cost and the Usage page:\n• Off: none\n• Session: what the session cost, with its helper agents\n• Family: the session and every session under it, all the way down, archived and deleted ones too (in bold where it adds any)\nA working session shows its cost up to its last turn, with a +. Schedule rows show none. Each desk keeps its own.'],
     ['costgroups', '👁 > Cost > Group totals', 'Group totals: each group header shows what all its sessions cost at API prices, archived and deleted ones too, even while the group is folded. Only while the list is Grouped. Each desk keeps its own.', 'Each group header shows what its sessions cost. Turn it off to hide the totals.'],
     ['costperiod', '👁 > Cost > Period', 'Period, for every cost shown on rows and group headers: Today (since midnight, the same day as the Today spend at the bottom left) or Ever. Each desk keeps its own.'],
@@ -2251,6 +2355,9 @@ const HELP = [
     ['menu-restartdocket', 'Restart Docket', 'Start Docket over to free everything it holds: it stops every session program, connected service and private browser, and the session runner, then starts again. Not a page reload. It says first which sessions are working or waiting on you; those show under "Open when the portal stopped" with Continue afterwards, and nothing continues by itself'],
     ['rd-anyway', 'Restart anyway', 'Restart now and cut off the sessions listed. Each shows under "Open when the portal stopped" with Continue afterwards'],
     ['rd-go', 'Restart', 'Stop everything Docket started and start it again'],
+    ['menu-quitdocket', 'Quit Docket', 'Stop Docket entirely: every session program, connected service and private browser, the session runner and the app, and do not start it again. It says first which sessions are working or waiting on you; those show under "Open when the portal stopped" with Continue the next time you start Docket'],
+    ['qd-anyway', 'Quit anyway', 'Quit now and cut off the sessions listed. Each shows under "Open when the portal stopped" with Continue the next time you start Docket'],
+    ['qd-go', 'Quit', 'Stop everything Docket started, and Docket itself, until you start it again'],
     ['menu-update', 'About > Check for updates', 'Look on GitHub for a newer Docket now'],
     ['upd-every', 'Check every', 'How often Docket looks on GitHub for a newer version'],
     ['menu-screen', 'Desks > desk > Screen control', 'On: this desk\'s sessions get tools to take screenshots, move and click the mouse and type, in any program on this computer (and on a remote desk\'s computer where it is on too). A last resort for programs with no better way in. Every action is logged, a bar shows while a session is in control, and Stop halts it. Off by default; sessions started or woken after you turn it on get the tools. Kept on this computer only'],
@@ -2336,6 +2443,12 @@ const HELP = [
     ['ro-on', 'Turn it on', 'Draw the reason icon in place of the dot on rows that need you, on this desk. Ticked, the word stays on the right too; unticked, there is no column. Change it any time in 👁 > Reason tags'],
     ['ro-words', 'Keep the word on the right too', 'Ticked: the reason word stays in its column on the right as well (Words). Unticked: only the icon at the dot, and no column (Off)'],
     ['ro-no', 'Not now', 'Keep the plain dot. This card does not show again; 👁 > Reason tags has Icon as session dot whenever you want it'],
+    ['qo-off', 'Off', 'Leave numbered questions as plain text on this desk. This card does not show again; 👁 > Questions has the other levels'],
+    ['qo-highlight', 'Highlight only', 'Color numbered questions in this desk\'s chats, and turn them green with your answer. Nothing is kept: no tray and no count on the row'],
+    ['qo-track', 'Highlight + track', 'Color numbered questions in this desk\'s chats, and keep the open ones in a tray above the prompt and counted on the row until you answer them by number, answer their form, or press ✓'],
+    ['qt-go', 'Open question', 'Scroll the chat to where it was asked'],
+    ['qt-tick', '✓', 'Close this question by hand: it leaves the tray and the row\'s count'],
+    ['qt-fold', 'fold / show', 'Fold the tray to one line, or open it again. Remembered for this session; a new question opens it again'],
     ['co-on', 'Turn it on', 'Show each session\'s own cost on its row and each group\'s total on its header, on this desk, for today. Change it any time in 👁 > Cost'],
     ['co-no', 'Not now', 'Keep the list as it is. This card does not show again; 👁 > Cost has it whenever you want it'],
     ['plan-no', 'Turn them off', 'Turn plans off for this desk and don\'t ask again. Turn them on later in the desk\'s Inspector, under Switches'],
@@ -2414,20 +2527,30 @@ const HELP = [
     ['rd-setup-cancel', 'Cancel', 'Keep the authenticator you had, or none'],
     ['rd-desk', 'Desk it may use', 'The one desk another computer may use. Its sign-ins and costs stay on this computer'],
     ['rd-on', 'Turn on / Turn off', 'While on, computers on the office network can ask to connect (with a code from the authenticator app, and only after someone here clicks Allow). While off, nothing on the network can reach Docket here'],
-    ['pilot-icon', 'Autopilot flying', 'The autopilot is on: short pilot runs, one per desk, answer what waits on you, under the rules on this computer, and everything they answer says "answered by pilot". It pulses softly while something comes in, glows while a run works, and flickers once on each answer. Click to see what it is doing and its recent answers, or to turn it off'],
-    ['pilot-brand', 'Runs on', "Where each pilot run goes, always on its brand's top model. Each desk: the run for a desk's items is a session of that desk, on its own default brand and sign-in, and its cost shows on that desk (a desk with no brand signed in uses the Autopilot desk). Or one brand on the Autopilot desk, billed there; only brands that desk is signed in to can be picked. The next run uses it; a run going now keeps its own"],
+    ['pilot-icon', 'Autopilot', "Engage the autopilot on desks: on an engaged desk, short pilot runs answer what waits on you, under the rules on this computer, each a session of that desk and billed there, and everything they answer says \"answered by pilot\". It holds back in a session you are using. The 🤖 pulses softly while something comes in, glows while a run works, and flickers once on each answer"],
+    ['pilot-quick-others', 'All but this desk', 'Engage the autopilot on every desk signed in to a brand except the one open now: for lunch, or while you focus on this desk'],
+    ['pilot-quick-all', 'All desks', 'Engage the autopilot on every desk signed in to a brand'],
+    ['pilot-quick-none', 'Off everywhere', 'Disengage the autopilot on every desk. Runs going now end'],
+    ['pilot-desk', 'Autopilot on this desk', 'On: the autopilot answers what its rules let it on this desk, in runs billed to this desk, and suggests where it is still learning. Off: it leaves this desk alone (it still learns from your answers). A desk with no brand signed in cannot be engaged'],
+    ['tab-pilot', 'Autopilot', "What the autopilot does on this desk: its engage switch, Suggest or Answer for each kind of item, and its runs by day with what they cost (also counted in the desk's total)"],
+    ['pilot-engage-here', 'Autopilot on this desk', 'Engage or disengage the autopilot on this desk, the same as its switch in the 🤖 drop-down'],
+    ['pilot-suggest', 'Suggest', 'The autopilot suggests an answer on the card and you pick, so it keeps learning how you answer this kind on this desk. For a kind it answers, it stops answering and keeps what it learned: Answer can be picked again'],
+    ['pilot-answer', 'Answer', 'The autopilot answers this kind on this desk itself, under the rules. It can be chosen once its suggestions have matched your answers often enough (Ready), the same as I got this, or again after Suggest paused it'],
+    ['pilot-train', 'Train', 'Starts the autopilot\'s learning for this kind on this desk over: it stops answering, suggests on the card, and its count goes back to 0. Asks first'],
+    ['pilot-run', 'A pilot run', 'Open this run: the session the autopilot started on this desk, with what it did'],
+    ['pilot-offer-engage', 'Engage', 'Engage the autopilot on these desks now. Turn it off from 🤖 in the top bar'],
+    ['pilot-offer-later', 'Not now', 'Hide this until things have stopped waiting and start to wait again'],
+    ['pilot-offer-today', 'Not today', 'Do not offer again today'],
+    ['pilot-note', 'Got it', 'Hide this note. The autopilot stays enabled, engaged on the desks you pick'],
+    ['pilot-settings', 'Docket settings > Autopilot', 'The rules file, the recent answers, "I got this" and learning from your past sessions'],
     ['pilot-accept', 'Accept', "Answer this the way the autopilot suggests, as your own answer. The autopilot learns from it either way"],
     ['pilot-history', 'Learn from your past sessions', "Read the answers you gave in your past sessions on this computer (permission prompts you turned down, question forms, plans, New session / Do it here, suggested sessions and handoffs), so the autopilot's suggestions start from how you answered before. It runs in the background and nothing leaves this computer"],
     ['pilot-promote', 'I got this', "Let the autopilot answer this kind of item on this desk itself from now on. If it ever answers one in a way you would not, press Not my pick and it goes back to suggesting"],
     ['pilot-miss', 'Not my pick', "You would have answered this differently: the autopilot goes back to suggesting this kind of item on this desk, and you pick"],
-    ['pilot-on', 'Autopilot on', "On: short pilot runs, one per desk, answer what its rules allow, and the 🤖 shows in the top bar. The first time, Docket makes the Autopilot desk. Off: every pilot tool refuses, and no run starts"],
-    ['menu-autopilot', 'Docket settings > Autopilot', 'One switch for all of Docket: the autopilot answers what waits on you (permission prompts, question forms, cards) on every desk, under rules kept on this computer, in short runs, one per desk, each seeing only the items of that desk, on the top model of the brand of that desk or of the one brand picked there. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, the brand, what it is doing and its recent answers'],
+    ['pilot-on', 'Autopilot enabled', "On: the 🤖 shows in the top bar, where you engage the autopilot desk by desk, and Docket learns from your answers on every desk (no model, nothing leaves this computer). Off: none of it shows, it is engaged nowhere, and every pilot tool refuses"],
+    ['menu-autopilot', 'Docket settings > Autopilot', 'Enable the autopilot for Docket on this computer. Once enabled, you engage it desk by desk from 🤖 in the top bar: on an engaged desk it answers what waits on you (permission prompts, question forms, cards) under rules kept on this computer, in short runs on that desk\'s own brand and top model, each seeing only that desk\'s items and billed there. Merges, money, secrets, sign-ins, deleting, outside services and other desks stay with you unless the rules file names them. Shows the switch, what it is doing and its recent answers'],
     ['rc-icon', '📡 Remote connection on', 'Another computer is using a desk here, or this computer is using a desk on another computer. Click the 📡 at the bottom left to see which, and to Disconnect'],
     ['rd-drop', 'Disconnect', 'End this computer\'s connection now. It needs a new code and an Allow to come back'],
-    ['rd-revoke', 'Revoke', 'End this pilot key now. The autopilot on that computer can no longer reach this desk until someone here allows a new one'],
-    ['rd-pk', 'Ask for a pilot key', 'Lets the autopilot on this computer answer what waits on that desk, under the rules on both computers, for 30 days with no code. Someone at that computer must click Allow within 2 minutes, and can revoke it there at any time'],
-    ['rd-pk-screen', 'With the screen tools', 'Ask for the screen and mouse tools as well. They still work only while screen control is on for that desk there'],
-    ['rd-pk-revoke', 'Revoke pilot key', 'Give the pilot key back: it stops working on both computers'],
     ['rd-code', '6-digit code', 'The code the authenticator app shows for the other computer\'s Docket right now'],
     ['rd-connect', 'Connect', 'Send the code. Someone at the other computer must then click Allow within 2 minutes'],
     ['rd-off', 'Disconnect', 'End the connection to this remote desk. Nothing of it is kept on this computer'],
@@ -2524,7 +2647,7 @@ const S = {
   history: {},     // clientId -> rows
   costs: {},       // clientId -> the session list's cost figures (👁 > Cost)
   inbox: {},       // clientId -> work another desk handed over, waiting for Start
-  signinNeeds: {}, // clientId -> { sessionId: { site, url } }: sessions waiting on a private browser sign-in (#775)
+  signinNeeds: {}, // clientId -> { sessionId: [{ site, url }] }: sessions waiting on private browser sign-ins (#775, #1013)
   picked: new Set(), pickAnchor: null, pickMsg: '', // sessions picked with Ctrl/Shift+click, for the bar above the list
   selected: null,  // session id, or 'draft'
   suggestion: '',  // Claude's guess at your next message for the open session
@@ -2539,13 +2662,25 @@ const S = {
   costs: {},       // session id -> cost at API prices
   showArchived: false, // the list is showing the archive instead of the normal sessions
   events: [], tasks: {}, attachments: [],
+  qLevels: {}, qLevelsAt: 0, openQ: {}, // numbered questions (#989): each desk's level, and open questions a message brought
 };
 // Its turn ended with background jobs (commands, subagents) running: not done until they hand back.
 const inBackground = (s) => s.live && s.status === 'idle' && (s.runningTasks > 0 || s.background);
 // ---------- needs you
 // Waiting on you: a running session that finished or asked, one stopped by an error you have not opened since,
 // or a saved one that was waiting when the portal stopped.
-const needsYou = (s) => s.live ? (s.status === 'requires_action' || (s.unread && ((s.status === 'idle' && !inBackground(s)) || (s.status === 'ended' && !!s.lastError)))) : !!s.waiting;
+// ---------- open questions on rows (#989) ----------
+// Each desk's level for numbered questions (S.qLevels: off, highlight or track; a desk not in it has not answered its
+// card yet, so off) and, on a track desk, each session's open questions (openQ from the server; S.openQ holds the latest
+// a 'questions' message brought, until the row itself is sent again). Open questions keep a row needing you, as
+// "2 questions" (or a count on its question icon), until they close.
+const Q_LEVELS = [['off', 'Off'], ['highlight', 'Highlight only'], ['track', 'Highlight + track']];
+const qLevel = (client = S.client) => (Q_LEVELS.some(([v]) => v === S.qLevels[client]) ? S.qLevels[client] : 'off');
+const openQs = (s) => (!s || s.archived || qLevel(s.client) !== 'track' ? [] : (s.id in S.openQ ? S.openQ[s.id] : s.openQ) || []);
+const questionsWord = (n = 0) => (n > 0 ? `${n} question${n === 1 ? '' : 's'}` : 'question');
+// end of open questions on rows
+const needsYou = (s) => s.live ? (s.status === 'requires_action' || (s.unread && ((s.status === 'idle' && !inBackground(s)) || (s.status === 'ended' && !!s.lastError)))
+  || (s.status === 'idle' && !inBackground(s) && openQs(s).length > 0)) : !!s.waiting || openQs(s).length > 0;
 // Why it needs you (#671), strongest first, from Docket's own signals: why it turned orange (unreadWhy), a prompt or a
 // reply ending in a question (asksYou), a card waiting on a click (cardOpen, #823), an error, an open pull request (pr).
 // A card (a session offer, a proposal, a handoff) is one click, so it says card rather than question, unless a prompt
@@ -2554,7 +2689,7 @@ const needsYou = (s) => s.live ? (s.status === 'requires_action' || (s.unread &&
 const NEED_ASKING = ['requires_action', 'permission'], NEED_CARD = ['offer', 'cross', 'handoff'];
 const needLabel = (s, pr = false) => s.status === 'requires_action' || NEED_ASKING.includes(s.unreadWhy) ? 'question'
   : NEED_CARD.includes(s.unreadWhy) ? 'card' : s.asksYou || s.unreadSaid === 'question' ? 'question' : s.cardOpen ? 'card'
-  : s.lastError || s.unreadWhy === 'error' ? 'problem' : pr ? 'merge' : s.unreadSaid === 'done' ? 'done' : 'reply';
+  : s.lastError || s.unreadWhy === 'error' ? 'problem' : pr ? 'merge' : openQs(s).length ? 'question' : s.unreadSaid === 'done' ? 'done' : 'reply';
 // end of needs you
 // A row's place in the list: when it last turned orange (or started), never its latest activity,
 // so sessions stay still while they work. Saved sessions use when they last spoke.
@@ -2714,17 +2849,24 @@ const needIcon = (l) => l === 'merge' ? prIcon('merged') : `<svg viewBox="0 0 16
   card: `<rect x="1.6" y="2.6" width="12.8" height="10.8" rx="2" ${NEED_SVG}/><path d="M4.2 6h7.6" ${NEED_SVG}/><rect x="4" y="8.6" width="3.6" height="2.4" rx=".8" fill="currentColor"/><rect x="8.6" y="8.6" width="3.4" height="2.4" rx=".8" ${NEED_SVG} stroke-width="1.2"/>`,
   problem: `<path d="M8 1.9 14.6 13.4H1.4Z" ${NEED_SVG}/><path d="M8 6.2v3.3" ${NEED_SVG} stroke-width="1.9"/><circle cx="8" cy="11.5" r=".95" fill="currentColor"/>`
 }[l]}</svg>`;
-const needMark = (l, as = S.reasonTags) => as === 'icons' ? `<span class="nic need-${l}" title="${l}: ${esc(NEED_TIPS[l])}" aria-label="${l}">${needIcon(l)}</span>` : `<span class="tag need need-${l}" title="${esc(NEED_TIPS[l])}">${l}</span>`;
+// n: its open questions (#989): the question word says how many, its icon carries the count, a stronger word has ❓n beside it.
+const qCountTip = (n) => `${questionsWord(n)} open: the row stays until you answer by number, answer the form, or press ✓ in the tray above the prompt`;
+const qBadge = (n) => (n ? `<span class="qbadge">${n}</span>` : '');
+const qBeside = (n) => (n ? `<span class="qbeside" title="${esc(qCountTip(n))}">❓${n}</span>` : '');
+const needMark = (l, as = S.reasonTags, n = 0) => as === 'icons'
+  ? `<span class="nic need-${l}" title="${l}: ${esc(l === 'question' && n ? qCountTip(n) : NEED_TIPS[l])}" aria-label="${l === 'question' ? questionsWord(n) : l}">${needIcon(l)}${l === 'question' ? qBadge(n) : ''}</span>${l === 'question' ? '' : qBeside(n)}`
+  : `<span class="tag need need-${l}" title="${esc(l === 'question' && n ? qCountTip(n) : NEED_TIPS[l])}">${l === 'question' ? questionsWord(n) : l}</span>${l === 'question' ? '' : qBeside(n)}`;
 // Work it handed to another desk waits there for Accept and start (#904).
 const waitsTag = (s) => s.waitsIn?.length ? `<span class="tag waits-in" title="${esc(`Work this session handed over waits for you to accept it in ${s.waitsIn.join(', ')}`)}">waiting in ${esc(s.waitsIn.join(', '))}</span>` : '';
-const needTag = (s) => { if (S.reasonTags === 'off' || !needsYou(s)) return ''; const l = needLabel(s, openPR(s.id)); return l === 'problem' ? '' : needMark(l); };
+const needTag = (s) => { if (S.reasonTags === 'off' || !needsYou(s)) return ''; const l = needLabel(s, openPR(s.id)), n = openQs(s).length; return l === 'problem' ? qBeside(n) : needMark(l, S.reasonTags, n); };
 // The title a dot carries: the error for a red ring, what resting means for a hollow green one.
 const dotTip = (s, c = dotClass(s)) => c === 'failed' ? ` title="${esc(failedTip(s))}"` : c === 'asking' ? ' title="Waiting on your answer: the session is paused on a question or a permission prompt"' : c === 'resting' ? ` title="${RESTING_TIP}"` : c === 'childwait' || c === 'childnews' ? ` title="${esc(kidsText(s))}"` : '';
 // A row's dot. With 👁 > Reason tags > Icon as session dot (S.reasonDot, #720) a row that needs you draws its reason icon
 // there instead, problem (a triangle) in place of the red ring; paused on a prompt keeps the "?" badge.
-const reasonIcon = (l, title = ` title="${l}: ${esc(NEED_TIPS[l])}"`) => `<span class="ric need-${l}" role="img" aria-label="${l}"${title}>${needIcon(l)}</span>`;
+const reasonIcon = (l, title = ` title="${l}: ${esc(NEED_TIPS[l])}"`, n = 0) => `<span class="ric need-${l}" role="img" aria-label="${n ? questionsWord(n) : l}"${title}>${needIcon(l)}${qBadge(n)}</span>`;
 const rowDot = (s, c = dotClass(s)) => !S.reasonDot || (c !== 'needs' && c !== 'failed') ? `<span class="dot ${c}"${dotTip(s, c)}></span>`
-  : c === 'failed' ? reasonIcon('problem', dotTip(s, c)) : reasonIcon(needLabel(s, openPR(s.id)));
+  : c === 'failed' ? reasonIcon('problem', dotTip(s, c)) : dotIcon(needLabel(s, openPR(s.id)), openQs(s).length);
+const dotIcon = (l, n) => (l === 'question' && n ? reasonIcon(l, ` title="${esc(qCountTip(n))}"`, n) : reasonIcon(l)); // with its open questions' count (#989)
 const failedTip = (s) => `Last reply ended in an error: ${s.lastError.text.replace(/[.\s]+$/, '')}. Open it to read the error; send a message to try again.`;
 
 // ---------- every click acknowledged at once (#931) ----------
@@ -2944,11 +3086,11 @@ function waitingCount(clientId) {
 // The desks with a button at the top, in the list's order. A hidden desk (☰ > Desks > Manage) has none, so its
 // sessions are out of the list until it is shown again. The server keeps at least one shown.
 function shownDesks() { return S.clients.filter((c) => !c.hidden); }
-// The autopilot's desk (#886) shows a robot wherever desks are named; the server lists it first.
-const deskName = (c) => `${c.pilot ? '<span class="pilot-mark" aria-label="Autopilot desk">🤖</span> ' : ''}${esc(c.name)}`;
-// Any other desk's tab shows a 🤖 while a pilot run works on its own items, or a batch for it fills (#914); drawPilot
-// keeps it in step without redrawing the tabs.
-const deskPilotMark = (c) => { const st = !c.pilot && S.pilot?.desks?.[c.id]; return c.pilot ? '' : `<span class="desk-pm" data-pm="${esc(c.id)}"${st ? ` data-st="${st}"` : ' hidden'} aria-label="Autopilot run on this desk">🤖</span>`; };
+const deskName = (c) => esc(c.name);
+// A desk with the autopilot engaged (#973) shows a 🤖 on its tab, with an underline; the 🤖 shows what its runs are
+// doing (#914). drawPilot keeps both in step without redrawing the tabs.
+const pilotOnDesk = (id) => !!S.pilot?.engaged?.[id];
+const deskPilotMark = (c) => { const st = S.pilot?.desks?.[c.id]; return `<span class="desk-pm" data-pm="${esc(c.id)}"${st ? ` data-st="${st}"` : ''}${st || pilotOnDesk(c.id) ? '' : ' hidden'} aria-label="Autopilot engaged on this desk">🤖</span>`; };
 const deskArrived = {}; // desk id -> when work handed over from another desk arrived there: its tab flashes (#904)
 function renderClients() {
   if (menuHold(renderClients)) return; // waits while a menu is open (menu hold)
@@ -2956,7 +3098,7 @@ function renderClients() {
     const n = waitingCount(c.id);
     const rc = remoteMarkTip(c);
     const arrived = Date.now() - (deskArrived[c.id] || 0) < 3000 && c.id !== S.client;
-    return `<button class="${c.id === S.client ? 'on' : ''}${arrived ? ' arrived' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${deskName(c)}${deskPilotMark(c)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+    return `<button class="${c.id === S.client ? 'on' : ''}${arrived ? ' arrived' : ''}${pilotOnDesk(c.id) ? ' pl-on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${deskName(c)}${deskPilotMark(c)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
   }).join('');
   const total = waitingCount(S.client);
   const name = S.clients.find((c) => c.id === S.client)?.name;
@@ -2978,22 +3120,30 @@ function drawBrandIcons() {
 }
 $('clients').onclick = (e) => { const b = e.target.closest('[data-c]'); if (b) selectClient(b.dataset.c); };
 window.addEventListener('hashchange', () => { const id = location.hash.slice(1).split('/')[0]; if (id !== S.client && shownDesks().some((c) => c.id === id)) selectClient(id); });
+// Where each desk's list was scrolled to (#1003), for as long as the page is open: coming back shows the same rows.
+const listTops = {};
 // openId: the view to show there (a session id or 'draft') instead of the one last open in that company.
 function selectClient(id, openId) {
+  if (S.mode === 'sessions' && id !== S.client) listTops[S.client] = $('list').scrollTop;
   S.client = id; store.set('client', id); history.replaceState(null, '', '#' + id);
   readDeskSettings(); if (viewOpen()) renderViewMenu(); // each desk shows its list its own way
   showReasonOffer(); // its card is per desk
+  showQuestionsOffer(); // so is this one (#989)
   showCostOffer(); // it does not show on a desk with a cost display on
   showAccent();
   S.picked.clear(); S.pickAnchor = null; S.pickMsg = ''; renderPickBar();
   const c = S.clients.find((x) => x.id === id);
   showSignin(); renderBrowser(); refreshSpend(); refreshActivity();
   renderClients(); renderList(); refreshPRs(); loadShells(); // the AI programs differ by desk
+  if (S.mode === 'sessions') $('list').scrollTop = listTops[id] || 0;
   if (c?.remote && !c.remote.connected) { newDraft(); $('list').querySelector(`[data-rd-code="${id}"]`)?.focus(); return; } // connect it first
   if (S.mode === 'schedules') { setMode(openId ? 'sessions' : 'schedules', openId); return; }
-  if (openId) { if (openId === 'draft') newDraft(); else openSession(openId).catch(() => {}); return; }
-  const last = store.get('sel:' + id, null);
-  if (last && (S.live[last] || (S.history[id] || []).some((r) => r.id === last))) openSession(last, 'desk switch'); else newDraft();
+  if (openId) { if (openId === 'draft') newDraft(); else openSession(openId).catch(() => {}); }
+  else {
+    const last = store.get('sel:' + id, null);
+    if (last && (S.live[last] || (S.history[id] || []).some((r) => r.id === last))) openSession(last, 'desk switch'); else newDraft();
+  }
+  $('list').querySelector('.row.sel')?.scrollIntoView({ block: 'nearest' }); // the open session's row stays in sight
 }
 // A list that was asked for before a change arrived (an archive, say) is out of date by the time it
 // lands, so it is thrown away and asked for again; an older answer never replaces a newer one.
@@ -3019,6 +3169,7 @@ async function loadSessions(clientId, refresh) {
     S.history[clientId] = r.history;
     S.inbox[clientId] = r.inbox || [];
     S.signinNeeds[clientId] = r.signinNeeds || {};
+    if (clientId === S.client) renderSigninNeed(); // the globe blinks for any session on the desk (#987)
     for (const x of r.schedules || []) S.schedTitles[x.id] = x.title;
     return;
   }
@@ -3664,17 +3815,52 @@ setInterval(refreshPRs, 120000);
 // The 🌐 button opens a dialog that lists the sites and adds or deletes them; it shows in the main color while
 // any sign-in is saved. The box at the bottom of the left column only shows while the sign-in window is open and the
 // dialog is not, so Done is always in reach.
-// While the session open now waits on a sign-in (it called needs_signin, #678), the 🌐 blinks yellow and says which
-// site; moving to another session stops it, and coming back while the need is open starts it again. The needs are
+// While any session on the desk waits on a sign-in (it called needs_signin, #678), the 🌐 blinks yellow and its tooltip
+// names the sessions and sites, that session's row carries a "sign in" mark, and the session itself shows a Sign in card
+// under its last reply that opens the sign-in window on the page it needs, then turns into Done (#987). A session can
+// wait on several sites: the card lists each with its own Sign in button (#1013). Nothing opens by itself. The needs are
 // kept per desk by the app, live or saved sessions alike, so an app restart or a session resting does not lose them (#775).
+// Done clears only what was signed in to: this session's sites, and other sessions' sites the window went to (#1012).
 const sitesOpen = () => !$('dlg').hidden && !!$('dlgBody').querySelector('.sites-view');
-const signinNeed = () => S.signinNeeds[S.client]?.[S.selected] || null;
+const needsOf = (v) => (Array.isArray(v) ? v : v?.site ? [v] : []).filter((n) => n?.site); // an app from before #1013 sends one { site, url }
+const signinNeed = () => needsOf(S.signinNeeds[S.client]?.[S.selected]);
+const deskNeeds = () => Object.entries(S.signinNeeds[S.client] || {}).map(([id, v]) => [id, needsOf(v)]).filter(([, l]) => l.length);
+const needTitle = (id) => sessionById(id)?.title || 'A session';
+const needUrl = (need) => need?.url || (/\.\w/.test(need?.site || '') ? 'https://' + need.site.replace(/^https?:\/\//, '') : '');
+const needSites = (list) => { const s = list.map((n) => n.site); return s.length < 2 ? s.join('') : `${s.slice(0, -1).join(', ')} and ${s.at(-1)}`; };
+const signinTag = (s) => { const l = needsOf(S.signinNeeds[s.client || S.client]?.[s.id]); return l.length ? `<span class="tag signin-wait" title="${esc(`Waits on you to sign in to ${needSites(l)} in the private browser. Open the session and click Sign in.`)}">sign in</span>` : ''; };
 function renderSigninNeed() {
-  const need = signinNeed(), b = $('sitesBtn');
-  b.classList.toggle('need', !!need);
-  b.title = need ? `This session needs you to sign in to ${need.site} in its private browser. Click to open the sign-in window, sign in, then click Done.` : tipText('tab-sites');
-  b.setAttribute('aria-label', need ? `Sites: sign in to ${need.site}` : 'Sites');
+  const needs = deskNeeds(), b = $('sitesBtn');
+  b.classList.toggle('need', needs.length > 0);
+  b.title = needs.length ? `Waiting on a sign-in in the private browser: ${needs.map(([id, l]) => `${needTitle(id)} (${l.map((n) => n.site).join(', ')})`).join('; ')}. Open the session and click Sign in, or click here to open the sign-in window, then click Done.` : tipText('tab-sites');
+  b.setAttribute('aria-label', needs.length ? `Sites: sign in to ${[...new Set(needs.flatMap(([, l]) => l.map((n) => n.site)))].join(', ')}` : 'Sites');
+  signinAsk();
 }
+// The Sign in card under the open session's last reply: a click opens the sign-in window on the page a site needs (another
+// site's button, while it is open, adds a tab); while that window is open the card holds Done, so the person never has to
+// look for it. One site keeps its Sign in as the card's one solid button; with several, Done is the only solid one.
+function signinAsk() {
+  const box = $('events'), list = signinNeed();
+  box.querySelector('.signin-ask')?.remove();
+  if (!list.length || box.querySelector('.empty')) return;
+  const c = S.clients.find((x) => x.id === S.client), open = !!c?.browser?.open, stick = atBottom();
+  const go = (n, solid) => `<button${solid ? ' class="primary"' : ''} data-signin-go="${esc(needUrl(n))}" title="${esc(`${open ? 'Open a tab of the sign-in window' : 'Open the private browser\'s sign-in window'} on ${needUrl(n) || n.site}`)}">Sign in to ${esc(n.site)}</button>`;
+  const one = list.length === 1, need = list[0];
+  box.insertAdjacentHTML('beforeend', `<div class="signin-ask"><div class="sa-t">${open
+    ? `<b>A sign-in window is open.</b><small>Sign in to ${esc(needSites(list))} there, then click Done to save it and tell the session.</small></div>${one ? '' : list.map((n) => go(n)).join('')}<button class="primary" data-signin-done${tip('site-done')}>Done</button>`
+    : one ? `<b>This session needs a sign-in to ${esc(need.site)}</b><small>In its private browser${need.url ? `: ${esc(need.url)}` : ''}. Sign in there, then click Done.</small></div>${go(need, true)}`
+    : `<b>This session needs sign-ins to ${esc(needSites(list))}</b><small>In its private browser. Sign in to each there, then click Done.</small></div>${list.map((n) => go(n)).join('')}`}</div>`);
+  scrollDown(stick);
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-signin-go], [data-signin-done]'); if (!b) return;
+  const c = S.clients.find((x) => x.id === S.client); if (!c) return;
+  b.disabled = true;
+  const fail = (err) => { tell(err.message); renderBrowser(); };
+  if (b.hasAttribute('data-signin-done')) { b.textContent = 'Saving…'; browserPost(c, 'done', { session: S.selected }).catch(fail); return; }
+  b.textContent = 'Opening…';
+  browserPost(c, 'open', { url: b.dataset.signinGo, session: S.selected }).catch(fail);
+});
 function renderBrowser() {
   const c = S.clients.find((x) => x.id === S.client); if (!c) return;
   const b = c.browser || { sites: [], open: false };
@@ -3693,14 +3879,14 @@ async function browserPost(c, what, body) {
   c.browser = st; renderBrowser();
 }
 function sitesHtml(c) {
-  const b = c.browser || { sites: [], open: false }, need = signinNeed();
+  const b = c.browser || { sites: [], open: false }, needs = deskNeeds(), need = signinNeed()[0] || needs[0]?.[1][0];
   const rows = b.sites.map((site) => `<div class="site-row"><span class="sn" title="${esc(site)}">${esc(site)}</span><button data-forget-site="${esc(site)}" title="Delete the saved sign-in for ${esc(site)}">Delete</button></div>`).join('');
   return `<div class="sites-view">
     <div class="sv-note">These sign-ins belong to ${esc(c.name)} on this computer only. ${esc(c.name)} sessions use them in their private browser; other desks and other computers do not see them.</div>
-    ${need ? `<div class="sv-need">This session needs a sign-in to <b>${esc(need.site)}</b>.${b.open ? '' : ' Click + Add a site to open the sign-in window for it.'}</div>` : ''}
+    ${needs.length ? `<div class="sv-need">${needs.map(([id, l]) => `${id === S.selected ? 'This session' : esc(needTitle(id))} needs ${l.length > 1 ? 'sign-ins' : 'a sign-in'} to ${l.map((n) => `<b>${esc(n.site)}</b>`).join(', ')}.`).join('<br>')}${b.open ? '' : ' Click + Add a site to open the sign-in window for it.'}</div>` : ''}
     ${b.open ? `<div class="sv-open"><span>A sign-in window is open. Sign in to the sites ${esc(c.name)} sessions need, then click Done.</span><button class="primary" id="svDone"${tip('site-done')}>Done</button></div>` : ''}
     <div class="site-rows">${rows || '<div class="sv-empty">No sign-ins saved yet.</div>'}</div>
-    ${b.open ? '' : `<div class="sv-add"><input id="svUrl" placeholder="Site to sign in to (optional)" aria-label="Site to sign in to" value="${esc(need?.url || (/\.\w/.test(need?.site || '') ? need.site : ''))}"${tip('site-url')}><button id="svAdd"${tip('site-add')}>+ Add a site</button></div>`}
+    ${b.open ? '' : `<div class="sv-add"><input id="svUrl" placeholder="Site to sign in to (optional)" aria-label="Site to sign in to" value="${esc(needUrl(need))}"${tip('site-url')}><button id="svAdd"${tip('site-add')}>+ Add a site</button></div>`}
     ${b.sites.length ? `<button class="sv-forget" id="svForget"${tip('site-forget')}>Forget all sign-ins</button>` : ''}
   </div>`;
 }
@@ -3779,6 +3965,7 @@ function setMode(mode, openId) {
   S.mode = mode;
   for (const b of document.querySelectorAll('#side [data-mode]')) b.classList.toggle('on', b.dataset.mode === mode);
   $('newBtn').textContent = mode === 'schedules' ? '+ New schedule' : '+ New session';
+  if (mode === 'pilot') { renderList(); loadPilotDesk(); return; }
   $('search').value = '';
   renderTextSearchBtn();
   if (mode === 'schedules') {
@@ -4073,6 +4260,7 @@ const nearCompact = (s) => !!s?.stats?.compactAt && s.stats.tokens >= s.stats.co
 // The one percent shown on the gauge, in the list beside a red title, and in its hover text.
 const ctxPct = (st) => st?.compactAt ? Math.round((st.tokens / st.compactAt) * 100) : null;
 function renderComposerBar() {
+  renderTray(); // the open questions above the prompt (#989)
   if (menuHold(renderComposerBar)) return; // waits while a menu is open (menu hold)
   const st = currentSettings();
   const row = selectedSessionRow();
@@ -4290,7 +4478,8 @@ function tell(msg) {
   setTimeout(close, Math.min(20000, 6000 + String(msg ?? '').length * 60)); // long enough to read
 }
 let askOpen = null;
-function ask(title, body = '', { yes = 'OK', no = 'Cancel' } = {}) {
+// safe: the No button has the focus, so Enter keeps things as they are.
+function ask(title, body = '', { yes = 'OK', no = 'Cancel', safe = false } = {}) {
   askOpen?.(false); // one question at a time: a new one answers the old one with no
   return new Promise((resolve) => {
     $('askTitle').textContent = title;
@@ -4309,7 +4498,7 @@ function ask(title, body = '', { yes = 'OK', no = 'Cancel' } = {}) {
     $('askYes').onclick = () => done(true);
     $('askNo').onclick = () => done(false);
     $('askDlg').onclick = (e) => { if (e.target === $('askDlg')) done(false); };
-    $('askYes').focus();
+    $(safe ? 'askNo' : 'askYes').focus();
   });
 }
 const companyFolder = () => S.clients.find((x) => x.id === S.client)?.folder || '';
@@ -4346,7 +4535,7 @@ async function pickGroup(id) {
 }
 // Auto Group: Docket reads the session and suggests a group; the person picks one of the suggestions or Nevermind.
 // The reading is about the session whose choice sets the group (the family's top one for a child that follows it).
-const hasNoGroup = (s) => !!s && !s.groupId && !s.editFor;
+const hasNoGroup = (s) => !!s && !s.groupId && !s.editFor && !s.pilotRun;
 async function autoGroup(id) {
   const s = S.live[id] || (S.history[S.client] || []).find((r) => r.id === id);
   if (!hasNoGroup(s)) return;
@@ -4445,9 +4634,9 @@ function nestParent(s, shown, byId) {
 }
 // end of nesting rows
 function allSessionRows() {
-  const liveRows = Object.values(S.live).filter((s) => s.client === S.client && !s.editFor);
+  const liveRows = Object.values(S.live).filter((s) => s.client === S.client && !s.editFor && !s.pilotRun);
   const liveIds = new Set(liveRows.map((s) => s.id));
-  return [...liveRows, ...(S.history[S.client] || []).filter((r) => !liveIds.has(r.id) && !r.editFor)];
+  return [...liveRows, ...(S.history[S.client] || []).filter((r) => !liveIds.has(r.id) && !r.editFor && !r.pilotRun)];
 }
 const groupMembers = (gid) => allSessionRows().filter((s) => (s.groupId || '') === (gid || ''));
 
@@ -4827,6 +5016,14 @@ function attnShown(rows, { kind, match = () => true, since = null, touched = {},
   }
   return { live, kept, family, has: (id) => live.has(id) || kept.has(id) || family.has(id) };
 }
+// The ✦ kind a plan gives the session that coordinates it (or holds it, on a plan folder), so ✦ keeps it until the plan
+// is finished (#967): 'planwait' while it waits on you, 'stalled', else 'plan' (moving, paused, or a plan folder's, which
+// has no state). p: its summary from /api/plans, or nothing. Every task done or dropped (done = total) keeps nothing.
+function planAttn(p) {
+  if (!p || !(p.total > p.done)) return null;
+  const m = p.motion?.state;
+  return m === 'waiting' ? 'planwait' : m === 'stalled' ? 'stalled' : 'plan';
+}
 // end of keeping sessions in needs attention
 S.keptOnly = new Set(); // the rows the ✦ list shows only for being kept or for family, which sort below; set each time it is drawn
 function attnPick(match, kind) {
@@ -4836,8 +5033,8 @@ function attnPick(match, kind) {
   return a;
 }
 // ---------- needs attention: what is happening now, and what you touched lately ----------
-// Needs you, a 1 hour cache with 10 minutes or less left, cut off mid-reply, working, waiting on your answer, or any cache still warm.
-// Below those: sessions touched within the Keep window (beside ✦) or pinned, and parents that keep a family whole (attnShown).
+// Needs you, a 1 hour cache with 10 minutes or less left, cut off mid-reply, working, waiting on your answer, its plan
+// waiting on you or stalled, any cache still warm, or coordinating a plan not yet finished (planAttn). Below those: sessions touched within the Keep window (beside ✦) or pinned, and parents that keep a family whole (attnShown).
 // Waiting on your answer: read, but its latest reply asks something or ends with next steps and nothing was
 // sent to it since (s.awaitingAnswer, worked out by the server). No time limit: it stays until you answer or archive it.
 const cacheEnding = (s) => { const left = s.stats && s.stats.cacheExpiresAt - Date.now(); return !!s.stats && s.stats.cacheTtl > 600 && left > 0 && left <= 10 * 60000; };
@@ -4850,8 +5047,10 @@ function attnKind(s) {
   if (s.midReply) return 'cut';
   if (working(s)) return 'working';
   if (s.awaitingAnswer) return 'waiting';
+  const plan = planAttn(S.plans.on && ownPlan(s.id));
+  if (plan === 'planwait' || plan === 'stalled') return plan;
   if (cacheWarm(s)) return 'warm';
-  return null;
+  return plan;
 }
 const attnKindHeld = (s) => holding(listHold(), 'kind', attnKind)(s);
 try { localStorage.removeItem('recentWindow'); } catch {} // the Recent look-back was removed
@@ -4926,6 +5125,7 @@ const viewOpen = () => !$('viewMenu').hidden;
 function renderViewMenu() {
   // toggle chips, a filter (DESIGN.md): bordered, and when on a soft tint, main-color border and ✓
   $('viewMenu').innerHTML = `<div class="vm-reason" role="group" aria-label="Reason tags"><span>Reason tags</span>${REASON_TAGS.map(([v, label]) => `<button class="chip-tgl${S.reasonTags === v ? ' on' : ''}" data-reason="${v}" aria-pressed="${S.reasonTags === v}"${tip('reasontags')}>${label}</button>`).join('')}<span aria-hidden="true"></span><button class="chip-tgl${S.reasonDot ? ' on' : ''}" data-reasondot aria-pressed="${S.reasonDot}"${tip('reasondot', S.reasonDot)}>Icon as session dot</button></div>`
+    + `<div class="vm-reason" role="group" aria-label="Questions"><span>Questions</span>${Q_LEVELS.map(([v, label]) => `<button class="chip-tgl${qLevel() === v ? ' on' : ''}" data-qlevel="${v}" aria-pressed="${qLevel() === v}"${tip('qlevel')}>${label}</button>`).join('')}</div>`
     + costMenuHtml()
     + VIEW_OPTS.filter(([k]) => (k !== 'brandLogos' || multiBrand()) && (k !== 'showEmptyGroups' || S.groupView))
     .map(([k, , label, key]) => `<button class="chip-tgl${S[k] ? ' on' : ''}" data-view="${k}" aria-pressed="${!!S[k]}"${tip(key, S[k])}>${label}</button>`).join('');
@@ -4941,7 +5141,7 @@ function costMenuHtml() {
 // ✦ carries the attention count, so nothing waiting on you goes unseen; the whole control is lit while the list shows only
 // what needs attention. The Keep period beside it is redrawn here too.
 function renderAttnBtn() {
-  const n = allSessionRows().filter((s) => ['needs', 'waiting', 'ending', 'cut'].includes(attnKind(s))).length;
+  const n = allSessionRows().filter((s) => ['needs', 'waiting', 'planwait', 'ending', 'cut'].includes(attnKind(s))).length;
   const b = $('attnBtn');
   $('attnCtl').classList.toggle('on', S.attn);
   b.setAttribute('aria-pressed', String(S.attn));
@@ -4980,6 +5180,8 @@ function viewMenu(open) {
 }
 $('viewBtn').onclick = () => viewMenu(!viewOpen());
 $('viewMenu').addEventListener('click', (e) => {
+  const ql = e.target.closest('[data-qlevel]'); // 👁 > Questions (#989): kept by the server, since tracking happens there
+  if (ql) { setQLevel(ql.dataset.qlevel).then(() => $('viewMenu').querySelector(`[data-qlevel="${qLevel()}"]`)?.focus()).catch((err) => tell(err.message)); return; }
   if (e.target.closest('[data-reasondot]')) { S.reasonDot = !S.reasonDot; deskStore.set('reasonDot', S.reasonDot); renderViewMenu(); $('viewMenu').querySelector('[data-reasondot]')?.focus(); renderList(); renderHead(); return; }
   const r = e.target.closest('[data-reason]');
   if (r) { S.reasonTags = r.dataset.reason; deskStore.set('reasonTags', S.reasonTags); renderViewMenu(); $('viewMenu').querySelector(`[data-reason="${S.reasonTags}"]`)?.focus(); renderList(); return; }
@@ -5008,8 +5210,8 @@ function renderAttnList(q) {
   const list = oneRowPerSchedule(allSessionRows().filter((s) => a.has(s.id)));
   const left = (s) => ends(s) - Date.now();
   // Each family sits whole in the section of its most pressing member, in this order; one with no live member goes in the last.
-  const sections = [['needs', 'Needs you'], ['waiting', 'Waiting on your answer'], ['ending', 'Cache running out'], ['cut', 'Cut off mid-reply'], ['working', 'Working'], ['warm', 'Cache still warm'],
-    [null, ['off', 'pins'].includes(S.attnWindow) ? 'Pinned' : 'Recent and pinned']];
+  const sections = [['needs', 'Needs you'], ['waiting', 'Waiting on your answer'], ['planwait', 'Plan waiting on you'], ['stalled', 'Plan stalled'], ['ending', 'Cache running out'],
+    ['cut', 'Cut off mid-reply'], ['working', 'Working'], ['warm', 'Cache still warm'], ['plan', 'Plan not finished'], [null, ['off', 'pins'].includes(S.attnWindow) ? 'Pinned' : 'Recent and pinned']];
   const shown = new Map(list.map((s) => [s.id, s])), kids = {}, rowsById = new Map(allSessionRows().map((s) => [s.id, s]));
   const up = new Map(list.map((s) => [s.id, nestParent(s, shown, rowsById)]));
   for (const s of list) if (up.get(s.id)) (kids[up.get(s.id)] ||= []).push(s);
@@ -5117,7 +5319,7 @@ function sessionRow(s, depth, rail = '', parent = false) {
   const tb = timeBit(s);
   const pin = !s.archived && pinnedHere(s.id) ?`<span class="pin" title="Pinned: ✦ Needs attention keeps it until you unpin it (right-click it)">📌</span>` : '';
   return `<div class="row ${depth ? 'child' : ''} ${parent ? 'parent' : ''} ${sel ? 'sel' : ''} ${s.archived && !S.showArchived ? 'archived' : ''} ${S.picked.has(s.id) ? 'picked' : ''} ${snip ? 'has-snip' : ''}"${depth > 1 ? ` style="--d:${depth}"` : ''} data-id="${s.id}"${moveDrag() ? ' draggable="true"' : ''}${S.hoverCard ? '' : ` title="${esc((run?.title || s.title) || 'Untitled')}"`}>
-      ${rail}${rowDot(s)}<span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${waitsTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>${costCell(s, run)}
+      ${rail}${rowDot(s)}<span class="t ${dotClass(s) === 'asking' ? 'asking' : ''}"${full ? ` title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact"` : ''}>${esc((run?.title || s.title) || 'Untitled')}</span>${pin}${full ? `<span class="tag near-full ctx-pct" title="Nearly full: ${ctxPct(s.stats)}% of the way to auto-compact">${ctxPct(s.stats)}%</span>` : ''}${stalledTag(s)}${configTag(s)}${waitsTag(s)}${signinTag(s)}${s.archived && !S.showArchived ? '<span class="tag" title="Archived. Shown here because it is open.">archived</span>' : ''}${s.scheduleId ? `<span class="sch" title="Started by a schedule${run ? ` on ${runDate(s)}` : ''}${run && run.runs.length > 1 ? `. This is the newest of its ${run.runs.length} runs; the Details panel lists them all` : ''}">⏰${run ? `<span class="rundate">${runDate(s)}</span>` : ''}</span>` : ''}${more}<span class="cplan">${planBadge(s.id)}</span><span class="cneed">${needTag(s)}</span>${costCell(s, run)}
       <span class="meta ${tb[0]}" title="${esc(tb[2])}">${isMuted(s.id) ? '<span title="Chime muted">🔕 </span>' : ''}${s.runningTasks ? `⚙${s.runningTasks} ` : ''}${tb[0].startsWith('warn') ? `<span class="tpill${tb[0].endsWith('end') ? ' end' : ''}">${tb[1]}</span>` : tb[1]}</span>${rowLogo(s)}<span class="chips">${prBadges(s.id)}</span>${snip}</div>`;
 }
 // ---------- the hover card (#691): a row's full title and every detail, while 👁 > Hover card is on ----------
@@ -5148,7 +5350,7 @@ function hoverCardHtml(s) {
   if (snip) line('Search', snip);
   if (s.scheduleId) line('Schedule', `⏰ ${esc(run?.title || S.schedTitles[s.scheduleId] || 'a schedule')}${run && run.runs.length > 1 ? ` · newest of ${run.runs.length} runs` : ''}${run?.unread ? ` · ${run.unread} not read` : ''}`);
   const p = S.plans.on && ownPlan(s.id);
-  if (p) line('Plan', `${esc(p.title)} · ${p.done} of ${p.total} tasks done${p.motion ? ` · ${PLAN_MOTION[p.motion.state]}` : ''}`);
+  if (p) line('Plan', `${esc(p.title)} · ${p.done} of ${p.total} tasks done${p.motion ? ` · ${PLAN_MOTION[p.motion.state]}` : ''}${planAttn(p) ? ' · ✦ Needs attention keeps it until the plan is finished' : ''}`);
   const prs = S.prs[s.id] || [];
   if (prs.length) line('Pull requests', prs.map((x) => `#${x.number}${prState(x) in PR_LABEL && prState(x) !== 'unknown' ? ' ' + PR_LABEL[prState(x)].toLowerCase() : ''}`).join(', '));
   const tks = S.tickets[s.id] || [];
@@ -5443,6 +5645,7 @@ function renderList() {
   $('inbox').innerHTML = S.mode === 'sessions' ? inboxHtml() : '';
   $('listBar').hidden = S.mode !== 'sessions';
   if (S.mode === 'schedules') return renderScheduleList();
+  if (S.mode === 'pilot') return setList(pilotTabHtml());
   if (remoteOff(S.client)) { setListBar(); return setList(remoteGoneHtml(S.clients.find((c) => c.id === S.client))); }
   S.runInfo = new Map();
   S.keptOnly = new Set();
@@ -5450,9 +5653,9 @@ function renderList() {
   const q = $('search').value.trim().toLowerCase();
   if (S.textSearch && q && !textHitsFor(q) && S.textAsked !== S.client + '\n' + q) askTextSearch(); // another desk, or a search set by code
   const match = sessionMatch(q);
-  const liveRows = Object.values(S.live).filter((s) => s.client === S.client && !s.editFor).sort((a, b) => b.createdAt - a.createdAt);
+  const liveRows = Object.values(S.live).filter((s) => s.client === S.client && !s.editFor && !s.pilotRun).sort((a, b) => b.createdAt - a.createdAt);
   const liveIds = new Set(liveRows.map((s) => s.id));
-  const allHist = (S.history[S.client] || []).filter((r) => !liveIds.has(r.id) && !r.editFor && !Object.values(S.live).some((l) => l.id === r.id && l.editFor));
+  const allHist = (S.history[S.client] || []).filter((r) => !liveIds.has(r.id) && !r.editFor && !r.pilotRun && !Object.values(S.live).some((l) => l.id === r.id && l.editFor));
   const archived = allHist.filter((r) => r.archived);
   renderAttnBtn();
   if (S.attn && !S.showArchived && !S.groupView) { renderAttnList(q); return; }
@@ -5630,11 +5833,14 @@ function archiveRisk(rows) {
   const working = rows.filter((s) => s.live && (['starting', 'running'].includes(s.status) || s.compactingSince || inBackground(s)));
   const asking = rows.filter((s) => s.live && s.status === 'requires_action' && !working.includes(s));
   const unread = rows.filter((s) => isUnread(s) && !working.includes(s) && !asking.includes(s));
-  if (!working.length && !asking.length && !unread.length) return null;
+  // a card waiting on a click (a suggested session, offer or handoff): archiving dismisses it (#984)
+  const cards = rows.filter((s) => s.cardOpen && !working.includes(s) && !asking.includes(s) && !unread.includes(s));
+  if (!working.length && !asking.length && !unread.length && !cards.length) return null;
   const names = (l) => l.length > 5 ? `${l.length} sessions` : l.map((s) => `"${esc(s.title || 'Untitled')}"`).join(', ');
   const body = rows.length === 1
-    ? (working.length ? 'It is still working, and its reply will be cut off.' : asking.length ? 'It is waiting for your answer.' : 'It has a reply you have not read yet.')
-    : [[working, 'Still working, so the reply will be cut off'], [asking, 'Waiting for your answer'], [unread, 'Has a reply you have not read yet']]
+    ? (working.length ? 'It is still working, and its reply will be cut off.' : asking.length ? 'It is waiting for your answer.' : unread.length ? 'It has a reply you have not read yet.'
+      : 'It has a card you have not answered (a suggested session or handoff not started or dismissed). Archiving dismisses it.')
+    : [[working, 'Still working, so the reply will be cut off'], [asking, 'Waiting for your answer'], [unread, 'Has a reply you have not read yet'], [cards, 'Has a card you have not answered, which archiving dismisses']]
       .filter(([l]) => l.length).map(([l, why]) => `<div>${why}: ${names(l)}</div>`).join('');
   return { working: working.length > 0, body };
 }
@@ -6195,7 +6401,7 @@ $('menuBtn').onclick = (e) => {
     ['settings', 'Docket settings', [['color', colorLabel(), null, colorSquare()], ['sound', soundLabel(), null, soundIcon()], ['theme', themeLabel(), themeItems(), '◐'], 'hr',
       ['stall', stallLabel(), null, ''], ['autocontinue', autoContinueLabel(), null, ''], ['autopause', autoPauseLabel(), null, ''], ['rest', restLabel(), null, ''], ['usagestats', usageLabel(), null, ''], ['startup', startupLabel(), null, ''], ['autopilot', pilotLabel(), null, ''], ...(FEEDBACK_ON ? [['fbdest', 'Feedback destination', null, '']] : []), 'hr',
       ['myprofile', 'Setup', [['pexport', 'Export setup'], ['pimport', 'Import setup'], ['psync', 'Keep my setup in a folder']], '']]],
-    ['about', 'About', [['update', 'Check for updates']]], 'hr', ['restartdocket', 'Restart Docket']];
+    ['about', 'About', [['update', 'Check for updates']]], 'hr', ['restartdocket', 'Restart Docket'], ['quitdocket', 'Quit Docket']];
   const icon = (x) => x[3] === undefined ? '' : `<span class="mi-ic${x[0] === 'theme' ? ' mi-glyph' : ''}" aria-hidden="true">${x[3]}</span>`;
   const label = (x) => x[3] === undefined ? esc(x[1]) : `${icon(x)}<span class="mi-t">${esc(x[1])}</span>`;
   const item = (x) => x === 'hr' ? '<hr>' : x[2]
@@ -6287,6 +6493,7 @@ $('menuBtn').onclick = (e) => {
       return;
     }
     if (act === 'restartdocket') { closeMenu(); restartDocketAsk(); return; }
+    if (act === 'quitdocket') { closeMenu(); restartDocketAsk(true); return; }
     if (act === 'usagestats') { closeMenu(); showUsageStats(); return; }
     if (act === 'autopause') { // stays open and shows the new state
       const b = ev.target.closest('button');
@@ -6408,7 +6615,7 @@ function renderNavBtns() { $('backBtn').disabled = viewStep(-1) < 0; $('fwdBtn')
 // Opens a view in its company, in the Sessions tab.
 function openView(c, id) {
   if (c !== S.client) selectClient(c, id);
-  else if (S.mode !== 'sessions') setMode('sessions', id);
+  else if (S.mode !== 'sessions' && !(S.mode === 'pilot' && id !== 'draft')) setMode('sessions', id); // a run opens beside its Autopilot tab (#974)
   else if (id === 'draft') newDraft();
   else openSession(id).catch(() => {});
 }
@@ -6835,8 +7042,7 @@ function remoteHereHtml(rc, setup) {
     <p class="meta">Each connection needs a code from the authenticator app and someone clicking Allow here, and lasts ${rc.hours} hours. Only computers on the office network can connect, and only to this desk.</p>`;
   else h += '<p class="meta">While it is off, nothing on the network can reach Docket on this computer.</p>';
   if (rc.connections.length) h += `<p>Connected now:</p><ul>${rc.connections.map((c) => `<li>${esc(c.name)} (${esc(c.ip)}), until ${rdTime(c.expires)} <button data-rd-drop="${esc(c.id)}"${tip('rd-drop')}>Disconnect</button></li>`).join('')}</ul>`;
-  if (rc.pilotKeys?.length) h += `<p>Pilot keys: the autopilot on that computer may answer what waits on you on this desk, under the autopilot rules on this computer, with no code.</p><ul>${rc.pilotKeys.map((k) => `<li>${esc(k.name)} (${esc(k.ip)})${k.screen ? ', with the screen tools' : ''}, until ${rdDate(k.expires)}, ${k.used ? `last used ${agoText(k.used)}` : 'not used yet'} <button data-rd-revoke="${esc(k.id)}"${tip('rd-revoke')}>Revoke</button></li>`).join('')}</ul>`;
-  return h + `<p class="meta"><button id="rdSetup"${tip('rd-setup')}>Set up the authenticator again</button> This ends every connection and pilot key, and codes from the old one stop working.</p>`;
+  return h + `<p class="meta"><button id="rdSetup"${tip('rd-setup')}>Set up the authenticator again</button> This ends every connection, and codes from the old one stop working.</p>`;
 }
 const rdConnectHtml = (id) => `<input type="text" data-rd-code="${id}" inputmode="numeric" maxlength="6" placeholder="6-digit code" autocomplete="one-time-code"${tip('rd-code')}><button class="primary" data-rd-on="${id}"${tip('rd-connect')}>Connect</button>`;
 // Connect a remote desk with the code typed, then show its sessions. say() shows the wait, and a refusal is thrown.
@@ -6846,18 +7052,11 @@ async function connectRemote(id, code, say) {
   await reloadClients();
   await Promise.all([loadSessions(id, true), loadGroups(id)]);
 }
-// A remote desk's pilot key (#827): the autopilot here reaches that desk with it, with no code, until it ends or is revoked.
-function rdPilotHtml(d) {
-  if (d.pilot) return `<div class="rd-line">Pilot key until ${rdDate(d.pilot.expires)}${d.pilot.screen ? ', with the screen tools' : ''}<button data-rd-pk-revoke="${d.id}"${tip('rd-pk-revoke')}>Revoke pilot key</button></div>`;
-  const gone = d.pilotGone ? `<div class="meta">The pilot key ended: ${esc(d.pilotGone)}.</div>` : '';
-  if (!d.connected) return gone;
-  return gone + `<div class="rd-line"><label><input type="checkbox" data-rd-pk-screen="${d.id}"${tip('rd-pk-screen')}> with the screen tools</label><button data-rd-pk="${d.id}"${tip('rd-pk')}>Ask for a pilot key</button></div>`;
-}
 function remoteThereHtml(list) {
   let h = '<h3 class="rd-h">Use a desk on another computer</h3>';
   h += list.length ? list.map((d) => `<div class="rd-row"><div><b>${esc(d.name)}</b> <span class="meta">${esc(d.address)}${d.deskName ? ` · desk ${esc(d.deskName)}` : ''}</span></div>
     <div class="rd-line">${d.connected ? `Connected until ${rdTime(d.expires)}<button data-rd-off="${d.id}"${tip('rd-off')}>Disconnect</button>`
-      : rdConnectHtml(d.id)}<button data-rd-rm="${d.id}"${tip('rd-remove')}>Remove</button></div>${rdPilotHtml(d)}
+      : rdConnectHtml(d.id)}<button data-rd-rm="${d.id}"${tip('rd-remove')}>Remove</button></div>
     <div class="meta" data-rd-msg="${d.id}"></div></div>`).join('') : '<p class="meta">None yet.</p>';
   return h + `<details${list.length ? '' : ' open'}><summary>Add a remote desk</summary>
     <p>Turn on remote control on the other computer first (☰ > Desks > Remote Desks there). It shows the address and the check code.</p>
@@ -6895,19 +7094,6 @@ async function showRemoteDesks(focus) {
     if (b.id === 'rdSetupOk') return act(async () => { await api('/api/remote-control/authenticator/confirm', { code: document.getElementById('rdSetupCode').value }); setup = null; });
     if (b.id === 'rdOn') return act(async () => { const on = b.textContent === 'Turn on'; await api('/api/remote-control', { on }); });
     if (b.dataset.rdDrop) return act(() => api('/api/remote-control/disconnect', { id: b.dataset.rdDrop }));
-    if (b.dataset.rdRevoke) return act(() => api('/api/remote-control/pilot-keys/revoke', { id: b.dataset.rdRevoke }));
-    if (b.dataset.rdPkRevoke) {
-      if (!await ask('Revoke the pilot key?', 'The autopilot here can no longer reach that desk until someone there allows a new one.', { yes: 'Revoke' })) return;
-      return act(() => api(`/api/remote-desks/${b.dataset.rdPkRevoke}/pilot-key-revoke`, {}));
-    }
-    if (b.dataset.rdPk) {
-      const pid = b.dataset.rdPk, screen = !!body.querySelector(`[data-rd-pk-screen="${pid}"]`)?.checked;
-      b.disabled = true;
-      msg[pid] = 'Waiting for someone to click Allow on the other computer (up to 2 minutes)…';
-      body.querySelector(`[data-rd-msg="${pid}"]`).textContent = msg[pid];
-      try { await api(`/api/remote-desks/${pid}/pilot-key`, { screen }); delete msg[pid]; } catch (e2) { msg[pid] = e2.message; }
-      return draw();
-    }
     if (b.id === 'rdAdd') {
       b.disabled = true; b.textContent = 'Checking…';
       return act(() => api('/api/remote-desks', { name: document.getElementById('rdName').value, address: document.getElementById('rdAddr').value, check: document.getElementById('rdCheck').value }).then(reloadClients));
@@ -6962,8 +7148,7 @@ function drawRemoteAsks() {
       delete S.remoteAsks[b.dataset.ra]; drawRemoteAsks();
     };
   }
-  box.innerHTML = asks.map((a) => `<div class="ra">${a.pilot ? `<b>${esc(a.name)}</b> (${esc(a.ip)}), connected to the desk <b>${esc(a.desk || '')}</b>, asks for a pilot key: its autopilot could then answer what waits on you on this desk, under the autopilot rules on this computer${a.pilot.screen ? ', and use the screen tools' : ''}, for ${a.pilot.days} days with no code. You can revoke it in ☰ > Desks > Remote Desks.`
-    : `<b>${esc(a.name)}</b> (${esc(a.ip)}) wants to use the desk <b>${esc(a.desk || '')}</b> from another computer, with a correct authenticator code.`}
+  box.innerHTML = asks.map((a) => `<div class="ra"><b>${esc(a.name)}</b> (${esc(a.ip)}) wants to use the desk <b>${esc(a.desk || '')}</b> from another computer, with a correct authenticator code.
     <div class="ra-btns"><button data-ra="${a.id}" data-allow="0"${tip('ra-no')}>Don't allow</button><button class="primary" data-ra="${a.id}" data-allow="1"${tip('ra-yes')}>Allow</button></div></div>`).join('');
   $('cornerStack').scrollTop = $('cornerStack').scrollHeight; // a tall stack scrolls; the Allow prompt is at its foot
   try { chime(true); } catch {}
@@ -7056,37 +7241,198 @@ function startupHtml(v) {
     <p>${esc(startPinNote())}</p><p class="meta">Each Docket shortcut starts Docket if it is not running, then opens it.${v.choice === 'none' && v.now.mode === 'neither' ? ' Docket will not ask about this again on this computer.' : ''}</p>`;
 }
 // ☰ > Docket settings > Starting Docket: the state, and buttons to switch to each of the others.
-// ---------- ☰ > Docket settings > Autopilot (#821) ----------
-// The pilot answers what waits on you, under the rules on this computer, in short runs on its own desk (#881): a
-// fresh session for each batch, on the top model of the brand picked here. The 🤖 in the top bar shows while it is
-// flying (switch on, desk set), and opens this. What it answered says "answered by pilot" on the card. The panel is
-// one switch, the brand, a status line and the recent answers; while it is open those parts are updated in place,
-// and only when their content changed, so nothing flickers.
-S.pilot = { on: false, flying: false, state: 'off', going: [], desks: {} };
-// While on it names where runs go, and says when a run is going (#879, #881).
-const pilotLabel = () => S.pilot.on ? `Autopilot: on (${S.pilot.brandName || 'Claude'}${S.pilot.going?.length ? ', running' : ''})` : 'Autopilot: off';
+// ---------- the autopilot (#821, per desk since #973) ----------
+// Enabled in ☰ > Docket settings > Autopilot; then the 🤖 in the top bar shows, and opens a drop-down with every desk's
+// engage switch and the quick actions. On an engaged desk short pilot runs answer what waits on you, under the rules
+// on this computer, each a session of that desk. What it answered says "answered by pilot" on the card. The Settings
+// panel is the switch, a status line, the recent answers and the learning; while it is open those parts are updated in
+// place, and only when their content changed, so nothing flickers.
+S.pilot = { on: false, flying: false, state: 'off', engaged: {}, going: [], desks: {} };
+const pilotLabel = () => { const n = Object.keys(S.pilot.engaged || {}).length; return !S.pilot.on ? 'Autopilot: off' : n ? `Autopilot: on ${n} desk${n === 1 ? '' : 's'}` : 'Autopilot: enabled'; };
 // decided: the pilot answered something just now, for one brief flash.
 function drawPilot(p, decided) {
   if (!p) return;
-  S.pilot = { on: !!p.on, flying: !!p.flying, session: p.session, title: p.title, going: p.going || [], desks: p.deskStates || {}, brand: p.brand, gear: p.gear, brandName: p.brandName, state: p.state || 'off' };
-  const b = $('pilotBtn');
-  if (b.hidden !== !S.pilot.flying) b.hidden = !S.pilot.flying;
-  b.title = `Autopilot flying on ${S.pilot.brandName || 'Claude'}${S.pilot.going.length ? `, running now for ${S.pilot.going.map((g) => g.deskName).join(', ')}` : ''}. ${tipText('pilot-icon')}`;
-  // What it is doing shows as a quiet animation on the 🤖 in the top bar and the autopilot desk's 🤖, wherever drawn,
-  // and on the 🤖 of each desk with a run for its own items (#914).
+  S.pilot = { on: !!p.on, flying: !!p.flying, engaged: p.engaged || {}, session: p.session, title: p.title, going: p.going || [], desks: p.deskStates || {}, state: p.state || 'off', movedNote: !!p.movedNote };
+  const n = Object.keys(S.pilot.engaged).length, b = $('pilotBtn');
+  if ($('pilotWrap').hidden !== !S.pilot.on) $('pilotWrap').hidden = !S.pilot.on;
+  if (!S.pilot.on) pilotMenu(false);
+  const text = n ? `Autopilot on ${n} desk${n === 1 ? '' : 's'}` : 'Autopilot off';
+  if ($('pilotBtnText').textContent !== text) $('pilotBtnText').textContent = text;
+  b.classList.toggle('on', n > 0);
+  b.setAttribute('aria-label', text);
+  b.title = `${text}${S.pilot.going.length ? `, running now for ${S.pilot.going.map((g) => g.deskName).join(', ')}` : ''}. ${tipText('pilot-icon')}`;
+  // What it is doing shows as a quiet animation on the 🤖 in the top bar, and on the 🤖 of each desk with a run for its
+  // own items (#914); an engaged desk's 🤖 and underline show at rest (#973).
   if (document.body.dataset.pilot !== S.pilot.state) document.body.dataset.pilot = S.pilot.state;
   for (const m of document.querySelectorAll('.desk-pm[data-pm]')) {
-    const st = S.pilot.desks[m.dataset.pm] || '';
+    const st = S.pilot.desks[m.dataset.pm] || '', on = !!S.pilot.engaged[m.dataset.pm];
     if ((m.dataset.st || '') !== st) { if (st) m.dataset.st = st; else delete m.dataset.st; }
-    if (m.hidden !== !st) m.hidden = !st;
+    if (m.hidden !== !(st || on)) m.hidden = !(st || on);
+    m.closest('button')?.classList.toggle('pl-on', on);
     if (decided?.desk === m.dataset.pm) { m.classList.remove('zap'); void m.offsetWidth; m.classList.add('zap'); }
   }
   if (decided) pilotFlash();
   if (decided?.session) S.pilotDecided = { ...decided, at: Date.now() };
   S.pilot.holding = p.holding || [];
   drawPilotHere(decided?.session === S.selected);
-  pilotPanelLater();
+  pilotPanelLater(); pilotMenuLater();
+  if (S.pilot.on) loadPilotDesk(true);
+  drawPilotTab(); drawPilotOffer(p.offer);
 }
+// The 🤖 drop-down (#973): the quick actions, then each desk shown at the top with its engage switch and a line of what
+// the pilot does there; a desk with no brand signed in has its switch greyed out. Fetched when it opens, and again
+// (once for a burst) when the pilot changes while it is open.
+let pilotMenuV = null, pilotMenuMsg = '', pilotMenuTimer = null;
+async function pilotMenu(open) {
+  if (!open) { if (!$('pilotMenu').hidden) { $('pilotMenu').hidden = true; $('pilotBtn').setAttribute('aria-expanded', 'false'); } return; }
+  try { pilotMenuV = await api('/api/pilot'); } catch (err) { tell(err.message); return; }
+  pilotMenuMsg = '';
+  drawPilot(pilotMenuV);
+  drawPilotMenu();
+  $('pilotMenu').hidden = false; $('pilotBtn').setAttribute('aria-expanded', 'true');
+}
+const PILOT_SINCE = (t) => new Date(t).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+function drawPilotMenu() {
+  const v = pilotMenuV; if (!v) return;
+  const here = S.clients.find((c) => c.id === S.client && !c.remote);
+  const note = v.movedNote ? `<div class="pl-note"><span>Autopilot now works per desk. Engage it from 🤖.</span><button data-pl-note="1"${tip('pilot-note')}>Got it</button></div>` : '';
+  const quick = `<div class="pl-quick">${here ? `<button role="menuitem" data-pl-quick="others"${tip('pilot-quick-others')}>All but ${esc(here.name)}</button>` : ''}<button role="menuitem" data-pl-quick="all"${tip('pilot-quick-all')}>All desks</button><button role="menuitem" data-pl-quick="none"${tip('pilot-quick-none')}>Off everywhere</button></div>`;
+  const rows = v.desks.map((d) => {
+    const st = S.pilot.desks[d.id];
+    const line = !d.signedIn ? 'sign in to a brand first' : d.engaged ? `since ${PILOT_SINCE(d.since)} · ${d.status}${st === 'working' ? ' · working now' : ''}` : 'off';
+    return `<label class="pl-drow${d.signedIn || d.engaged ? '' : ' off'}"><span class="pl-dn"><span>${d.engaged ? '🤖 ' : ''}${esc(d.name)}</span><span class="meta">${esc(line)}</span>${d.engaged && d.problem ? `<span class="pl-no">${esc(d.problem)}</span>` : ''}</span>`
+      + `<input type="checkbox" role="switch" data-pl-desk="${esc(d.id)}"${d.engaged ? ' checked' : ''}${d.signedIn || d.engaged ? '' : ' disabled'} aria-label="Autopilot on ${esc(d.name)}"${tip('pilot-desk')}></label>`;
+  }).join('');
+  $('pilotMenu').innerHTML = note + quick + rows + (pilotMenuMsg ? `<div class="pl-no">${esc(pilotMenuMsg)}</div>` : '')
+    + `<div class="pl-foot">Rules, log and learning: <button data-pl-settings="1"${tip('pilot-settings')}>Docket settings > Autopilot</button></div>`;
+}
+function pilotMenuLater() {
+  if ($('pilotMenu').hidden || pilotMenuTimer) return;
+  pilotMenuTimer = setTimeout(async () => {
+    pilotMenuTimer = null;
+    const v = await api('/api/pilot').catch(() => null);
+    if (v && !$('pilotMenu').hidden) { pilotMenuV = v; drawPilotMenu(); }
+  }, 400);
+}
+$('pilotBtn').onclick = () => pilotMenu($('pilotMenu').hidden);
+async function pilotMenuSave(body, el) {
+  if (el) el.disabled = true;
+  try { const r = await api('/api/pilot', body); pilotMenuV = r; pilotMenuMsg = r.note || ''; drawPilot(r); }
+  catch (err) { pilotMenuMsg = err.message; }
+  drawPilotMenu();
+}
+$('pilotMenu').addEventListener('change', (e) => { const d = e.target.dataset.plDesk; if (d) pilotMenuSave({ engage: { desk: d, on: e.target.checked } }, e.target); });
+$('pilotMenu').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.plQuick) pilotMenuSave({ quick: b.dataset.plQuick, here: S.client }, b);
+  else if (b.dataset.plNote) pilotMenuSave({ movedNote: false }, b);
+  else if (b.dataset.plSettings) { pilotMenu(false); showAutopilot(); }
+});
+document.addEventListener('mousedown', (e) => { if (!$('pilotMenu').hidden && !e.target.closest('#pilotWrap')) pilotMenu(false); });
+document.addEventListener('keydown', (e) => { if (!$('pilotMenu').hidden && e.key === 'Escape') { e.stopPropagation(); pilotMenu(false); $('pilotBtn').focus(); } }, true);
+// ---------- a desk's Autopilot tab (#974) ----------
+// Beside Sessions and Schedules while the autopilot is enabled, with the desk's run cost in its label: the engage switch
+// and a line on what it did since; what it handles here, a Suggest | Answer control per kind; the hard stops as one
+// line; and the runs (out of the Sessions tab) by day with their cost, each listing what it answered. S.pilotDesk: the
+// open desk's view from /api/pilot/desk, fetched when the desk or the pilot changes (once for a burst).
+S.pilotDesk = null;
+let pilotDeskTimer = null, pilotDeskMsg = '';
+function loadPilotDesk(soon) {
+  if (!S.pilot.on || S.clients.find((c) => c.id === S.client)?.remote) return;
+  clearTimeout(pilotDeskTimer);
+  pilotDeskTimer = setTimeout(async () => {
+    const id = S.client;
+    let v; try { v = await api(`/api/pilot/desk?client=${encodeURIComponent(id)}`); } catch { return; }
+    if (id !== S.client) return;
+    S.pilotDesk = v; drawPilotTab();
+    if (S.mode === 'pilot') renderList();
+  }, soon ? 400 : 0);
+}
+function drawPilotTab() {
+  const remote = !!S.clients.find((c) => c.id === S.client)?.remote, show = S.pilot.on && !remote;
+  if ($('tabPilot').hidden !== !show) $('tabPilot').hidden = !show;
+  if (!show && S.mode === 'pilot') { setMode('sessions'); return; }
+  if (show && S.pilotDesk?.desk.id !== S.client) { loadPilotDesk(); return; }
+  const v = S.pilotDesk?.desk.id === S.client ? S.pilotDesk : null, cost = v?.cost ? costMoney(v.cost) : '';
+  if ($('tabPilotCost').textContent !== cost) $('tabPilotCost').textContent = cost;
+}
+const PILOT_DAY = (day) => {
+  const d = new Date(day + 'T12:00'), t = new Date(); t.setHours(12, 0, 0, 0);
+  const n = Math.round((t - d) / 86400e3);
+  return n === 0 ? 'Today' : n === 1 ? 'Yesterday' : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+const pilotKindName = (k) => { const n = PILOT_KIND_NAMES[k] || k; return n[0].toUpperCase() + n.slice(1); };
+const pilotDid = (a) => `${esc(a.kind === 'question' && /^answered /.test(a.answer) ? 'answered a form' : `${PILOT_DID[a.answer] || a.answer}`)} ${a.session ? `<a href="#session:${esc(a.session)}"${tip('open-session')}>${esc(a.what || a.kind)}</a>` : esc(a.what || a.kind)}`;
+function pilotTabHtml() {
+  const v = S.pilotDesk?.desk.id === S.client ? S.pilotDesk : null;
+  if (!v) { loadPilotDesk(); return '<div class="pt meta">Loading…</div>'; }
+  const name = esc(v.desk.name);
+  const line = !v.signedIn && !v.engaged ? 'Sign in to a brand first: the autopilot runs on this desk\'s own sign-in.'
+    : v.engaged ? `Engaged since ${PILOT_SINCE(v.since)} · ${v.answered} answered, ${v.left} left for you` : 'Off on this desk. It still learns from your answers here.';
+  const head = `<div class="pt-head${v.engaged ? '' : ' off'}"><span class="pt-nm"><b>${v.engaged ? '🤖 Engaged on' : 'Autopilot on'} ${name}</b><br><span class="meta">${esc(line)}</span></span>`
+    + `<input type="checkbox" role="switch" data-pt-engage="1"${v.engaged ? ' checked' : ''}${v.signedIn || v.engaged ? '' : ' disabled'} aria-label="Autopilot on ${name}"${tip('pilot-engage-here')}></div>`
+    + (v.engaged && v.problem ? `<div class="pl-no">${esc(v.problem)}</div>` : '') + (pilotDeskMsg ? `<div class="pl-no">${esc(pilotDeskMsg)}</div>` : '');
+  const kinds = v.kinds.map((k) => {
+    const how = k.level === 'allow' ? 'answers' : k.level === 'suggest' ? (k.held ? `paused${k.total ? ` · ${k.matched} of ${k.total} matched` : ''}` : k.ready ? `ready · ${k.matched} of ${k.total} matched` : `learning · ${k.matched} of ${k.need}`) : 'left to you';
+    const canAnswer = k.level === 'allow' || k.ready || k.held, erase = k.level === 'allow' || k.total > 0;
+    return `<div class="pt-row"><span class="t">${esc(pilotKindName(k.kind))} <span class="meta">${esc(how)}</span>`
+      + (erase ? `<button class="pt-train" data-pt-kind="${k.kind}" data-level="train"${tip('pilot-train')}>Train</button>` : '')
+      + `</span><span class="pt-split" role="group" aria-label="${esc(pilotKindName(k.kind))}">`
+      + `<button data-pt-kind="${k.kind}" data-level="suggest" aria-pressed="${k.level === 'suggest'}"${tip('pilot-suggest')}>Suggest</button>`
+      + `<button data-pt-kind="${k.kind}" data-level="allow" aria-pressed="${k.level === 'allow'}"${canAnswer ? '' : ' disabled'}${tip('pilot-answer')}>Answer${k.level !== 'allow' && k.ready ? '<span class="rd">Ready</span>' : ''}</button></span></div>`;
+  }).join('');
+  const stops = '<div class="pt-row"><span class="t">Merges, money, secrets, sign-ins, deleting, outside services, other desks</span><span class="meta">Always yours</span></div>';
+  const days = v.days.length ? v.days.map((d) => `<div class="pt-gh"><span>${esc(PILOT_DAY(d.day))}</span><span>${costMoney(d.cost)}</span></div>` + d.runs.map((r) => {
+    const n = r.answers.length, said = [n ? `${n} answer${n === 1 ? '' : 's'}` : 'no answers', r.suggested.length ? `${r.suggested.length} suggested` : '', r.left.length ? `${r.left.length} left for you` : ''].filter(Boolean).join(', ');
+    const parts = [r.answers.length ? r.answers.map(pilotDid).join(' · ') : '', r.suggested.length ? `Suggested: ${r.suggested.map((a) => `${esc(a.answer.replace(/^suggested /, ''))} for ${a.session ? `<a href="#session:${esc(a.session)}"${tip('open-session')}>${esc(a.what || a.kind)}</a>` : esc(a.what)}`).join(' · ')}` : '',
+      r.left.length ? `Left for you: ${r.left.map((a) => a.session ? `<a href="#session:${esc(a.session)}"${tip('open-session')}>${esc(a.what || a.kind)}</a>` : esc(a.what || a.kind)).join(' · ')}` : ''].filter(Boolean);
+    return `<div class="pt-run"><a href="#session:${esc(r.id)}"${tip('pilot-run')}>${r.going ? '🤖 ' : ''}Run ${esc(PILOT_SINCE(r.at))} · ${esc(said)}</a><span class="meta">${costMoney(r.cost)}</span></div>`
+      + (parts.length ? `<div class="pt-ans">${parts.join('<br>')}</div>` : '');
+  }).join('')).join('') : '<div class="pt-row meta">No runs this week.</div>';
+  return `<div class="pt">${head}<div class="pt-gh"><span>What it handles here</span></div>${kinds}${stops}${days}<div class="pt-foot"><span>Runs are archived after a week</span><span>${costMoney(v.cost)}</span></div></div>`;
+}
+$('list').addEventListener('change', async (e) => {
+  if (!e.target.dataset.ptEngage) return;
+  e.target.disabled = true;
+  try { const r = await api('/api/pilot', { engage: { desk: S.client, on: e.target.checked } }); pilotDeskMsg = r.note || ''; drawPilot(r); } catch (err) { pilotDeskMsg = err.message; }
+  loadPilotDesk();
+});
+$('list').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-pt-kind]'); if (!b || b.getAttribute('aria-pressed') === 'true') return;
+  // Train erases what it learned (#1004), so it asks first, with Cancel the safe choice.
+  const k = b.dataset.level === 'train' && S.pilotDesk?.kinds.find((x) => x.kind === b.dataset.ptKind);
+  if (k) {
+    const name = pilotKindName(k.kind), desk = S.pilotDesk.desk.name;
+    const what = [k.level === 'allow' ? 'It stops answering them and suggests on the card again.' : '', k.total ? `Its count of ${k.matched} of ${k.total} matched is erased and starts over from 0 of ${k.need}.` : `Its count starts over from 0 of ${k.need}.`].filter(Boolean).join(' ');
+    if (!await ask(`Train ${name} again on ${desk}?`, `${what} This cannot be undone.${k.level === 'allow' ? ' Suggest instead stops it answering and keeps what it learned.' : ''}`, { yes: 'Train', safe: true })) return;
+  }
+  b.disabled = true;
+  try { const r = await api('/api/pilot/kind', { desk: S.client, kind: b.dataset.ptKind, level: b.dataset.level }); pilotDeskMsg = ''; if (r.text) tell(r.text); } catch (err) { pilotDeskMsg = err.message; }
+  loadPilotDesk();
+});
+// The offer to engage (#974): when items have waited 10+ minutes on desks not engaged, other than the one open now,
+// Docket offers once: Engage, Not now (until that stretch of waiting is over) or Not today. It never engages on its own.
+function drawPilotOffer(o) {
+  const el = $('pilotOffer'), desks = (o?.desks || []).filter((d) => d.id !== S.client);
+  if (!desks.length) { el.hidden = true; return; }
+  const n = desks.reduce((x, d) => x + d.count, 0), names = desks.map((d) => d.name);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  const key = desks.map((d) => `${d.id}:${d.count}`).join(',');
+  if (el.dataset.key === key && !el.hidden) return;
+  el.dataset.key = key; el.dataset.desks = desks.map((d) => d.id).join(',');
+  el.innerHTML = `<span class="ico" aria-hidden="true">🤖</span><div class="t" id="pilotOfferTitle">${n} item${n === 1 ? ' is' : 's are'} waiting on ${esc(list)}</div>
+    <div class="d">They have waited 10 minutes or more. Engage the autopilot there? It answers what its rules let it, and suggests for the rest.</div>
+    <div class="b"><button data-po="today"${tip('pilot-offer-today')}>Not today</button><button data-po="later"${tip('pilot-offer-later')}>Not now</button><button class="primary" data-po="engage"${tip('pilot-offer-engage')}>Engage</button></div>`;
+  el.hidden = false;
+}
+$('pilotOffer').onclick = async (e) => {
+  const b = e.target.closest('[data-po]'); if (!b) return;
+  const el = $('pilotOffer'); el.hidden = true;
+  try {
+    if (b.dataset.po === 'engage') { const r = await api('/api/pilot', { engage: { desks: el.dataset.desks.split(',') } }); drawPilot(r); if (r.note) tell(r.note); }
+    else await api('/api/pilot/offer', { act: b.dataset.po });
+  } catch (err) { tell(err.message); }
+};
 // The autopilot in a session's chat: while the run going now has an item from this session in hand, a band above the
 // typing box says it is thinking, with a calm wave, wherever the chat is scrolled. When it answers, a lightning sweep
 // runs once along the top of the typing box, the bolt flickers once and the band flashes once, then says what it did
@@ -7117,20 +7463,16 @@ function pilotFlash() {
 }
 const PILOT_WHEN = (t) => new Date(t).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const pilotRunLink = (id, text) => `<a href="#session:${esc(id)}"${tip('open-session')}>${esc(text)}</a>`;
-// The parts of the panel that change while it is open: the status line, the sign-in step when the brand is not
-// signed in on the autopilot's desk, and the recent answers, each linking to its session and its run.
+// The parts of the panel that change while it is open: the status line and the recent answers, each linking to its
+// session and its run.
 function autopilotParts(v, msg = '') {
-  const mine = v.brands.find((b) => b.brand === v.brand);
-  const signin = v.on && v.pilotDesk && mine && !mine.signedIn ? `<div class="pl-ask"><b>${esc(v.pilotDesk.name)} is not signed in to ${esc(v.brandName)}</b>, so no run can start. Sign in here; the first run then starts on its own.
-    <span class="co-sign" data-sign-client="${esc(v.pilotDesk.id)}" data-sign-engine="${esc(v.brand)}" data-unsaved="">${coSignHtml(v.pilotDesk.id, v.brand, '')}</span></div>` : '';
+  const engaged = (v.desks || []).filter((d) => d.engaged).map((d) => d.name);
   const going = v.going || [], last = v.runs.find((r) => !going.some((g) => g.id === r.id));
   const lastRun = last ? `Last run ${esc(PILOT_WHEN(last.at))}: ${pilotRunLink(last.id, last.deskName ? `${last.deskName} · ${last.title}` : last.title)}, ${last.items} item${last.items === 1 ? '' : 's'}.` : 'No run yet.';
-  const now = !v.on ? 'Off.' : going.length ? `Working: ${going.map((g) => pilotRunLink(g.id, g.deskName)).join(', ')}.`
-    : v.state === 'waking' ? 'Something came in: a run starts in a moment.' : 'On, waiting for something it may answer.';
-  const why = msg || (signin ? '' : v.problem);
-  // A desk with no brand signed in has its runs on the autopilot's desk instead (#914): one quiet line.
-  const fallback = v.fallback?.length ? `<div class="meta">${esc(v.fallback.join(', '))} ${v.fallback.length === 1 ? 'has' : 'have'} no brand signed in, so ${v.fallback.length === 1 ? 'its runs go' : 'their runs go'} to the Autopilot desk and are billed there.</div>` : '';
-  const status = `${now} ${v.on || last ? lastRun : ''}${fallback}${why ? `<div class="pl-no">${esc(why)}</div>` : ''}`;
+  const now = !v.on ? 'Disabled.' : !engaged.length ? 'Enabled, engaged on no desk: engage it from 🤖 in the top bar.' : going.length ? `Working: ${going.map((g) => pilotRunLink(g.id, g.deskName)).join(', ')}.`
+    : v.state === 'waking' ? 'Something came in: a run starts in a moment.' : `Engaged on ${esc(engaged.join(', '))}, waiting for something it may answer.`;
+  const why = msg || v.problem;
+  const status = `${now} ${v.on || last ? lastRun : ''}${why ? `<div class="pl-no">${esc(why)}</div>` : ''}`;
   const answers = v.log.filter((l) => l.kind !== 'run').slice(0, 20);
   const log = answers.length ? answers.map((l) => `<div>${esc(PILOT_WHEN(l.at))} · <b>${esc(l.kind)}</b> · ${esc(l.answer)} · ${l.session ? pilotRunLink(l.session, l.what || l.title || 'its session') : esc(l.what || l.title)}${l.ok ? '' : ` <span class="pl-no">refused: ${esc(l.why)}</span>`}${l.run ? ` · ${pilotRunLink(l.run, 'run')}` : ''}</div>`).join('')
     : '<div>The pilot has answered nothing yet.</div>';
@@ -7140,18 +7482,13 @@ function autopilotParts(v, msg = '') {
   const hist = v.historyReading ? '<div class="pl-history meta">Reading your past sessions…</div>'
     : v.history ? `<div class="pl-history meta">Learned from ${v.history.count} past answer${v.history.count === 1 ? '' : 's'}.</div>`
     : v.historyThere ? `<div class="pl-history meta"><button data-pilot-history="1"${tip('pilot-history')}>Learn from your past sessions</button></div>` : '';
-  return { plStatus: status, plAsk: signin + offers + hist, plLog: log };
+  return { plStatus: status, plAsk: offers + hist, plLog: log };
 }
 function autopilotHtml(v) {
   const p = autopilotParts(v);
-  // Where runs go (#914): each desk on its own brand (the default), or one brand the autopilot's desk has set up; one
-  // not signed in there can't be picked.
-  const brands = `<option value="desk"${v.brand === 'desk' ? ' selected' : ''}>Each desk (its own brand, billed there)</option>`
-    + v.brands.map((b) => `<option value="${esc(b.brand)}"${b.brand === v.brand ? ' selected' : ''}${b.signedIn || b.brand === v.brand ? '' : ' disabled'}>${esc(b.name)} on the Autopilot desk${b.signedIn ? '' : ' (not signed in)'}</option>`).join('');
   return `<div class="pilot-dlg">
-    <label class="pl-row"><input type="checkbox" id="pilotOn"${v.on ? ' checked' : ''}${tip('pilot-on')}> <b>Autopilot on</b></label>
-    <div class="meta" style="margin-top:4px">It answers what waits on you on every desk, as far as the rules on this computer let it, on the top model of the brand below, in a short run for each desk that sees only that desk's items. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting and outside services stay with you.</div>
-    <div class="pl-row"><label for="pilotBrand">Runs on</label><select id="pilotBrand"${tip('pilot-brand')}>${brands}</select></div>
+    <label class="pl-row"><input type="checkbox" id="pilotOn"${v.on ? ' checked' : ''}${tip('pilot-on')}> <b>Autopilot enabled</b></label>
+    <div class="meta" style="margin-top:4px">Enabled, the 🤖 in the top bar engages it desk by desk. On an engaged desk it answers what waits on you, as far as the rules on this computer let it, in a short run that is a session of that desk, on its own brand's top model, sees only that desk's items and is billed there. It holds back in a session you are using. Everything it answers says "answered by pilot". Merges, money, secrets, sign-ins, deleting and outside services stay with you.</div>
     <div class="pl-status" id="plStatus">${p.plStatus}</div><div id="plAsk">${p.plAsk}</div>
     <h4>Recent answers</h4><div class="pl-list" id="plLog">${p.plLog}</div>
     <details class="pl-more"><summary>Rules and notes</summary><div class="meta">Rules (allow, deny or ask, per kind and per desk): <code>${esc(v.rulesFile)}</code>${v.notesFile ? `<br>The pilot's notes, one file per desk, each read only by that desk's runs: <code>${esc(v.notesFile)}</code>` : ''}</div></details></div>`;
@@ -7166,9 +7503,8 @@ function fillAutopilot(v, msg = '') {
     if (pilotPanel.html[id] === html) continue;
     pilotPanel.html[id] = html; box.querySelector('#' + id).innerHTML = html;
   }
-  const on = box.querySelector('#pilotOn'), sel = box.querySelector('#pilotBrand');
+  const on = box.querySelector('#pilotOn');
   if (!on.disabled && on.checked !== v.on) on.checked = v.on;
-  if (!sel.disabled && document.activeElement !== sel && sel.value !== v.brand) sel.value = v.brand;
 }
 // A pilot broadcast while the panel is open: look again, once for a burst of them.
 function pilotPanelLater() {
@@ -7185,20 +7521,18 @@ async function showAutopilot() {
   const shown = dialog({ title: 'Autopilot', body: autopilotHtml(v), buttons: [{ label: 'Close', value: null, primary: true }] });
   pilotPanel = { v, html: autopilotParts(v) };
   const box = $('dlgBody');
-  // The switch and the brand save as they change; the panel stays open.
+  // The switch saves as it changes; the panel stays open.
   const save = async (el, body, undo) => {
     el.disabled = true;
     try { const r = await api('/api/pilot', body); pilotPanel.v = r; drawPilot(r); fillAutopilot(r); if ('on' in body) reloadClients().catch(() => {}); }
     catch (err) { undo(); fillAutopilot(pilotPanel.v, err.message); }
     el.disabled = false;
   };
-  const on = box.querySelector('#pilotOn'), sel = box.querySelector('#pilotBrand');
+  const on = box.querySelector('#pilotOn');
   on.onchange = () => save(on, { on: on.checked }, () => { on.checked = !on.checked; });
-  sel.onchange = () => { const was = pilotPanel.v.brand; save(sel, { brand: sel.value }, () => { sel.value = was; }); };
   await shown;
   pilotPanel = null;
 }
-$('pilotBtn').onclick = () => showAutopilot();
 // Accept, I got this and Not my pick, on a card or in the panel (#917).
 document.addEventListener('click', async (e) => {
   const b = e.target.closest('[data-pilot-accept], [data-pilot-promote], [data-pilot-miss], [data-pilot-history]'); if (!b) return;
@@ -7674,7 +8008,7 @@ async function editCompanies(rows, error = '', start, scrollTo, budgetFor) {
   const field = (i, key, label, hint, more = '') => `<label for="co${i}${key}">${label}</label><input id="co${i}${key}" title="${esc(hint)}" data-i="${i}" data-k="${key}" value="${esc(rows[i][key] || '')}" placeholder="${esc(hint)}"${more}>`;
   const body = () => `<div class="co-note" style="color:var(--muted)">This list is kept on this computer only. Tick the AI brands each desk uses: each has its own home folder (its sign-in, settings and memory), filled in for you when you tick it, and signs in on its own, shown beside its folder. You pick the brand for each new session beside the model; + Add a desk walks you through setting up a new one.</div>
     ${error ? `<div class="co-err">${esc(error)}</div>` : ''}
-    <div class="co-list">${rows.map((c, i) => c.pilot ? coPilotRow(c, i) : `<div class="co${coOpen.has(c) ? '' : ' shut'}${c.hidden ? ' hidden-desk' : ''}">
+    <div class="co-list">${rows.map((c, i) => `<div class="co${coOpen.has(c) ? '' : ' shut'}${c.hidden ? ' hidden-desk' : ''}">
       <div class="co-head" data-fold="${i}"><button class="co-fold" data-fold="${i}" aria-expanded="${coOpen.has(c)}" aria-label="${coOpen.has(c) ? 'Close' : 'Open'} this desk's settings"${tip('co-fold', coOpen.has(c))}>${coOpen.has(c) ? '▾' : '▸'}</button>
         <input data-i="${i}" data-k="name" value="${esc(c.name || '')}" placeholder="Desk name" aria-label="Desk name"${tip('co-name')}>
         ${c.hidden ? '<span class="co-hidden-mark">Hidden</span>' : ''}
@@ -7709,15 +8043,6 @@ async function editCompanies(rows, error = '', start, scrollTo, budgetFor) {
       ${c.id ? '' : '<div class="co-note">New</div>'}
     </div>`).join('')}</div>
 `;
-  // The autopilot's desk (#886): Docket sets it up, so it shows read-only, with its sign-ins, and no Rename, Copy,
-  // Hide or Move. It is removed only with the autopilot off.
-  const coPilotRow = (c, i) => `<div class="co pilot-desk">
-      <div class="co-head"><span class="co-pilot-name">${deskName(c)}</span>
-        <button data-remove="${i}" ${c.pilotOn ? 'disabled title="Turn the autopilot off in ☰ > Docket settings > Autopilot first"' : c.running ? `disabled title="${c.running} session${c.running === 1 ? '' : 's'} running; end them first"` : 'title="Remove from this list. Its folders and sessions are not deleted."'}>Remove</button></div>
-      <div class="co-note">The autopilot's own desk. Docket sets it up when you turn the autopilot on, so its settings show here read-only. Pick the pilot's brand in ☰ > Docket settings > Autopilot.</div>
-      <span>Working folder</span><span class="co-ro">${esc(c.folder || '')}</span>
-      ${CO_BRANDS.filter(([e]) => coUses(c, e)).map(([e, n, k]) => `<span>${n} home</span><span class="co-home"><span class="co-ro">${esc(c[k] || '')}</span><span class="co-sign" data-sign-client="${esc(c.id)}" data-sign-engine="${e}" data-unsaved="">${coSignHtml(c.id, e, '')}</span></span>`).join('')}
-    </div>`;
   // Who each brand of a saved desk is billed to, and which other desks share that connection, so their use adds up
   // on one plan or account (the Usage page's By connection view shows the totals).
   const coBilled = (c) => !(c.connections || []).length ? '' : `<span>Billed to</span><span class="co-billed">${c.connections.map((x) => `<span title="${esc(x.detail || '')}">${esc(CO_BRANDS.find((b) => b[0] === x.brand)?.[1] || x.brand)}${x.brand === 'claude' && c.awsProfile ? ' (Bedrock)' : ''}: ${esc(x.label)}${x.kind === 'unknown' ? ' <small>(sign-in not readable)</small>' : ''}${x.sharedWith.length ? `, shared with ${esc(x.sharedWith.join(', '))}` : ''}</span>`).join('')}</span>`;
@@ -8288,7 +8613,7 @@ async function copyDesk(id) {
 }
 async function copyWizard(id) {
   const [all, roots] = await Promise.all([api('/api/clients/edit'), api('/api/clients/home-roots').catch(() => null)]);
-  const desks = all.filter((c) => !c.pilot); // the autopilot's desk is not copied (#886)
+  const desks = all;
   if (!desks.length) return null;
   let src, uses;
   return new Promise((resolve) => {
@@ -8508,7 +8833,7 @@ document.addEventListener('change', async (e) => {
   if (box && normPath(box.value) === normPath(was)) box.value = startFolder(v);
 });
 const normPath = (p) => String(p || '').trim().replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
-$('newBtn').onclick = () => (S.mode === 'schedules' ? openSchedule(null) : newDraft());
+$('newBtn').onclick = () => (S.mode === 'schedules' ? openSchedule(null) : S.mode === 'pilot' ? setMode('sessions', 'draft') : newDraft());
 
 // auto: why the page opened it by itself (see seenCounts), empty when the person chose it.
 async function openSession(id, auto = '') {
@@ -8665,7 +8990,9 @@ function renderHead() {
   renderComposerBar();
   if ($('tlBar').hidden !== !tlSession()) renderTlBar();
   $('cutBanner').hidden = S.schedOpen || !cutOffShown(current());
-  $('cutWhy').textContent = current()?.cutBy === 'restart' ? "Docket was restarted (☰ > Restart Docket) partway through this session's turn, so its reply was cut off." : "Docket stopped unexpectedly partway through this session's turn, so its reply was cut off.";
+  const cutBy = current()?.cutBy;
+  $('cutWhy').textContent = cutBy === 'restart' ? "Docket was restarted (☰ > Restart Docket) partway through this session's turn, so its reply was cut off."
+    : cutBy === 'quit' ? "Docket was quit (☰ > Quit Docket) partway through this session's turn, so its reply was cut off." : "Docket stopped unexpectedly partway through this session's turn, so its reply was cut off.";
   renderCfgBanner();
   const s = S.schedOpen ? null : current();
   renderStatusBit(s);
@@ -8783,7 +9110,7 @@ function eventHtmlOf(ev) {
       const ic = ev.status === 'running' ? ['running', '●'] : ev.status === 'error' ? ['error', '✕'] : ['done', '✓'];
       const body = JSON.stringify(ev.input ?? {}, null, 2) + (ev.result ? '\n\n── result ──\n' + ev.result : '');
       const said = /mark_turn$/.test(ev.name) && (ev.input?.label || ev.input?.state) === 'done' ? ' data-said="done"' : ''; // a turn marked done (#726)
-      const book = BOOKKEEPING.test(ev.name || '') ? ' data-book' : '';
+      const book = BOOKKEEPING.test(ev.name || '') ? ' data-book' : ASKS.test(ev.name || '') ? ' data-asks' : '';
       return `<details class="tool" data-tool="${esc(ev.id)}"${said}${book}><summary><span class="ic ${ic[0]}">${ic[1]}</span><span class="nm">${esc(ev.name.replace(/^mcp__\w+?__/, ''))}</span><span class="lb">${esc(ev.label)}</span>${stepsWhen([ev])}</summary><pre>${esc(body)}</pre></details>`;
     }
     case 'files': return `<div class="file-card">${ev.note ? `<div class="note">${esc(ev.note)}</div>` : ''}${(ev.paths || []).map((p) => fileRow({ path: p, name: p.split(/[\\/]/).pop(), folder: p.replace(/[\\/][^\\/]*$/, ''), exists: true, canOpen: true, kind: 'presented', modified: ev.at }, S.selected)).join('')}</div>`;
@@ -8809,13 +9136,15 @@ function eventHtmlOf(ev) {
     }
     case 'offer': {
       const tail = ev.state === 'pending' ? `<div class="sbtn"><button class="primary" data-offer="${esc(ev.id)}" data-choice="new"${tip('offer-new')}>New session</button><button data-offer="${esc(ev.id)}" data-choice="here"${tip('offer-here')}>Do it here</button></div>`
-        : ev.state === 'new' ? `<div class="sbtn hint">Started as a new session: <a href="#session:${esc(ev.startedId)}"${tip('open-session')}>open it</a>${byPilot(ev)}</div>` : `<div class="sbtn hint">Doing it here${byPilot(ev)}</div>`;
+        : ev.state === 'new' ? `<div class="sbtn hint">Started as a new session: <a href="#session:${esc(ev.startedId)}"${tip('open-session')}>open it</a>${byPilot(ev)}</div>`
+        : ev.state === 'closed' ? '<div class="sbtn hint">Closed when this session was archived</div>' : `<div class="sbtn hint">Doing it here${byPilot(ev)}</div>`;
       return `<div class="scard ${ev.state === 'pending' ? '' : 'done'}" data-card="${esc(ev.id)}"><div class="sk">Start this as its own session${cardBrand(ev)}?${earlier(ev)}</div><div class="st">${esc(ev.title)}</div><div class="sb">${esc(ev.brief)}</div>${tail}</div>`;
     }
     case 'handoff': { // continue this work in a fresh session that takes this one's place
       const st = ev.state;
       const tail = st === 'open' ? `<div class="sbtn"><button class="primary" data-hoff="${esc(ev.id)}" data-act="continue"${tip('hoff-continue')}>Continue in new session</button><button data-hoff="${esc(ev.id)}" data-act="here"${tip('hoff-here')}>Keep going here</button></div>`
         : st === 'here' ? `<div class="sbtn hint">Keeping going here${byPilot(ev)}</div>`
+        : st === 'closed' ? '<div class="sbtn hint">Closed when this session was archived</div>'
         : `<div class="sbtn hint">Continued in <a href="#session:${esc(ev.startedId)}"${tip('open-session')}>the new session</a>${byPilot(ev)}</div>`
           + (ev.archive === 'offered' ? `<div class="sbtn"><span class="hint">Archive this session now?</span><button class="primary" data-hoff="${esc(ev.id)}" data-act="archive"${tip('hoff-archive')}>Archive it</button><button data-hoff="${esc(ev.id)}" data-act="keep"${tip('hoff-keep')}>Keep it</button></div>`
             : `<div class="sbtn hint">${ev.archive === 'archived' ? 'This session was archived' : 'This session was kept'}</div>`);
@@ -8957,12 +9286,14 @@ const Q_LINE = /^\s*\**Q(\d{1,3})(?:\**\s+(?:already\s+)?(answered)\b|\s*[:.)\-�
 S.qChange = {}; // question number -> true while its answer is being changed
 const qWhen = (at) => { const d = at && new Date(at.replace(' ', 'T') + 'Z'); return d && !isNaN(d) ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''; };
 function qdecHtml(d) {
+  if (!d.answer && d.state === 'done' && !S.qChange[d.q]) return `<div class="qrec"><span class="ok">✓</span><span><span class="qn">Q${d.q}</span> done: <span class="a">${esc(d.note ? d.note.replace(/\n/g, ' / ') : 'no answer saved')}</span></span><span class="sp"></span><span class="when">${esc(qWhen(d.doneAt))}</span><button data-qchange title="Answer it anyway: the coordinator is told the answer">Answer</button></div>`;
   if (d.answer && !S.qChange[d.q]) return `<div class="qrec"><span class="ok">✓</span><span><span class="qn">Q${d.q}</span> answered: <span class="a">${esc(d.answer.replace(/\n/g, ' / '))}</span></span><span class="sp"></span><span class="when">${esc(qWhen(d.answeredAt))}</span><button data-qchange title="Answer again: the coordinator is told the new answer">Change</button></div>`;
   return `<div class="qopts">${d.options.map((o, i) => `<button${i ? '' : ' class="primary"'} data-qans="${esc(o)}" title="Answer Q${d.q}: ${esc(o)}">${esc(o)}${i ? '' : '<span class="rec"> · suggested</span>'}</button>`).join('')}<input class="qother" data-qother placeholder="${d.options.length ? 'Other…' : 'Your answer…'}" aria-label="Your own answer to Q${d.q}" title="Type your own answer and press Enter"></div>`;
 }
 function decorateDecisions() {
   const decs = new Map(planDecisions(S.selected).filter((d) => d.state !== 'dropped').map((d) => [d.q, d]));
   if (!decs.size) return;
+  splitAllQuestionLines((t) => decs.has(Number(t.match(Q_LINE)?.[1])) || !!askedOn(t)); // each decision's line its own block (#1010)
   for (const el of $('events').querySelectorAll('.msg-text p, .msg-text li')) {
     if (el.matches('li') && el.querySelector(':scope > p')) continue; // a loose list item: its paragraphs are the lines
     const m = el.textContent.match(Q_LINE), d = m && decs.get(Number(m[1]));
@@ -8978,12 +9309,12 @@ function decorateDecisions() {
     }
     const box = el.querySelector(':scope > .qdec'), html = qdecHtml(d);
     if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; box.classList.remove('busy'); }
-    const folded = !!d.answer && !S.qChange[d.q];
+    const folded = (!!d.answer || d.state === 'done') && !S.qChange[d.q];
     if (el.classList.contains('qanswered') !== folded) el.classList.toggle('qanswered', folded);
   }
 }
 let qSoon = 0;
-const decorateLater = () => { cancelAnimationFrame(qSoon); qSoon = requestAnimationFrame(decorateDecisions); };
+const decorateLater = () => { cancelAnimationFrame(qSoon); qSoon = requestAnimationFrame(() => { decorateDecisions(); decorateQuestions(); renderTray(); }); }; // decisions first: their lines are theirs
 new MutationObserver(decorateLater).observe($('events'), { childList: true, subtree: true });
 function answerDecision(box, text) {
   text = String(text || '').trim(); if (!text) return;
@@ -9001,6 +9332,152 @@ $('events').addEventListener('click', (e) => {
 $('events').addEventListener('keydown', (e) => {
   const inp = e.target.closest?.('.qdec [data-qother]'); if (!inp || e.key !== 'Enter' || e.shiftKey || e.isComposing) return;
   e.preventDefault(); answerDecision(inp.closest('.qdec'), inp.value);
+});
+// ---------- numbered questions in the chat and the tray (#989) ----------
+// On a desk at Highlight only or Highlight + track, a paragraph or list item that asks by number ("Q5: Keep
+// it?") gets the question color: a bar and a Q5 chip. Answered by number in your message or in its form, it turns green
+// and the answer shows under the last place it was asked. On a track desk the session's open questions also sit in the
+// tray above the prompt, and one no longer open there that was not answered is settled (gray). askedOn and answersIn
+// are questions.mjs's own (test/question-marks.test.mjs checks they agree), here read from the text the chat shows.
+const qPlain = (t = '') => String(t).replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim();
+const qClip = (t) => (t.length > 220 ? t.slice(0, 219).trimEnd() + '…' : t);
+const qNumbers = (t = '') => [...String(t || '').matchAll(/(?<![\w&])Q(\d{1,3})\b(?!\s?['’-]?\s?(?:\d{2}\b|\d{4}\b))/g)].map((m) => Number(m[1])).filter((n) => n > 0);
+const qAboutNumbers = /\bnext\s+(?:question\s+)?numbers?\b|\bnext\s+question\s+(?:is|would|will|comes?)\b|\bquestion\s+numbers?\b|\bno\s+(?:open\s+)?questions?\b/i;
+function askedOn(line = '') {
+  const l = String(line || ''), m = /^\s*(?:[-*+•]\s+|\d+[.)]\s+)?[*_]*Q(\d{1,3})\b[*_]*\s*[:.)\-–—]?[*_]*\s*([\s\S]*)$/.exec(l);
+  if (m) {
+    const rest = m[2].trim();
+    if (!rest || /^(?:already\s+)?answered\b/i.test(rest) || /^['’-]?\s?(?:\d{2}|\d{4})\b/.test(rest)) return null;
+    return rest.includes('?') && !qAboutNumbers.test(rest) ? { q: Number(m[1]), text: qClip(qPlain(rest)) } : null;
+  }
+  for (const s of l.split(/(?<=[.!?])\s+/)) {
+    if (!/\?[*_"'”’)\]]*$/.test(s.trim()) || qAboutNumbers.test(s)) continue;
+    const n = qNumbers(s);
+    if (n.length === 1) return { q: n[0], text: qClip(qPlain(s.replace(/^\s*(?:[-*+•]\s+|\d+[.)]\s+|#+\s+)/, ''))) };
+  }
+  return null;
+}
+const ANSWER_AT = /(?:^|\n|[,;.]\s)[ \t]*(?:[-*•]\s+)?\**Q(\d{1,3})\**(?:\s*[:.)=\-–—]|\s)\s*/g;
+function answersIn(text = '') {
+  const s = String(text || ''), marks = [...s.matchAll(ANSWER_AT)];
+  const out = [];
+  marks.forEach((m, i) => {
+    const from = m.index + m[0].length, to = i + 1 < marks.length ? marks[i + 1].index + (/^[,;.]/.test(marks[i + 1][0]) ? 1 : 0) : s.length;
+    const answer = s.slice(from, to).trim().replace(/[,;]+$/, '').trim();
+    const q = Number(m[1]);
+    if (q > 0 && answer) out.push({ q, answer });
+  });
+  return out.filter((a, i) => !out.slice(i + 1).some((b) => b.q === a.q));
+}
+// end of the questions.mjs copies
+// Every answer given in the open chat, by number: q -> [{ a, at, i }] in order, i its place in the chat, so a question
+// takes only an answer given after it was asked.
+function qAnswers() {
+  const out = new Map(), add = (q, x) => out.set(q, [...(out.get(q) || []), x]);
+  S.events.forEach((ev, i) => {
+    if (ev.k === 'user' && !ev.from) for (const a of answersIn(ev.text)) add(a.q, { a: a.answer, at: ev.at, i });
+    else if (ev.k === 'permission' && ev.tool === 'AskUserQuestion' && ev.state === 'answered') for (const q of ev.input?.questions || []) {
+      const n = Number(/(?<![\w&])Q(\d{1,3})\b/.exec(`${q.header || ''} ${q.question || ''}`)?.[1]), a = ev.answers?.[q.question];
+      if (n && a) add(n, { a, at: ev.at, i });
+    }
+  });
+  return out;
+}
+// ---------- question lines (#1010) ----------
+// A paragraph whose lines were joined by single line breaks ("Q1: …" then "Q2: …" on the next line) is split at each line
+// after the first that starts a question (starts(text) says which), so each question is a block of its own with its own
+// options, as the server reads it. A line that starts none stays with the one above it. null: nothing to split.
+function qLineBlocks(lines, starts) {
+  const out = [[0]];
+  for (let i = 1; i < lines.length; i++) if (starts(lines[i])) out.push([i]); else out[out.length - 1].push(i);
+  return out.length > 1 ? out : null;
+}
+// end of question lines
+function splitQuestionLines(p, starts) {
+  const parts = p.innerHTML.split(/(<br\s*\/?>\n?|\n)/), lines = parts.filter((_, i) => i % 2 === 0), d = document.createElement('div');
+  const blocks = qLineBlocks(lines.map((h) => { d.innerHTML = h; return d.textContent; }), starts); if (!blocks) return;
+  p.replaceWith(...blocks.map((b) => { const x = document.createElement('p'); x.innerHTML = b.map((i) => (i > b[0] ? parts[2 * i - 1] : '') + lines[i]).join(''); return x; }));
+}
+// Every chat paragraph with line breaks that is not drawn yet, split where a line starts a question.
+function splitAllQuestionLines(starts) {
+  for (const p of $('events').querySelectorAll('.msg-text p:not([data-q]):not([data-qno]):not([data-qask])')) if (p.querySelector(':scope > br') || p.textContent.trim().includes('\n')) splitQuestionLines(p, starts);
+}
+// A line that asks by its number, or that starts with one ("Q7: Keep the CSV export", a plan decision's line).
+const startsQuestion = (t) => !!(askedOn(t) || Q_LINE.test(t));
+function decorateQuestions() {
+  if (qLevel() === 'off' || !S.selected || S.selected === 'draft') return;
+  const s = current(), track = qLevel() === 'track', open = new Map(openQs(s).map((x) => [x.q, x])), answers = qAnswers(), last = new Map();
+  splitAllQuestionLines(startsQuestion);
+  for (const el of $('events').querySelectorAll('.msg-text p, .msg-text li')) {
+    if (el.dataset.qask || el.dataset.qno || el.closest('.qdec')) continue; // a plan decision's line is drawn by decorateDecisions
+    if (!el.dataset.q) {
+      if (el.matches('li') && el.querySelector(':scope > p')) { el.dataset.qno = '1'; continue; } // a loose list item: its paragraphs are the lines
+      const a = askedOn(el.textContent);
+      if (!a) { el.dataset.qno = '1'; continue; }
+      el.dataset.q = a.q; el.classList.add('qhl');
+      const lead = el.innerHTML.replace(/^(\s*(?:<(?:strong|b|em)>\s*)?)Q(\d{1,3})\b(?:\s*[:.)\-–—])?\s*/, '$1<span class="qchip">Q$2</span>');
+      el.innerHTML = lead !== el.innerHTML ? lead : `<span class="qchip">Q${a.q}</span>${el.innerHTML}`; // asked mid-sentence ("Keep it (Q5)?"): the chip goes first
+    }
+    last.set(el.dataset.q, el);
+  }
+  for (const [q, el] of last) {
+    const n = Number(q), o = open.get(n), at = S.events.findIndex((e) => e.k === 'text' && e.id === el.closest('[data-text]')?.dataset.text);
+    const ans = (answers.get(n) || []).filter((x) => x.i > at).pop(); // given after it was asked
+    const state = ans ? 'answered' : !track || o ? (o?.faint ? 'faint' : '') : s?.status === 'running' ? '' : 'settled'; // a reply still coming may not be counted yet
+    for (const x of $('events').querySelectorAll(`.qhl[data-q="${n}"]`)) for (const c of ['answered', 'faint', 'settled']) if (x.classList.contains(c) !== (state === c)) x.classList.toggle(c, state === c);
+    const html = ans ? `✓ you: “${esc(ans.a.length > 160 ? ans.a.slice(0, 159) + '…' : ans.a)}”${ans.at ? ` · ${esc(stamp(ans.at))}` : ''}` : '';
+    let box = el.querySelector(':scope > .qans');
+    if (!html) { box?.remove(); continue; }
+    if (!box) { box = document.createElement('div'); box.className = 'qans'; el.append(box); }
+    if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
+  }
+}
+// The level changed: the chat is drawn again, plain or highlighted, and so are the rows, the tray and 👁.
+function setQLevels(levels) {
+  const was = qLevel();
+  S.qLevels = levels || {}; S.qLevelsAt = Date.now();
+  if (qLevel() !== was && S.selected && S.selected !== 'draft') renderEvents(true, true);
+  renderTray(); listSoon(); if (viewOpen()) renderViewMenu(); showQuestionsOffer();
+}
+async function setQLevel(level, client = S.client) {
+  await api('/api/question-level', { client, level });
+  setQLevels({ ...S.qLevels, [client]: level });
+}
+api('/api/question-levels').then(setQLevels).catch(() => {});
+// The numbers in the open chat's question forms still waiting on screen: they stand out already and close themselves
+// once answered, so the tray leaves them out (the row's count still has them).
+function formQs() {
+  const out = new Set();
+  for (const ev of S.events) if (ev.k === 'permission' && ev.tool === 'AskUserQuestion' && ev.state === 'pending')
+    for (const q of ev.input?.questions || []) { const n = Number(/(?<![\w&])Q(\d{1,3})\b/.exec(`${q.header || ''} ${q.question || ''}`)?.[1]); if (n) out.add(n); }
+  return out;
+}
+// The open questions above the prompt: one line each, a click scrolls to it, ✓ closes it. Folded to one line, kept per
+// session as the highest number it had then, so a new question opens it again.
+function renderTray() {
+  const el = $('qTray'), s = S.selected && S.selected !== 'draft' ? current() : null, inForm = s ? formQs() : null, open = openQs(s).filter((x) => !inForm.has(x.q));
+  if (!open.length) { if (!el.hidden) { el.hidden = true; el.innerHTML = ''; el.dataset.html = ''; } return; }
+  const top = Math.max(...open.map((x) => x.q)), folded = store.get('qFold@' + s.id, 0) >= top;
+  const chip = (x) => `<span class="qchip${x.faint ? ' faint' : ''}">Q${x.q}</span>`;
+  const html = folded
+    ? `<div class="qt-head folded">${open.map(chip).join('')}<span>${plural(open.length, 'open question')}</span><span class="sp"></span><button class="qt-fold" data-qfold="show" aria-expanded="false"${tip('qt-fold')}>show ▸</button></div>`
+    : `<div class="qt-head">Open questions <span class="n">${open.length}</span><span class="sp"></span><button class="qt-fold" data-qfold="fold" aria-expanded="true"${tip('qt-fold')}>fold ▾</button></div>`
+      + open.map((x) => `<div class="qt-row${x.faint ? ' faint' : ''}"><button class="qt-go" data-qgo="${x.q}"${tip('qt-go')}>${chip(x)}<span class="txt">${esc(x.text)}${x.opts?.length ? `<span class="opts">form: ${esc(x.opts.join(' · '))}</span>` : ''}${x.faint ? '<span class="opts">you replied after this</span>' : ''}</span></button><button class="qt-tick" data-qtick="${x.q}" aria-label="Close Q${x.q}"${tip('qt-tick')}>✓</button></div>`).join('');
+  if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+  el.hidden = false;
+}
+$('qTray').addEventListener('click', async (e) => {
+  const s = current(); if (!s) return;
+  const f = e.target.closest('[data-qfold]');
+  if (f) { store.set('qFold@' + s.id, f.dataset.qfold === 'fold' ? Math.max(0, ...openQs(s).map((x) => x.q)) : 0); renderTray(); $('qTray').querySelector('[data-qfold]')?.focus(); return; }
+  const t = e.target.closest('[data-qtick]');
+  if (t) { try { await api('/api/questions/close', { id: s.id, q: Number(t.dataset.qtick) }); } catch (err) { tell(err.message); } return; }
+  const g = e.target.closest('[data-qgo]'); if (!g) return;
+  const all = $('events').querySelectorAll(`.qhl[data-q="${g.dataset.qgo}"]`), el = all[all.length - 1];
+  if (!el) return tell(`Q${g.dataset.qgo} was asked further back than the chat shows here.`);
+  pinned = false;
+  el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  el.classList.add('qflash'); setTimeout(() => el.classList.remove('qflash'), 1500);
 });
 function atBottom() { const t = $('transcript'); return t.scrollHeight - t.scrollTop - t.clientHeight < 80; }
 // Off-screen chat items take their real height only as they come near the screen (#949), so a chat sent to the
@@ -9176,13 +9653,18 @@ const hiddenHere = (el) => {
 // Docket's bookkeeping steps (BOOKKEEPING, #799) come after a session's answer, so they never make a reply narration, even
 // with one more line after them ('Waiting on your choice above.'): the answer before them stays a reply (#842).
 const BOOKKEEPING = /^mcp__portal__(mark_turn|report_quiet|rename_session|suggest_title|present_file|dismiss_proposal|close_session|send_to_session|start_session|propose_handoff|propose_to_desk|link_session|set_parent|needs_signin|remove_folder_later|recycle)$/;
+// A question form (AskUserQuestion) or a plan to approve (ExitPlanMode) waits on the person like the end of a turn, so the
+// reply before it is the answer that leads into it and stays a reply, also when the turn goes on after the answer (#986).
+const ASKS = /^(AskUserQuestion|ExitPlanMode)$/;
 function markNarration(c, from) {
   let said = [];
   const narr = () => { for (const r of said) r.classList.add('narr'); said = []; };
   for (const el of linesFrom(c, from)) {
     if (el.matches('.reply')) said.push(el);
-    else if (el.matches('details.tool:not([data-book]), details.steps:has(details.tool:not([data-book]))')) narr();
-    else if (el.matches('.done-line')) said = [];
+    else if (el.matches('details.tool:not([data-book]), details.steps:has(details.tool:not([data-book]))')) {
+      const first = el.matches('details.tool') ? el : el.querySelector('details.tool:not([data-book])');
+      if (first.matches('[data-asks]')) said = []; else narr();
+    } else if (el.matches('.done-line')) said = [];
   }
 }
 // Folds each run of steps among c's children into one group, adding to a group already there; with notes (Group), the
@@ -9300,6 +9782,7 @@ function renderEvents(force, keep) {
   stepsView();
   weave();
   mergeAsk();
+  signinAsk();
   if (!keep || stick) scrollDown(true); else t.scrollTop = top;
   checkJump();
   if (S.events.some((e) => e.login)) showSignin();
@@ -9370,6 +9853,8 @@ function finBand(t) {
 // A final reply that ends on that exact ask counts too when the turn called no mark_turn (#951). When the pull
 // request cannot merge any more (it turned conflicting, say, as another one merged first with its own version
 // bump), the card stays and its button asks the session to fix it, instead of the card going without a word.
+// While its checks still run (#996: the ask comes right after the push, and CI often takes minutes) the card shows
+// too, and its button asks the session to wait for them and then merge; once they pass it is the plain Merge button.
 S.mergeSent = new Set(); // asks answered by the button, before the message shows in the chat
 const MERGE_ASK_TEXT = /Say merge and I will merge pull request #(\d+)\.?\s*$/;
 function mergeAskOf(id, evs) {
@@ -9390,11 +9875,13 @@ function mergeAskOf(id, evs) {
   if (!pr) return null;
   if (prState(pr) === 'conflict') return { ask, pr, fix: 'conflict' };
   if (pr.checks === 'fail') return { ask, pr, fix: 'checks' };
-  return pr.checks === 'pending' ? null : { ask, pr };
+  if (pr.checks === 'pending') return { ask, pr, fix: 'pending' };
+  return { ask, pr };
 }
 const MERGE_FIX = {
   conflict: { note: 'Conflict with its base branch', btn: 'Fix conflict', say: (n) => `Pull request #${n} now has a conflict with its base branch, so it cannot merge. Bring the base branch in, resolve the conflict, run the tests, push, and ask me to merge again.` },
   checks: { note: 'Checks failed', btn: 'Fix checks', say: (n) => `Pull request #${n} has failing checks, so it cannot merge. Find out why, fix them, push, and ask me to merge again.` },
+  pending: { note: 'Checks running', then: 'the session waits for them, then merges', btn: 'Merge when checks pass', title: 'Ask the session to wait for the checks, then merge, as your message', say: (n) => `merge once the checks on pull request #${n} pass. If one fails, don't merge: tell me which and why.` },
 };
 function mergeAsk() {
   const box = $('events');
@@ -9402,9 +9889,9 @@ function mergeAsk() {
   const m = mergeAskOf(S.selected, S.events);
   if (!m) return;
   const { ask, pr } = m, fix = MERGE_FIX[m.fix];
-  const btn = fix ? `<button class="primary" data-merge-go="${esc(m.fix)}" title="Ask the session to fix it, as your message">${fix.btn}</button>`
+  const btn = fix ? `<button class="primary" data-merge-go="${esc(m.fix)}" title="${esc(fix.title || 'Ask the session to fix it, as your message')}">${fix.btn}</button>`
     : '<button class="primary" data-merge-go title="Send &quot;merge&quot; to the session as your message">Merge</button>';
-  const note = fix ? `${fix.note} · the session fixes it, then asks again` : `${pr.checks === 'pass' ? 'Checks passed' : 'No checks'} · the session does the merge`;
+  const note = fix ? `${fix.note} · ${fix.then || 'the session fixes it, then asks again'}` : `${pr.checks === 'pass' ? 'Checks passed' : 'No checks'} · the session does the merge`;
   box.insertAdjacentHTML('beforeend', `<div class="merge-ask" data-merge-ask="${esc(ask.id)}" data-merge-pr="${esc(pr.number)}"><div class="ma-t"><b>#${esc(pr.number)}</b> ${esc(pr.title || 'Pull request')}<small>${note}</small></div>${btn}${pr.url ? `<a class="ma-link" href="${esc(pr.url)}" target="_blank" rel="noopener" title="Open the pull request on GitHub">View PR</a>` : ''}</div>`);
 }
 document.addEventListener('click', (e) => {
@@ -9423,6 +9910,7 @@ function appendEvent(ev) {
   if (ev.k === 'tool' || ev.k === 'text') stepsView(true); // a new reply makes the one before a bookkeeping step narration (#799)
   if (ev.k === 'result') markFinished($('events'), turnStart($('events')));
   mergeAsk(); // stays under the last reply, or goes once something is sent
+  signinAsk(); // and so does the Sign in card, below it
   scrollDown(stick);
   if (ev.login) showSignin();
   tlSoon();
@@ -9717,23 +10205,43 @@ document.addEventListener('click', async (e) => {
     else await api(`/api/sessions/${S.selected}/offer?client=${S.client}`, { offerId: o.dataset.offer, choice: o.dataset.choice });
   } catch (err) { tell(err.message); for (const b of card.querySelectorAll('button')) b.disabled = false; }
 });
+// What has been picked or typed in an open question form, kept in the browser per form (#969), so the form drawn again
+// after a reload (Docket restarting or updating, the session opened again, a pop-out) has it back. Dropped once the
+// form is submitted, skipped or no longer waiting; one no page saw end is dropped a week on.
+const QKEEP = 'qform:';
+const qformDrop = (id) => { try { localStorage.removeItem(QKEEP + id); } catch {} };
+function qformSave(card) {
+  const vals = [...card.querySelectorAll('input')].map((i) => (i.type === 'text' ? i.value : i.checked));
+  if (vals.some(Boolean)) store.set(QKEEP + card.dataset.perm, { at: Date.now(), vals }); else qformDrop(card.dataset.perm);
+}
+try {
+  for (let n = localStorage.length - 1; n >= 0; n--) {
+    const k = localStorage.key(n);
+    if (k?.startsWith(QKEEP) && !(Date.now() - (store.get(k, null)?.at || 0) < 7 * 864e5)) localStorage.removeItem(k);
+  }
+} catch {}
 // AskUserQuestion: a form with every question in full, its options as radio buttons (or checkboxes for
 // multiSelect), an Other box each, and Submit / Answer in the chat instead of Allow / Deny.
 function questionFormHtml(ev) {
   const qs = ev.input.questions;
   if (ev.state !== 'pending') {
+    qformDrop(ev.id);
     const said = { answered: 'Answered', skipped: 'Skipped: answering in the chat', cancelled: 'No longer needed' }[ev.state] || '';
     const rows = qs.map((q) => `<div class="qa">${esc(q.question)}<br><b>${esc(ev.answers?.[q.question] ?? '—')}</b></div>`).join('');
     return `<div class="qform done" data-perm="${esc(ev.id)}"><div class="qk">${openBrand()}'s questions · ${said}${byPilot(ev)}</div>${ev.state === 'answered' ? rows : ''}</div>`;
   }
+  // Its saved inputs in the order drawn: each option, then Other's pick and its text.
+  let kept = store.get(QKEEP + ev.id, null)?.vals, n = 0;
+  if (!Array.isArray(kept) || kept.length !== qs.reduce((t, q) => t + (q.options || []).length + 2, 0)) kept = null;
+  const on = () => (kept?.[n++] === true ? ' checked' : ''), val = () => { const v = kept?.[n++]; return typeof v === 'string' && v ? ` value="${esc(v)}"` : ''; };
   const body = qs.map((q, qi) => {
     const type = q.multiSelect ? 'checkbox' : 'radio', name = `q${esc(ev.id)}-${qi}`;
     const opts = (q.options || []).map((o) => {
       const rec = /\(recommended\)\s*$/i.test(o.label || '');
       const label = rec ? o.label.replace(/\s*\(recommended\)\s*$/i, '') : o.label;
-      return `<label class="qo"><input type="${type}" name="${name}" value="${esc(o.label)}"${tip('q-pick')}><div><div class="qol">${esc(label)}${rec ? '<span class="qrec">Recommended</span>' : ''}</div>${o.description ? `<div class="qod">${esc(o.description)}</div>` : ''}${o.preview ? `<div class="qpv">${esc(o.preview)}</div>` : ''}</div></label>`;
+      return `<label class="qo"><input type="${type}" name="${name}" value="${esc(o.label)}"${on()}${tip('q-pick')}><div><div class="qol">${esc(label)}${rec ? '<span class="qrec">Recommended</span>' : ''}</div>${o.description ? `<div class="qod">${esc(o.description)}</div>` : ''}${o.preview ? `<div class="qpv">${esc(o.preview)}</div>` : ''}</div></label>`;
     }).join('');
-    return `<div class="qbox" data-qi="${qi}">${q.header ? `<div class="qk">${esc(q.header)}${q.multiSelect ? ' · pick any' : ''}</div>` : ''}<div class="qq">${esc(q.question)}</div>${opts}<label class="qo"><input type="${type}" name="${name}" value="" data-other${tip('q-other')}><input type="text" class="qother"${tip('q-other')} placeholder="Other: type your own answer"></label></div>`;
+    return `<div class="qbox" data-qi="${qi}">${q.header ? `<div class="qk">${esc(q.header)}${q.multiSelect ? ' · pick any' : ''}</div>` : ''}<div class="qq">${esc(q.question)}</div>${opts}<label class="qo"><input type="${type}" name="${name}" value="" data-other${on()}${tip('q-other')}><input type="text" class="qother"${val()}${tip('q-other')} placeholder="Other: type your own answer"></label></div>`;
   }).join('');
   return `<div class="qform" data-perm="${esc(ev.id)}" data-qform>${body}<div class="qb"><button class="primary" data-qsubmit${tip('q-submit')}>Submit answers</button><button data-qskip${tip('q-skip')}>Answer in the chat instead</button><span class="hint" data-qhint></span></div></div>`;
 }
@@ -9759,18 +10267,25 @@ function keepTyped(cards) {
 }
 // One card drawn again in place, keeping what the person has put into it.
 function redrawCard(el, html) { const back = keepTyped([el]); el.outerHTML = html; back(); }
-// The person answering a question form, or typing while a merge waits (#942): the server keeps the autopilot from
-// answering it for a few minutes after (it may still suggest beside it). Said at most every 30 s for each.
+// The person answering a question form, typing in a session's box, or otherwise using its chat (#942, #965, #973): the
+// server keeps the autopilot from answering anything there for a few minutes after (it may still suggest beside it).
+// Said only on a desk with the autopilot engaged, at most every 30 s for each.
 const busySaid = {};
 function sayBusy(id) {
-  if (Date.now() - (busySaid[id] || 0) < 30_000) return;
+  if (!pilotOnDesk(S.client) || Date.now() - (busySaid[id] || 0) < 30_000) return;
   busySaid[id] = Date.now(); api('/api/pilot/busy', { id }).catch(() => {});
 }
 for (const t of ['input', 'change', 'focusin']) $('events').addEventListener(t, (e) => {
   const f = e.target.closest?.('[data-qform]');
-  if (f && e.target.matches('input, textarea')) sayBusy(`question:${f.dataset.perm}`);
+  if (!f || !e.target.matches('input, textarea')) return;
+  sayBusy(`question:${f.dataset.perm}`);
+  // Picking or typing in it also holds an automatic update or restart, like typing in the send box (#969).
+  if (t !== 'focusin') { qformSave(f); if (e.isTrusted) typingOn(true); }
 });
 $('input').addEventListener('input', () => { if (S.selected && S.selected !== 'draft' && $('input').value.trim()) sayBusy(`typing:${S.selected}`); });
+for (const el of [$('events'), $('composer')]) for (const t of ['pointerdown', 'keydown', 'wheel']) el.addEventListener(t, (e) => {
+  if (e.isTrusted && S.selected && S.selected !== 'draft') sayBusy(`active:${S.selected}`);
+}, { passive: true });
 function questionFormAnswers(card, ev) {
   const answers = {}, missing = [];
   ev.input.questions.forEach((q, qi) => {
@@ -9822,6 +10337,7 @@ $('events').addEventListener('input', (e) => {
   if (!e.target.classList.contains('qother')) return;
   const box = e.target.closest('.qbox'), o = box.querySelector('[data-other]');
   if (e.target.value.trim()) o.checked = true; else if (o.type === 'checkbox') o.checked = false;
+  qformSave(e.target.closest('[data-qform]')); // Other's pick, changed here after the save above
 });
 $('events').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-qsubmit],[data-qskip]'); if (!b) return;
@@ -9834,7 +10350,7 @@ $('events').addEventListener('click', async (e) => {
     body = { reqId: ev.id, allow: true, answers };
   }
   for (const x of card.querySelectorAll('button')) x.disabled = true;
-  try { await api(`/api/sessions/${S.selected}/permission`, body); }
+  try { await api(`/api/sessions/${S.selected}/permission`, body); qformDrop(ev.id); }
   catch (err) { tell(err.message); for (const x of card.querySelectorAll('button')) x.disabled = false; }
 });
 $('events').addEventListener('click', async (e) => {
@@ -10181,18 +10697,44 @@ function planHtml(p, me, ctx) {
   const empty = finished === p.tasks.length && !u.done ? `Every step is done${dropped ? ' or dropped' : ''}. Turn on ✓ Done to see them.` : 'No steps match.';
   return `<div class="plan" data-plan="${esc(p.id)}"><div class="plan-head"><div class="t">${esc(p.title)}${review}</div>
     <div class="plan-sub">${p.coordinator ? `Coordinated by ${planSessChip(p.coordinator, p.coordinatorTitle, me)} · ` : ''}${where} · <a href="#" data-plan-tree${tip('plan-tree')}>Plan tree</a></div>
-    ${planMotionHtml(p)}${p.tasks.length ? `<div class="plan-bar">${bar}</div><div class="plan-legend"><span style="--c: var(--ok)">${p.done} of ${p.total} done</span><span style="--c: var(--run)">${count('claimed')} in progress</span><span style="--c: var(--muted)">${count('waiting_outside')} waiting outside</span></div>` : ''}</div>
+    ${planMotionHtml(p)}${planNextHtml(p, me)}${p.tasks.length ? `<div class="plan-bar">${bar}</div><div class="plan-legend"><span style="--c: var(--ok)">${p.done} of ${p.total} done</span><span style="--c: var(--run)">${count('claimed')} in progress</span><span style="--c: var(--muted)">${count('waiting_outside')} waiting outside</span></div>` : ''}</div>
     ${planDecisionsHtml(p)}<div class="plan-flts"><button class="plan-flt" data-plan-f="active" aria-pressed="${u.active}" title="Only steps in progress or waiting outside Docket">Active<span class="n">${p.tasks.filter(active).length}</span></button><span class="div"></span><button class="plan-flt" data-plan-f="done" aria-pressed="${u.done}" title="${esc(doneTip)}">✓ Done<span class="n">${count('done')}</span></button></div>
     <div class="plan-list">${out || `<div class="hint">${empty}</div>`}</div></div>`;
+}
+// Next for you (#993): what the user does next in this plan, in order, from the same list the motion line is made of
+// (planNext, plan-motion.mjs), so the two agree: the coordinator's questions, open decisions, the user's due steps, tasks
+// whose session asks the user. Each is a link to where to act: that chat, or the step itself when it has none or it is
+// the chat open now. Then one line for what waits outside Docket.
+function planNextHtml(p, me) {
+  const nx = S.plans.plans.find((x) => x.id === p.id)?.next;
+  if (!nx || (!nx.items.length && !nx.outside.length)) return '';
+  const task = (id) => p.tasks.find((t) => t.id === id);
+  const who = (sid) => sid === p.coordinator ? (p.coordinatorTitle || 'its coordinator') : (task(nx.items.find((i) => i.session === sid)?.id)?.holderTitle || 'its session');
+  const where = (i) => !i.session ? '' : i.session === me ? 'in this chat' : `in ${who(i.session)}`;
+  const row = (i) => {
+    const [id, what, how] = i.kind === 'coord' ? ['→', "Answer its coordinator's last message", `it asked you something ${where(i)}`]
+      : i.kind === 'decision' ? [`Q${i.q}`, i.title, `${i.id} · decide ${where(i)}`]
+      : i.kind === 'step' ? [i.id, i.title, `your step${i.session ? ` · say when it is done ${where(i)}` : ''}`]
+      : [i.id, i.title, `its session asked you · answer ${where(i)}`];
+    const inner = `<span class="id">${esc(id)}</span><span>${esc(what)}</span><span class="w">${esc(how)}</span>`;
+    // a link to the chat to act in; the step itself when that chat is the one open now, or there is none
+    return i.session && i.session !== me ? `<a href="#" class="pnx" data-plan-open="${esc(i.session)}" title="Open ${esc(who(i.session))}">${inner}</a>`
+      : i.id ? `<div class="pnx" data-plan-jump="${esc(i.id)}" title="Show ${esc(i.id)} in the plan">${inner}</div>` : `<div class="pnx">${inner}</div>`;
+  };
+  const short = (w) => w.length > 40 ? w.slice(0, 38).trimEnd() + '…' : w, outs = (f) => nx.outside.map((o) => `${o.id}${o.waitsOn ? ` on ${f(o.waitsOn)}` : ''}`).join('; ');
+  const out = nx.outside.length ? `<div class="pn-out" title="${esc(outs((w) => w))}">${nx.items.length ? 'Then waiting outside' : 'Waiting outside Docket'}: ${esc(outs(short))}</div>` : '';
+  return `<div class="plan-next${nx.items.length ? '' : ' only-out'}">${nx.items.length ? `<div class="pn-h">Next for you · ${nx.items.length}</div>${nx.items.map(row).join('')}` : ''}${out}</div>`;
 }
 // The plan's decisions for the person (#929), read-only: open ones first, then answered ones with the answer and when.
 // They are answered in the coordinator's chat, never here.
 function planDecisionsHtml(p) {
   const decs = (p.tasks || []).filter((t) => t.q && t.state !== 'dropped').sort((a, b) => a.q - b.q);
   if (!decs.length) return '';
-  const open = decs.filter((t) => !t.answer), done = decs.filter((t) => t.answer);
-  const row = (t) => `<div class="pd${t.answer ? ' ans' : ''}" data-plan-jump="${esc(t.id)}" title="${esc(`${t.id} · ${t.answer ? 'answered' : 'waiting on you'}${t.answer ? '' : '\nAnswer it in the coordinator\'s chat, with a button under the question or by typing "Q' + t.q + ' …"'}`)}"><span class="id">Q${t.q}</span><span class="q">${esc(t.title)}</span>`
-    + `<span class="a">${t.answer ? `<b>${esc(t.answer.replace(/\n/g, ' / '))}</b> · ${esc(qWhen(t.answeredAt))}` : `${esc(t.id)} · answer in the chat${t.options?.length ? `, e.g. “Q${t.q} ${esc(t.options[0])}”` : ''}`}</span></div>`;
+  // A decision marked done without a saved answer is settled too (#990): it shows its done note, or "done", and when.
+  const settled = (t) => !!t.answer || t.state === 'done', open = decs.filter((t) => !settled(t)), done = decs.filter(settled);
+  const got = (t) => t.answer ? `<b>${esc(t.answer.replace(/\n/g, ' / '))}</b> · ${esc(qWhen(t.answeredAt))}` : `<b>${esc(t.note ? t.note.replace(/\n/g, ' / ') : 'done')}</b>${t.claimedAt ? ` · ${esc(qWhen(t.claimedAt))}` : ''}`;
+  const row = (t) => `<div class="pd${settled(t) ? ' ans' : ''}" data-plan-jump="${esc(t.id)}" title="${esc(`${t.id} · ${t.answer ? 'answered' : settled(t) ? 'done' : 'waiting on you'}${settled(t) ? '' : '\nAnswer it in the coordinator\'s chat, with a button under the question or by typing "Q' + t.q + ' …"'}`)}"><span class="id">Q${t.q}</span><span class="q">${esc(t.title)}</span>`
+    + `<span class="a">${settled(t) ? got(t) : `${esc(t.id)} · answer in the chat${t.options?.length ? `, e.g. “Q${t.q} ${esc(t.options[0])}”` : ''}`}</span></div>`;
   return `<div class="plan-decs">${open.length ? `<div class="pd-h">Decisions waiting on you · ${open.length}</div>${open.map(row).join('')}` : ''}${done.length ? `<div class="pd-h">Answered · ${done.length}</div>${done.map(row).join('')}` : ''}</div>`;
 }
 // ? shows or hides the Plan key at the top of the section (a link, DESIGN.md).
@@ -11104,6 +11646,8 @@ function connect() {
     const m = JSON.parse(e.data);
     const mine = m.id === S.selected;
     if (m.t === 'remote-features') { setRemoteOn(m.on); return; }
+    if (m.t === 'questions') { S.openQ[m.id] = m.open; if (mine) { renderTray(); decorateLater(); } listSoon(); return; } // #989
+    if (m.t === 'question-levels') { setQLevels(m.levels); return; }
     if (m.t === 'pilot') { drawPilot(m.pilot, m.decided); return; }
     if (m.t === 'remote-ask') { if (S.remoteOn) { S.remoteAsks[m.ask.id] = m.ask; drawRemoteAsks(); } return; }
     if (m.t === 'remote-asked') { delete S.remoteAsks[m.id]; drawRemoteAsks(); return; }
@@ -11111,10 +11655,11 @@ function connect() {
     if (m.t === 'remote-here') { S.remoteHere = { desk: m.desk, connections: m.connections || [] }; renderClients(); return; }
     if (m.t === 'session') {
       const before = S.live[m.session.id];
-      S.live[m.session.id] = m.session; livePushedAt[m.session.id] = performance.now();
+      S.live[m.session.id] = m.session; livePushedAt[m.session.id] = performance.now(); delete S.openQ[m.session.id]; // its openQ is the latest
       watchNeedsYou(m.session, before);
       if (before && before.status !== 'idle' && m.session.status === 'idle' && m.session.client === S.client) refreshSpend(5000);
       if (before && before.status !== 'idle' && m.session.status === 'idle') { refreshPRs(); if (m.session.id === S.selected) { refreshFiles(); refreshCost(); } } // a finished turn may have opened one
+      if (m.session.id === S.selected && before?.status !== m.session.status) decorateLater(); // a question not counted while it ran is settled once it stops (#989)
       if (m.session.id === S.selected) { renderHead(); markSeen('live update'); renderComposerBar(); if (before && before.status !== m.session.status) { tlSoon(); if (!S.schedOpen) renderTasks(); } } // Mark done shows only once the turn has ended
       listSoon(); stripLater(); // a card in a session under the open one shows in its strip
     } else if (m.t === 'event' && mine) {
@@ -11150,7 +11695,7 @@ function connect() {
       document.querySelector(`[data-text="${CSS.escape(m.evId)}"]`)?.closest('.reply')?.remove();
     } else if (m.t === 'signin-needs') {
       S.signinNeeds[m.client] = m.needs || {};
-      if (m.client === S.client) renderSigninNeed();
+      if (m.client === S.client) { renderSigninNeed(); renderList(); } // the globe, the card and the rows' marks
     } else if (m.t === 'plans' && m.client === S.client) {
       loadPlans();
     } else if (m.t === 'files' && mine) {
@@ -11176,7 +11721,7 @@ function connect() {
       }
       listSoon(); if (mine) renderHead();
     } else if (m.t === 'restarting') {
-      showRestartCover(m.relaunch);
+      showRestartCover(m.relaunch, m.quit);
     } else if (m.t === 'budget') {
       if (m.client === S.client) refreshSpend(); // its daily budget stop (#959)
     } else if (m.t === 'paused') {
@@ -11801,31 +12346,38 @@ document.addEventListener('keydown', (e) => { if (!$('updPop').hidden && e.key =
 window.addEventListener('resize', () => { if (!$('updPop').hidden) underArrow($('updPop')); if (!$('updNote').hidden) underArrow($('updNote')); });
 // ☰ > Restart Docket: first say what it would cut off (sessions working or waiting on you, by name; idle ones only
 // counted, since they start again cleanly), with Cancel the main choice; with nothing at risk a plain confirm. Then
-// the page is covered until the app answers again, and reloads.
-async function restartDocketAsk() {
+// the page is covered until the app answers again, and reloads. quit: ☰ > Quit Docket, the same warning and stop
+// without starting again.
+async function restartDocketAsk(quit = false) {
   let r; try { r = await api('/api/restart-docket'); } catch (err) { return tell(err.message); }
   const at = [...r.working.map((x) => ({ ...x, how: 'working' })), ...r.waiting.map((x) => ({ ...x, how: 'waiting on you' }))];
-  const what = '<div>Docket stops every session program, connected service and private browser, and the session runner, then starts again. Nothing continues by itself afterwards.</div>';
+  const what = quit ? '<div>Docket stops every session program, connected service and private browser, the session runner and itself, and does not start again until you start it. Nothing continues by itself afterwards.</div>'
+    : '<div>Docket stops every session program, connected service and private browser, and the session runner, then starts again. Nothing continues by itself afterwards.</div>';
   const idle = r.idle ? `<div class="meta" style="margin-top:8px">${r.idle} idle session${r.idle === 1 ? '' : 's'} will start again on ${r.idle === 1 ? 'its' : 'their'} next message.</div>` : '';
+  const verb = quit ? 'Quit' : 'Restart', key = quit ? 'qd' : 'rd';
   const v = at.length
-    ? await dialog({ title: 'Better not restart now', body: `${what}<div style="margin-top:8px">${at.length === 1 ? 'This session is' : 'These sessions are'} busy and would be cut off, then shown under "Open when the portal stopped" with Continue:</div>`
-        + `<ul style="margin:6px 0 0;padding-left:20px">${at.map((x) => `<li>${esc(x.title)}${x.desk ? ` <span class="meta">(${esc(x.desk)})</span>` : ''}: ${x.how}</li>`).join('')}</ul>${idle}<div style="margin-top:8px">Wait until ${at.length === 1 ? 'it is' : 'they are'} done unless you need to start over now.</div>`,
-        buttons: [{ label: 'Restart anyway', value: 'go', tip: tipText('rd-anyway') }, { label: 'Cancel', value: null, primary: true }] })
-    : await dialog({ title: 'Restart Docket?', body: what + idle, buttons: [{ label: 'Cancel', value: null }, { label: 'Restart', value: 'go', primary: true, tip: tipText('rd-go') }] });
+    ? await dialog({ title: `Better not ${verb.toLowerCase()} now`, body: `${what}<div style="margin-top:8px">${at.length === 1 ? 'This session is' : 'These sessions are'} busy and would be cut off, then shown under "Open when the portal stopped" with Continue:</div>`
+        + `<ul style="margin:6px 0 0;padding-left:20px">${at.map((x) => `<li>${esc(x.title)}${x.desk ? ` <span class="meta">(${esc(x.desk)})</span>` : ''}: ${x.how}</li>`).join('')}</ul>${idle}<div style="margin-top:8px">Wait until ${at.length === 1 ? 'it is' : 'they are'} done unless you need to ${quit ? 'quit' : 'start over'} now.</div>`,
+        buttons: [{ label: `${verb} anyway`, value: 'go', tip: tipText(`${key}-anyway`) }, { label: 'Cancel', value: null, primary: true }] })
+    : await dialog({ title: `${verb} Docket?`, body: what + idle, buttons: [{ label: 'Cancel', value: null }, { label: verb, value: 'go', primary: true, tip: tipText(`${key}-go`) }] });
   if (v !== 'go') return;
-  showRestartCover(true);
-  try { await api('/api/restart-docket', {}); } catch (err) { $('restartCover')?.remove(); tell(err.message); }
+  showRestartCover(!quit, quit);
+  try { await api('/api/restart-docket', quit ? { quit: true } : {}); } catch (err) { $('restartCover')?.remove(); tell(err.message); }
 }
 // Covers the page while Docket restarts (any open page: the app tells them all); the page reloads once the app is
 // back (connect). relaunch false: nothing starts the app again by itself (it was started by hand), so the page says how.
-function showRestartCover(relaunch) {
+// quit: ☰ > Quit Docket, so no spinner: it stays stopped until started again.
+function showRestartCover(relaunch, quit = false) {
   let c = $('restartCover');
   if (!c) {
     c = document.createElement('div'); c.className = 'booting'; c.id = 'restartCover'; c.setAttribute('role', 'status'); c.setAttribute('aria-live', 'polite');
     c.innerHTML = '<div class="boot-card"><div class="boot-name">Docket</div><div class="boot-spin" aria-hidden="true"></div><div class="boot-msg" id="restartMsg"></div></div>';
     document.body.appendChild(c);
   }
-  $('restartMsg').textContent = relaunch ? 'Docket is restarting. This page reloads by itself once it is back.'
+  c.querySelector('.boot-spin').hidden = quit;
+  const from = OS.mac ? 'from Docket in Applications' : 'from Docket in the Start menu';
+  $('restartMsg').textContent = quit ? `Docket has quit. Start it again ${from}. This page reloads by itself once it is back.`
+    : relaunch ? 'Docket is restarting. This page reloads by itself once it is back.'
     : `Docket has stopped. It was not started by its launcher, so it cannot start itself again: start it ${OS.mac ? 'from Docket in Applications' : 'from the Docket shortcut'}. This page reloads by itself once it is back.`;
 }
 api('/api/update').then(showUpdate).catch(() => {});
@@ -11969,7 +12521,7 @@ function showFormsOffer(list) {
   if (list) formsOfferList = list;
   const el = $('formsOffer');
   const o = formsOfferList.find((x) => x.client === S.client) || formsOfferList[0];
-  const busy = POPOUT || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'summaryOffer'].some((id) => !$(id).hidden);
+  const busy = POPOUT || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'summaryOffer', 'questionsOffer'].some((id) => !$(id).hidden);
   if (!o || busy) { if (!el.hidden) el.hidden = true; return; }
   if (!el.hidden && el.dataset.client === o.client) return; // already showing it: keep the keyboard where it is
   el.dataset.client = o.client;
@@ -11994,7 +12546,7 @@ $('formsOffer').onclick = async (e) => {
   el.hidden = true;
   showFormsOffer();
 };
-for (const id of ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showFormsOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'questionsOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showFormsOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 api('/api/forms-offers').then(showFormsOffer).catch(() => {});
 
 // The card after the update that brought Docket's plans (#180): once for each desk on this computer with no plan system
@@ -12014,7 +12566,7 @@ function reasonOfferSample(words) { // declared, not const: the page's start may
 }
 function showReasonOffer() {
   const el = $('reasonOffer');
-  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer'].some((id) => !$(id).hidden);
+  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'questionsOffer'].some((id) => !$(id).hidden);
   if (busy || S.reasonDot || deskStore.get('reasonDotOffer', false)) { if (!el.hidden) el.hidden = true; return; } // only a real change: the cost card watches this one, and this one it
   if (!el.hidden && el.dataset.client === S.client) return; // already showing it: keep the keyboard where it is
   el.dataset.client = S.client;
@@ -12041,7 +12593,7 @@ $('reasonOffer').onclick = (e) => {
   el.hidden = true;
 };
 // It waits for the others: each one closing (or the wizard, the tour or a dialog) looks again.
-for (const id of ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'questionsOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showReasonOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 // The one-time card about 👁 > Cost (#806): once per computer, after the update that brings it or on a new install.
 // Never where a cost display is on already, and never on top of another corner card, the setup wizard, the tour or a
 // dialog: it waits until they close. Not now, × and Turn it on all mark it seen (costOffer), so it does not come back.
@@ -12053,7 +12605,7 @@ function costOfferSample() { // declared, not const: the page's start may call s
 }
 function showCostOffer() {
   const el = $('costOffer');
-  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer'].some((id) => !$(id).hidden);
+  const busy = POPOUT || !S.client || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'questionsOffer'].some((id) => !$(id).hidden);
   if (busy || store.get('costOffer', false) || S.costRows !== 'off' || S.costGroups) { if (!el.hidden) el.hidden = true; return; } // only a real change, as above
   if (!el.hidden) return; // already showing it: keep the keyboard where it is
   el.innerHTML = `<button class="x" data-co="no" aria-label="Close"${tip('co-no')}>×</button><span class="ic" aria-hidden="true">$</span>
@@ -12074,7 +12626,42 @@ $('costOffer').onclick = (e) => {
   if (viewOpen()) renderViewMenu();
   loadCosts(); renderList();
 };
-for (const id of ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showCostOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+for (const id of ['reasonOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'questionsOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showCostOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+// The one-time card for numbered questions (#989): once per desk, on a desk whose level the server has no answer for,
+// after the update that brings it or on a new desk. Never on top of another corner card, the setup wizard, the tour or a
+// dialog: it waits until they close. Its sample is drawn with the chat's own styles, so it follows the theme and color.
+// Off, Highlight only and Highlight + track each save the level; × saves Off.
+function questionsOfferSample() { // declared, not const: the page's start may call showQuestionsOffer before this line runs
+  const row = (q, t) => `<div class="qt-row"><span class="qt-go"><span class="qchip">Q${q}</span><span class="txt">${t}</span></span><span class="qt-tick">✓</span></div>`;
+  return `<div class="qo-sample" aria-hidden="true"><div class="msg-text"><p>The test copy runs on 4403. Two things before I go on:</p>
+    <p class="qhl answered"><span class="qchip">Q4</span>Count questions from child sessions too?<span class="qans">✓ you: “only this one”</span></p>
+    <p class="qhl"><span class="qchip">Q5</span>Keep the old label, or rename it?</p></div>
+    <div class="q-tray"><div class="qt-head">Open questions <span class="n">2</span></div>${row(5, 'Keep the old label, or rename it?')}${row(7, 'Which port for the second test copy?')}</div></div>`;
+}
+function showQuestionsOffer() {
+  const el = $('questionsOffer');
+  const busy = POPOUT || !S.client || !S.qLevelsAt || !$('wiz').hidden || !$('tour').hidden || !$('dlg').hidden || ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'summaryOffer'].some((id) => !$(id).hidden);
+  if (busy || S.client in S.qLevels) { if (!el.hidden) el.hidden = true; return; } // only a real change: the other cards watch this one
+  if (!el.hidden && el.dataset.client === S.client) return; // already showing it: keep the keyboard where it is
+  el.dataset.client = S.client;
+  el.innerHTML = `<button class="x" data-qo="off" aria-label="Close"${tip('qo-off')}>×</button><span class="ic" aria-hidden="true"><span class="qchip">Q5</span></span>
+    <div class="t" id="questionsOfferTitle">New: numbered questions stand out</div>
+    <div class="d">A question a session numbers gets its own color in the chat and turns green once you answer it. Tracked, the open ones also wait above the prompt, counted on the row, until you answer.</div>
+    ${questionsOfferSample()}
+    <div class="ro-hint">For this desk. Change it any time in 👁 &gt; Questions.</div>
+    <div class="b"><button data-qo="off"${tip('qo-off')}>Off</button><button data-qo="highlight"${tip('qo-highlight')}>Highlight only</button><button class="primary" data-qo="track"${tip('qo-track')}>Highlight + track</button></div>`;
+  el.hidden = false;
+}
+$('questionsOffer').onclick = async (e) => {
+  const b = e.target.closest('button[data-qo]'), el = $('questionsOffer'); if (!b) return;
+  if (el.dataset.client !== S.client) return showQuestionsOffer(); // the desk changed under it
+  for (const x of el.querySelectorAll('button')) x.disabled = true;
+  try { await setQLevel(b.dataset.qo); }
+  catch (err) { for (const x of el.querySelectorAll('button')) x.disabled = false; return tell(err.message); }
+  for (const x of el.querySelectorAll('button')) x.disabled = false;
+  el.hidden = true;
+};
+for (const id of ['reasonOffer', 'costOffer', 'cacheOffer', 'planOffer', 'setupOffer', 'startOffer', 'formsOffer', 'summaryOffer', 'wiz', 'tour', 'dlg']) new MutationObserver(() => showQuestionsOffer()).observe($(id), { attributes: true, attributeFilter: ['hidden'] });
 function showPlanOffer() {
   const el = $('planOffer');
   // A switch of plan system waiting on its conversion session (#700) comes first: it ends only with Finish or Cancel.

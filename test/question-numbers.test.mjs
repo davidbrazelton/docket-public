@@ -50,9 +50,9 @@ test('the count never goes back: an answer that refers to an old question, or a 
 });
 
 test('one stray far-off number is passed over, the rest of the message still counts', () => {
-  assert.equal(afterMessage(3, [text('Q4? Q5? See section Q500 of the spec.')]), 5);
-  assert.equal(afterMessage(0, [text(`Q${JUMP}`)]), JUMP);
-  assert.equal(afterMessage(0, [text(`Q${JUMP + 1}`)]), 0);
+  assert.equal(afterMessage(3, [text('Q4: a?\nQ5: b?\nSee section Q500 of the spec?')]), 5);
+  assert.equal(afterMessage(0, [text(`Q${JUMP}: ok?`)]), JUMP);
+  assert.equal(afterMessage(0, [text(`Q${JUMP + 1}: ok?`)]), 0);
 });
 
 test('the state line on notes names the next question, and alone it still makes a line', () => {

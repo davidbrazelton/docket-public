@@ -47,7 +47,7 @@ test('the server flags the turn live and from the transcript, and the next messa
   const page = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(server, /const thin = !err && thinTurn\(s\.turnBlocks \|\| \[\]\);/);
   assert.match(server, /addEvent\(s, \{ k: 'result',[^\n]*\.\.\.\(thin \? \{ thin: true \} : \{\}\)/);
-  assert.match(server, /events\.push\(\{ k: 'result', at: turnAt, \.\.\.thinMark\(\) \}\)/);
+  assert.match(server, /events\.push\(ev = \{ k: 'result', at: turnAt, \.\.\.thinMark\(\) \}\)/);
   assert.match(server, /if \(!system && state\.sessions\[s\.id\]\?\.thinNote\) \{ blocks\.push\(\{ type: 'text', text: THIN_NOTE \}\);/);
   assert.match(page, /ev\.thin \? `<div class="thin-line"[^`]*>Part of this reply was not saved<\/div>`/);
 });

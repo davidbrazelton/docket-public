@@ -5,7 +5,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, treeListCommand, parseTreeList, descendants, killCommand, commandLineCommand, relaunchesApp, leftBehind,
+import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, processListCommand, parseProcessList, powerWatchCommand, powerEvent, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, treeListCommand, parseTreeList, descendants, killCommand, commandLineCommand, relaunchesApp, supervisedBy, leftBehind, envReadCommand, parseEnvRead, freshEnv, findNode,
   keyCodes, fitShot, shotArea, toScreen, screenScript, screenCommand, screenBadgeCommand, SCREEN_BADGE, cloudFolders, profilePathCandidates, batteryCommand, parseBattery } from '../platform.mjs';
 
 test('cloudFolders on Windows: Google Drive on any drive letter first, then OneDrive, Dropbox and iCloud Drive', () => {
@@ -861,4 +861,87 @@ test('batteryCommand and parseBattery on a Mac: pmset -g batt, AC or battery, no
     { battery: true, onBattery: false, percent: 100 });
   assert.deepEqual(parseBattery("Now drawing from 'AC Power'\n", 'darwin'), { battery: false, onBattery: null, percent: null }, 'a Mac mini');
   assert.deepEqual(parseBattery('anything', 'linux'), { battery: false, onBattery: null, percent: null });
+});
+
+test('supervisedBy: only supervisor.mjs is replaced by Restart Docket; start-docket.cmd and a bare node are not', () => {
+  assert.equal(supervisedBy('"C:\\Program Files\\nodejs\\node.exe" "V:\\Repos\\docket\\supervisor.mjs" --after 1234'), true);
+  assert.equal(supervisedBy('/opt/homebrew/bin/node /Users/pat/Docket/supervisor.mjs'), true);
+  assert.equal(supervisedBy('C:\\WINDOWS\\system32\\cmd.exe /c ""V:\\Repos\\docket\\start-docket.cmd" "'), false);
+  assert.equal(supervisedBy(''), false);
+});
+
+test('envReadCommand and parseEnvRead: the registry on Windows, nothing elsewhere', () => {
+  const c = envReadCommand('win32');
+  assert.equal(c.cmd, 'powershell.exe');
+  assert.match(c.args.at(-1), /HKCU:\\Environment/);
+  assert.match(c.args.at(-1), /Session Manager\\Environment/);
+  assert.match(c.args.at(-1), /DoNotExpandEnvironmentNames/);
+  assert.equal(envReadCommand('darwin'), null);
+  assert.equal(envReadCommand('linux'), null);
+  assert.deepEqual(parseEnvRead('{"user":{"name":"A","kind":"String","value":"1"},"system":[]}'), { user: [{ name: 'A', kind: 'String', value: '1' }], system: [], volatile: [] }, 'one value comes as an object');
+  assert.deepEqual(parseEnvRead('{"user":[{"name":"B","kind":"ExpandString","value":null}],"system":null}'), { user: [{ name: 'B', kind: 'ExpandString', value: '' }], system: [], volatile: [] });
+  assert.equal(parseEnvRead('not json'), null);
+  assert.equal(parseEnvRead(''), null);
+});
+
+test('freshEnv on Windows: registry over the old values, expanded, user Path after system Path, deleted ones dropped', () => {
+  const current = { Path: 'C:\\old', USERPROFILE: 'C:\\Users\\pat', SystemRoot: 'C:\\WINDOWS', OLD_SETTING: 'stale', GONE: 'was set', PORTAL_PORT: '4403', TEMP: 'C:\\stale' };
+  const read = {
+    system: [{ name: 'Path', kind: 'ExpandString', value: '%SystemRoot%\\system32;C:\\Program Files\\nodejs\\;' }, { name: 'OS', kind: 'String', value: 'Windows_NT' }],
+    user: [{ name: 'Path', kind: 'ExpandString', value: '%USERPROFILE%\\.local\\bin;%NOT_SET%\\x' }, { name: 'TEMP', kind: 'ExpandString', value: '%USERPROFILE%\\AppData\\Local\\Temp' },
+      { name: 'OLD_SETTING', kind: 'String', value: 'new' }, { name: 'ROOT', kind: 'String', value: 'D:\\notes' }, { name: 'NOTES', kind: 'ExpandString', value: '%root%\\today' }],
+  };
+  const f = freshEnv({ current, read, managed: ['GONE', 'OLD_SETTING'], platform: 'win32' });
+  assert.deepEqual(f.env, {
+    USERPROFILE: 'C:\\Users\\pat', SystemRoot: 'C:\\WINDOWS', PORTAL_PORT: '4403', OS: 'Windows_NT',
+    Path: 'C:\\WINDOWS\\system32;C:\\Program Files\\nodejs\\;C:\\Users\\pat\\.local\\bin;%NOT_SET%\\x',
+    OLD_SETTING: 'new', ROOT: 'D:\\notes', TEMP: 'C:\\Users\\pat\\AppData\\Local\\Temp', NOTES: 'D:\\notes\\today' });
+  assert.deepEqual(f.dropped, ['GONE'], 'in the registry before, not now: deleted');
+  assert.deepEqual(f.changed.sort(), ['NOTES', 'OLD_SETTING', 'OS', 'Path', 'ROOT', 'TEMP']);
+  assert.deepEqual(f.names.sort(), ['GONE', 'NOTES', 'OLD_SETTING', 'OS', 'PATH', 'ROOT', 'TEMP'], 'kept, so the next start drops GONE again');
+  // A name the registry never had stays, whatever the case of the name it is given in.
+  const g = freshEnv({ current: { PATH: 'x', DOCKET_X: '1' }, read: { system: [{ name: 'Path', kind: 'String', value: 'C:\\a' }], user: [] }, platform: 'win32' });
+  assert.deepEqual(g.env, { DOCKET_X: '1', Path: 'C:\\a' });
+  assert.deepEqual(g.dropped, []);
+  // The sign-in's own values come over the computer's USERNAME=SYSTEM, and the person's can use them.
+  const v = freshEnv({ current: { USERNAME: 'pat', TEMP: 'C:\\Users\\PAT~1.X\\Temp', TMP: 'C:\\elsewhere' }, platform: 'win32', samePath: (a, b) => a.replace('PAT~1.X', 'pat.x') === b, read: {
+    system: [{ name: 'USERNAME', kind: 'String', value: 'SYSTEM' }],
+    volatile: [{ name: 'USERNAME', kind: 'String', value: 'pat' }, { name: 'USERPROFILE', kind: 'String', value: 'C:\\Users\\pat.x' }],
+    user: [{ name: 'TEMP', kind: 'ExpandString', value: '%USERPROFILE%\\Temp' }, { name: 'TMP', kind: 'ExpandString', value: '%USERPROFILE%\\Temp' }] } });
+  assert.deepEqual(v.env, { USERNAME: 'pat', USERPROFILE: 'C:\\Users\\pat.x', TEMP: 'C:\\Users\\PAT~1.X\\Temp', TMP: 'C:\\Users\\pat.x\\Temp' }, 'a short TEMP for the same folder stays');
+  // The runtime\ folders of a Docket-Setup.exe copy go last.
+  assert.equal(freshEnv({ current: {}, read: { system: [{ name: 'Path', kind: 'String', value: 'C:\\a;' }], user: [] }, extraPath: ['C:\\rt\\node', 'C:\\rt\\git\\cmd'], platform: 'win32' }).env.Path,
+    'C:\\a;C:\\rt\\node;C:\\rt\\git\\cmd');
+});
+
+test('freshEnv on a Mac, or with nothing read: the environment as it is', () => {
+  const current = { PATH: '/usr/bin', HOME: '/Users/pat' };
+  const read = { system: [{ name: 'PATH', kind: 'String', value: '/x' }], user: [] };
+  for (const [platform, r] of [['darwin', read], ['linux', read], ['win32', null]]) {
+    const f = freshEnv({ current, read: r, managed: ['A'], platform });
+    assert.deepEqual(f.env, current, platform);
+    assert.notEqual(f.env, current, 'a copy');
+    assert.deepEqual([f.changed, f.dropped, f.names], [[], [], ['A']]);
+  }
+});
+
+test('findNode: the first node on the PATH, else the fallback', () => {
+  const there = new Set(['C:\\Program Files\\nodejs\\node.exe', 'D:\\node2\\node.exe', '/opt/homebrew/bin/node']);
+  const exists = (f) => there.has(f);
+  assert.equal(findNode({ env: { Path: 'C:\\WINDOWS;"C:\\Program Files\\nodejs\\";D:\\node2;' }, exists, fallback: 'old', platform: 'win32' }), 'C:\\Program Files\\nodejs\\node.exe');
+  assert.equal(findNode({ env: { Path: 'C:\\WINDOWS;relative' }, exists, fallback: 'old', platform: 'win32' }), 'old');
+  assert.equal(findNode({ env: {}, exists, fallback: 'old', platform: 'win32' }), 'old');
+  assert.equal(findNode({ env: { PATH: '/usr/bin:/opt/homebrew/bin' }, exists, fallback: 'old', platform: 'darwin' }), '/opt/homebrew/bin/node');
+  assert.equal(findNode({ env: { Path: '/opt/homebrew/bin' }, exists, fallback: 'old', platform: 'darwin' }), 'old', 'names are case-sensitive on a Mac');
+});
+
+// The real registry on a Windows computer: the computer's Path is there, and the result starts a node.
+test('envReadCommand and freshEnv run here', { skip: process.platform !== 'win32' }, () => {
+  const c = envReadCommand();
+  const r = spawnSync(c.cmd, c.args, { encoding: 'utf8', windowsHide: true, timeout: 60_000 });
+  const read = parseEnvRead(r.stdout);
+  assert.ok(read?.system.some((v) => v.name.toUpperCase() === 'PATH'), r.stderr);
+  const f = freshEnv({ current: process.env, read });
+  const node = findNode({ env: f.env, exists: (p) => fs.existsSync(p), fallback: process.execPath });
+  assert.equal(spawnSync(node, ['-e', 'process.stdout.write("ok")'], { env: f.env, encoding: 'utf8' }).stdout, 'ok');
 });

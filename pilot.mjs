@@ -114,35 +114,55 @@ export function itemStops(item) {
   }
 }
 
-// The autopilot's own desk (#875): where runs go in the one-brand mode, and for a desk with no brand signed in (#914).
 // The pilot never approves itself: what a pilot run raised (its own session, a card it made) stays with the person.
 export const OWN_RUN = 'raised by a pilot run itself';
-export const PILOT_DESK_NAME = 'Autopilot';
 
-// The desk entry Docket makes the first time the switch goes on, filled in the way ☰ > Desks > Add a desk fills a new
-// one: working folder <claude root>\<Name>, Claude home <claude root>\<Name>\claude-home (made empty), Grok home
-// <grok root>\<Name>, Grok as the brand its sessions start on. roots: the server's homeRoots(). clients: the desks
-// there are now; a name or folder one of them uses is passed over for Autopilot 2, 3 and so on.
-export function pilotDeskEntry(roots, clients = []) {
-  const sep = roots.sep || '\\';
-  const norm = (p) => String(p || '').replace(/[\\/]+/g, '/').replace(/\/$/, '').toLowerCase();
-  const inside = (p) => norm(p) === norm(roots.docket) || norm(p).startsWith(norm(roots.docket) + '/');
-  const names = new Set(clients.map((c) => String(c.name || '').trim().toLowerCase()));
-  const used = new Set(clients.flatMap((c) => [c.home, c.grokHome, c.codexHome, c.folder]).filter(Boolean).map(norm));
-  for (let n = 1; ; n++) {
-    const name = n === 1 ? PILOT_DESK_NAME : `${PILOT_DESK_NAME} ${n}`;
-    // Never inside Docket's own folder (it holds the sign-in): <Name>-desk then, as Add a desk does.
-    const at = (root, ...rest) => { const p = [root, name, ...rest].join(sep); return inside(p) ? [root, `${name}-desk`, ...rest].join(sep) : p; };
-    const e = { name, folder: at(roots.claude), home: at(roots.claude, 'claude-home'), grokHome: at(roots.grok || [roots.claude, 'grok_home'].join(sep)), defaultEngine: 'grok' };
-    if (!names.has(name.toLowerCase()) && ![e.folder, e.home, e.grokHome].some((p) => used.has(norm(p)))) return e;
-  }
+// ---------- per desk (#973) ----------
+// Enabled (state.pilot.on, ☰ > Docket settings > Autopilot) shows the controls and lets Docket learn from the person's
+// answers on every desk; engaged (state.pilot.engaged: desk -> since when) is what lets it act on a desk. Only a desk
+// with a brand signed in can be engaged, since its runs are its own sessions, billed there.
+
+// The desks the 🤖 drop-down's quick actions engage. quick: others (all but the desk open now, here), all, or none.
+// desks: [{ id, signedIn }]; one with no brand signed in is never engaged. Returns the ids.
+export function quickEngaged(quick, desks, here) {
+  if (quick === 'none') return [];
+  return (desks || []).filter((d) => d.signedIn && (quick === 'all' || (quick === 'others' && d.id !== here))).map((d) => d.id);
+}
+
+// The keys the page's activity marks an item by (#942, #965, widened in #973): the item itself (a question form being
+// filled in), and the person typing in, or otherwise using, the session it waits in. While any of them is recent the
+// pilot holds back there.
+export const busyKeys = (item) => [item.id, ...(item.session ? [`typing:${item.session}`, `active:${item.session}`] : [])];
+
+// One line for a desk in the 🤖 drop-down: what the rules let the pilot do there, "answers prompts, suggests for forms,
+// plans". rules: cleaned or raw. Kinds that wait for the person are left out.
+const SHORT = { permission: 'prompts', question: 'forms', plan: 'plans', offer: 'offers', card: 'cards', handoff: 'handoffs' };
+export function deskStatus(rules, desk) {
+  const r = cleanRules(rules), d = r.desks[desk] || { kinds: {} };
+  const by = { allow: [], suggest: [] };
+  for (const k of LEARNS) by[d.kinds[k] || r.kinds[k]]?.push(SHORT[k]);
+  return [by.allow.length ? `answers ${by.allow.join(', ')}` : '', by.suggest.length ? `suggests for ${by.suggest.join(', ')}` : ''].filter(Boolean).join(', ') || 'leaves everything to you';
+}
+
+// The one-time move to per desk (#973) for a computer that used the autopilot before: state.pilot as saved, and the
+// sessions. on stays as enabled, with no desk engaged (a note says to engage it from 🤖); the Autopilot desk's
+// sessions are archived and the desk leaves the desk list (its folders stay on disk); the "Runs on" brand and the run
+// fallbacks go. Runs on the desks themselves are left as they are. Returns { pilot, archive: [session ids], dropDesk:
+// the old desk's id or null, changed }; run again on its own result it changes nothing.
+export function migratePilot(pilot, sessions = {}) {
+  if (!pilot || typeof pilot !== 'object' || pilot.perDesk) return { pilot, archive: [], dropDesk: null, changed: false };
+  const { desk, brand, gear, session, runAt, fallback, ...keep } = pilot;
+  const archive = desk ? Object.entries(sessions || {}).filter(([, r]) => r && r.client === desk && !r.archived).map(([id]) => id) : [];
+  // going: a run of the old desk going at the upgrade is dropped (its session is archived); runs on a desk stay.
+  const going = Object.fromEntries(Object.entries(keep.going || {}).filter(([, r]) => r && r.host !== desk || !desk));
+  return { pilot: { ...keep, on: !!keep.on, going, engaged: {}, perDesk: true, ...(keep.on ? { movedNote: true } : {}) }, archive, dropDesk: desk || null, changed: true };
 }
 
 // The level the rules give an item: its desk's rule for its kind over the general one, then any hard stop it hits
 // that the rules do not name as allow or deny pulls it back to ask. Returns { level, stops, why }.
 // ownRun: (item) => whether a pilot run raised it; that stays with the person, whatever the rules say.
 export function ruleFor(rules, item, ownRun) {
-  if (typeof ownRun === 'function' && !item.there && ownRun(item)) return { level: 'ask', stops: itemStops(item), why: OWN_RUN };
+  if (typeof ownRun === 'function' && ownRun(item)) return { level: 'ask', stops: itemStops(item), why: OWN_RUN };
   const r = cleanRules(rules), desk = r.desks[item.desk] || { kinds: {}, stops: {} };
   const kind = desk.kinds[item.kind] || r.kinds[item.kind] || 'ask';
   const stops = itemStops(item);
@@ -164,14 +184,14 @@ export const stricter = (a, b) => {
   return RANK[x] >= RANK[y] ? x : y;
 };
 
-// Whether the pilot may give this answer to this item. Returns { ok, why }. floor: the level another computer's
-// rules gave it (an item on a remote desk, #827); the stricter of that and these rules counts. ownRun: as ruleFor.
+// Whether the pilot may give this answer to this item. Returns { ok, why }. floor: a level it may go no further than
+// (suggest while the person is busy there, #942); the stricter of that and these rules counts. ownRun: as ruleFor.
 export function mayAnswer(rules, item, answer, floor, ownRun) {
   const k = KINDS[item.kind];
   if (!k) return { ok: false, why: `Unknown kind ${item.kind}.` };
   if (!k.answers.includes(answer)) return { ok: false, why: `"${answer}" is not an answer to ${item.kind}; use one of: ${k.answers.join(', ')}.` };
   let { level, why } = ruleFor(rules, item, ownRun);
-  if (floor && stricter(floor, level) !== level) { level = stricter(floor, level); why = `the rules on the computer with the desk say ${level} for it`; }
+  if (floor && stricter(floor, level) !== level) { level = stricter(floor, level); why = `held back to ${level} for now`; }
   if (level === 'allow') return { ok: true, why };
   if (level === 'deny') return answer === k.decline ? { ok: true, why } : { ok: false, why: `${why}: the pilot may only answer ${k.decline}. It stays with the person.` };
   if (level === 'suggest') return { ok: false, why: `${why}: the pilot only suggests an answer for it (pilot_suggest), and the person picks.` };
@@ -189,15 +209,14 @@ export function maySuggest(rules, item, answer, floor, ownRun) {
 }
 
 // One answer the pilot gave, or tried to, as a line in its log.
-// from: the computer whose pilot answered with a pilot key (#827), when not this one's. run: the pilot run that
-// answered (#881), its session id. suggest: the run only suggested this answer (#917).
-export const logLine = ({ at = Date.now(), item, answer, ok, why, from, run, suggest }) => ({
+// run: the pilot run that answered (#881), its session id. suggest: the run only suggested this answer (#917).
+export const logLine = ({ at = Date.now(), item, answer, ok, why, run, suggest }) => ({
   at, id: item.id, kind: item.kind, desk: item.desk, session: item.session || null, title: item.title || '', what: item.what || '', answer, ok, why,
-  ...(from ? { from } : {}), ...(run ? { run } : {}), ...(suggest ? { suggest: true } : {}),
+  ...(run ? { run } : {}), ...(suggest ? { suggest: true } : {}),
 });
 // A run starting or ending, as a line in the pilot's log (#881): kind run, answer started or ended, what says why.
-// desk: the desk whose items the run judges (#914); host: the desk it ran on, when not that one (the Autopilot desk).
-export const runLine = ({ at = Date.now(), run, desk, host, answer, what = '', brand, gear }) => ({ at, kind: 'run', run, ...(desk ? { desk } : {}), ...(host && host !== desk ? { host } : {}),
+// desk: the desk whose items the run judges, and the desk it runs on (#914, #973).
+export const runLine = ({ at = Date.now(), run, desk, answer, what = '', brand, gear }) => ({ at, kind: 'run', run, ...(desk ? { desk } : {}),
   answer, what, ok: true, ...(brand ? { brand, gear } : {}) });
 
 // ---------- runs (#881, one per desk since #914) ----------
@@ -241,53 +260,22 @@ export function runDone(s, { tasks = 0, maxMs = 30 * 60000, now = Date.now(), at
   return '';
 }
 
-// Where runs go (☰ > Docket settings > Autopilot > Runs on, #914), the one setting: each desk (EACH_DESK, the default),
-// where the run for a desk's items is a session of that desk, on its own default brand and sign-in and billed there;
-// or one brand on the autopilot's own desk, for every desk. A run always runs on its brand's top gear, since every run
-// judges (a lower gear once made a call the person disagreed with). saved: { brand } as kept. gears: GEARS from
-// gears.mjs, cheapest first. Returns { brand, gear } (brand: EACH_DESK or a brand; gear: that brand's top gear's key,
-// null for EACH_DESK, where each run takes its own brand's: topGear).
-export const EACH_DESK = 'desk';
-export const PILOT_DEFAULT_BRAND = EACH_DESK;
+// Where a desk's run goes (#914, #973): always a session of that desk, on its default brand (or another it has signed
+// in), billed there, on that brand's top gear, since every run judges (a lower gear once made a call the person
+// disagreed with). gears: GEARS from gears.mjs, cheapest first.
 export const topGear = (brand, gears) => gears[brand].at(-1).key;
-export function pilotSetting(saved, gears) {
-  if (!gears[saved?.brand]) return { brand: EACH_DESK, gear: null };
-  return { brand: saved.brand, gear: topGear(saved.brand, gears) };
-}
-// Where the run for one desk's items goes, and on which brand (#914). mode: pilotSetting's brand. desk: { id, brands }
-// for the desk the items wait on, its signed-in brands with its default first (none: not a desk on this computer, or
-// none signed in). pilot: { id, brands } the same for the autopilot's desk. Returns { host, brand, gear, fallback }
-// (fallback: each desk was asked for, but this desk has no brand signed in, so it runs on the autopilot's desk), or
-// null when no run can start (the brand it needs is not signed in there).
-export function runPlace(mode, desk, pilot, gears) {
-  const at = (host, brand, fallback = false) => ({ host, brand, gear: topGear(brand, gears), fallback });
-  if (mode !== EACH_DESK) return pilot.brands.includes(mode) ? at(pilot.id, mode) : null;
-  if (desk.brands?.length) return at(desk.id, desk.brands[0]);
-  return pilot.brands?.length ? at(pilot.id, pilot.brands[0], true) : null;
-}
-// Why this brand can't be saved for the pilot, or '' when it can. offered: [{ brand, signedIn }] the brands the
-// autopilot's desk has set up (name: the brand's name, for the message).
-export function pilotSettingRefusal({ brand }, offered, gears) {
-  if (brand === EACH_DESK) return '';
-  if (!gears[brand]) return `${brand} is not a brand Docket knows.`;
-  const o = offered.find((x) => x.brand === brand), name = o?.name || brand;
-  if (!o) return `The autopilot's desk does not use ${name}.`;
-  if (!o.signedIn) return `The autopilot's desk is not signed in to ${name}. Sign it in first.`;
-  return '';
-}
 
-// Finished runs stay in their desk's list for a week, so the person can read what they did, and are archived after
-// that. sessions: state.sessions (a run is marked pilotRun, #914; every session of the autopilot's desk is one).
-// desk: the autopilot's desk. going: the ids of the runs going now. Returns the ids to archive now.
+// Finished runs stay a week, so the person can read what they did, and are archived after that. sessions:
+// state.sessions (a run is marked pilotRun, #914). going: the ids of the runs going now. Returns the ids to archive now.
 export const RUN_KEEP_MS = 7 * 24 * 3600000;
-export function runsToArchive(sessions, desk, going = [], now = Date.now()) {
+export function runsToArchive(sessions, going = [], now = Date.now()) {
   const running = new Set(typeof going === 'string' ? [going] : going || []);
-  return Object.entries(sessions || {}).filter(([id, r]) => r && (r.pilotRun || (desk && r.client === desk)) && !r.archived && !running.has(id)
+  return Object.entries(sessions || {}).filter(([id, r]) => r && r.pilotRun && !r.archived && !running.has(id)
     && Number.isFinite(r.createdAt) && now - r.createdAt > RUN_KEEP_MS).map(([id]) => id);
 }
 
-// What the autopilot is doing, for the quiet animation on its desk and the ✈ (an indicator): off (switch off or no
-// desk), idle, waking (a batch is filling before a run starts) or working (a run is going).
+// What the autopilot is doing, for the quiet animation on the desks' 🤖 and the one in the top bar (indicators): off
+// (disabled, or no desk engaged), idle, waking (a batch is filling before a run starts) or working (a run is going).
 export function pilotState({ flying, running, filling }) {
   if (!flying) return 'off';
   if (running) return 'working';
@@ -348,8 +336,20 @@ export function historyLean(lines, desk, kind, h = HISTORY) {
 // person's past sessions lean one way and every live answer so far gave that same answer: history can shorten the
 // wait, but only live matches make it ready.
 export const LEARN = { n: 10, rate: 0.9, recent: 3 };
+// Train on a kind on a desk from its Autopilot tab (#974, #1004) starts its count over: only the lines after the
+// last reset line (how: reset) count.
+export const resetLine = ({ at = Date.now(), desk, kind }) => ({ at, desk, kind, how: 'reset', match: null });
+// Suggest on a kind that answers (#1004) only pauses it: its count is kept, and a hold line lets Answer be picked again
+// until a reset or a miss comes after it (held).
+export const holdLine = ({ at = Date.now(), desk, kind }) => ({ at, desk, kind, how: 'hold', match: null });
+const held = (lines, desk, kind) => (lines || []).findLast((l) => l.desk === desk && l.kind === kind && ['hold', 'reset', 'miss'].includes(l.how))?.how === 'hold';
+const sinceReset = (lines, desk, kind) => {
+  const mine = (lines || []).filter((l) => l.desk === desk && l.kind === kind);
+  const i = mine.findLastIndex((l) => l.how === 'reset');
+  return i < 0 ? mine : mine.slice(i + 1);
+};
 export function confidence(lines, desk, kind, o = LEARN, h = HISTORY) {
-  const last = (lines || []).filter((l) => l.desk === desk && l.kind === kind && typeof l.match === 'boolean').slice(-o.n);
+  const last = sinceReset(lines, desk, kind).filter((l) => typeof l.match === 'boolean').slice(-o.n);
   const matched = last.filter((l) => l.match).length;
   const lean = historyLean(lines, desk, kind, h);
   const need = lean && last.length && last.every((l) => l.user?.answer === lean.answer) ? Math.max(o.recent, h.n, 1) : o.n;
@@ -405,23 +405,76 @@ export function pastAnswers(lines, items, deskName = (d) => d, n = 6, nHistory =
   return out;
 }
 
+// ---------- a desk's Autopilot tab (#974) ----------
+// What it handles there: one row per kind it learns, with the level the rules give it on that desk (allow: it answers;
+// suggest: it is learning; anything else: it leaves it to the person), how far it has got, and whether Answer has been
+// earned (ready). Returns [{ kind, level, matched, total, need, ready }].
+export function deskKinds(rules, lines, desk, o = LEARN) {
+  const r = cleanRules(rules), d = r.desks[desk] || { kinds: {} };
+  return LEARNS.map((kind) => {
+    const level = d.kinds[kind] || r.kinds[kind], c = confidence(lines, desk, kind, o);
+    return { kind, level, matched: c.matched, total: c.total, need: c.need, ready: c.ready, held: level !== 'allow' && held(lines, desk, kind) };
+  });
+}
+// Choosing Suggest, Answer or Train for a kind on a desk, from its tab: Answer once earned (the same as "I got this"),
+// when it answers already, or when Suggest only paused it (held); Suggest and Train from anything. Returns the error,
+// or ''.
+export function kindChoiceRefusal(row, level) {
+  if (!row) return 'The autopilot does not learn that kind.';
+  if (level !== 'allow' && level !== 'suggest' && level !== 'train') return 'Pick Suggest, Answer or Train.';
+  if (level === 'allow' && row.level !== 'allow' && !row.ready && !row.held) return `The autopilot has not earned that yet: ${row.matched} of the last ${row.total} matched, and it needs ${row.need}.`;
+  return '';
+}
+// The offer to engage (#974): the desks not engaged where something has waited at least ms that the pilot could take
+// (its rules do not keep it with the person). items: waitingOnPerson's list; seen: id -> when it was first seen;
+// engaged: desk -> since. Returns [{ desk, count }], most waiting first.
+export const OFFER_MS = 10 * 60000;
+export function offerDesks(items, seen, engaged = {}, now = Date.now(), ms = OFFER_MS) {
+  const n = {};
+  for (const i of items || []) {
+    if (!i.desk || Object.hasOwn(engaged, i.desk) || i.may === 'ask' || now - (seen.get(i.id) ?? now) < ms) continue;
+    n[i.desk] = (n[i.desk] || 0) + 1;
+  }
+  return Object.entries(n).map(([desk, count]) => ({ desk, count })).sort((a, b) => b.count - a.count);
+}
+// A desk's runs by day, newest first: [{ day: 'YYYY-MM-DD', cost, runs }], each day's cost the sum of its runs'.
+// runs: [{ at, cost, ... }]. day: a time's local day.
+export function runsByDay(runs, day = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }) {
+  const out = new Map();
+  for (const r of [...(runs || [])].sort((a, b) => b.at - a.at)) {
+    const k = day(r.at), d = out.get(k) || out.set(k, { day: k, cost: 0, runs: [] }).get(k);
+    d.cost = Math.round((d.cost + (r.cost || 0)) * 1e4) / 1e4; d.runs.push(r);
+  }
+  return [...out.values()];
+}
+
 // ---------- one desk's run, kept apart from every other desk (#914) ----------
 // Only what belongs to desk: a run is given its own desk's items, log lines and learning lines, never another desk's.
+// The open cards (proposals, handoffs) and sign-in needs that wait on the person, from sessions not archived (#984):
+// an archived session's row shows nothing, so a card left open in it is nothing anyone can answer, and it must not
+// count toward the offer to engage or a run. archived(desk, sessionId) says which sessions are archived.
+export function openWaiting({ proposals = [], handoffs = [], sessions = {}, archived = () => false }) {
+  const shown = (desk, id) => !id || !archived(desk, id);
+  return {
+    proposals: proposals.filter((p) => p.ev.state === 'open' && shown(p.client, p.parentId)),
+    handoffs: handoffs.filter((h) => h.ev.state === 'open' && shown(h.client, h.sessionId)),
+    signins: Object.entries(sessions).filter(([id, rec]) => rec?.needsSignin && rec.client && shown(rec.client, id)),
+  };
+}
 export const ofDesk = (list, desk) => (list || []).filter((x) => x && x.desk === desk);
 const cut = (s, n) => { const t = String(s ?? ''); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
 
 // The brief a run starts with (#881): what to do in this one turn, the items it was started for, and what it must
 // remember, every part of it the one desk's (whatever else is passed in is left out here). The shared log files are
-// not named, so a run has no path to the other desks' lines. b: { desk, deskName, onDesk
-// (the run is a session of that desk), items, notes, notesFile, log (the pilot log, newest first), learn (the learning
-// log), rulesFile, screen (screen control is on where the run is) }.
+// not named, so a run has no path to the other desks' lines. b: { desk, deskName, items, notes, notesFile, log (the
+// pilot log, newest first), learn (the learning log), rulesFile, screen (screen control is on for the desk) }.
 export function runBrief(b) {
   const desk = b.desk, name = b.deskName || desk, items = ofDesk(b.items, desk);
   const when = (t) => new Date(t).toISOString().slice(0, 16).replace('T', ' ');
   const last = ofDesk(b.log, desk).filter((l) => l.kind !== 'run').slice(0, 12)
     .map((l) => `- ${when(l.at)} ${l.kind}: ${l.answer}${l.ok ? '' : ` (refused: ${cut(l.why, 80)})`} - ${cut(l.what || l.title, 80)}`);
   const past = pastAnswers(ofDesk(b.learn, desk), items, () => name);
-  return `You are Docket's autopilot on this computer, in one short run for the desk ${name}. ${b.onDesk ? `This run is a session of ${name}, on its own sign-in, and its cost is billed there.` : "This run is on the autopilot's own desk, kept apart from the desks where work happens."} It sees and answers ${name}'s items only, and everything below is ${name}'s alone: never look for another desk's sessions, files or notes. Docket started this session for the items below and archives it as soon as your turn ends, so do it all in this one turn, then stop. The next run is a fresh session: it knows only your notes and the log.
+  return `You are Docket's autopilot on this computer, in one short run for the desk ${name}. This run is a session of ${name}, on its own sign-in, and its cost is billed there. It sees and answers ${name}'s items only, and everything below is ${name}'s alone: never look for another desk's sessions, files or notes. Docket started this session for the items below and ends it as soon as your turn ends, so do it all in this one turn, then stop. The next run is a fresh session: it knows only your notes and the log.
 
 1. Call mcp__portal__pilot_pending for the list as it is now (it may have changed since).
 2. Answer with mcp__portal__pilot_answer only what it marks may: allow (or decline what it marks deny). Leave everything marked ask for the user, including anything a pilot run raised itself. Docket checks its rules again on every answer.

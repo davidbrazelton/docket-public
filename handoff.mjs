@@ -104,6 +104,16 @@ export function cleanHandoffPattern(p) {
 //. It never goes under the latest reply as if it were new: an answered one goes at the top of the chat, an
 // open one (still waiting on the person) at the end; both are marked earlier, so the page can say so.
 export const isOpenCard = (ev) => ev.state === 'open' || ev.state === 'pending' || ev.archive === 'offered';
+// What archiving a session does to each card in it still waiting on the person (#984), so nothing is left open behind an
+// archived row: the fields to set, or null to leave the card as it is (answered already, or a desk handoff, which
+// waits in the other desk rather than on a click here). A proposal goes through its own settle path (dismissed).
+export const ARCHIVED_NOTE = 'its session was archived';
+export function closeOnArchive(ev) {
+  if (ev.k === 'handoff') return ev.state === 'open' ? { state: 'closed' } : ev.archive === 'offered' ? { archive: 'archived' } : null;
+  if (ev.state !== 'open' && ev.state !== 'pending') return null;
+  return { proposal: { state: 'dismissed', note: ARCHIVED_NOTE }, offer: { state: 'closed' }, cross: { state: 'stopped' },
+    'title-suggestion': { state: 'dismissed' }, 'plan-offer': { state: 'dismissed' } }[ev.k] || null;
+}
 export function weaveCards(events, cards = []) {
   const out = events.slice();
   let top = 0; // where the next answered card with no place goes, so they keep their saved order

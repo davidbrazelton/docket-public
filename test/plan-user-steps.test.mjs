@@ -126,7 +126,7 @@ test("a user's decision takes the coordinator's next question number, and keeps 
   const text = fs.readFileSync(p.file, 'utf8');
   assert.match(text, /^- \[ \] T2 Keep the CSV export next to the new XLSX one\?\n {2}- Kind: decision\n {2}- Owner: the user\n {2}- Question: Q7\n {2}- Options: Keep both \| XLSX only\n {2}- State: open$/m);
   const back = s.read(p.id);
-  assert.deepEqual(decisions(back), [{ q: 7, id: 'T2', title: 'Keep the CSV export next to the new XLSX one?', options: ['Keep both', 'XLSX only'], answer: '', answeredAt: '', state: 'open' }]);
+  assert.deepEqual(decisions(back), [{ q: 7, id: 'T2', title: 'Keep the CSV export next to the new XLSX one?', options: ['Keep both', 'XLSX only'], answer: '', answeredAt: '', state: 'open', note: '', doneAt: '' }]);
   assert.equal(formatPlan(back, fileOf), formatPlan(parsePlan(formatPlan(back, fileOf)), fileOf));
   // more decisions count on; one already asked by number keeps it; a number twice is refused
   const r = s.addTasks(p.id, [{ kind: 'decision', title: 'Date format?', for_user: true }, { kind: 'decision', title: 'Flag first?', for_user: true, q: 12 }], 'c1', counter(7));

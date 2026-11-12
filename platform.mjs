@@ -583,6 +583,8 @@ export function commandLineCommand(pid, platform = process.platform) {
   return { cmd: 'ps', args: ['-o', 'command=', '-p', String(Number(pid))] };
 }
 export const relaunchesApp = (commandLine) => /supervisor\.mjs|start-docket\.cmd/i.test(String(commandLine || ''));
+// Started by supervisor.mjs, which ☰ > Restart Docket replaces with a new one; start-docket.cmd's window is kept.
+export const supervisedBy = (commandLine) => /supervisor\.mjs/i.test(String(commandLine || ''));
 // A second list, read after the first stop, for anything left: a program stopped then that is still running (the
 // same number and start time), and a program whose parent was stopped and that started after it (started while
 // the rest went). stopped: the numbers stopped; before: the first list, which has their start times.
@@ -976,4 +978,74 @@ export function parseBattery(text, platform = process.platform) {
     return { battery: true, onBattery: /battery/i.test(from), percent: Number(pct[1]) };
   }
   return none;
+}
+
+// ---------- a fresh environment for each app start (supervisor.mjs) ----------
+// supervisor.mjs can run for days, and what it was started with would otherwise reach every app and runner it
+// starts, however often Docket restarts. So on each app start it reads the person's variables as Windows keeps them
+// (HKCU\Environment, HKLM's Session Manager\Environment for the computer's, and HKCU\Volatile Environment for the
+// sign-in's own, such as USERNAME and USERPROFILE), unexpanded, as JSON in UTF-8.
+// Other systems have nothing like it: on a Mac the launchd job's variables are what Docket gets (null here).
+export function envReadCommand(platform = process.platform) {
+  if (platform !== 'win32') return null;
+  return { cmd: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-Command', [
+    '[Console]::OutputEncoding = [Text.Encoding]::UTF8',
+    "function Get-EnvValues($k) { $key = Get-Item -LiteralPath $k; @($key.GetValueNames() | Where-Object { $_ } | ForEach-Object { [pscustomobject]@{ name = $_; kind = $key.GetValueKind($_).ToString(); value = [string]$key.GetValue($_, '', 'DoNotExpandEnvironmentNames') } }) }",
+    "ConvertTo-Json -Depth 3 -Compress @{ user = Get-EnvValues 'HKCU:\\Environment'; volatile = Get-EnvValues 'HKCU:\\Volatile Environment'; system = Get-EnvValues 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment' }"].join('; ')] };
+}
+// envReadCommand's output as { user, system, volatile }, each [{ name, kind, value }]; null when it cannot be read.
+export function parseEnvRead(text) {
+  let j; try { j = JSON.parse(String(text).trim()); } catch { return null; }
+  if (!j || typeof j !== 'object') return null;
+  const list = (l) => (Array.isArray(l) ? l : l ? [l] : []).filter((v) => v && v.name).map((v) => ({ name: String(v.name), kind: String(v.kind || 'String'), value: String(v.value ?? '') }));
+  return { user: list(j.user), system: list(j.system), volatile: list(j.volatile) };
+}
+// The environment to start the app with, built as Windows builds it at sign-in: current (the supervisor's own) with
+// the computer's variables over it, then the sign-in's (its USERNAME over the computer's USERNAME=SYSTEM), then the
+// person's, REG_EXPAND_SZ values expanded, and the person's Path added after the computer's. Windows hands out TEMP
+// and TMP as short (8.3) paths: when samePath(current, new) says they are one folder, the current value stays. managed: the names
+// (upper case) the registry gave before; one gone from the registry since was deleted, so it is dropped. Any
+// other name that is not in the registry was set for this Docket alone (PORTAL_PORT for a test copy, say) and stays.
+// extraPath goes at the end of Path (the runtime\ folders of a copy from Docket-Setup.exe, as start-hidden.ps1 does).
+// Gives { env, names (managed for next time), changed, dropped }. Not Windows, or nothing read: current as it is.
+export function freshEnv({ current, read, managed = [], extraPath = [], samePath = (a, b) => a === b, platform = process.platform }) {
+  if (platform !== 'win32' || !read) return { env: { ...current }, names: [...managed], changed: [], dropped: [] };
+  const up = (n) => n.toUpperCase();
+  const volatile = read.volatile || [];
+  const regNames = new Set([...read.system, ...volatile, ...read.user].map((v) => up(v.name)));
+  const gone = new Set(managed.map(up).filter((n) => !regNames.has(n)));
+  const env = {};
+  for (const [k, v] of Object.entries(current)) if (!gone.has(up(k)) && !regNames.has(up(k))) env[k] = v;
+  const keyOf = (n) => Object.keys(env).find((k) => up(k) === up(n));
+  const set = (n, v) => { const k = keyOf(n); if (k !== undefined) delete env[k]; env[n] = v; };
+  const expand = (s) => s.replace(/%([^%;\\/]+)%/g, (m, n) => { const k = keyOf(n); return k === undefined ? m : env[k]; });
+  let systemPath = '';
+  for (const [list, user] of [[read.system, false], [volatile, false], [read.user, true]]) {
+    // Plain values first, so an expanding one can use any of them, as Windows does.
+    for (const v of [...list.filter((x) => x.kind !== 'ExpandString'), ...list.filter((x) => x.kind === 'ExpandString')]) {
+      let value = v.kind === 'ExpandString' ? expand(v.value) : v.value;
+      if (up(v.name) === 'PATH') {
+        if (!user) systemPath = value;
+        else value = [systemPath.replace(/;+$/, ''), value].filter(Boolean).join(';');
+      }
+      set(v.name, value);
+    }
+  }
+  if (extraPath.length) { const k = keyOf('PATH') || 'Path'; env[k] = [String(env[k] || '').replace(/;+$/, ''), ...extraPath].filter(Boolean).join(';'); }
+  const was = (n) => { const k = Object.keys(current).find((x) => up(x) === up(n)); return k === undefined ? undefined : current[k]; };
+  for (const n of ['TEMP', 'TMP']) { const k = keyOf(n), old = was(n); if (k !== undefined && old !== undefined && old !== env[k] && samePath(old, env[k])) env[k] = old; }
+  return { env, names: [...new Set([...managed.map(up), ...regNames])], changed: Object.keys(env).filter((k) => was(k) !== env[k]), dropped: Object.keys(current).filter((k) => gone.has(up(k))) };
+}
+// The node to start the app with: the first one on env's PATH, so a Node.js upgrade that moved it is picked up;
+// fallback (the supervisor's own) when none is found. exists(file) says whether a file is there.
+export function findNode({ env, exists, fallback, platform = process.platform }) {
+  const p = platform === 'win32' ? path.win32 : path.posix;
+  const k = Object.keys(env).find((x) => (platform === 'win32' ? x.toUpperCase() : x) === 'PATH');
+  for (const dir of String(k ? env[k] : '').split(platform === 'win32' ? ';' : ':')) {
+    const d = dir.trim().replace(/^"(.*)"$/, '$1');
+    if (!d || !p.isAbsolute(d)) continue;
+    const file = p.join(d, platform === 'win32' ? 'node.exe' : 'node');
+    if (exists(file)) return file;
+  }
+  return fallback;
 }

@@ -10,6 +10,10 @@ export const savedWaiting = ({ unread, status, heldTurn, lastError }) =>
 // the restart and is not working now, or may not have had its message.
 export const unreadAfterRestart = ({ asks, wasWaiting, busy, unsent }) => !!(asks || (wasWaiting && !busy) || unsent);
 
+// Whether its last turn is still under way after an app restart, so its transcript's Done line is left off: the runner
+// is working on it or has a question open. An idle one's turn is over, and shows its Done line and merge ask (#970).
+export const turnOpenAfterRestart = ({ busy, asks }) => !!(busy || asks);
+
 // Reading a session keeps the reason its row showed (state.sessions[id].readWhy), so Mark unread brings the same tag
 // back (#771). keptReason: what to keep from { why, said } when it is read. markUnreadReason: the reason Mark unread
 // gives it, the kept one or, with none kept, mark-unread itself.

@@ -18,7 +18,7 @@
   --s-start: var(--c-brief); /* the start cost line: the color of start briefs, whatever the theme */
   --lines-add: #14703a; --lines-del: #b91c1c; /* lines added / removed, 4.5:1 or better on --bg, --panel and --panel-2 */
   /* what started each turn (the Cause column); the coordination causes are the warm ones */
-  --c-person: #2563eb; --c-brief: #0d9488; --c-send: #65a30d; --c-report: #dc2626; --c-report-quiet: #db2777; --c-notice-coord: #d97706; --c-notice: #8a8983; --c-task: #9333ea; --c-none: #c8c6bf; --s-coord: #dc2626;
+  --c-person: #2563eb; --c-brief: #0d9488; --c-send: #65a30d; --c-report: #dc2626; --c-report-quiet: #db2777; --c-notice-coord: #d97706; --c-notice: #8a8983; --c-task: #9333ea; --c-pilot: #0e7490; --c-ask: #4f46e5; --c-side: #4b5563; --c-none: #c8c6bf; --s-coord: #dc2626;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -26,7 +26,7 @@
     --bg: #1b1b19; --panel: #232321; --panel-2: #2b2b28; --line: #373633; --text: #ecebe6; --muted: #a09f98;
     --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --bad: #f87171;
     --s-hypo: #a09f98; --s-save: #4ade80; --s-main: #60a5fa; --s-agent: #c084fc; --s-compact: #fbbf24; --s-expiry: #f87171; --lines-add: #4ade80; --lines-del: #fb8585;
-    --c-person: #60a5fa; --c-brief: #2dd4bf; --c-send: #a3e635; --c-report: #f87171; --c-report-quiet: #f472b6; --c-notice-coord: #fbbf24; --c-notice: #a09f98; --c-task: #c084fc; --c-none: #55544f; --s-coord: #f87171;
+    --c-person: #60a5fa; --c-brief: #2dd4bf; --c-send: #a3e635; --c-report: #f87171; --c-report-quiet: #f472b6; --c-notice-coord: #fbbf24; --c-notice: #a09f98; --c-task: #c084fc; --c-pilot: #22d3ee; --c-ask: #818cf8; --c-side: #9ca3af; --c-none: #55544f; --s-coord: #f87171;
     color-scheme: dark;
   }
 }
@@ -34,7 +34,7 @@
   --bg: #1b1b19; --panel: #232321; --panel-2: #2b2b28; --line: #373633; --text: #ecebe6; --muted: #a09f98;
   --accent: #f97316; --accent-soft: #3b2417; --ok: #4ade80; --bad: #f87171;
   --s-hypo: #a09f98; --s-save: #4ade80; --s-main: #60a5fa; --s-agent: #c084fc; --s-compact: #fbbf24; --s-expiry: #f87171; --lines-add: #4ade80; --lines-del: #fb8585;
-  --c-person: #60a5fa; --c-brief: #2dd4bf; --c-send: #a3e635; --c-report: #f87171; --c-report-quiet: #f472b6; --c-notice-coord: #fbbf24; --c-notice: #a09f98; --c-task: #c084fc; --c-none: #55544f; --s-coord: #f87171;
+  --c-person: #60a5fa; --c-brief: #2dd4bf; --c-send: #a3e635; --c-report: #f87171; --c-report-quiet: #f472b6; --c-notice-coord: #fbbf24; --c-notice: #a09f98; --c-task: #c084fc; --c-pilot: #22d3ee; --c-ask: #818cf8; --c-side: #9ca3af; --c-none: #55544f; --s-coord: #f87171;
   color-scheme: dark;
 }
 :root[data-accent] { --accent: var(--accent-light); }
@@ -259,7 +259,8 @@ function filtered() {
 // Rows from before causes were recorded, and Codex and Grok rows, have none ('', shown as "Not recorded").
 const CAUSES = [['person', 'Your messages', '--c-person'], ['brief', 'Start briefs', '--c-brief'], ['send', 'Sent by a session', '--c-send'],
   ['report', 'Report wakes', '--c-report'], ['report-quiet', 'Report wakes, ended quiet', '--c-report-quiet'], ['notice-coord', 'Coordination notices', '--c-notice-coord'],
-  ['notice', 'Other Docket notices', '--c-notice'], ['task', 'Background tasks', '--c-task'], ['', 'Not recorded', '--c-none']];
+  ['notice', 'Other Docket notices', '--c-notice'], ['task', 'Background tasks', '--c-task'], ['pilot', 'Autopilot', '--c-pilot'], ['docket:ask-desk', 'Asked from another desk', '--c-ask'],
+  ['docket:auto-group', 'Docket: Auto Group', '--c-side'], ['docket:artifact', 'Docket: artifact publish', '--c-side'], ['', 'Not recorded', '--c-none']];
 const COORD = new Set(['report', 'report-quiet', 'notice-coord']); // what parent and child sessions cost each other, beyond the work
 const causeName = Object.fromEntries(CAUSES.map(([k, l]) => [k, l]));
 const causeColor = Object.fromEntries(CAUSES.map(([k, , c]) => [k, c]));
@@ -267,7 +268,7 @@ const causeKey = (r) => 'c-' + (r.Cause || 'none'); // a chart series
 
 // ---------- adding up ----------
 function totals(rows) {
-  const t = { byCause: {}, coord: 0, cost: 0, main: 0, agent: 0, compact: 0, compactions: 0, grokCompactions: 0, hypo: 0, hypoAgent: 0, agentCost: 0, list: 0, input: 0, cacheRead: 0, cacheSaved: 0, expiries: 0, turns: 0, output: 0, agentSec: 0, waitSec: 0, userSec: 0, added: 0, removed: 0, starts: 0, startCost: 0, children: 0, short: 0, shortCost: 0 };
+  const t = { byCause: {}, coord: 0, cost: 0, main: 0, agent: 0, compact: 0, compactions: 0, grokCompactions: 0, hypo: 0, hypoAgent: 0, agentCost: 0, list: 0, input: 0, cacheRead: 0, cacheSaved: 0, expiries: 0, turns: 0, output: 0, agentSec: 0, waitSec: 0, userSec: 0, added: 0, removed: 0, starts: 0, startCost: 0, children: 0, short: 0, shortCost: 0, childStart: 0, rules: 0 };
   for (const r of rows) {
     t.cost += r.Cost; t.list += r.PersonalCost ?? r.Cost; t.hypo += r.HypotheticalCost ?? r.Cost;
     t[r.Source] = (t[r.Source] || 0) + r.Cost;
@@ -282,7 +283,9 @@ function totals(rows) {
     t.agentSec += r.AgentSeconds || 0; t.waitSec += r.WaitSeconds || 0; t.userSec += r.UserSeconds || 0;
     t.added += r.LinesAdded || 0; t.removed += r.LinesRemoved || 0;
     // The start of each session is on its first row only (costs.mjs startFacts), so each counts once.
-    if (r.Starts) { t.starts++; t.startCost += r.StartCost || 0; if (r.Child) t.children++; if (r.ShortChild) { t.short++; t.shortCost += r.StartCost || 0; } }
+    // An autopilot run's start counts in Autopilot, not again in Child start-up.
+    if (r.Starts) { t.starts++; t.startCost += r.StartCost || 0; if (r.Child) { t.children++; if (r.Cause !== 'pilot') t.childStart += r.StartCost || 0; } if (r.ShortChild) { t.short++; t.shortCost += r.StartCost || 0; } }
+    t.rules += r.RulesEstimate || 0;
   }
   t.savings = t.hypo - t.cost; t.saveAgent = t.hypoAgent - t.agentCost; t.saveMain = t.savings - t.saveAgent;
   t.cacheEff = t.cacheRead / (t.input + t.cacheRead);
@@ -300,6 +303,8 @@ function renderCards(rows) {
     card('Agent cost', money(t.agent || 0), 'helper agents'),
     card('Compaction cost', money(t.compact || 0), (t.compactions ? `${t.compactions} compaction${t.compactions === 1 ? '' : 's'}, ${money((t.compact || 0) / t.compactions)} each` : 'no compactions') + (t.grokCompactions ? `; ${t.grokCompactions} in Grok, inside its turn cost` : '')),
     coordCard(t, card),
+    ...pilotCard(rows, t, card),
+    overheadCard(t, card),
     card('Hypothetical cost', money(t.hypo), `all on ${esc(R.baseline?.name || 'Opus')}, no routing`),
     card('Routing savings', money(t.savings), `agents ${money(t.saveAgent)} · sessions ${money(t.saveMain)}`, t.savings > 0 ? 'good' : ''),
     ...shiftCard(rows, card),
@@ -324,6 +329,36 @@ function coordCard(t, card) {
     + (none >= 0.01 ? `<br>${money(none)} in rows with no cause recorded` : ''));
 }
 
+// What the autopilot cost (#976): every turn of its runs, the runs, and what they answered and suggested (from its
+// log) in these dates, with the cost of each. Only when there were runs.
+function pilotCard(rows, t, card) {
+  const runs = new Set(rows.filter((r) => r.Cause === 'pilot').map((r) => r.SessionId));
+  if (!runs.size) return [];
+  const cost = t.byCause.pilot || 0, [a, b] = rangeDates().map(dayStr);
+  let answered = 0, suggested = 0;
+  for (const id of runs) for (const [day, n] of Object.entries(R.pilotAnswers?.[id] || {})) if (day >= a && day <= b) { answered += n.answered || 0; suggested += n.suggested || 0; }
+  const all = answered + suggested;
+  const title = 'Every turn of an autopilot run, whatever started it. Answered: prompts and cards it settled; suggested: answers it put to you, from its log';
+  return [card(`<span title="${esc(title)}">Autopilot cost</span>`, money(cost),
+    `${pct(t.cost ? cost / t.cost : 0)} of spend · ${runs.size} run${runs.size === 1 ? '' : 's'}<br>`
+    + `${answered.toLocaleString()} answered, ${suggested.toLocaleString()} suggested${all ? ` · ${money(cost / all)} each` : ''}`)];
+}
+
+// What Docket itself costs in AI, by kind, each with its share of spend (#977): sessions' cost of each other, starting
+// children, Docket's notices, ask_desk answers, its own calls with no session, and the autopilot's runs (cause 'pilot',
+// #976). Its instructions in every session are an estimate inside all of those costs, so they are shown apart, not added in.
+function overheadCard(t, card) {
+  const c = (k) => t.byCause[k] || 0;
+  const parts = [['Coordination', t.coord], ['Child start-up', t.childStart], ['Docket notices', c('notice')], ['Asked from another desk', c('docket:ask-desk')],
+    ['Side calls', c('docket:auto-group') + c('docket:artifact')], ['Autopilot', c('pilot')]];
+  const sum = parts.reduce((a, [, v]) => a + v, 0), share = (v) => pct(t.cost ? v / t.cost : 0);
+  const title = "What Docket itself costs in AI: reports and notes between sessions, starting child sessions, its other notices, "
+    + "answers to another desk's ask_desk, its own calls with no session (Auto Group, artifact publish) and autopilot runs";
+  return card(`<span title="${esc(title)}">Docket overhead</span>`, money(sum),
+    `${share(sum)} of spend<br>` + parts.map(([k, v]) => `${k} ${money(v)} (${share(v)})`).join('<br>')
+    + `<br><span title="Docket's instructions in every session's system prompt, read on every reply: an estimate, already inside the costs above">Docket's instructions ≈ ${money(t.rules)} (${share(t.rules)}), estimated</span>`);
+}
+
 // What starting sessions cost: each one's first reply reading its instructions, tools and first message.
 function startCard(t, card) {
   const title = "Each session's first reply: reading and caching its instructions, tools and first message (its brief, for a child). The output is left out: that is the work";
@@ -345,8 +380,8 @@ function shiftCard(rows, card) {
 
 // ---------- charts (plain SVG) ----------
 const SERIES = {
-  cum: [['hypo', 'Hypothetical', '--s-hypo', true], ['save', 'Savings', '--s-save'], ['actual', 'Actual', '--s-actual'], ['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['coord', 'Coordination', '--s-coord']],
-  day: [['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['hypo', 'Hypothetical', '--s-hypo'], ['start', 'Start cost', '--s-start'], ['expiry', 'Cache expiries', '--s-expiry']],
+  cum: [['hypo', 'Hypothetical', '--s-hypo', true], ['save', 'Savings', '--s-save'], ['actual', 'Actual', '--s-actual'], ['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['coord', 'Coordination', '--s-coord'], ['pilot', 'Autopilot', '--c-pilot']],
+  day: [['main', 'Sessions', '--s-main'], ['agent', 'Agents', '--s-agent'], ['compact', 'Compaction', '--s-compact'], ['docket', 'Docket side calls', '--c-side'], ['hypo', 'Hypothetical', '--s-hypo'], ['start', 'Start cost', '--s-start'], ['expiry', 'Cache expiries', '--s-expiry']],
 };
 // The daily bars' series: by source, or by cause (only the causes with spend in these rows), then the hypothetical and expiries.
 function daySeries(rows) {
@@ -359,11 +394,11 @@ function dailyData(rows) {
   const [a, b] = rangeDates();
   const days = [];
   for (let d = new Date(a); dayStr(d) <= dayStr(b); d = addDays(d, 1)) days.push(dayStr(d));
-  const zero = () => ({ main: 0, agent: 0, compact: 0, hypo: 0, actual: 0, expiry: 0, coord: 0, start: 0, ...Object.fromEntries(CAUSES.map(([k]) => ['c-' + (k || 'none'), 0])) });
+  const zero = () => ({ main: 0, agent: 0, compact: 0, docket: 0, hypo: 0, actual: 0, expiry: 0, coord: 0, pilot: 0, start: 0, ...Object.fromEntries(CAUSES.map(([k]) => ['c-' + (k || 'none'), 0])) });
   const by = new Map(days.map((d) => [d, zero()]));
   for (const r of rows) {
     const x = by.get(r.Date); if (!x) continue;
-    x[r.Source] += r.Cost; x[causeKey(r)] += r.Cost; if (COORD.has(r.Cause)) x.coord += r.Cost; x.actual += r.Cost; x.hypo += r.HypotheticalCost ?? r.Cost; x.expiry += r.CacheExpiry || 0; x.start += r.StartCost || 0;
+    x[r.Source] += r.Cost; x[causeKey(r)] += r.Cost; if (COORD.has(r.Cause)) x.coord += r.Cost; if (r.Cause === 'pilot') x.pilot += r.Cost; x.actual += r.Cost; x.hypo += r.HypotheticalCost ?? r.Cost; x.expiry += r.CacheExpiry || 0; x.start += r.StartCost || 0;
   }
   return days.map((d) => ({ day: d, ...by.get(d) }));
 }
@@ -402,8 +437,8 @@ function hoverZones(svg, data, lines, note) {
 function renderCharts(rows) {
   const data = dailyData(rows);
   // added up day by day
-  let run = { hypo: 0, save: 0, actual: 0, main: 0, agent: 0, compact: 0, coord: 0 };
-  const cum = data.map((d) => { run = { hypo: run.hypo + d.hypo, actual: run.actual + d.actual, main: run.main + d.main, agent: run.agent + d.agent, compact: run.compact + d.compact, coord: run.coord + d.coord }; run.save = run.hypo - run.actual; return { day: d.day, ...run, own: { ...d, save: d.hypo - d.actual } }; });
+  let run = { hypo: 0, save: 0, actual: 0, main: 0, agent: 0, compact: 0, coord: 0, pilot: 0 };
+  const cum = data.map((d) => { run = { hypo: run.hypo + d.hypo, actual: run.actual + d.actual, main: run.main + d.main, agent: run.agent + d.agent, compact: run.compact + d.compact, coord: run.coord + d.coord, pilot: run.pilot + d.pilot }; run.save = run.hypo - run.actual; return { day: d.day, ...run, own: { ...d, save: d.hypo - d.actual } }; });
   const cumOn = SERIES.cum.filter(([k]) => !hidden.has('c:' + k));
   const cmax = niceMax(Math.max(0, ...cum.flatMap((d) => cumOn.map(([k]) => d[k]))));
   let s = axes(cmax, data.map((d) => d.day));
@@ -454,7 +489,7 @@ document.addEventListener('click', (e) => {
 const sum = (rows) => totals(rows);
 const cells = (t) => `<td>${t.turns.toLocaleString()}</td><td>${tok(t.output)}</td><td>${pct(t.cacheEff)}</td><td>${money(t.cost)}</td><td title="${t.starts} started${t.short ? `, ${t.short} short children` : ''}">${t.starts ? money(t.startCost) : ''}</td><td>${span(t.agentSec)}</td><td>${span(t.waitSec)}</td><td>${span(t.userSec)}</td><td>${linesStr(t)}</td>`;
 const goneTag = (r) => (r.Gone ? `<span class="tag" title="${r.Gone === 'deleted' ? 'Deleted in Docket; its cost still counts' : 'Claude Code removed its log; its cost still counts'}">${esc(r.Gone)}</span>` : '');
-const sourceName = { main: 'Session', agent: 'Agents', compact: 'Compaction' };
+const sourceName = { main: 'Session', agent: 'Agents', compact: 'Compaction', docket: 'Docket side call' };
 function groupBy(rows, key) { const m = new Map(); for (const r of rows) { const k = key(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); } return m; }
 // One line that opens; `inner` draws what is under it, only when it is opened.
 let nodeId = 0;
@@ -666,7 +701,10 @@ function renderHelp(rows) {
     <p>When a conversation gets too long for Claude to hold, Claude Code <b>compacts</b> it: it writes a summary and carries on from that. The summary is not in the log, so Docket estimates each one from how long the conversation was${each ? `; in these dates they averaged ${each} each` : ''}. The turn right after a compaction rebuilds the cache from the summary, so it counts as compaction cost too.</p></details>
   <details class="help"><summary>Coordination cost, and what started each turn</summary>
     <p>A turn runs from one message into a session to the next, and each row says what that message was (its <b>cause</b>): one of your messages, the <b>brief</b> a session was started with, work another session <b>sent</b> it, a <b>report</b> from a session it started, a <b>notice</b> from Docket, or a <b>background task</b> reporting back. Helper agents count in the turn they ran in, and so does a compaction.</p>
-    <p>The <b>coordination cost</b> is what sessions cost each other beyond the work itself: turns woken by a report from a session they started (with whatever they then did in that turn, so a report that unblocked real work counts in full), including those that ended in report_quiet (news only), and Docket's notes about a session's sessions ("now reports to you", "started your proposal"). Briefs and sent work are the work, so they are left out. Rows kept from before causes were recorded (their logs are gone), and Codex and Grok rows, have no cause.</p></details>
+    <p>The <b>coordination cost</b> is what sessions cost each other beyond the work itself: turns woken by a report from a session they started (with whatever they then did in that turn, so a report that unblocked real work counts in full), including those that ended in report_quiet (news only), and Docket's notes about a session's sessions ("now reports to you", "started your proposal"). Briefs and sent work are the work, so they are left out. Every turn of an <b>autopilot</b> run has the cause Autopilot, whatever message started it, and the <b>Autopilot cost</b> card adds them up with the runs and the answers they gave. Rows kept from before causes were recorded (their logs are gone), and Codex and Grok rows, have no cause.</p></details>
+  <details class="help"><summary>Docket overhead</summary>
+    <p><b>Docket overhead</b> is what Docket itself costs in AI beyond the work you asked for, so the parts worth doing in plain code show up: the <b>coordination</b> cost below; the <b>start-up of child sessions</b> (each child's first reply reading its instructions and brief, from the start cost); Docket's <b>other notices</b> that wake a session; answers given to <b>another desk</b>'s ask_desk (billed to the desk that answered); Docket's own <b>side calls</b> with no session of their own (Auto Group, publishing an artifact), on the desk whose sign-in paid; and <b>autopilot</b> runs. Each share is of the spend shown.</p>
+    <p><b>Docket's instructions</b> are added to every session's system prompt and read again on every reply. The logs cannot tell them apart, so they are <b>estimated</b>: their length (about ${esc(Object.values(R.ruleTokens || {})[0]?.top?.toLocaleString() || '?')} tokens for a session, fewer for a child) read from the cache on each reply, and written again at each start, cache expiry and compaction. Shift and plan rules and Docket's tool list are not counted, so the estimate runs low. It is part of the costs above, not on top of them, so it is not in the overhead total.</p></details>
   <details class="help"><summary>Start cost, and short children</summary>
     <p>Every session starts by reading Docket's and the desk's instructions, the tools it may call and its first message, and putting them in the cache. The <b>start cost</b> is what that first reply cost, its output left out (that is the work); it is part of the cost above, not on top of it. A session another session started (a <b>child</b>) has its brief as its first message.</p>
     <p>A <b>short child</b> is one that took ${R.shortTurns || 2} turns or fewer, so starting it may have cost more than doing the work in the session that started it. A desk whose children are mostly short can turn splitting off (its Inspector, under Switches), and Docket offers that in a card when last week's short children cost enough. Sessions from before this was recorded show no start.</p></details>

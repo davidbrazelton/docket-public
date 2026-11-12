@@ -171,44 +171,6 @@ export function renameClient(v, from, to) {
   return out;
 }
 
-// ---------- pilot keys (#827): the autopilot on another computer, without the 8-hour code ----------
-// A connected computer asks for one and someone here clicks Allow. It reaches only the linked desk, and only the
-// pilot's actions there: what waits on the person, answering one item under this computer's autopilot rules, giving
-// the key back, and the screen tools when it was granted with them. This computer keeps a hash of it, never the key,
-// lists it in ☰ > Desks > Remote Desks with Revoke, and refuses it after PILOT_KEY_DAYS. It is random: never the
-// authenticator secret or anything made from it.
-export const PILOT_KEY_DAYS = 30;
-export const isPilotKey = (t) => /^dpk_[0-9a-f]{64}$/.test(String(t || ''));
-export const pilotKeyHash = (key) => crypto.createHash('sha256').update(String(key)).digest('hex');
-// { key } goes to the computer that asked, once; { record } is what this computer keeps.
-export function grantPilotKey({ name, ip, desk, screen = false, days = PILOT_KEY_DAYS, now = Date.now() }) {
-  const key = 'dpk_' + crypto.randomBytes(32).toString('hex');
-  const d = Math.min(Math.max(Number(days) || PILOT_KEY_DAYS, 1), 90);
-  return { key, record: { id: 'pk_' + crypto.randomBytes(4).toString('hex'), name: String(name || '').slice(0, 60) || 'Another computer', ip: ip || '',
-    desk, screen: !!screen, at: now, expires: now + d * 86400e3, used: null, hash: pilotKeyHash(key) } };
-}
-// The record a key belongs to while it is good (not expired, not revoked, for this desk), or null.
-export function findPilotKey(records, key, desk, now = Date.now()) {
-  if (!isPilotKey(key)) return null;
-  const h = Buffer.from(pilotKeyHash(key), 'hex');
-  const r = (records || []).find((x) => /^[0-9a-f]{64}$/.test(x?.hash || '') && crypto.timingSafeEqual(Buffer.from(x.hash, 'hex'), h));
-  return r && r.desk === desk && r.expires > now ? r : null;
-}
-export const livePilotKeys = (records, now = Date.now()) => (records || []).filter((r) => r.expires > now);
-export const revokePilotKey = (records, id) => (records || []).filter((r) => r.id !== id);
-// What the page shows of a key: everything but its hash.
-export const pilotKeyView = ({ hash, ...r }) => r;
-// The requests a pilot key may make, as { kind }, or null.
-export function pilotKeyRoute(method, p, rec) {
-  if (method === 'GET' && p === '/remote/pilot/pending') return { kind: 'pending' };
-  if (method === 'POST' && p === '/remote/pilot/answer') return { kind: 'answer' };
-  if (method === 'POST' && p === '/remote/pilot/revoke') return { kind: 'revoke' };
-  if (rec?.screen && method === 'POST' && p === '/api/screen/act') return { kind: 'screen' };
-  return null;
-}
-// What waits on the person that a pilot key may see: the linked desk's items, never another computer asking to come in.
-export const pilotItemsFor = (items, desk) => (items || []).filter((i) => i.desk === desk && i.kind !== 'remote');
-
 // ---------- the other computer's side: a connection that trusts only one certificate ----------
 // address: https://host:port. pin: the fingerprint256 saved when the remote desk was added. With no pin
 // (adding it), the certificate is read but nothing else is sent, so the person can compare check codes first.

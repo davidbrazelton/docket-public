@@ -14,18 +14,18 @@ import { familyBelow } from './drag-move.mjs';
 import { workingNow, newPause, holdsMessage, noteMessaged, wokeByItself, noteWoke, resumePlan, resumeNote, autoPaused, clockJumped, holdsRunner, RUNNER_RESTART_NOTE } from './pause.mjs';
 import { newCutOff, autoContinueCheck, cutOffNote, GAP_MS } from './cut-off.mjs';
 import { netError, refused, netText, withRetries, noConversation, startMode, continueNudge, firstMessage, reportText, firstStore } from './first-start.mjs';
-import { KINDS as PILOT_KINDS, cleanRules as cleanPilotRules, ruleFor as pilotRuleFor, mayAnswer as pilotMayAnswer, logLine as pilotLogLine, DEFAULT_RULES as PILOT_DEFAULT_RULES, stricter as stricterLevel, pilotDeskEntry, runSteps as pilotRunSteps, runPlace as pilotRunPlace, runBrief as pilotRunBriefText, EACH_DESK as PILOT_EACH_DESK, runDone as pilotRunDone, runLine as pilotRunLine, pilotSetting, pilotSettingRefusal, runsToArchive as pilotRunsToArchive, pilotState, JUDGMENT as PILOT_JUDGMENT, LEARNS as PILOT_LEARNS, RULES_VERSION as PILOT_RULES_VERSION, upgradeRules as upgradePilotRules, maySuggest as pilotMaySuggest, answerLabel as pilotAnswerLabel, learnLine as pilotLearnLine, promotable as pilotPromotable, setDeskLevel as pilotSetDeskLevel } from './pilot.mjs';
-import { savedWaiting, unreadAfterRestart, desktopTurn, desktopWaiting, keptReason, markUnreadReason } from './needs-you.mjs';
+import { KINDS as PILOT_KINDS, cleanRules as cleanPilotRules, ruleFor as pilotRuleFor, mayAnswer as pilotMayAnswer, logLine as pilotLogLine, DEFAULT_RULES as PILOT_DEFAULT_RULES, stricter as stricterLevel, runSteps as pilotRunSteps, runBrief as pilotRunBriefText, topGear as pilotTopGear, runDone as pilotRunDone, runLine as pilotRunLine, runsToArchive as pilotRunsToArchive, quickEngaged as pilotQuickEngaged, busyKeys as pilotBusyKeys, deskStatus as pilotDeskStatus, migratePilot, deskKinds as pilotDeskKinds, kindChoiceRefusal as pilotKindChoiceRefusal, offerDesks as pilotOfferDesks, runsByDay as pilotRunsByDay, resetLine as pilotResetLine, holdLine as pilotHoldLine, pilotState, JUDGMENT as PILOT_JUDGMENT, LEARNS as PILOT_LEARNS, RULES_VERSION as PILOT_RULES_VERSION, upgradeRules as upgradePilotRules, maySuggest as pilotMaySuggest, answerLabel as pilotAnswerLabel, learnLine as pilotLearnLine, promotable as pilotPromotable, setDeskLevel as pilotSetDeskLevel, openWaiting as pilotOpenWaiting } from './pilot.mjs';
+import { savedWaiting, unreadAfterRestart, turnOpenAfterRestart, desktopTurn, desktopWaiting, keptReason, markUnreadReason } from './needs-you.mjs';
 import { turnKey, keepQuiet, markQuiet } from './quiet-turns.mjs';
 import { notQuiet, busyHow, restartWaiter } from './runner-idle.mjs';
 import { taskChanges, mergeTask, newScan, repairChanges, markedDone, stalledSteps, endedDuring, runningJobs, jobText } from './tasks.mjs';
-import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnLabelOf, BEFORE_REPLY, mergeAskRefusal, turnNewsFor, reportIsNews, agreedAsNote, mergeOwnedText, heldNewsText, debounceLeft, REPORT_DEBOUNCE, lowGearNote } from './reports.mjs';
+import { waitingOnUser, closeRefusal, endsWaiting, endsAsking, awaitingAnswer, reportRoute, turnStarter, wakeDecision, readyReports, heldNote, freedReply, childState, quietRefusal, kidStartRefusal, heldTurnReport, doneWithJobsReply, leftoverJobsText, turnLabelOf, BEFORE_REPLY, mergeAskRefusal, mergeAskReply, turnNewsFor, reportIsNews, agreedAsNote, mergeOwnedText, heldNewsText, debounceLeft, REPORT_DEBOUNCE, lowGearNote } from './reports.mjs';
 import { KEEP_WARM, PING_TEXT, keepWarmDue, realReplyFrom, isPing } from './keep-warm.mjs';
-import { afterMessage, questionPart, questionLine, answersIn, messageNumbers } from './questions.mjs';
+import { afterMessage, questionPart, questionLine, answersIn, messageNumbers, QUESTION_LEVELS, openAfterAsk, openAfterReply, openWithout, openAfterTurn, asksByNumber } from './questions.mjs';
 import { WAITS, CONDITIONS, parseWait, waitWhat, prVerdict, sessionVerdict, portVerdict, portAnswers, timeoutLine, nextLook, waitInline, kindOf, checksOf, stateLine, branchPr } from './waits.mjs';
 import { openParent, openFamily, closedNote } from './family.mjs';
 import { historyFiles as pilotHistoryFiles, readHistory as readPilotHistory, cardDecisions as pilotCardDecisions, notByPilot as pilotNotByPilot, newHistory as newPilotHistory } from './pilot-history.mjs';
-import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards } from './handoff.mjs';
+import { titleFromBrief, handoffFromTurn, handoffPlace, handoffChildren, handoffPlans, cleanHandoffPattern, weaveCards, closeOnArchive, ARCHIVED_NOTE } from './handoff.mjs';
 import { startGroup } from './start-group.mjs';
 import { childSettings } from './child-settings.mjs';
 import { transcriptTimes, asyncHookEvents, covered, turnSplit } from './chat-times.mjs';
@@ -36,7 +36,7 @@ import { DOCKET_BLOCK, SESSION_BLOCK, messageFrom, lastTyped, mergeTouches } fro
 import { narrationText, thinTurn, THIN_NOTE } from './narration.mjs';
 import { GEARS, gearsOf, findGear, topGearOf, startGearOf, cleanStartGear, sessionSettings, firstGear, parentGear, raiseGear, parentHeldGear, belowTop } from './gears.mjs';
 import { shiftUpFor, coordinatorHold } from './shift-up.mjs';
-import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines, priceReply, usageLeft, SHORT_TURNS } from './costs.mjs';
+import { sessionCost, sessionRows, sessionSignature, writeCsv, fillRow, loadPrices, modelName, modelRates, addSeconds, emptyRow, rowLines, priceReply, usageLeft, SHORT_TURNS, pilotRows, localDate, addSideCall, sideId, SIDE_TITLES } from './costs.mjs';
 import { topGearCost, sessionShiftFacts, shiftEntry, withShift } from './shift-savings.mjs';
 import { defaultCodexHome, codexSessions, codexRows } from './codex-usage.mjs';
 import { connectionOf, parseAwsConfig, kindOfKey } from './connection.mjs';
@@ -53,15 +53,15 @@ import { workFolders, existingHomes } from './work-folders.mjs';
 import { sourceHomes, findGroups, planRun, writeReport, readReports, reportPaths, copyRun, checkCopies, undoRun } from './bring-in.mjs';
 import { moveDesk } from './move-desk.mjs';
 import { createScreenControl, SCREEN_TOOLS } from './screen.mjs';
-import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, batteryCommand, parseBattery, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, treeListCommand, parseTreeList, descendants, leftBehind, killCommand, commandLineCommand, relaunchesApp,
+import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, batteryCommand, parseBattery, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, treeListCommand, parseTreeList, descendants, leftBehind, killCommand, commandLineCommand, relaunchesApp, supervisedBy, findNode,
   startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, findLite, cloudFolders, profilePathCandidates } from './platform.mjs';
 import { cleanGateway, gatewayFor, loginOf, claudeRouteOf, claudeGateway, visibleGears, usableGear, modelFor, gearModelMap, liteArgs, liteCommand, loginLink, loginDone, pkceUnsupported, whoamiUser, tokenFrom, gatewayRefused, gatewayHost } from './gateway.mjs';
 import { groupProcesses, folderSize, cpuPercent, diskKeeper, breakdown, sharedServers } from './machine-use.mjs';
 import { grokSessionDirs, grokSignature, grokRows, grokTitle } from './grok-usage.mjs';
 import { findCodexExe, codexCommand, makeCodexHome, codexSignedIn, codexAccount, codexDeviceLink } from './codex-home.mjs';
 import { start as startCodex } from './engines/codex.mjs';
-import { planMotion, nudgeFor, nudgeText, freedLine, MOTION_TICK_MS } from './plan-motion.mjs';
-import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES, PLAN_RULES_VERSION, reviewDue, planOpen, phaseGroups, decisions, decisionByQ, maxQuestion } from './plans.mjs';
+import { planMotion, planNext, nudgeFor, nudgeText, freedLine, MOTION_TICK_MS } from './plan-motion.mjs';
+import { createPlanStore, readyTasks, whyNoneReady, userSteps, userTag, STATES, PLAN_RULES_VERSION, reviewDue, planOpen, phaseGroups, decisions, decisionByQ, decisionSettled, maxQuestion } from './plans.mjs';
 import { REVIEW_EVERY_MS, reviewSent, nextReview, reviewText } from './plan-review.mjs';
 import { plansOnFor, planUse, PLAN_HINT, planOfferDue, USE_PLAN_TEXT } from './plan-use.mjs';
 import { planStartNote, closePlanOffers, inConversion, secondPlanRefusal, ownPlanOf } from './plan-use.mjs';
@@ -90,11 +90,11 @@ import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
 import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox, crossReport, inboxContext } from './crossings.mjs';
 import { signInFailure, recheckSignIns, awsSignedIn, keepKnown } from './signin-errors.mjs';
 import { newSigninFail, messagedSince, signinResumeCheck, dropsMark, signinNote, SIGNIN_NOTE } from './signin-resume.mjs';
+import { needList, addNeed, dropNeed, clearedBy, siteNames } from './signin-needs.mjs';
 import WebSocket, { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
 import { REMOTE_HOURS, ASK_WAIT_MS, newSecret, checkCode, stepOf, otpUri, makeCertificate, fingerprintOf, checkCodeOf, sameCheck, isOfficeAddress, officeAddresses,
-  remoteRoute, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedTls, pinnedRequest, connectError,
-  PILOT_KEY_DAYS, isPilotKey, grantPilotKey, findPilotKey, livePilotKeys, revokePilotKey, pilotKeyView, pilotKeyRoute, pilotItemsFor } from './remote.mjs';
+  remoteRoute, remoteMessage, relayFor, remoteDeskRow, renameClient, peerCertificate, pinnedTls, pinnedRequest, connectError } from './remote.mjs';
 import { z } from 'zod';
 import { deskCheck, deskCheckText } from './desk-check.mjs';
 import { createSharedMcp, freePort } from './shared-mcp.mjs';
@@ -554,8 +554,8 @@ function withHome(client, fn) {
 
 // ---------- browser connections ----------
 const sockets = new Set();
-// The autopilot's watch on what waits on the person (see the autopilot section): armed while a pilot is set or a
-// feed is open, it looks again shortly after anything the pages hear.
+// The autopilot's watch on what waits on the person (see the autopilot section): armed while it is engaged on a desk,
+// a run is going or a feed is open, it looks again shortly after anything the pages hear.
 const pilotWatch = { armed: false, timer: null, look: null };
 // To this computer's pages, and (for the linked desk only) to another computer connected through Remote Desks.
 function broadcast(msg) {
@@ -658,6 +658,7 @@ function summary(s) {
     engine: s.engine, status: s.status, unread: s.unread, live: true, lastModified: s.lastActivity, createdAt: s.createdAt, readyAt: s.readyAt,
     suggestion: s.suggestion || '',
     scheduleId: state.sessions[s.id]?.scheduleId || null,
+    pilotRun: state.sessions[s.id]?.pilotRun || null,
     runAt: state.sessions[s.id]?.runAt || null,
     editFor: state.sessions[s.id]?.editFor || null,
     stats: s.stats || null,
@@ -681,11 +682,12 @@ function summary(s) {
     kidNews: !!s.kidNews, // a report it took in quietly that the person has not opened: the ring's halo
     unreadWhy: s.unread ? s.unreadWhy || null : null, // which path turned it orange: the row's reason (#671)
     asksYou: !!s.pendingAsks?.size || liveAsks(s), // a question form open, or its latest reply ends by asking: "question"
+    openQ: openQOf(s.id), // its open questions on a Highlight + track desk: the tray and the row's count (#989)
     cardOpen: openCards(s) > 0, // a session offer, proposal or handoff card waits on the person: "card" (#823)
     waitsIn: waitsIn(s), // the desks where work it handed over waits for Accept and start: "waiting in Acme" (#904)
     crossIn: crossIn(s), // it was started from work another desk handed over: the strip at the top of its chat (#904)
     unreadSaid: s.unread ? s.unreadSaid || null : null, // the label the session declared for that turn
-    needsSignin: state.sessions[s.id]?.needsSignin || null, // { site, url } while it waits on a private browser sign-in: the 🌐 blinks (#678)
+    needsSignin: needList(state.sessions[s.id]?.needsSignin), // [{ site, url }] while it waits on private browser sign-ins: the 🌐 blinks (#678, #1013)
     said: liveSaid(s), // the start of its last reply: the hover card (#691)
   };
 }
@@ -740,6 +742,9 @@ function endTurnMark(s, err) {
   if (closedLast && !said && !liveAsks(s)) said = 'done';
   const rec = state.sessions[s.id]; // a parent's agree-done message to it then goes as a note (agreedAsNote, #755)
   if (rec && !!rec.lastDone !== (!err && said === 'done' && !liveAsks(s))) { if (rec.lastDone) delete rec.lastDone; else rec.lastDone = true; saveState(); }
+  // whether this turn asked the user something (#993), kept until the person writes: a plan shows its coordinator asked
+  const asked = !err && (said === 'question' || liveAsks(s) || asksByNumber(s.events.findLast((e) => e.k === 'text')?.text || ''));
+  if (rec && !!rec.askedUser !== asked) { if (asked) rec.askedUser = true; else delete rec.askedUser; saveState(); }
   if (reason) {
     const k = kidsOf(s), why = quietRefusal({ turnBy: s.turnBy, report: s.reportTurn, error: err, said: liveAsks(s) ? 'question' : said, closedLast }); // a reply that asks is a question
     if (!why) {
@@ -1188,7 +1193,7 @@ async function resumeAll(reason = 'user') {
   }
   return { resumed };
 }
-
+
 // ---------- a desk's daily budget as a stop (the rules are in budget-stop.mjs, #959) ----------
 // state.budgetStops: { [desk]: { day, continued, held: [...] } }. While a desk's spend today is at or over its budget,
 // sendToSession holds every new turn on it (the person's messages, briefs, reports, wake-ups, scheduled runs) here,
@@ -1392,6 +1397,7 @@ function handleSdkMessage(s, m) {
     case 'assistant': {
       if (!m.parent_tool_use_id && (s.freshStart || state.sessions[s.id]?.firstPending)) gotThrough(s); // Claude Code has its first message
       for (const b of m.message?.content || []) if (b.type === 'tool_use') shiftUpForWork(s, b.name, b.input, b.id).catch(() => {});
+      if (!s.pingTurn && !m.parent_tool_use_id) trackAsked(s, m.message?.content); // its open questions (#989), before the count moves on
       if (!s.pingTurn) noteQuestions(s.id, m.message?.content); // its Q numbers (#928)
       if (!s.pingTurn) (s.turnBlocks ||= []).push(...slimBlocks(m.message?.content)); // for the thin-reply check when it ends (#863)
       for (const ev of s.pingTurn ? [] : convertMessage(s, m, { live: true, textCounter: s.textCounter })) {
@@ -1462,6 +1468,7 @@ function handleSdkMessage(s, m) {
       const thin = !err && thinTurn(s.turnBlocks || []); s.turnBlocks = []; // its answer was saved only as a short or empty narration (#863)
       if (thin && state.sessions[s.id]) { state.sessions[s.id].thinNote = true; saveState(); logEvent(`thin reply: ${sessionTag(s)}`, 'a narration block held more of the answer than the reply'); }
       endSummaryLog(s, err); // a summary's turn: its age and what its check found (#919)
+      if (!err && !s.pingTurn) trackTurnEnd(s); // what the person replied after and was not asked again clears (#989)
       const endedQuietly = !quiet && endTurnMark(s, err); // its Done line says so, and the chat folds the turn (#672)
       addEvent(s, { k: 'result', ms: m.duration_ms, cost: m.total_cost_usd, error: err, ...(endedQuietly ? { quiet: true } : {}), ...(thin ? { thin: true } : {}), ...(split || {}) });
       s.reportNews = err ? '' : endedQuietly ? 'quiet' : s.turnNews || ''; s.turnNews = ''; s.costSeen = m.total_cost_usd || 0; // what its report is, for a held turn too (#734)
@@ -1695,6 +1702,7 @@ function planText(client, p) {
   if (decs.length) {
     lines.push('', 'Decisions for the user (asked in the chat by number; quote an answered one as "Q7 answered: ...", never ask it again):');
     for (const x of decs) lines.push(x.answer ? `  Q${x.q} (${x.id}) ${x.title} · answered ${x.answeredAt}: ${x.answer.replace(/\n/g, ' / ')}`
+      : x.state === 'done' ? `  Q${x.q} (${x.id}) ${x.title} · done${x.doneAt ? ` ${x.doneAt}` : ''}, no answer saved${x.note ? `: ${x.note.replace(/\n/g, ' / ')}` : ''}`
       : `  Q${x.q} (${x.id}) ${x.title} · ${x.state === 'dropped' ? 'dropped' : 'not answered yet'}${x.options.length ? ` · options: ${x.options.join(' | ')}` : ''}`);
   }
   // A plan with phases (#869) lists its tasks under them, in phase order, each with its own progress.
@@ -1751,11 +1759,14 @@ function planLook(client) {
 function coordLook(client, id) {
   if (!id) return null;
   const s = live.get(id);
-  if (!s || s.status === 'ended') return wasDeleted(id) || isArchived(client, id) ? { st: 'stopped', idleMs: Infinity, why: 'was closed' } : { st: 'done', idleMs: Infinity, resting: true };
+  const asked = !!state.sessions[id]?.askedUser; // its last turn asked the user something, not answered yet (#993)
+  if (!s || s.status === 'ended') return wasDeleted(id) || isArchived(client, id) ? { st: 'stopped', idleMs: Infinity, why: 'was closed' } : { st: 'done', idleMs: Infinity, resting: true, asked };
   if (s.pendingReports?.length) return { st: 'working', idleMs: 0 };
-  return { st: liveChildState(s), idleMs: Date.now() - (s.lastActivity || 0) };
+  return { st: liveChildState(s), idleMs: Date.now() - (s.lastActivity || 0), asked };
 }
 const motionOf = (client, p, look = planLook(client)) => planMotion({ plan: p, look, coord: coordLook(client, p.coordinator), paused: pausedWord(p) });
+// What the user does next in a plan (#993): the same list the motion line is made from, for the "Next for you" block.
+const nextOf = (client, p, look = planLook(client)) => planNext({ plan: p, look, coord: coordLook(client, p.coordinator) });
 // The end-of-turn check and the orphaned-task check, for one plan: wakes its coordinator when nudgeFor says so.
 // state.planNudges (plan id -> { sig, told }) keeps what the last nudge saw, so the same state is never nudged twice.
 async function nudgeCheck(client, p, look = planLook(client)) {
@@ -1791,7 +1802,7 @@ async function motionLook() {
   for (const client of CLIENTS) {
     if (!plansOn(client)) continue;
     const plans = plansOf(client).list(), look = planLook(client);
-    const now = JSON.stringify(plans.map((p) => [p.id, motionOf(client, p, look)]));
+    const now = JSON.stringify(plans.map((p) => [p.id, motionOf(client, p, look), nextOf(client, p, look)]));
     if (motionSent.has(client.id) && motionSent.get(client.id) !== now) broadcast({ t: 'plans', client: client.id });
     motionSent.set(client.id, now);
     if (state.paused) continue;
@@ -1855,7 +1866,7 @@ function plansSummary(client) {
   const store = plansOf(client), all = store.list(), look = planLook(client);
   // motion: { state: 'moving' | 'waiting' | 'stalled' | 'paused', why }, null once nothing is left (#889)
   return { on: true, plans: all.map((p) => ({ id: p.id, title: p.title, file: p.file, coordinator: p.coordinator, parent: p.parent, ...store.rollup(p.id, all), breakdown: store.breakdown(p.id, all), needsReview: reviewDue(p),
-    motion: motionOf(client, p, look), paused: planPaused(p.id), decisions: decisions(p),
+    motion: motionOf(client, p, look), next: nextOf(client, p, look), paused: planPaused(p.id), decisions: decisions(p),
     holders: [...new Set(p.tasks.filter((t) => t.holder && t.state !== 'done' && t.state !== 'dropped').map((t) => t.holder))],
     // members: every session that held a task in it, finished ones too, for the Plan section in their details
     members: [...new Set(p.tasks.filter((t) => t.holder).map((t) => t.holder))] })) };
@@ -2180,7 +2191,7 @@ function planToolDefs(parent) {
 // for this list and passes calls back (see /api/tools), so sessions don't hold the app's code.
 function portalToolDefs(parent) {
   // A pilot run (#914) gets the pilot tools and the screen tools only: nothing that lists, reads or messages other
-  // sessions, since on the autopilot's desk those are the runs for other desks.
+  // sessions, which on its desk are the person's own work.
   if (state.sessions[parent.id]?.pilotRun) return [...screenToolDefs(parent), ...pilotToolDefs(parent)];
   // A desk with split work off (splitOn) starts a session when the user asks for one, and does other work in place.
   const split = splitOn(clientById(parent.client));
@@ -2383,7 +2394,7 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: 'This turn will end quietly. Finish with your usual short reply.' }] };
         }),
       tool('mark_turn',
-        'Say why this turn needs the user, for the short label on your row in the session list: "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default), including a reply that lists things left for the user before the session can close. Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. "merge" with pr only when the turn ends on a plain ask to merge that one pull request you made ("Say merge and I will merge pull request #146."): Docket then shows a Merge button under your reply that sends "merge" as the user\'s message, so you still do the merge. That ask is yours also when your parent says your work is done, whatever its message says. Never for a pull request a session you started made: that session owns the ask, so link to it ("[its title](#session:<id>) is waiting on you to merge #146"). Never "merge" for several pull requests, a merge order, a draft, a conflict, failing or running checks, or anything else for the user to do or decide first: use "reply" and let them answer in words. Pass it as label (state works too). Call it at most once per turn. ' + BEFORE_REPLY,
+        'Say why this turn needs the user, for the short label on your row in the session list: "done" only when your work is complete and nothing is left for the user (no check, decision, merge or test for them to do), "question" when your reply asks the user something in plain text, "reply" for anything else to read (the default), including a reply that lists things left for the user before the session can close. Docket\'s own signals still win: a question form, permission prompt, card, error or an open pull request shows as such whatever you say. "merge" with pr only when the turn ends on a plain ask to merge that one pull request you made ("Say merge and I will merge pull request #146."): Docket then shows a Merge button under your reply that sends "merge" as the user\'s message, so you still do the merge. That ask is yours also when your parent says your work is done, whatever its message says. Never for a pull request a session you started made: that session owns the ask, so link to it ("[its title](#session:<id>) is waiting on you to merge #146"). Checks still running are fine: the button then asks you to wait for them and merge once they pass. Never "merge" for several pull requests, a merge order, a draft, a conflict, failing checks, or anything else for the user to do or decide first: use "reply" and let them answer in words. Pass it as label (state works too). Call it at most once per turn. ' + BEFORE_REPLY,
         {
           label: z.enum(['done', 'question', 'reply', 'merge']).optional().describe('What this turn needs from the user'),
           state: z.enum(['done', 'question', 'reply', 'merge']).optional().describe('Another name for label'),
@@ -2394,11 +2405,12 @@ function portalToolDefs(parent) {
           if (!label) return { content: [{ type: 'text', text: 'Not marked: give label, one of "done", "question", "reply" or "merge".' }], isError: true };
           if (label === 'merge' && !pr) return { content: [{ type: 'text', text: 'Not marked: "merge" needs pr, the number of the one pull request to merge. For anything other than a plain ask to merge one pull request, use "reply".' }], isError: true };
           if (label === 'merge') { // a pull request that cannot merge as GitHub sees it now gets no button: say so to the session (#951)
-            const why = mergeAskRefusal(await askedPrNow(parent, pr), pr);
+            const now = await askedPrNow(parent, pr), why = mergeAskRefusal(now, pr);
             if (why) return { content: [{ type: 'text', text: why }], isError: true };
+            parent.turnSaid = label;
+            return { content: [{ type: 'text', text: mergeAskReply(now, pr) }] };
           }
           parent.turnSaid = label;
-          if (label === 'merge') return { content: [{ type: 'text', text: `A Merge button for pull request #${pr} shows under your reply while Docket sees it open, not a draft, without a conflict and with checks passed or none. A click sends "merge" as the user's message.` }] };
           // Done while its own jobs still run: settle them in this turn, or the turn would be held for them (#713).
           if (label === 'done' && runningTasks(parent)) return { content: [{ type: 'text', text: doneWithJobsReply(runningJobs(parent.tasks)) }] };
           return { content: [{ type: 'text', text: `Your row will say "${label}" unless Docket knows a stronger reason.` }] };
@@ -2495,20 +2507,25 @@ function portalToolDefs(parent) {
           return { content: [{ type: 'text', text: `Shown to the user: ${found.length} file(s).${missing.length ? ' Not found: ' + missing.join(', ') : ''}` }] };
         }),
       tool('needs_signin',
-        "Tell Docket you need a sign-in in your private browser that it does not have. The user's globe (🌐) button then blinks yellow while they have this session open, naming the site, and opens the sign-in window for it. Call it as well as saying so in your reply, and stop using that site until the user signs in. Call it again with connected: true once the site works, or when you no longer need it. Docket clears it by itself when the user presses Done in the sign-in window.",
+        "Tell Docket you need a sign-in in your private browser that it does not have. The user's globe (🌐) button then blinks yellow, this session's row is marked, and a Sign in button under your reply opens the sign-in window on that site (on url when given). Needing several sites, call it once per site: each call adds one, and the card under your reply lists them all, each with its own Sign in button (the same site again only updates it). Call it as well as saying so in your reply, and stop using that site until the user signs in. Call it with connected: true and the site once that site works or you no longer need it; without a site it clears them all. Docket clears a site by itself when the user signs in to it and presses Done in the sign-in window, and then sends you a note to carry on.",
         {
-          site: z.string().optional().describe('The site, as the user knows it (e.g. github.com, Salesforce)'),
+          site: z.string().optional().describe('The site, as the user knows it (e.g. github.com, Salesforce). One site per call'),
           url: z.string().optional().describe('The address to open for the sign-in, if you know it'),
-          connected: z.boolean().optional().describe('True when you no longer need it: you are signed in, or gave up on that site'),
+          connected: z.boolean().optional().describe('True when you no longer need it: you are signed in, or gave up on that site. With site, only that site; without, every site this session asked for'),
         },
         async ({ site, url, connected }) => {
-          if (connected) { setSigninNeed(parent.id, parent.client, null, 'the session said it is connected'); return { content: [{ type: 'text', text: 'Done: the globe no longer asks for a sign-in.' }] }; }
+          if (connected) {
+            const left = dropNeed(state.sessions[parent.id]?.needsSignin, String(site || '').trim());
+            setSigninNeed(parent.id, parent.client, left, 'the session said it is connected');
+            return { content: [{ type: 'text', text: left ? `Done: the globe no longer asks for ${site}; still asked for: ${siteNames(left)}.` : 'Done: the globe no longer asks for a sign-in.' }] };
+          }
           const address = /^https?:\/\//.test(url || '') ? String(url).slice(0, 500) : '';
           let name = String(site || '').trim().slice(0, 120);
           if (!name && address) name = new URL(address).hostname;
           if (!name) return { content: [{ type: 'text', text: 'Give the site or its address.' }], isError: true };
-          setSigninNeed(parent.id, parent.client, { site: name, url: address });
-          return { content: [{ type: 'text', text: `The user's globe button now blinks for ${name}. Say in your reply what to sign in to; a note appears here when the sign-ins are saved. A private browser you opened before then started without them, so close it (browser_close) and open it again.` }] };
+          const all = addNeed(state.sessions[parent.id]?.needsSignin, { site: name, url: address }).slice(-10);
+          setSigninNeed(parent.id, parent.client, all);
+          return { content: [{ type: 'text', text: `The user's globe button now blinks for ${name}, and a Sign in button for it shows under your reply${all.length > 1 ? ` (the card lists all ${all.length} sites this session asked for: ${siteNames(all)})` : ''}. Call this again for any other site you need. Say in your reply what to sign in to and end your turn; a note to carry on arrives here when the sign-ins are saved. A private browser you opened before then started without them, so close it (browser_close) and open it again.` }] };
         }),
       tool('get_schedule',
         "Read one of this client's scheduled tasks in the portal: its title, timing, folder and full instructions.",
@@ -2665,14 +2682,11 @@ async function screenCall(parent, name, { desk, ...args }) {
   if (!desk) return screen.act({ key: parent.id, session: parent.id, title: parent.title, desk: parent.client }, name, args);
   const d = remoteOn() && remoteDesks().find((x) => x.id === desk || x.name.toLowerCase() === String(desk).trim().toLowerCase());
   if (!d) throw new Error(`There is no remote desk named ${desk}${remoteOn() ? '' : ' (Remote Desks is hidden on this computer)'}.`);
-  // The pilot, with no connection open, uses its pilot key (#827) when the key was granted with the screen tools.
-  const usesKey = !remoteConns.get(d.id) && d.pilotKey?.screen && pilotOn() && pilotRunOf(parent.id) === d.id; // only the run for that desk (#914)
-  const conn = usesKey ? { token: d.pilotKey.key } : remoteConns.get(d.id);
+  const conn = remoteConns.get(d.id);
   if (!conn) throw new Error(`${d.name} is not connected. The user connects it in ☰ > Desks > Remote Desks with a code from the authenticator app.`);
   let r;
   try { r = await remoteCall(d, conn, 'POST', '/api/screen/act', { name, args, session: parent.id, title: parent.title, turn: screen.turnOf(parent.id) }, 120e3); }
   catch (e) { throw new Error(connectError(e, d.name)); }
-  if (r.status === 401 && usesKey) { forgetPilotKey(d, 'revoked or expired on that computer'); throw new Error(`The pilot key for ${d.name} was revoked or has expired there.`); }
   if (r.status === 401) { dropRemoteConn(d.id, 'time up'); throw new Error(`The connection to ${d.name} has ended. The user connects again with a new code.`); }
   if (r.status !== 200 || !Array.isArray(r.json?.content)) throw new Error(r.json?.error || `${d.name} answered ${r.status}`);
   if (r.json.isError) throw new Error(r.json.content[0]?.text || 'It did not work');
@@ -3124,6 +3138,7 @@ function saveUsageSoon() {
   clearTimeout(usageWriteTimer);
   usageWriteTimer = setTimeout(() => {
     try {
+      markPilotUsage();
       fs.writeFileSync(USAGE_INDEX + '.tmp', JSON.stringify(usage)); fs.renameSync(USAGE_INDEX + '.tmp', USAGE_INDEX);
       const rows = Object.entries(usage).flatMap(([id, u]) => rowsOf(id, u)).map(withGroup).sort((a, b) => (a.Date + a.Client + a.SessionId < b.Date + b.Client + b.SessionId ? -1 : 1));
       writeCsv(USAGE_CSV, rows);
@@ -3138,7 +3153,9 @@ function withGroup(r) {
   const client = clientById(r.Client);
   const u = usage[r.SessionId];
   const gid = client && (u?.deleted || outsideCodex(u) ? u.groupId : effectiveGroup(client, r.SessionId));
-  const row = fillRow({ ...r, Brand: r.Brand || 'claude', Cause: r.Cause ?? '', Group: gid ? groupById(client.id, gid)?.name || '' : '' }, loadPrices(PRICING_FILE));
+  // An ask_desk answer is Docket's errand, whatever its question says (#977).
+  const cause = u?.ask || isAskDesk(state.sessions[r.SessionId]) ? 'docket:ask-desk' : r.Cause ?? '';
+  const row = fillRow({ ...r, Brand: r.Brand || 'claude', Cause: cause, Group: gid ? groupById(client.id, gid)?.name || '' : '' }, loadPrices(PRICING_FILE));
   if (row.BilledProfile === undefined) Object.assign(row, { BilledProfile: client ? billedLabels(client).subscription : '', ProfileInferred: 1 });
   // Rows kept from before connections get one from today's setup; a Bedrock row is known by its account's label.
   if (!row.Connection && client && row.BilledProfile) {
@@ -3151,8 +3168,10 @@ function withGroup(r) {
 // Agent and wait seconds are on the rows already (costs.mjs, from the logs and from usage[id].waits). Typing time is
 // measured in the page and kept here per day (usage[id].user: day -> seconds); a session's rows get it on read, on each
 // day's first row, so adding up rows counts it once. A record with typing time and no rows yet gets a row of its own.
+// A pilot run's rows all have the cause pilot (#976), whatever brand ran it and whether its log is still there.
 function rowsOf(id, u) {
-  const rows = (u.rows || []).map((r) => ({ AgentSeconds: 0, WaitSeconds: 0, LinesAdded: 0, LinesRemoved: 0, ...r }));
+  const kept = (u.rows || []).map((r) => ({ AgentSeconds: 0, WaitSeconds: 0, LinesAdded: 0, LinesRemoved: 0, ...r }));
+  const rows = u.pilot || state.sessions[id]?.pilotRun || pilotLogFacts().runs.has(id) ? pilotRows(kept) : kept;
   if (!u.user || !Object.keys(u.user).length) return rows;
   if (!rows.length) {
     const client = clientById(u.client);
@@ -3164,7 +3183,23 @@ function rowsOf(id, u) {
   return addSeconds(rows, 'UserSeconds', u.user);
 }
 // A record for a session that has none yet (typing before its first reply, a wait before its log is read).
+// A session that answers another desk's ask_desk: from another desk, but not handed over from its inbox (#904).
+const isAskDesk = (rec) => !!rec?.crossFrom && !rec.crossFrom.inbox;
 const usageRecord = (id, clientId) => (usage[id] ||= { client: clientId, rows: [] });
+// Docket's own model calls with no saved conversation (Auto Group, an artifact publish) go in a record of their own per
+// desk and kind (side: the kind), from the SDK's result message (#977). Its usage is per model in modelUsage; with one
+// model the overall usage is used, which tells the 1-hour cache writes apart.
+function recordSideCall(client, kind, result, model) {
+  try {
+    const per = Object.entries(result?.modelUsage || {});
+    const calls = per.length > 1 ? per.map(([m, x]) => ({ model: m, usage: { input_tokens: x.inputTokens || 0, output_tokens: x.outputTokens || 0,
+      cache_read_input_tokens: x.cacheReadInputTokens || 0, cache_creation_input_tokens: x.cacheCreationInputTokens || 0 } }))
+      : [{ model: per[0]?.[0] || model, usage: result?.usage || {} }];
+    const id = sideId(client.id, kind), u = (usage[id] ||= { client: client.id, side: kind, title: SIDE_TITLES[kind], rows: [] });
+    for (const c of calls) u.rows = addSideCall(u.rows, { client: client.id, kind, ...c, bedrock: isBedrock(client) }, loadPrices(PRICING_FILE), billedFor(client, null));
+    saveUsageSoon();
+  } catch (e) { console.log(`[usage] ${kind}: ${e.message}`); }
+}
 // A prompt the session showed (a permission, a question form, a plan approval), from when it showed to when it was
 // answered or withdrawn. The session's rows are read again at the end of its turn, which takes it out of agent time.
 function recordWait(s, ask) {
@@ -3531,6 +3566,7 @@ function usageReport() {
   const parentFor = (client, id) => (outsideCodex(usage[id]) ? null : usage[id]?.deleted ? usage[id].parentId || null : parentOf(client, id));
   const titleOf = (id) => live.get(id)?.title || usage[id]?.title || state.sessions[id]?.title || usage[id]?.rows?.[0]?.Title || 'Untitled';
   const rows = [], models = {}, shift = {};
+  const ruleTokens = Object.fromEntries(CLIENTS.map((c) => [c.id, docketRuleTokens(c)])); // read once per report
   for (const [id, u] of Object.entries(usage)) {
     const client = clientById(u.client);
     const own = client ? rowsOf(id, u) : [];
@@ -3538,17 +3574,20 @@ function usageReport() {
     // A Shift session: its record says so, and keeps its gear and history, so a deleted one still counts.
     const rec = state.sessions[id];
     if (shiftOf(rec)) u.shift = shiftOf(rec);
+    if (isAskDesk(rec)) u.ask = true; // kept, so a deleted ask_desk session still counts as one
     const gearIds = u.shift && gearsOf(rec?.engine || u.brand || own[0].Brand).map((g) => g.id);
     if (gearIds) shift[id] = sessionShiftFacts(own, gearIds, u.shift.shifts, u.shift.gear);
     let root = id;
     for (let p = parentFor(client, id), seen = new Set([id]); p && !seen.has(p); p = parentFor(client, p)) { seen.add(p); root = p; }
-    const gone = u.deleted ? 'deleted' : !u.rows?.length || (u.brand === 'codex' ? codexSeen.has(id) || !codexSwept : logs.get(client.id)?.has(id)) ? '' : 'log removed';
+    const gone = u.deleted ? 'deleted' : u.side || !u.rows?.length || (u.brand === 'codex' ? codexSeen.has(id) || !codexSwept : logs.get(client.id)?.has(id)) ? '' : 'log removed';
     const gid = (u.deleted || outsideCodex(u) ? u.groupId : effectiveGroup(client, id)) || '';
     const extra = { Title: titleOf(id), GroupId: gid, Family: root, FamilyTitle: titleOf(root), Gone: gone };
+    const ruleTok = !u.side && ruleTokens[client.id]?.[own.some((r) => r.Child) ? 'child' : 'top'];
     for (const r of own) {
       if (r.Model) models[r.Model] ||= modelName(prices, r.Model);
       const top = gearIds && topGearCost(r, gearIds, modelRates(prices, gearIds.at(-1), Date.parse(r.Date + 'T12:00:00')));
-      rows.push({ ...withGroup(r), ...extra, ...(top ? { TopGearCost: top.cost, ...(top.priced ? {} : { TopGearUnpriced: 1 }) } : {}) });
+      const rules = ruleTok && r.Source === 'main' && rulesEstimate(r, ruleTok, modelRates(prices, r.Model, Date.parse(r.Date + 'T12:00:00')));
+      rows.push({ ...withGroup(r), ...extra, ...(top ? { TopGearCost: top.cost, ...(top.priced ? {} : { TopGearUnpriced: 1 }) } : {}), ...(rules ? { RulesEstimate: rules } : {}) });
     }
   }
   return {
@@ -3556,6 +3595,8 @@ function usageReport() {
     shift, // Shift sessions: id -> { shifted, shifts, reachedTop }
     topGears: Object.fromEntries(Object.entries(GEARS).map(([b, g]) => [b, g.at(-1).name])),
     shortTurns: SHORT_TURNS, // a child with this many turns or fewer is short (the Start cost card)
+    pilotAnswers: pilotLogFacts().answers, // the autopilot's answers and suggestions per run and day (the Autopilot cost card)
+    ruleTokens, // per desk, what the Docket overhead card's estimate counts
     connections: usageConnections(rows),
     models,
     baseline: modelRates(prices, prices.routingBaseline || 'claude-opus'),
@@ -3563,6 +3604,22 @@ function usageReport() {
     bigOutput: bigOutputUse(), // the big-output hook's cuts and reads back, per day and desk (#748)
     companies: CLIENTS.map((c) => ({ id: c.id, name: c.name, color: c.color || null, groups: groupsOf(c.id).map((g) => ({ id: g.id, name: g.name, color: g.color })) })),
   };
+}
+// Docket's instructions in every session's system prompt (sessionRules), in tokens at about 4 characters each: the
+// full set for a top session, the slimmer one for a child. The Shift and plan rules some sessions add, and Docket's
+// tool list, are left out, so the estimate is on the low side (#977).
+function docketRuleTokens(client) {
+  const opts = { split: splitOn(client), forms: formsOf(client) }, dir = path.join(ROOT, 'prompts');
+  const tok = (child) => Math.round((APPEND_PROMPT.length + ruleText(dir, { ...opts, child }).length) / 4);
+  return { top: tok(false), child: tok(true) };
+}
+// What reading those instructions cost in a row, not apart from its Cost but inside it: each reply reads them from the
+// cache, and each start, cache expiry and compaction writes them again (on the 1-hour cache). Main rows only: helper
+// agents and compaction calls are not given them.
+function rulesEstimate(r, tokens, rates) {
+  if (!rates?.cacheRead) return 0;
+  const writes = (r.Starts || 0) + (r.CacheExpiry || 0) + (r.Compacting || 0);
+  return Math.round(tokens * ((r.Turns || 0) * rates.cacheRead + writes * (rates.cacheWrite1h ?? rates.cacheWrite5m ?? 0)) / 1e6 * 10000) / 10000;
 }
 // The billing connections in the rows, each with what today's setup says of it (its label, kind and detail, every
 // desk's detail when several desks reach it differently), and the brands and desks whose rows are on it.
@@ -3604,7 +3661,7 @@ function goneSessions(client, known) {
   const out = [];
   let files = null;
   for (const [id, u] of Object.entries(usage)) {
-    if (u.client !== client.id || known.has(id) || outsideCodex(u)) continue; // Codex sessions run outside Docket are not in its list
+    if (u.client !== client.id || known.has(id) || outsideCodex(u) || u.side) continue; // Codex sessions run outside Docket are not in its list; side calls are no session
     if (!u.rows?.length) continue; // only typing or wait time so far: a new session, not a gone one
     if (u.brand === 'codex' && !u.deleted && (codexSeen.has(id) || !codexSwept)) continue; // its Codex files are still there
     if (!u.deleted) { files ||= usageLogIds(client); if (files.has(id)) continue; }
@@ -3765,7 +3822,7 @@ async function suggestGroup(client, id) {
   let text = '', cost = 0;
   try {
     for await (const m of q) {
-      if (m.type === 'result') { cost = m.total_cost_usd || 0; if (m.subtype !== 'success') throw new Error(m.errors?.[0] || 'The reading did not finish'); text = m.result || ''; }
+      if (m.type === 'result') { cost = m.total_cost_usd || 0; recordSideCall(client, 'auto-group', m, modelFor(client, 'claude', AUTO_GROUP_MODEL)); if (m.subtype !== 'success') throw new Error(m.errors?.[0] || 'The reading did not finish'); text = m.result || ''; }
     }
   } finally { q.close(); }
   const j = JSON.parse((text.match(/\{[\s\S]*\}/) || [])[0] || 'null');
@@ -3864,6 +3921,7 @@ async function listCosts(client, day) {
   for (const r of byId.values()) {
     if (++n % 200 === 0) await new Promise((res) => setImmediate(res));
     const o = own.get(r.id);
+    if (state.sessions[r.id]?.pilotRun) { if (o && !r.gone) out.s[r.id] = o.map(cents); continue; } // in the Autopilot tab, not a group (#974)
     const gid = (r.gone ? r.groupId : effectiveGroup(client, r.id)) || '';
     const g = out.g[gid] ||= [0, 0, 0, 0, 0];
     if (o) { g[0] += o[0]; g[1] += o[1]; }
@@ -3881,7 +3939,8 @@ async function listCosts(client, day) {
 let sweeping = false;
 async function sweepUsage() {
   if (sweeping) return; sweeping = true;
-  let changed = 0;
+  let changed = markPilotUsage();
+  if (changed) saveUsageSoon();
   try {
     for (const client of CLIENTS) {
       // the titles the session list shows (the desktop app keeps them outside the log)
@@ -3898,6 +3957,36 @@ async function sweepUsage() {
     changed += sweepCodex();
   } finally { sweeping = false; }
   if (changed) console.log(`[usage] updated ${changed} session(s) in ${USAGE_CSV}`);
+}
+// Every pilot run's record says so, so its rows keep the cause pilot after the session is deleted: marked on each
+// write of the record, and at each sweep, the first of which after #976 marks the runs from before it. A run is a
+// session marked pilotRun (#914), or one the pilot log names as a run (runs from before that mark).
+function markPilotUsage() {
+  let n = 0;
+  const logged = pilotLogFacts().runs;
+  for (const id of new Set([...Object.keys(state.sessions).filter((id) => state.sessions[id]?.pilotRun), ...logged])) if (usage[id] && !usage[id].pilot) { usage[id].pilot = true; n++; }
+  return n;
+}
+// From the pilot log, read again only when it changes: the run session ids it names, and per run and day what the
+// run answered and what it suggested (run id -> { day: { answered, suggested } }, the Autopilot cost card).
+let pilotLogRead = { mtime: -1, runs: new Set(), answers: {} };
+function pilotLogFacts() {
+  const file = path.join(DATA_DIR, 'pilot-log.jsonl');
+  let mtime = 0;
+  try { mtime = fs.statSync(file).mtimeMs; } catch {}
+  if (mtime === pilotLogRead.mtime) return pilotLogRead;
+  const runs = new Set(), answers = {};
+  let text = '';
+  try { text = fs.readFileSync(file, 'utf8'); } catch {}
+  for (const l of text.split('\n')) {
+    let e; try { e = JSON.parse(l); } catch { continue; }
+    if (!e?.run) continue;
+    runs.add(e.run);
+    if (e.kind === 'run' || !e.ok || !e.at) continue;
+    const d = ((answers[e.run] ||= {})[localDate(e.at)] ||= { answered: 0, suggested: 0 });
+    d[e.suggest ? 'suggested' : 'answered']++;
+  }
+  return (pilotLogRead = { mtime, runs, answers });
 }
 setTimeout(sweepUsage, 15000);            // shortly after start-up
 setInterval(sweepUsage, 60 * 60 * 1000);  // and hourly, for sessions run in the desktop app or a terminal
@@ -3963,8 +4052,10 @@ function saveSignIns(client, { full = false } = {}) {
 // Playwright loads only when a sign-in window opens: loading it at the start cost every Docket start more than a second of
 // CPU, and many test Dockets starting at once in a full `npm test` ran out of time for it.
 const chromium = () => import('playwright').then((m) => m.chromium);
-async function openSignInWindow(client, url) {
-  if (signInWindows.has(client.id)) return;
+// session: the session whose Sign in card opened it; closing the window clears all of that session's sites (#1012).
+async function openSignInWindow(client, url, session) {
+  const open = signInWindows.get(client.id);
+  if (open) { if (session) open.asked.add(session); if (url) await open.context.newPage().then((p) => p.goto(url)).catch(() => {}); return; } // the page asked for, in a new tab of the window already open (#987)
   const options = {
     headless: false, viewport: null,
     ignoreDefaultArgs: ['--enable-automation'],
@@ -3977,49 +4068,62 @@ async function openSignInWindow(client, url) {
   if (!context) throw new Error('Could not open a browser window');
   // Quick saves every few seconds, after each page loads, and whenever a tab closes, so closing the window
   // with its X (which gives no warning before the browser is gone) keeps the sign-ins.
-  const w = { context, timer: setInterval(() => saveSignIns(client), 5000) };
+  // asked: sessions whose card opened it or pressed Done; visited: the sites its tabs went to. Closing it clears only
+  // those sessions' sites and other sessions' sites that were visited, so a session waiting on another site keeps its card.
+  const w = { context, timer: setInterval(() => saveSignIns(client), 5000), asked: new Set(session ? [session] : []), visited: new Set() };
   signInWindows.set(client.id, w);
-  const watch = (p) => { p.on('load', () => saveSignIns(client)); p.on('close', () => saveSignIns(client)); };
+  const went = (f) => { try { const u = new URL(f.url()); if (/^https?:$/.test(u.protocol)) w.visited.add(siteOf(u.hostname)); } catch {} };
+  const watch = (p) => { p.on('load', () => saveSignIns(client)); p.on('close', () => saveSignIns(client)); p.on('framenavigated', (f) => { if (f === p.mainFrame()) went(f); }); };
   context.pages().forEach(watch);
   context.on('page', watch);
   context.on('close', () => {
     clearInterval(w.timer);
     signInWindows.delete(client.id);
     broadcast({ t: 'browser', client: client.id, ...browserStatus(client) });
-    signInsSaved(client);
+    signInsSaved(client, w);
   });
   const page = context.pages()[0] || await context.newPage();
   if (url) await page.goto(url).catch(() => {});
   broadcast({ t: 'browser', client: client.id, ...browserStatus(client) });
 }
 
-// A session waiting on a private browser sign-in (needs_signin, #678). The page blinks the 🌐 while that session is
-// the one open; it stops when the session says it is connected, or when the sign-in window closes (Done or its X),
+// A session waiting on a private browser sign-in (needs_signin, #678). The page blinks the 🌐 while any session on the
+// desk waits, marks its row and shows a Sign in card in it (#987); it stops when the session says it is connected, or when the sign-in window closes (Done or its X),
 // since that is when the sign-ins are saved. The need is kept in the session's saved record, not on the live session,
 // so it lasts through an app restart, rest and reloads, and a saved session still blinks when opened (#775).
+// A session can wait on several sites, kept as a list (#1013); a record saved with a single { site, url } reads as one.
 const signinNeeds = (clientId) => Object.fromEntries(Object.entries(state.sessions)
-  .filter(([, r]) => r.client === clientId && r.needsSignin).map(([id, r]) => [id, r.needsSignin]));
+  .filter(([, r]) => r.client === clientId && needList(r.needsSignin).length).map(([id, r]) => [id, needList(r.needsSignin)]));
+// need: the session's whole list of sites now (signin-needs.mjs), or null for none.
 function setSigninNeed(id, clientId, need, why) {
   const rec = state.sessions[id];
   if (!rec?.needsSignin && !need) return;
   if (need) (state.sessions[id] ||= { client: clientId }).needsSignin = need; else delete rec.needsSignin;
   saveState();
   const s = live.get(id);
-  logEvent(`sign-in need ${need ? 'on' : 'off'}: ${sessionTag(s || { id, title: rec?.title })}`, need ? `${need.site}${need.url ? ' ' + need.url : ''}` : why);
+  logEvent(`sign-in need ${need ? 'on' : 'off'}: ${sessionTag(s || { id, title: rec?.title })}`, [need && need.map((n) => `${n.site}${n.url ? ' ' + n.url : ''}`).join(', '), why].filter(Boolean).join('; '));
   broadcast({ t: 'signin-needs', client: clientId, needs: signinNeeds(clientId) });
   if (s) pushSession(s);
 }
-function signInsSaved(client) {
-  for (const [id, need] of Object.entries(signinNeeds(client.id))) {
-    const s = live.get(id);
-    if (s) addEvent(s, { k: 'note', text: `Private browser sign-ins saved (this session asked for ${need.site}).` });
-    setSigninNeed(id, client.id, null, 'the sign-in window closed and its sign-ins were saved');
+// Only what was signed in to is cleared (#1012, clearedBy in signin-needs.mjs): the sites of the sessions whose card opened
+// the window or pressed Done, and other sessions' sites the window went to. Each session that lost a site is told to carry
+// on (#998), through the waits' delivery: at once when it is between turns (resumed if it is not running), when its turn
+// ends when it is mid-turn, and still after an app restart. The rest keep their need, card and the 🌐 blink.
+function signInsSaved(client, w) {
+  for (const [id, { cleared, left }] of Object.entries(clearedBy(signinNeeds(client.id), { asked: w.asked, visited: w.visited }))) {
+    const s = live.get(id), sites = siteNames(cleared);
+    if (s && s.status !== 'ended' && (s.status !== 'idle' || s.pendingAsks?.size)) addEvent(s, { k: 'note', text: `Private browser sign-ins saved (this session asked for ${sites}). Docket tells it to carry on when this turn ends.` });
+    (state.waits ||= []).push({ id: randomUUID().slice(0, 8), by: id, client: client.id, at: Date.now(), notice: true,
+      line: `The user signed in to ${sites} in the private browser and pressed Done, so its sign-ins are saved: carry on with the work that needed it.${left ? ` Still waiting on: ${siteNames(left)} (its Sign in button stays).` : ''} A private browser you opened before then started without them, so close it (browser_close) and open it again.` });
+    setSigninNeed(id, client.id, left, `the sign-in window closed and its sign-ins were saved (${sites})`);
   }
+  tickWaits();
 }
 
-async function closeSignInWindow(client) {
+async function closeSignInWindow(client, session) {
   const w = signInWindows.get(client.id);
   if (!w) return;
+  if (session) w.asked.add(session); // Done on a session's own card counts as signing in for it
   clearInterval(w.timer);
   await saveSignIns(client, { full: true });
   await w.context.close().catch(() => {});
@@ -4275,10 +4379,10 @@ function proposeSession(parent, { title, prompt, cwd, brand, startGear, groupId 
   return ev;
 }
 // open -> started | dismissed (by the person) | withdrawn (by Claude)
-function settleProposal(id, how, note, startedId) {
+function settleProposal(id, how, note, startedId, { heard = true } = {}) {
   const p = proposals.get(id);
   if (!p || p.ev.state !== 'open') return false;
-  if (how === 'dismissed' && p.ev.by !== 'pilot') pilotHeard(`card:${id}`, { answer: 'dismiss' });
+  if (how === 'dismissed' && heard && p.ev.by !== 'pilot') pilotHeard(`card:${id}`, { answer: 'dismiss' });
   p.ev.state = how; if (startedId) p.ev.startedId = startedId; if (note) p.ev.note = note;
   saveState();
   updateCard({ id: p.parentId }, p.ev);
@@ -4476,7 +4580,7 @@ async function sessionToMessage(clientId, id) {
     const row = await savedRow(client, id);
     if (!row && !old) throw new Error('No session with that id for this client');
     target = startSession({ clientId, cwd: row?.cwd || old.cwd, title: row?.title || old.title, resumeId: id });
-    target.events = old ? old.events.slice() : await loadTranscript(client, id).catch(() => []);
+    target.events = old ? old.events.slice() : await loadTranscript(client, id, { open: false }).catch(() => []);
   }
   return target;
 }
@@ -4836,7 +4940,7 @@ async function wakeWith(client, id, report, note = '') {
     const old = parent;
     if (old) live.delete(id);
     parent = startSession({ clientId: client.id, cwd: row?.cwd || old.cwd, title: row?.title || old.title, resumeId: id });
-    parent.events = old ? old.events.slice() : await loadTranscript(client, id).catch(() => []);
+    parent.events = old ? old.events.slice() : await loadTranscript(client, id, { open: false }).catch(() => []);
   }
   addEvent(parent, note ? { k: 'note', text: note } : { k: 'child-report', ...report });
   (parent.pendingReports ||= []).push(report);
@@ -4902,7 +5006,7 @@ async function lookAt(clientId, c, ms) {
 }
 function dropWaits(sessionId) {
   const before = (state.waits || []).length;
-  state.waits = (state.waits || []).filter((w) => w.by !== sessionId);
+  state.waits = (state.waits || []).filter((w) => w.by !== sessionId || w.notice);
   if (state.waits.length !== before) saveState();
   return before - state.waits.length;
 }
@@ -4932,7 +5036,7 @@ async function deliverWait(w) {
   if (s && s.status !== 'ended' && (s.status !== 'idle' || s.pendingAsks?.size)) return; // in a turn: goes when it ends
   drop();
   logEvent(`wait over: ${s ? sessionTag(s) : w.by}`, w.line);
-  await noticeToSession(w.client, w.by, `wait_until: ${w.line}`);
+  await noticeToSession(w.client, w.by, w.notice ? w.line : `wait_until: ${w.line}`, { byPerson: !!w.notice }); // notice: a sign-in the user finished (#998)
 }
 setInterval(tickWaits, 2000);
 
@@ -4983,9 +5087,9 @@ function keepQuestionsAbove(id, n) {
 }
 // What a coordinator is told when it makes decisions: their numbers, and how to ask them so the chat gives them buttons.
 function askNote(tasks) {
-  const qs = tasks.filter((t) => t.q && !t.answer);
+  const qs = tasks.filter((t) => t.q && !decisionSettled(t) && t.state !== 'dropped');
   if (!qs.length) return '';
-  return `\nDecision${qs.length > 1 ? 's' : ''} for the user: ${qs.map((t) => `Q${t.q} (${t.id})`).join(', ')}. Ask ${qs.length > 1 ? 'each' : 'it'} in your reply on a line of its own that starts with its number ("Q${qs[0].q}: ${qs[0].title}"): the chat puts the options under it as buttons, and Docket saves the answer on the task.`;
+  return `\nDecision${qs.length > 1 ? 's' : ''} for the user: ${qs.map((t) => `Q${t.q} (${t.id})`).join(', ')}. Ask ${qs.length > 1 ? 'each' : 'it'} in your reply on a line of its own that starts with its number ("Q${qs[0].q}: ${qs[0].title}")${qs.length > 1 ? ', with a blank line between them' : ''}: the chat puts the options under it as buttons, and Docket saves the answer on the task.`;
 }
 // The user's answers to a coordinator's decisions (#929), given by number in their message ("Q7 keep both") or in a
 // form whose question names the number: each one goes on its task, which is done. Returns what was saved, as
@@ -5447,66 +5551,60 @@ function editInbox(clientId, id, brief) {
 }
 
 // ---------- the autopilot (#821; the rules are in pilot.mjs) ----------
-// A pilot answers what waits on the person, across every desk on this computer, under rules the person keeps here.
-// state.pilot: { on, desk, brand, going, runs } (the switch in ☰ > Docket settings > Autopilot, the autopilot's own
-// desk, #875, where runs go, #914: each desk, or one brand on the autopilot's desk, the runs going now by the desk
-// whose items each judges, { id, at, host }, and the last runs). The first time the switch goes on Docket makes the
-// Autopilot desk. The pilot works in short runs (#881): when something it may answer comes in, Docket waits a short
-// delay to batch what comes close together, then starts a fresh session for it; the run answers and ends, and stays
-// in its desk's list for a week before it is archived. Each run is for one desk's items (#914), and is a session of
-// that desk, on its own default brand and sign-in and billed there; on the autopilot's desk instead when the one-brand
-// mode is picked, or the desk has no brand signed in. One run per desk at a time; what comes during a desk's run goes
-// to its next. A run gets the pilot tools for its own desk's items only, and with the switch off they refuse every
-// call. What a run raised itself stays with the person. Whatever the pilot answers is marked answered by pilot on the
+// A pilot answers what waits on the person, desk by desk (#973), under rules the person keeps on this computer.
+// state.pilot: { on, engaged, going, runs, ... }. on: enabled, in ☰ > Docket settings > Autopilot; while off none of it
+// shows and nothing is engaged. engaged: desk -> since when, flipped from the 🤖 in the top bar; only an engaged desk
+// gets runs, and only a desk with a brand signed in can be engaged. The pilot works in short runs (#881): when
+// something it may answer comes in on an engaged desk, Docket waits a short delay to batch what comes close together,
+// then starts a fresh session of that desk for it, on the desk's own default brand and sign-in and billed there
+// (#914); the run answers and ends, and is archived after a week. One run per desk at a time; what comes during a
+// desk's run goes to its next. A run gets the pilot tools for its own desk's items only, and they refuse every call
+// once its desk is disengaged or the autopilot disabled. What a run raised itself stays with the person, and so does
+// anything in a session the person is using right now. Whatever the pilot answers is marked answered by pilot on the
 // card and in the chat, and kept in its log, which also links each run.
 // What it remembers between runs lives in files each run reads, each given only its own desk's part: the rules,
-// data/pilot-rules.json (per computer; written with the safe defaults the first time the switch goes on), the log,
+// data/pilot-rules.json (per computer; written with the safe defaults the first time it is enabled), the log,
 // the learning log, and the desk's pilot notes (data/pilot-notes/<desk>.md).
 const PILOT_RULES_FILE = path.resolve(process.env.PORTAL_PILOT_RULES || path.join(DATA_DIR, 'pilot-rules.json'));
 const PILOT_LOG = path.join(DATA_DIR, 'pilot-log.jsonl');
-const PILOT_OFF = 'The autopilot is switched off (☰ > Docket settings > Autopilot), so every pilot tool refuses until the user turns it on.';
+const PILOT_OFF = 'The autopilot is disabled (☰ > Docket settings > Autopilot), so every pilot tool refuses until the user enables it.';
+const pilotDisengaged = (desk) => `The autopilot is not engaged on ${companyName(desk) || 'this desk'} now (the user engages it from 🤖 in the top bar), so every pilot tool refuses.`;
 const PILOT_BATCH_MS = +process.env.PORTAL_PILOT_BATCH_MS || 10000; // how long a batch fills before its run starts
 const PILOT_BOOT = Date.now(); // a run's session not back yet just after a restart is not taken as ended
 const pilotFeeds = new Set(); // open /api/pilot/events responses
 let pilotSeen = new Map(); // id -> item, as last looked
+const pilotFirstSeen = new Map(); // id -> when it was first seen waiting, for the offer to engage (#974)
+// The offer to engage (#974): desks: [{ desk, count }] as last looked; later: Not now was pressed during this stretch of
+// waiting (it ends when nothing is left to offer). Not today is kept in state.pilot.offerOff (the day).
+const pilotOffer = { desks: [], later: false };
+const PILOT_OFFER_MS = +process.env.PORTAL_PILOT_OFFER_MS || undefined; // the tests wait less than 10 minutes
 // The next runs, by the desk whose items each judges (#914): since, desk -> when its batch's first item was seen;
 // timer, to look again once a batch delay is up; offered, ids a run was given or listed, never offered to another;
-// starting, the desks whose run is being started; problem, desk -> { at, why } why its run cannot start now;
-// fallback, desk -> when its run last went to the autopilot's desk for want of a brand signed in on it.
-const pilotRun = { since: new Map(), timer: null, offered: new Set(), starting: new Set(), problem: new Map(), fallback: new Map() };
-const remotePilot = new Map(); // remote desk id -> { items, error }: what waits on a remote desk this computer holds a pilot key for (#827)
+// starting, the desks whose run is being started; problem, desk -> { at, why } why its run cannot start now.
+const pilotRun = { since: new Map(), timer: null, offered: new Set(), starting: new Set(), problem: new Map() };
 const pilotOn = () => !!state.pilot?.on;
-const pilotFlying = () => pilotOn() && !!pilotDesk();
-// The autopilot's desk is special (#886): first in every list of desks, set up by Docket and not edited by hand.
-const isPilotDesk = (id) => !!id && id === state.pilot?.desk && !!clientById(id);
-const pilotFirst = (list) => [...list.filter((c) => isPilotDesk(c.id)), ...list.filter((c) => !isPilotDesk(c.id))];
-// Its folders, made again when missing whenever the switch goes on.
-function pilotDeskFolders(d) {
-  for (const f of [d.folder, d.home, d.grokHome, d.codexHome].filter(Boolean)) try { fs.mkdirSync(f, { recursive: true }); } catch (e) { logEvent('autopilot: folder not made', `${f}: ${e.message}`); }
-}
-// The autopilot's own desk (#875).
-const pilotDesk = () => clientById(state.pilot?.desk) || null;
-// The runs going now (#914): desk -> { id, at, host }; the desk whose items a session judges, while it is a run going
-// now (null for any other session); and whether a session is or was a pilot run (marked pilotRun when it started; a
-// session of the autopilot's desk always is one).
+// The desks it is engaged on (#973), desk -> since when: this computer's desks only, and none while disabled.
+const pilotEngaged = () => (pilotOn() ? Object.fromEntries(Object.entries(state.pilot.engaged || {}).filter(([id]) => clientById(id))) : {});
+const isEngaged = (desk) => !!desk && Object.hasOwn(pilotEngaged(), desk);
+const pilotFlying = () => Object.keys(pilotEngaged()).length > 0;
+// The runs going now (#914): desk -> { id, at }; the desk whose items a session judges, while it is a run going now
+// (null for any other session); and whether a session is or was a pilot run (marked pilotRun when it started).
 const pilotGoing = () => state.pilot?.going || {};
 const pilotRunOf = (sid) => (sid && Object.keys(pilotGoing()).find((desk) => pilotGoing()[desk].id === sid)) || null;
-const isPilotRun = (sid) => !!sid && (!!state.sessions[sid]?.pilotRun || !!pilotRunOf(sid) || isPilotDesk(live.get(sid)?.client || state.sessions[sid]?.client));
-// What a pilot run raised stays with the person (pilot.mjs ruleFor): an item of a run's session, or on the autopilot's
-// own desk, whose sessions are all runs.
-const pilotOwnRun = (item) => isPilotRun(item.session) || isPilotDesk(item.desk);
-// The person answering an item themselves (#942): the page says so while they pick or type in a question form, or
-// type in a session's box while a merge waits there. For a few minutes after, the pilot never answers over them; it
-// may only suggest, where the kind takes suggestions.
-const PILOT_BUSY_MS = 3 * 60_000, PILOT_BUSY_WHY = 'the person is answering it themselves right now';
-const pilotBusy = new Map(); // an item id, or typing:<session id> -> when the person last touched it
+const isPilotRun = (sid) => !!sid && (!!state.sessions[sid]?.pilotRun || !!pilotRunOf(sid));
+// What a pilot run raised stays with the person (pilot.mjs ruleFor).
+const pilotOwnRun = (item) => isPilotRun(item.session);
+// The person at work there (#942, #965, widened in #973): the page says so while they pick or type in a question
+// form, type in a session's box, or otherwise use a session's chat. For a few minutes after, the pilot never answers
+// anything there; it may only suggest, where the kind takes suggestions.
+const PILOT_BUSY_MS = 3 * 60_000, PILOT_BUSY_WHY = 'the person is using that session right now';
+const pilotBusy = new Map(); // an item id, typing:<session id> or active:<session id> -> when the person last touched it
 function pilotSawBusy(id) {
   const now = Date.now();
   for (const [k, at] of pilotBusy) if (now - at >= PILOT_BUSY_MS) pilotBusy.delete(k);
-  if (/^(question|typing):[\w-]{1,80}$/.test(id) && pilotBusy.size < 500) pilotBusy.set(id, now);
+  if (/^(question|typing|active):[\w-]{1,80}$/.test(id) && pilotBusy.size < 500) pilotBusy.set(id, now);
 }
-const pilotPersonBusy = (item) => !item.there && [item.id, item.kind === 'merge' ? `typing:${item.session}` : '']
-  .some((k) => k && Date.now() - (pilotBusy.get(k) || 0) < PILOT_BUSY_MS);
+const pilotPersonBusy = (item) => pilotBusyKeys(item).some((k) => Date.now() - (pilotBusy.get(k) || 0) < PILOT_BUSY_MS);
 function pilotRules() {
   try { return cleanPilotRules(JSON.parse(fs.readFileSync(PILOT_RULES_FILE, 'utf8'))); } catch { return cleanPilotRules(null); }
 }
@@ -5542,17 +5640,16 @@ function appendPilotLearn(line) {
 // computer) and adds the person's past answers to the learning log as source: history. state.pilot.history: { at,
 // count } once read. Safe to run again: only answers not in the log yet are added.
 const pilotHistoryRun = { running: false };
-const pilotHistoryDesks = () => CLIENTS.filter((c) => c.home && c.id !== pilotDesk()?.id).map((c) => ({ id: c.id, home: c.home }));
+const pilotHistoryDesks = () => CLIENTS.filter((c) => c.home).map((c) => ({ id: c.id, home: c.home }));
 const pilotHistoryThere = () => pilotHistoryFiles(pilotHistoryDesks(), CHATS, (id) => state.sessions[id]?.client).length > 0;
 async function learnPilotHistory() {
   if (pilotHistoryRun.running) return;
   pilotHistoryRun.running = true;
   pilotBroadcast();
   try {
-    const skip = pilotDesk()?.id;
     // Not the pilot runs' own sessions (#914: they run on the desks too): what they did is no answer of the person's.
     const files = pilotHistoryFiles(pilotHistoryDesks(), CHATS, (id) => state.sessions[id]?.client).filter((f) => !isPilotRun(f.session));
-    const found = pilotNotByPilot([...await readPilotHistory(files, { skipDesks: [skip] }), ...pilotCardDecisions(state.sessions).filter((d) => d.desk !== skip && !isPilotRun(d.session))], pilotLogTail(5000));
+    const found = pilotNotByPilot([...await readPilotHistory(files), ...pilotCardDecisions(state.sessions).filter((d) => clientById(d.desk) && !isPilotRun(d.session))], pilotLogTail(5000));
     const add = newPilotHistory(readPilotLearn(), found);
     if (add.length) { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.appendFileSync(PILOT_LEARN, add.map((l) => JSON.stringify(l) + '\n').join('')); }
     const count = readPilotLearn().filter((l) => l.source === 'history').length;
@@ -5561,6 +5658,32 @@ async function learnPilotHistory() {
     logEvent('autopilot: learned from past sessions', `${count} past answers (${add.length} new) from ${files.length} transcripts`);
   } catch (e) { logEvent('autopilot: could not read past sessions', e.message); }
   finally { pilotHistoryRun.running = false; pilotBroadcast(); }
+}
+// Open questions (#989, questions.mjs): per desk, Off, Highlight only (the page alone) or Highlight + track, where
+// Docket keeps each session's open questions in its record (openQ) for the chat's tray and the row's count.
+// state.questionLevels: desk id -> off | highlight | track; a desk not in it has not answered the card yet (off).
+state.questionLevels ||= {};
+const questionLevel = (clientId) => (QUESTION_LEVELS.includes(state.questionLevels[clientId]) ? state.questionLevels[clientId] : 'off');
+const NO_OPEN_Q = Object.freeze([]);
+const openQOf = (id) => state.sessions[id]?.openQ || NO_OPEN_Q;
+const tracksQuestions = (s) => questionLevel(s.client) === 'track' && !state.sessions[s.id]?.pilotRun;
+function setOpenQ(id, next) {
+  const rec = state.sessions[id];
+  if (!rec || next === openQOf(id)) return; // the rules hand back the same list when nothing changed
+  if (next.length) rec.openQ = next; else delete rec.openQ;
+  saveState();
+  broadcast({ t: 'questions', id, open: next });
+}
+function trackAsked(s, content) { if (tracksQuestions(s)) setOpenQ(s.id, openAfterAsk(openQOf(s.id), content, state.sessions[s.id]?.lastQ || 0)); }
+function trackReply(s, text) { if (tracksQuestions(s)) setOpenQ(s.id, openAfterReply(openQOf(s.id), text)); }
+function trackTurnEnd(s) { if (tracksQuestions(s)) setOpenQ(s.id, openAfterTurn(openQOf(s.id))); }
+const trackClosed = (id, nums) => { if (nums.length) setOpenQ(id, openWithout(openQOf(id), nums)); };
+function setQuestionLevel(client, level) {
+  state.questionLevels[client.id] = level;
+  if (level !== 'track') for (const [id, rec] of Object.entries(state.sessions)) if (rec.client === client.id && rec.openQ) { delete rec.openQ; broadcast({ t: 'questions', id, open: [] }); } // Highlight only keeps nothing
+  saveState();
+  broadcast({ t: 'question-levels', levels: state.questionLevels });
+  logEvent('question level', `${client.name}: ${level}`);
 }
 // The card an item is: its event in the chat, which shows the suggestion and, once answered, "answered by pilot".
 function pilotCardEv(item) {
@@ -5594,9 +5717,9 @@ function pilotHeard(id, user) {
 // desk: the desk the run judges (#914); an item on any other desk is not found.
 async function pilotSuggest(id, answer, { answers, why = '', run, desk } = {}) {
   if (!pilotOn()) return { ok: false, why: PILOT_OFF };
-  const item = waitingOnPerson().find((x) => x.id === id && !x.there && x.desk === desk);
+  const item = waitingOnPerson().find((x) => x.id === id && x.desk === desk);
   if (!item) return { ok: false, why: `Nothing on ${companyName(desk) || 'this run\'s desk'} with that id is waiting now (answered meanwhile, gone, or on another desk). Call pilot_pending for the list as it is now.` };
-  let may = pilotMaySuggest(pilotRules(), item, answer, item.busy ? 'suggest' : item.remoteMay, pilotOwnRun);
+  let may = pilotMaySuggest(pilotRules(), item, answer, item.busy ? 'suggest' : undefined, pilotOwnRun);
   if (may.ok && answer === 'answer' && !(answers && typeof answers === 'object' && Object.keys(answers).length))
     may = { ok: false, why: 'A question form needs answers: { "question text": "the option label" }.' };
   if (!may.ok) { pilotLog({ item, answer, ok: false, why: may.why, run, suggest: true }); return may; }
@@ -5615,7 +5738,7 @@ async function pilotSuggest(id, answer, { answers, why = '', run, desk } = {}) {
 // Accept on a card: the person gives the pilot's suggestion as their own answer, in one click.
 async function acceptPilotSuggestion(id) {
   const sug = state.pilot?.suggestions?.[id];
-  const item = sug && waitingOnPerson().find((x) => x.id === id && !x.there);
+  const item = sug && waitingOnPerson().find((x) => x.id === id);
   if (!item) throw new Error('That suggestion is no longer waiting.');
   if (!await giveAnswer(item, sug.answer, sug.answers, '')) throw new Error('It was no longer waiting.');
   logEvent('autopilot suggestion accepted', `${id} ${pilotAnswerLabel(item.kind, sug)}`);
@@ -5649,7 +5772,7 @@ function pilotLog(line) {
 let pilotSaid = ''; // the state and the sessions held, as last broadcast, so a change is told once
 function pilotBroadcast(decided = null) {
   const pilot = pilotBrief();
-  pilotSaid = JSON.stringify([pilot.state, pilot.holding, pilot.deskStates]);
+  pilotSaid = JSON.stringify([pilot.state, pilot.holding, pilot.deskStates, pilot.engaged, pilot.offer]);
   broadcast({ t: 'pilot', pilot, ...(decided ? { decided } : {}) });
 }
 // The sessions whose items a run going now has in hand (given it, or listed by it, and still waiting): their chats
@@ -5657,6 +5780,63 @@ function pilotBroadcast(decided = null) {
 function pilotHolding() {
   const going = pilotGoing();
   return [...new Set([...pilotRun.offered].map((id) => pilotSeen.get(id)).filter((i) => i && going[i.desk]).map((i) => i.session).filter(Boolean))];
+}
+// What the offer card shows (#974): the desks and counts, unless Not now was pressed in this stretch or Not today today.
+const pilotToday = () => new Date().toLocaleDateString('en-CA');
+function pilotOfferNow() {
+  if (!pilotOn() || pilotOffer.later || state.pilot?.offerOff === pilotToday() || !pilotOffer.desks.length) return null;
+  const desks = pilotOffer.desks.map((o) => ({ id: o.desk, name: companyName(o.desk) || o.desk, count: o.count }));
+  return { desks, total: desks.reduce((n, d) => n + d.count, 0) };
+}
+// Not now (later) or Not today (today) on the offer card.
+function pilotOfferAnswer(act) {
+  if (act === 'today') { state.pilot.offerOff = pilotToday(); saveState(); } else pilotOffer.later = true;
+  logEvent('autopilot: offer to engage', act === 'today' ? 'not today' : 'not now');
+  pilotBroadcast();
+}
+// A desk's Autopilot tab (#974): its engage switch and a line on what it did since; what it handles there, kind by kind,
+// with Suggest or Answer; and its runs (pilot runs not archived yet, a week), by day, with their cost, what each
+// answered and suggested, and what it left for the person.
+async function pilotDeskView(id) {
+  const d = clientById(id);
+  if (!d) throw new Error('Unknown desk.');
+  const rules = pilotRules(), log = pilotLogTail(5000), since = pilotEngaged()[id] || null;
+  const waiting = waitingOnPerson().filter((i) => i.desk === id);
+  const cost = (sid) => (usage[sid]?.rows || []).reduce((n, r) => n + (r.Cost || 0), 0);
+  const item = (l) => ({ kind: l.kind, answer: l.answer, what: clip(l.what || l.title || '', 120), session: l.session || null, ...(l.ok ? {} : { why: clip(l.why || '', 160) }) });
+  const runs = Object.entries(state.sessions).filter(([, r]) => r?.pilotRun === id && r.client === id && !r.archived).map(([sid, r]) => {
+    const lines = log.filter((l) => l.run === sid && l.kind !== 'run').reverse();
+    return { id: sid, at: r.createdAt, title: r.title || 'Autopilot run', cost: Math.round(cost(sid) * 1e4) / 1e4, going: pilotRunOf(sid) === id,
+      answers: lines.filter((l) => l.ok && !l.suggest).map(item), suggested: lines.filter((l) => l.ok && l.suggest).map(item), left: lines.filter((l) => !l.ok).map(item) };
+  });
+  const days = pilotRunsByDay(runs);
+  return { desk: { id, name: d.name }, on: pilotOn(), signedIn: (await signedBrands(d)).length > 0, engaged: !!since, since,
+    answered: since ? log.filter((l) => l.desk === id && l.kind !== 'run' && l.ok && !l.suggest && l.at >= since).length : 0,
+    left: waiting.filter((i) => i.may === 'ask' || i.may === 'suggest' || i.busy).length, problem: pilotRun.problem.get(id)?.why || '',
+    kinds: pilotDeskKinds(rules, readPilotLearn(), id), days, cost: Math.round(days.reduce((n, x) => n + x.cost, 0) * 1e4) / 1e4 };
+}
+// Suggest, Answer or Train for a kind on a desk, from its tab (#974, #1004). Answer once earned is "I got this".
+// Suggest stops it answering on that desk and keeps its count (a hold line, so Answer can be picked again). Train is
+// the only choice that starts its count over: it suggests again and learns from 0. Returns a line to show.
+function setPilotKind(desk, kind, level) {
+  if (!clientById(desk)) throw new Error('Unknown desk.');
+  const row = pilotDeskKinds(pilotRules(), readPilotLearn(), desk).find((r) => r.kind === kind);
+  const why = pilotKindChoiceRefusal(row, level);
+  if (why) throw new Error(why);
+  const name = companyName(desk) || desk;
+  if (level === 'train') {
+    if (row.level !== 'suggest') writePilotRulesFile(pilotSetDeskLevel(readPilotRulesFile() || { version: PILOT_RULES_VERSION, ...PILOT_DEFAULT_RULES }, desk, kind, 'suggest'));
+    appendPilotLearn(pilotResetLine({ desk, kind }));
+    logEvent('autopilot: trains again', `${kind} on ${name}`);
+    pilotBroadcast();
+    return `The autopilot suggests ${kind} items on ${name} again and learns them from the start: its count is back to 0 of ${row.need}.`;
+  }
+  if (row.level === level) return '';
+  writePilotRulesFile(pilotSetDeskLevel(readPilotRulesFile() || { version: PILOT_RULES_VERSION, ...PILOT_DEFAULT_RULES }, desk, kind, level));
+  if (level === 'suggest' && row.level === 'allow') appendPilotLearn(pilotHoldLine({ desk, kind }));
+  logEvent(`autopilot: ${level === 'allow' ? 'answers' : 'suggests for'}`, `${kind} on ${name}`);
+  pilotBroadcast();
+  return level === 'allow' ? `The autopilot now answers ${kind} items on ${name} itself.` : `The autopilot suggests ${kind} items on ${name} on the card again, and keeps what it learned.`;
 }
 // The pilot notes (#881): a short to-do list and things to remember, one file per desk (#914), read by that desk's
 // runs only.
@@ -5666,21 +5846,19 @@ const readPilotNotes = (desk) => { try { return fs.readFileSync(pilotNotesFile(d
 function pilotLogTail(n = 50) {
   try { return fs.readFileSync(PILOT_LOG, 'utf8').trim().split('\n').slice(-n).reverse().map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; }
 }
-// What the page's indicator needs: on, the runs going now (going: [{ id, desk, deskName, host, title }]; session and
-// title: the first of them), where runs go (brand: each desk, or a brand, and its gear), flying (on, with the
-// autopilot's desk set, so runs start as things come in), state (off, idle, waking or working) and deskStates, the state
-// of each desk with a run going or a batch filling (#914), for its 🤖.
+// What the page's indicators need: on (enabled), engaged (desk -> since when, #973), the runs going now (going:
+// [{ id, desk, deskName, title }]; session and title: the first of them), flying (engaged somewhere, so runs start as
+// things come in), state (off, idle, waking or working), deskStates, the state of each desk with a run going or a
+// batch filling (#914), for its 🤖, and movedNote: the one-time note after the move to per desk.
 function pilotBrief() {
-  const { brand, gear } = pilotSetting(state.pilot, GEARS);
-  const going = Object.entries(pilotGoing()).map(([desk, r]) => ({ id: r.id, desk, deskName: companyName(desk) || remoteDeskById(desk)?.name || desk, host: r.host,
+  const going = Object.entries(pilotGoing()).map(([desk, r]) => ({ id: r.id, desk, deskName: companyName(desk) || desk,
     title: live.get(r.id)?.title || state.sessions[r.id]?.title || 'Untitled' }));
   const states = {};
   for (const desk of pilotRun.since.keys()) states[desk] = 'waking';
   for (const desk of [...pilotRun.starting, ...going.map((g) => g.desk)]) states[desk] = 'working';
-  return { on: pilotOn(), going, session: going[0]?.id || null, title: going[0]?.title || '',
-    flying: pilotFlying(), brand, gear, brandName: brand === PILOT_EACH_DESK ? "each desk's own brand" : BRANDS[brand]?.name || brand,
+  return { on: pilotOn(), engaged: pilotEngaged(), offer: pilotOfferNow(), going, session: going[0]?.id || null, title: going[0]?.title || '', flying: pilotFlying(),
     state: pilotState({ flying: pilotFlying(), running: going.length > 0 || pilotRun.starting.size > 0, filling: pilotRun.since.size > 0 }), holding: pilotHolding(),
-    deskStates: pilotFlying() ? states : {} };
+    deskStates: pilotFlying() ? states : {}, movedNote: pilotOn() && !!state.pilot?.movedNote };
 }
 // Everything waiting on the person, across desks, each with a stable id (kind:its own id), its desk and session, and
 // what the rules let the pilot do with it (may: allow | deny | ask). What a pilot run raised itself is listed as ask:
@@ -5706,50 +5884,40 @@ function waitingOnPerson({ rules = pilotRules() } = {}) {
     if (pr && (pr.status === 'open' || pr.status === 'conflict') && s.unread && s.status === 'idle')
       items.push({ id: `merge:${s.id}:${pr.number || 0}`, kind: 'merge', ...base, what: `Pull request #${pr.number}${pr.title ? ` ${pr.title}` : ''}`, url: pr.url || '' });
   }
-  for (const p of proposals.values()) if (p.ev.state === 'open')
+  // An archived session's cards and sign-in needs are left out: its row shows nothing to answer (#984).
+  const open = pilotOpenWaiting({ proposals: [...proposals.values()], handoffs: [...handoffs.values()], sessions: state.sessions, archived: archivedIn });
+  for (const p of open.proposals)
     items.push({ id: `card:${p.ev.id}`, kind: 'card', ...at(p.client, p.parentId), what: p.title || 'Untitled', brief: clip(p.prompt, 600) });
-  for (const h of handoffs.values()) if (h.ev.state === 'open')
+  for (const h of open.handoffs)
     items.push({ id: `handoff:${h.ev.id}`, kind: 'handoff', ...at(h.client, h.sessionId), what: h.title, brief: clip(h.brief, 600) });
   for (const [desk, list] of Object.entries(state.inbox || {})) for (const it of list) if (it.state === 'open')
     items.push({ id: `inbox:${it.id}`, kind: 'inbox', ...at(desk, null, `From ${it.fromName}`), what: it.title, brief: clip(it.brief, 600) });
-  for (const [id, rec] of Object.entries(state.sessions)) if (rec.needsSignin && rec.client)
-    items.push({ id: `signin:${id}`, kind: 'signin', ...at(rec.client, id), what: `Sign in to ${rec.needsSignin.site}` });
-  for (const a of remoteAsks.values()) if (!a.pilot) items.push({ id: `remote:${a.id}`, kind: 'remote', ...at(remoteCfg().desk, null, 'Remote Desks'), what: `${a.name} (${a.ip}) asks to use this desk` });
+  for (const [id, rec] of open.signins)
+    items.push({ id: `signin:${id}`, kind: 'signin', ...at(rec.client, id), what: `Sign in to ${siteNames(rec.needsSignin)}` });
+  for (const a of remoteAsks.values()) items.push({ id: `remote:${a.id}`, kind: 'remote', ...at(remoteCfg().desk, null, 'Remote Desks'), what: `${a.name} (${a.ip}) asks to use this desk` });
   for (const it of items) {
     const r = pilotRuleFor(rules, it, pilotOwnRun); it.may = r.level; it.why = r.why; it.answers = PILOT_KINDS[it.kind].answers;
-    if (pilotPersonBusy(it)) { // #942: suggest at most while the person answers it
+    if (pilotPersonBusy(it)) { // #942, #973: suggest at most while the person is at work there
       const may = stricterLevel(it.may, PILOT_LEARNS.includes(it.kind) ? 'suggest' : 'ask');
       it.busy = true; if (may !== it.may) { it.may = may; it.why = PILOT_BUSY_WHY; }
     }
   }
-  // Remote desks this computer holds a pilot key for (#827): what waits there, as last looked. The stricter of the
-  // rules there (remoteMay, as that computer gave it) and the rules here counts.
-  for (const { items: there } of remotePilot.values()) for (const it of there) {
-    if (!PILOT_KINDS[it.kind]) continue;
-    const r = pilotRuleFor(rules, it), was = stricterLevel(it.remoteMay, r.level), may = was === 'suggest' ? 'ask' : was; // a suggestion shows on this computer's cards only
-    items.push({ ...it, may, why: may === r.level ? r.why : `${it.remoteWhy} (the rules on the computer with the desk)`, answers: PILOT_KINDS[it.kind].answers });
-  }
   return items;
 }
 // The pilot answers one item by id. Checked against the rules here, never left to the pilot; every try is logged.
-// answers: a question form's picks, keyed by question text. Returns { ok, why }.
-// from, desk: a pilot on another computer answering with a pilot key (#827): only that desk's items, and this
-// computer's own switch does not count (the key is the person's say-so); the rules here still do.
-// run: the pilot run answering, its session id (#881), for the log; desk is then the desk it judges (#914), and an
-// item on any other desk is not found.
-async function pilotAnswer(id, answer, { answers, from, desk, run } = {}) {
-  if (!from && !pilotOn()) return { ok: false, why: PILOT_OFF };
-  if (!from && !desk) return { ok: false, why: 'A pilot answer is for one desk.' };
-  if (!from && id.startsWith('r:')) await refreshRemotePilot();
-  const item = waitingOnPerson().find((x) => x.id === id && x.desk === desk && (!from || (x.kind !== 'remote' && !x.there)));
-  if (!item) return { ok: false, why: `Nothing on ${companyName(desk) || remoteDeskById(desk)?.name || 'this desk'} with that id is waiting now (answered meanwhile, gone, or on another desk). Call pilot_pending for the list as it is now.` };
-  const may = pilotMayAnswer(pilotRules(), item, answer, item.remoteMay, pilotOwnRun);
+// answers: a question form's picks, keyed by question text. Returns { ok, why }. run: the pilot run answering, its
+// session id (#881), for the log; desk: the desk it judges (#914), and an item on any other desk is not found.
+async function pilotAnswer(id, answer, { answers, desk, run } = {}) {
+  if (!pilotOn()) return { ok: false, why: PILOT_OFF };
+  if (!desk) return { ok: false, why: 'A pilot answer is for one desk.' };
+  const item = waitingOnPerson().find((x) => x.id === id && x.desk === desk);
+  if (!item) return { ok: false, why: `Nothing on ${companyName(desk) || 'this desk'} with that id is waiting now (answered meanwhile, gone, or on another desk). Call pilot_pending for the list as it is now.` };
+  const may = pilotMayAnswer(pilotRules(), item, answer, undefined, pilotOwnRun);
   if (may.ok && item.busy) Object.assign(may, { ok: false, why: `${PILOT_BUSY_WHY}: leave it to them${PILOT_LEARNS.includes(item.kind) ? ' (pilot_suggest still shows your pick beside it)' : ''}.` });
   if (may.ok && item.kind === 'question' && answer === 'answer' && !(answers && typeof answers === 'object' && Object.keys(answers).length))
     Object.assign(may, { ok: false, why: 'A question form needs answers: { "question text": "the option label" }.' });
-  const tried = { item, answer, ok: may.ok, why: may.why, from, run };
+  const tried = { item, answer, ok: may.ok, why: may.why, run };
   if (!may.ok) { pilotLog(tried); logEvent(`autopilot refused: ${item.kind}`, `${item.id} ${answer}: ${may.why}`); return { ok: false, why: may.why }; }
-  if (item.there) return answerThere(item, answer, answers, tried);
   const s = item.session ? live.get(item.session) : null;
   // An answer the pilot gives itself to a kind it learns can be marked Not my pick on its card (#917).
   if (PILOT_LEARNS.includes(item.kind)) { const ev = pilotCardEv(item); if (ev) ev.pilotItem = item.id; }
@@ -5758,9 +5926,8 @@ async function pilotAnswer(id, answer, { answers, from, desk, run } = {}) {
   catch (e) { tried.ok = false; tried.why = e.message; pilotLog(tried); return { ok: false, why: e.message }; }
   if (!done) { tried.ok = false; tried.why = 'It was no longer waiting.'; pilotLog(tried); return { ok: false, why: tried.why }; }
   const said = answer === 'answer' ? `answered ${Object.entries(answers).map(([q, a]) => `${clip(q, 60)}: ${a}`).join('; ')}` : answer;
-  const by = from ? `pilot on ${from}` : 'pilot';
-  if (s && item.kind !== 'merge') addEvent(s, { k: 'note', text: `Answered by ${by} (${said}): ${clip(item.what, 200)}` });
-  logEvent(`answered by ${by}: ${item.kind}`, `${item.id} ${said} (${companyName(item.desk)})`);
+  if (s && item.kind !== 'merge') addEvent(s, { k: 'note', text: `Answered by pilot (${said}): ${clip(item.what, 200)}` });
+  logEvent(`answered by pilot: ${item.kind}`, `${item.id} ${said} (${companyName(item.desk)})`);
   pilotLog({ ...tried, answer: said });
   return { ok: true, why: may.why };
 }
@@ -5798,14 +5965,20 @@ async function giveAnswer(item, answer, answers, by) {
 // let the pilot answer (pilotRunTick). Runs shortly after anything the pages hear, and every 15 seconds for what they
 // do not (a pull request found open).
 function pilotLook() {
-  pilotWatch.armed = pilotFlying() || Object.keys(pilotGoing()).length > 0 || !!state.pilot?.session || pilotFeeds.size > 0;
-  if (!pilotWatch.armed) { pilotSeen = new Map(); return; }
+  // Enabled is enough (#974): it watches for the offer to engage.
+  pilotWatch.armed = pilotOn() || Object.keys(pilotGoing()).length > 0 || pilotFeeds.size > 0;
+  if (!pilotWatch.armed) { pilotSeen = new Map(); pilotFirstSeen.clear(); pilotOffer.desks = []; return; }
   const now = new Map(waitingOnPerson().map((i) => [i.id, i]));
   const added = [...now.values()].filter((i) => !pilotSeen.has(i.id)), gone = [...pilotSeen.keys()].filter((id) => !now.has(id));
   pilotSeen = now;
+  const at = Date.now();
+  for (const i of now.values()) if (!pilotFirstSeen.has(i.id)) pilotFirstSeen.set(i.id, i.since || at);
+  for (const id of [...pilotFirstSeen.keys()]) if (!now.has(id)) pilotFirstSeen.delete(id);
+  pilotOffer.desks = pilotOn() ? pilotOfferDesks([...now.values()], pilotFirstSeen, pilotEngaged(), at, PILOT_OFFER_MS).filter((o) => brandsOf(clientById(o.desk)).length) : [];
+  if (!pilotOffer.desks.length) pilotOffer.later = false; // the stretch of waiting is over
   // A suggestion for an item that went without an answer (its session ended) goes too.
   const sugs = state.pilot?.suggestions || {};
-  for (const id of Object.keys(sugs)) if (!now.has(id) && !id.startsWith('r:')) { delete sugs[id]; saveState(); }
+  for (const id of Object.keys(sugs)) if (!now.has(id)) { delete sugs[id]; saveState(); }
   for (const i of added) pilotFeed('pending', i);
   for (const id of gone) pilotFeed('settled', { id });
   pilotRunTick([...now.values()]);
@@ -5813,9 +5986,6 @@ function pilotLook() {
 // The runs (#881, one per desk since #914): a run going ends once its turn is done, and a desk's next starts when its
 // batch delay is up and none is going for it (pilotRunSteps in pilot.mjs). items: what waits now.
 function pilotRunTick(items) {
-  const p = state.pilot || {};
-  // A pilot or run from before #914 (one session for every desk) ends: runs are per desk now.
-  if (p.session) { const id = p.session; p.session = null; delete p.runAt; closePilotRun(id); saveState(); pilotLog({ kind: 'run', run: id, answer: 'ended', what: 'runs are one per desk now' }); }
   for (const [desk, r] of Object.entries(pilotGoing())) {
     const s = live.get(r.id), why = pilotRunDone(s, { tasks: s ? runningTasks(s) : 0, at: r.at });
     if (why && (s || Date.now() - PILOT_BOOT > 60000)) endPilotRun(desk, why);
@@ -5826,15 +5996,15 @@ function pilotRunTick(items) {
   // The page hears when the state or the sessions held change without an answer or a run (a batch starting to fill:
   // waking; a run listing more).
   const b = pilotBrief();
-  if (JSON.stringify([b.state, b.holding, b.deskStates]) !== pilotSaid) pilotBroadcast();
+  if (JSON.stringify([b.state, b.holding, b.deskStates, b.engaged, b.offer]) !== pilotSaid) pilotBroadcast();
   for (const step of steps) startPilotRun(step.desk, step.items).catch((e) => logEvent('autopilot: run not started', `${companyName(step.desk) || step.desk}: ${e.message}`));
 }
 // The next steps for the runs (pilotRunTick): [{ desk, items }] for each desk whose run starts now.
 function pilotRunStepsNow(items) {
   if (!pilotFlying()) { pilotRun.since.clear(); return []; }
-  // A desk whose run could not start (no brand signed in where it would go): looked at again after a minute, not on every look.
+  // Only engaged desks (#973). One whose run could not start (no brand signed in): looked at again after a minute, not on every look.
   const held = (desk) => Date.now() - (pilotRun.problem.get(desk)?.at ?? -Infinity) < 60000;
-  const steps = pilotRunSteps({ items: items.filter((i) => !held(i.desk)), offered: pilotRun.offered, going: new Set([...Object.keys(pilotGoing()), ...pilotRun.starting]),
+  const steps = pilotRunSteps({ items: items.filter((i) => isEngaged(i.desk) && !held(i.desk)), offered: pilotRun.offered, going: new Set([...Object.keys(pilotGoing()), ...pilotRun.starting]),
     since: pilotRun.since, delay: PILOT_BATCH_MS });
   const fresh = new Set(steps.map((s) => s.desk));
   for (const desk of [...pilotRun.since.keys()]) if (!fresh.has(desk)) pilotRun.since.delete(desk);
@@ -5849,85 +6019,46 @@ function pilotRunStepsNow(items) {
 }
 pilotWatch.look = pilotLook;
 setInterval(pilotLook, 15000);
-// Finished runs stay in their desk's list for a week, so their history can be read, then are archived.
+// Finished runs stay a week, so their history can be read, then are archived.
 function archiveOldPilotRuns() {
   const going = Object.values(pilotGoing()).map((r) => r.id);
-  for (const id of pilotRunsToArchive(state.sessions, pilotDesk()?.id, going)) {
+  for (const id of pilotRunsToArchive(state.sessions, going)) {
     const d = clientById(state.sessions[id]?.client); if (!d) continue;
     try { archiveSession(d, id, true); } catch (e) { logEvent('autopilot: run not archived', `${id}: ${e.message}`); }
   }
 }
 setInterval(archiveOldPilotRuns, 3600000);
 setTimeout(archiveOldPilotRuns, 60000);
-// With the switch already on, a rules file from before #917 is upgraded at start, as turning it on would.
+// With the autopilot already enabled, a rules file from before #917 is upgraded at start, as enabling it would.
 if (state.pilot?.on) try { writePilotRulesIfMissing(); } catch (e) { logEvent('autopilot: rules not upgraded', e.message); }
-// The autopilot's reach into remote desks with a pilot key (#827): what waits there (remotePilot), looked at every
-// 15 seconds while the autopilot flies, and before pilot_pending lists.
-const pilotKeyCall = (d, method, pathAndQuery, body, timeout = 30000) => remoteCall(d, { token: d.pilotKey.key }, method, pathAndQuery, body, timeout);
-function forgetPilotKey(d, why) {
-  if (!d.pilotKey) return;
-  delete d.pilotKey; d.pilotKeyGone = { at: Date.now(), why }; saveState();
-  remotePilot.delete(d.id);
-  logEvent('remote desk: pilot key ended', `${d.name}: ${why}`);
-  broadcast({ t: 'clients' });
-}
-let remotePilotBusy = null;
-function refreshRemotePilot() {
-  return remotePilotBusy ||= (async () => {
-    const flying = pilotFlying() && remoteOn();
-    for (const d of remoteDesks()) {
-      if (!flying || !d.pilotKey) { remotePilot.delete(d.id); continue; }
-      if (d.pilotKey.expires <= Date.now()) { forgetPilotKey(d, 'its time ran out'); continue; }
-      let r;
-      try { r = await pilotKeyCall(d, 'GET', '/remote/pilot/pending', undefined, 15000); }
-      catch (e) { remotePilot.set(d.id, { items: [], error: connectError(e, d.name) }); continue; }
-      if (r.status === 401) { forgetPilotKey(d, 'revoked or expired on that computer'); continue; }
-      if (r.status !== 200 || !Array.isArray(r.json?.items)) { remotePilot.set(d.id, { items: [], error: r.json?.error || `${d.name} answered ${r.status}` }); continue; }
-      remotePilot.set(d.id, { error: '', items: r.json.items.map(({ may, why, answers, ...i }) => ({ ...i, id: `r:${d.id}:${i.id}`, there: i.id, desk: d.id, deskName: d.name, remoteMay: may, remoteWhy: why })) });
-    }
-  })().catch((e) => logEvent('autopilot: could not look at remote desks', e.message)).finally(() => { remotePilotBusy = null; });
-}
-setInterval(() => { if (remotePilot.size || (pilotFlying() && remoteDesks().some((d) => d.pilotKey))) refreshRemotePilot().then(pilotLook); }, 15000);
-// An answer to an item on a remote desk, passed on with the pilot key; that computer checks its own rules again.
-async function answerThere(item, answer, answers, tried) {
-  const d = remoteDeskById(item.desk);
-  const fail = (why) => { pilotLog({ ...tried, ok: false, why }); return { ok: false, why }; };
-  if (!d?.pilotKey) return fail(`There is no pilot key for ${item.deskName} now.`);
-  let r;
-  try { r = await pilotKeyCall(d, 'POST', '/remote/pilot/answer', { id: item.there, answer, answers }); }
-  catch (e) { return fail(connectError(e, d.name)); }
-  if (r.status === 401) { forgetPilotKey(d, 'revoked or expired on that computer'); return fail(`The pilot key for ${d.name} was revoked or has expired there.`); }
-  if (r.status !== 200 || !r.json?.ok) return fail(r.json?.why || r.json?.error || `${d.name} answered ${r.status}`);
-  logEvent(`answered by pilot: ${item.kind}`, `${item.id} ${answer} (${d.name}, on that computer)`);
-  pilotLog({ ...tried, ok: true, answer });
-  refreshRemotePilot().then(pilotLook);
-  return { ok: true, why: tried.why };
-}
 function pilotFeed(event, data) {
   const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of pilotFeeds) res.write(msg);
 }
-// The autopilot's desk, made the first time the switch goes on with none bound (#875): filled in the way ☰ > Desks >
-// Add a desk fills a new one (pilotDeskEntry), its Claude home made empty and its Grok home ready for Grok.
-function makePilotDesk() {
-  const r = cleanCompany(pilotDeskEntry(homeRoots(), CLIENTS), (id) => !!clientById(id));
-  if (r.error) throw new Error(`Could not make the Autopilot desk: ${r.error}`);
-  // madeFolders: the home folders Docket makes now, which Remove may later send to the Recycle Bin.
-  const made = [r.home, r.grokHome].filter((h) => h && !fs.existsSync(h));
-  if (made.length) r.madeFolders = made;
-  try { fs.mkdirSync(r.folder, { recursive: true }); } catch (err) { throw new Error(`Could not make the Autopilot desk's working folder ${r.folder}: ${err.message}`); }
-  saveCompanies([r, ...CLIENTS]);
-  const d = clientById(r.id);
-  runDeskCheck(d).catch(() => {});
-  logEvent('autopilot: desk made', `${d.name}: ${d.home}`);
-  return d;
+// The move to per desk (#973), once, for a computer that used the autopilot before (pilot.mjs migratePilot): it stays
+// enabled with no desk engaged, and says so once in the 🤖 drop-down; the Autopilot desk's sessions are archived and the
+// desk leaves the desk list, its folders and Claude home left on disk; runs on the desks themselves stay as they are;
+// the rules, the log, the learning log and the notes are kept. Pilot keys (#827) are dropped: one granted on another
+// computer just expires there.
+function movePilotPerDesk() {
+  const m = migratePilot(state.pilot, state.sessions);
+  const keys = (state.remoteControl?.pilotKeys?.length || 0) + remoteDesks().filter((d) => d.pilotKey || d.pilotKeyGone).length;
+  if (!m.changed && !keys) return;
+  const old = m.dropDesk && clientById(m.dropDesk);
+  for (const id of m.archive) try { if (old) archiveSession(old, id, true); else setArchived(state.sessions[id]?.client, id, true); } catch (e) { logEvent('autopilot: run not archived', `${id}: ${e.message}`); }
+  if (m.changed) state.pilot = m.pilot;
+  if (old) saveCompanies(CLIENTS.filter((c) => c.id !== old.id));
+  if (state.remoteControl) delete state.remoteControl.pilotKeys;
+  for (const d of remoteDesks()) { delete d.pilotKey; delete d.pilotKeyGone; }
+  saveState();
+  logEvent('autopilot: moved to per desk', `${m.pilot?.on ? 'enabled, no desk engaged' : 'disabled'}${old ? `; the ${old.name} desk left the list (its folders stay on disk at ${old.folder}), ${m.archive.length} of its sessions archived` : ''}${keys ? `; ${keys} pilot key(s) dropped` : ''}`);
 }
 // The brief a run starts with (#881): what to do in this one turn, the items it was started for, and what it must
 // remember, from the files each run reads, each only the run's own desk's (pilot.mjs runBrief, #914). desk: the desk
-// whose items it judges; host: the desk it runs on.
-function pilotRunBrief(desk, host, items) {
-  return pilotRunBriefText({ desk, deskName: companyName(desk) || remoteDeskById(desk)?.name || desk, onDesk: host.id === desk, items,
-    notes: readPilotNotes(desk), notesFile: pilotNotesFile(desk), log: pilotLogTail(1000), learn: readPilotLearn(), rulesFile: PILOT_RULES_FILE, screen: screenOn(host.id) });
+// whose items it judges, and where it runs (#973).
+function pilotRunBrief(desk, items) {
+  return pilotRunBriefText({ desk, deskName: companyName(desk) || desk, items,
+    notes: readPilotNotes(desk), notesFile: pilotNotesFile(desk), log: pilotLogTail(1000), learn: readPilotLearn(), rulesFile: PILOT_RULES_FILE, screen: screenOn(desk) });
 }
 // The brands a desk is signed in to, its default first (#914): where its runs may go.
 async function signedBrands(d) {
@@ -5936,48 +6067,36 @@ async function signedBrands(d) {
   for (const brand of [...new Set([defaultEngineOf(d), ...brandsOf(d)])]) if (!(await brandProblem(d, brand))) out.push(brand);
   return out;
 }
-// The run for one desk's items (#881, #914): a session of that desk, on its default brand (or another it has signed
-// in) and billed there; on the autopilot's desk when the one-brand mode is picked, or the desk has none signed in (a
-// remote desk never has). Always on the brand's top model, not a Shift session, so it never judges on a lower gear. On
-// the autopilot's desk each desk's runs work in a folder of their own, so their Claude memory and transcripts stay
-// apart. The run is marked as the pilot before its tools are first asked for, so it has them from its first turn.
-// Nowhere signed in starts nothing, and says why in Settings.
+// The run for one desk's items (#881, #914, #973): a session of that desk, on its default brand (or another it has
+// signed in) and billed there. Always on the brand's top model, not a Shift session, so it never judges on a lower gear.
+// The run is marked as the pilot before its tools are first asked for, so it has them from its first turn. A desk with
+// no brand signed in starts nothing, and the 🤖 drop-down says why.
 async function startPilotRun(desk, items) {
-  const pd = pilotDesk(), p = state.pilot, { brand: mode } = pilotSetting(p, GEARS);
-  if (!pd || pilotRun.starting.has(desk) || pilotGoing()[desk]) return;
+  const d = clientById(desk), p = state.pilot;
+  if (!d || pilotRun.starting.has(desk) || pilotGoing()[desk]) return;
   pilotRun.starting.add(desk);
   try {
-    const own = mode === PILOT_EACH_DESK && !isPilotDesk(desk) ? clientById(desk) : null;
-    const ownBrands = await signedBrands(own), modeProblem = mode === PILOT_EACH_DESK ? '' : await brandProblem(pd, mode);
-    // The autopilot's desk is looked at only when the run may go there.
-    const pdBrands = mode !== PILOT_EACH_DESK ? (modeProblem ? [] : [mode]) : ownBrands.length ? [] : await signedBrands(pd);
-    const place = pilotRunPlace(mode, { id: desk, brands: ownBrands }, { id: pd.id, brands: pdBrands }, GEARS);
-    if (!place) {
-      const name = companyName(desk) || remoteDeskById(desk)?.name || desk;
-      const why = mode === PILOT_EACH_DESK ? `${own ? `${name} has no brand signed in, and` : `${name} is not a desk on this computer, and`} the autopilot's desk ${pd.name} is not signed in to any brand either. Sign one in in ☰ > Desks. No pilot run was started.`
-        : modeProblem.replace(' No session was started.', ' No pilot run was started.');
+    const brand = (await signedBrands(d))[0];
+    if (!brand) {
+      const why = `${d.name} has no brand signed in, so no pilot run was started. Sign one in in ☰ > Desks.`;
       if (pilotRun.problem.get(desk)?.why !== why) logEvent('autopilot: run not started', why);
       pilotRun.problem.set(desk, { at: Date.now(), why });
       pilotBroadcast();
       return;
     }
     pilotRun.problem.delete(desk);
-    if (place.fallback && own) pilotRun.fallback.set(desk, Date.now()); else pilotRun.fallback.delete(desk);
-    if (!pilotFlying() || pilotGoing()[desk]) return; // switched off, or a run started meanwhile
-    const host = clientById(place.host), at = Date.now();
-    let cwd;
-    if (host.id === pd.id) { cwd = path.join(pd.folder, 'runs', String(desk).replace(/[^\w.-]/g, '_')); fs.mkdirSync(cwd, { recursive: true }); }
-    const top = usableGear(host, place.brand, findGear(place.brand, place.gear)) || findGear(place.brand, place.gear);
-    const s = startSession({ clientId: host.id, cwd, title: `Autopilot run ${new Date(at).toTimeString().slice(0, 5)}`, engine: place.brand, settings: { model: top.id }, record: { pilotRun: desk, titleBy: 'you' } });
-    (p.going ||= {})[desk] = { id: s.id, at, host: host.id };
+    if (!isEngaged(desk) || pilotGoing()[desk]) return; // disengaged, or a run started meanwhile
+    const at = Date.now(), gear = pilotTopGear(brand, GEARS);
+    const top = usableGear(d, brand, findGear(brand, gear)) || findGear(brand, gear);
+    const s = startSession({ clientId: d.id, title: `Autopilot run ${new Date(at).toTimeString().slice(0, 5)}`, engine: brand, settings: { model: top.id }, record: { pilotRun: desk, titleBy: 'you' } });
+    (p.going ||= {})[desk] = { id: s.id, at };
     for (const i of items) pilotRun.offered.add(i.id);
-    p.runs = [{ id: s.id, at, desk, host: host.id, brand: place.brand, gear: place.gear, items: items.length }, ...(p.runs || [])].slice(0, 20);
-    touchSession(host.id, s.id);
+    p.runs = [{ id: s.id, at, desk, brand, gear, items: items.length }, ...(p.runs || [])].slice(0, 20);
+    touchSession(d.id, s.id);
     saveState();
-    const where = host.id === desk ? `on ${host.name} itself, on its own sign-in` : "on the autopilot's own desk";
-    sendToSession(s, { text: pilotRunBrief(desk, host, items), attachments: [], from: 'brief', context: `(From Docket: ${items.length} item${items.length === 1 ? '' : 's'} came in on ${companyName(desk) || desk} that the autopilot's rules let it answer, so Docket started this session ${where} as one pilot run for that desk.)` });
-    pilotLog({ kind: 'run', run: s.id, desk, host: host.id, answer: 'started', what: `${items.length} item${items.length === 1 ? '' : 's'}: ${items.map((i) => i.kind).join(', ')}`, brand: place.brand, gear: place.gear });
-    logEvent('autopilot: run started', `${companyName(desk) || desk} on ${host.name}: ${sessionTag(s)}, ${BRANDS[place.brand]?.name} ${place.gear}, ${items.length} item(s)`);
+    sendToSession(s, { text: pilotRunBrief(desk, items), attachments: [], from: 'brief', context: `(From Docket: ${items.length} item${items.length === 1 ? '' : 's'} came in on ${d.name} that the autopilot's rules let it answer, so Docket started this session on ${d.name} itself, on its own sign-in, as one pilot run for that desk.)` });
+    pilotLog({ kind: 'run', run: s.id, desk, answer: 'started', what: `${items.length} item${items.length === 1 ? '' : 's'}: ${items.map((i) => i.kind).join(', ')}`, brand, gear });
+    logEvent('autopilot: run started', `${d.name}: ${sessionTag(s)}, ${BRANDS[brand]?.name} ${gear}, ${items.length} item(s)`);
     pilotBroadcast();
   } finally { pilotRun.starting.delete(desk); }
 }
@@ -5999,65 +6118,71 @@ function endPilotRun(desk, why) {
   if (run) Object.assign(run, { ended: Date.now(), why });
   closePilotRun(r.id);
   saveState();
-  pilotLog({ kind: 'run', run: r.id, desk, host: r.host, answer: 'ended', what: why });
+  pilotLog({ kind: 'run', run: r.id, desk, answer: 'ended', what: why });
   logEvent('autopilot: run ended', `${r.id} (${companyName(desk) || desk}): ${why}`);
 }
-// The brands the autopilot's desk has set up, each with whether it is signed in there (#881): Settings offers those
-// signed in for the one-brand mode, beside each desk's own (#914).
-async function pilotBrands(d) {
-  if (!d) return [];
-  return Promise.all(brandsOf(d).map(async (brand) => ({ brand, name: BRANDS[brand].name, signedIn: await authStatus(d, false, brand).catch(() => false),
-    gears: gearsOf(brand).map((g) => ({ key: g.key, name: g.name })) })));
-}
-// The switch and where runs go, from ☰ > Docket settings > Autopilot. brand: each desk (PILOT_EACH_DESK, #914), or
-// the brand the autopilot's desk runs every desk's runs on, on its top gear (#881), only one that desk has signed in;
-// a run going keeps its own. on: the first time, the Autopilot desk is made; runs start as things come in. Returns a
-// note to show, or ''.
-async function setPilot({ on, session, brand }) {
-  const p = state.pilot ||= { on: false };
-  if (session !== undefined) throw new Error('Docket starts the pilot runs itself, one per desk; no session is made the pilot by hand.');
-  if (brand !== undefined) {
-    const d = pilotDesk();
-    if (!d) throw new Error('The autopilot has no desk yet. Turn it on once, and Docket makes the Autopilot desk.');
-    const want = { brand: String(brand || '') }, why = pilotSettingRefusal(want, await pilotBrands(d), GEARS);
-    if (why) throw new Error(why);
-    p.brand = want.brand; delete p.gear;
-    pilotRun.problem.clear();
-    logEvent('autopilot: runs on', want.brand === PILOT_EACH_DESK ? "each desk's own brand" : `${BRANDS[want.brand].name}, on ${topGearOf(want.brand).name}, on the autopilot's desk`);
-  }
+// The 🤖 drop-down and ☰ > Docket settings > Autopilot (#973). on: enable or disable; disabled, nothing is engaged and
+// every run going ends. engage: { desk, on } flips one desk; quick: others (all but here, the desk open on the page),
+// all or none, the drop-down's quick actions. Only a desk with a brand signed in is engaged; disengaging a desk ends its
+// run going. movedNote false: the one-time note after the move to per desk was dismissed. Returns a note to show, or ''.
+async function setPilot({ on, engage, quick, here, movedNote, session, brand }) {
+  const p = state.pilot ||= { on: false, engaged: {}, perDesk: true };
+  if (session !== undefined || brand !== undefined) throw new Error('Docket starts the pilot runs itself, one per desk, each on its own desk and brand.');
+  let note = '';
   if (on !== undefined) {
-    // On sets up whatever the pilot needs (#886): the desk and its folders, the rules, and then runs as things come in.
-    // A desk bound by hand before (Save desk, since removed) stays the autopilot's.
-    if (on) { const d = pilotDesk() || makePilotDesk(); p.desk = d.id; pilotDeskFolders(d); if (!CLIENTS[0] || CLIENTS[0].id !== d.id) saveCompanies(pilotFirst(CLIENTS)); }
     p.on = !!on;
     if (p.on) { writePilotRulesIfMissing(); pilotRun.problem.clear(); }
-    // Off stops runs: those going now end; the desk and its files stay.
-    if (!p.on) for (const desk of Object.keys(pilotGoing())) endPilotRun(desk, 'the autopilot was turned off');
-    logEvent(`autopilot ${p.on ? 'on' : 'off'}`);
-    broadcast({ t: 'clients' });
+    else { p.engaged = {}; delete p.movedNote; for (const desk of Object.keys(pilotGoing())) endPilotRun(desk, 'the autopilot was disabled'); }
+    logEvent(`autopilot ${p.on ? 'enabled' : 'disabled'}`);
   }
+  if (engage || quick) {
+    if (!pilotOn()) throw new Error('Enable the autopilot first, in ☰ > Docket settings > Autopilot.');
+    const desks = await pilotDeskList();
+    let want;
+    if (quick) {
+      want = new Set(pilotQuickEngaged(String(quick), desks, here));
+      const left = quick === 'none' ? [] : desks.filter((d) => !d.signedIn && (quick === 'all' || d.id !== here));
+      if (left.length) note = `${left.map((d) => d.name).join(', ')} ${left.length === 1 ? 'has' : 'have'} no brand signed in, so the autopilot was not engaged there.`;
+    } else if (Array.isArray(engage.desks)) { // the offer card's Engage (#974): adds these desks
+      want = new Set(Object.keys(pilotEngaged()));
+      for (const d of desks.filter((x) => engage.desks.includes(x.id))) if (d.signedIn) want.add(d.id);
+    } else {
+      const d = desks.find((x) => x.id === engage.desk);
+      if (!d) throw new Error('Unknown desk.');
+      if (engage.on && !d.signedIn) throw new Error(`${d.name} has no brand signed in. Sign in to a brand first, in ☰ > Desks.`);
+      want = new Set(Object.keys(pilotEngaged()));
+      if (engage.on) want.add(d.id); else want.delete(d.id);
+    }
+    const was = pilotEngaged(), now = Date.now();
+    p.engaged = Object.fromEntries([...want].map((id) => [id, was[id] || now]));
+    for (const desk of Object.keys(pilotGoing())) if (!want.has(desk)) endPilotRun(desk, 'the autopilot was disengaged on its desk');
+    for (const desk of [...pilotRun.since.keys()]) if (!want.has(desk)) pilotRun.since.delete(desk);
+    delete p.movedNote; // it said to engage the autopilot from 🤖
+    logEvent('autopilot engaged', [...want].map((id) => companyName(id)).join(', ') || 'nowhere');
+  }
+  if (movedNote === false) delete p.movedNote;
   saveState();
   pilotWatch.armed = pilotFlying() || pilotFeeds.size > 0;
   pilotBroadcast();
   setTimeout(pilotLook, 0);
-  return '';
+  return note;
 }
-// What ☰ > Docket settings > Autopilot shows: the switch, where runs go (each desk, or a brand of the autopilot's
-// desk, signed in or not), why a run cannot start now, the desks whose runs fall back to the autopilot's desk (#914),
-// the runs going now and the last runs, the rules file and the notes folder, and the log. waiting: what waits now,
-// for the tests and the tools; the panel does not show it.
+// The desks shown at the top, each with whether it has a brand signed in (only those can be engaged).
+const pilotDeskList = () => Promise.all(CLIENTS.filter((c) => !c.hidden).map(async (c) => ({ id: c.id, name: c.name, signedIn: (await signedBrands(c)).length > 0 })));
+// What ☰ > Docket settings > Autopilot and the 🤖 drop-down show: the switch, each desk with its engage switch and a
+// line of what it does there (desks), the runs going now and the last runs, the rules file and the notes folder, and the
+// log. waiting: what waits now, for the tests and the tools; the page does not show it.
 async function pilotView() {
-  const d = pilotDesk(), nameOf = (id) => companyName(id) || remoteDeskById(id)?.name || id;
   let waiting = [];
   try { waiting = waitingOnPerson().map(({ id, kind, desk, deskName, session, title, what, may, why }) => ({ id, kind, desk: deskName, deskId: desk, session, title, what: clip(what, 160), may, why })); } catch {}
-  const runs = (state.pilot?.runs || []).map((r) => ({ ...r, title: state.sessions[r.id]?.title || live.get(r.id)?.title || 'Autopilot run', ...(r.desk ? { deskName: nameOf(r.desk) } : {}) }));
-  const each = pilotSetting(state.pilot, GEARS).brand === PILOT_EACH_DESK;
-  return { ...pilotBrief(), pilotDesk: d ? { id: d.id, name: d.name } : null,
-    brands: await pilotBrands(d), problem: pilotOn() ? [...pilotRun.problem.values()][0]?.why || '' : '', runs, screen: d ? screenOn(d.id) : false,
-    fallback: pilotOn() && each ? [...pilotRun.fallback.keys()].filter((id) => clientById(id)).map(nameOf) : [],
-    rulesFile: PILOT_RULES_FILE, notesFile: PILOT_NOTES, rules: pilotRules(), log: pilotLogTail(), waiting,
+  const runs = (state.pilot?.runs || []).map((r) => ({ ...r, title: state.sessions[r.id]?.title || live.get(r.id)?.title || 'Autopilot run', ...(r.desk ? { deskName: companyName(r.desk) || r.desk } : {}) }));
+  const engaged = pilotEngaged(), rules = pilotRules();
+  const desks = pilotOn() ? (await pilotDeskList()).map((d) => ({ ...d, engaged: Object.hasOwn(engaged, d.id), since: engaged[d.id] || null,
+    status: pilotDeskStatus(rules, d.id), problem: pilotRun.problem.get(d.id)?.why || '' })) : [];
+  return { ...pilotBrief(), desks, problem: pilotOn() ? [...pilotRun.problem.values()][0]?.why || '' : '', runs,
+    rulesFile: PILOT_RULES_FILE, notesFile: PILOT_NOTES, rules, log: pilotLogTail(), waiting,
     // "I got this" (#917): the kinds on desks the pilot is ready to answer itself.
-    offers: pilotPromotable(readPilotLearn(), pilotRules()).map((o) => ({ ...o, deskName: companyName(o.desk) || o.desk })),
+    offers: pilotPromotable(readPilotLearn(), rules).map((o) => ({ ...o, deskName: companyName(o.desk) || o.desk })),
     // The head start from past sessions (#920): read (count), being read, or there to read.
     history: state.pilot?.history || null, historyReading: pilotHistoryRun.running, historyThere: !state.pilot?.history && !pilotHistoryRun.running && pilotHistoryThere() };
 }
@@ -6065,23 +6190,20 @@ async function pilotView() {
 // answers of the desk it judges (#914).
 function pilotToolDefs(parent) {
   const refuse = (text) => ({ content: [{ type: 'text', text }], isError: true });
-  const notPilot = () => !pilotRunOf(parent.id) ? 'This session is not a pilot run going now.' : !pilotOn() ? PILOT_OFF : '';
+  const notPilot = () => { const desk = pilotRunOf(parent.id); return !desk ? 'This session is not a pilot run going now.' : !pilotOn() ? PILOT_OFF : !isEngaged(desk) ? pilotDisengaged(desk) : ''; };
   return [
     tool('pilot_pending',
       "Docket's autopilot: list everything waiting on the user on the desk this run is for (permission prompts, question forms, plan approvals, New session / Do it here cards, suggested session cards, handoff cards, work handed over from another desk, Send / Don't send cards, open pull requests waiting for merge, sign-ins, Remote Desks connections). Each has an id for pilot_answer, its session, what it is, the answers it takes, and may: allow (you may answer it), deny (you may only decline it), suggest (suggest an answer with pilot_suggest; the user picks) or ask (it stays with the user; leave it). Docket checks the rules again on every answer.",
       { kind: z.string().optional().describe('Only this kind (permission, question, plan, offer, card, handoff, inbox, cross, merge, signin, remote)'), all: z.boolean().optional().describe('Also list the items that stay with the user (may: ask)') },
       async ({ kind, all }) => {
         const why = notPilot(); if (why) return refuse(why);
-        const desk = pilotRunOf(parent.id), remote = remoteDeskById(desk);
-        if (remote) await refreshRemotePilot();
+        const desk = pilotRunOf(parent.id);
         const items = waitingOnPerson().filter((i) => i.desk === desk && (!kind || i.kind === kind));
         const shown = all ? items : items.filter((i) => i.may !== 'ask'), held = items.length - shown.length;
         for (const i of shown) if (i.may !== 'ask') pilotRun.offered.add(i.id); // this run saw it: not offered to the next (#881)
         pilotBroadcast(); // their chats show the autopilot thinking
-        const gone = remote?.pilotKeyGone && !remote.pilotKey ? `\n\nThe pilot key for the remote desk ${remote.name} has ended (${remote.pilotKeyGone.why}); the user asks for a new one in ☰ > Desks > Remote Desks.` : '';
         const text = (shown.length ? JSON.stringify(shown.map(({ input, ...i }) => i), null, 1) : 'Nothing waiting that your rules let you answer.')
-          + (held && !all ? `\n\n${held} more stay${held === 1 ? 's' : ''} with the user (may: ask); pass all: true to see them.` : '')
-          + (remotePilot.get(desk)?.error ? `\n\nThe remote desk ${remote?.name || desk} could not be looked at: ${remotePilot.get(desk).error}` : '') + gone;
+          + (held && !all ? `\n\n${held} more stay${held === 1 ? 's' : ''} with the user (may: ask); pass all: true to see them.` : '');
         return { content: [{ type: 'text', text }] };
       }),
     tool('pilot_answer',
@@ -6365,6 +6487,7 @@ function answerPermission(s, reqId, allow, always, answers, by = '') {
     const n = messageNumbers([{ type: 'tool_use', name: 'AskUserQuestion', input: { questions: [q] } }])[0], a = ask.ev.answers[String(q?.question)];
     return n && a ? [{ q: n, answer: a }] : [];
   }));
+  if (isForm && allow) trackClosed(s.id, (ask.input?.questions || []).flatMap((q) => messageNumbers([{ type: 'tool_use', name: 'AskUserQuestion', input: { questions: [q] } }]).slice(0, 1))); // its open questions (#989)
   if (by) ask.ev.by = by;
   broadcast({ t: 'permission', id: s.id, ev: ask.ev });
   ask.resolve(isForm
@@ -6467,7 +6590,7 @@ function startSession({ clientId, cwd, title, parentId, resumeId, settings = {},
   const s = makeSession({ clientId, cwd, title, parentId, resumeId, settings, engine, record, gear });
   const client = clientById(s.client), id = s.id;
   delete state.sessions[id]?.toolNames; // a new process lists its Docket tools again (checkTools)
-  if (!resumeId && !isPilotDesk(s.client) && !record?.pilotRun) { // a new session (not a pilot run), for the usage stats
+  if (!resumeId && !record?.pilotRun) { // a new session (not a pilot run), for the usage stats
     usageCount('sessions.' + (s.engine || 'claude'));
     if (parentId) usageCount('children');
     if (isShift(s)) usageCount('shiftSessions');
@@ -6588,6 +6711,7 @@ function sendFirst(s) {
 // reported: the children whose finished turns this report carries, not counted as working in the state line.
 function sendToSession(s, { text, attachments = [], context = '', system = false, from = '', byPerson = false, report = false, news = '', reported = [] }) {
   if (!system && !from) screen.release(s.id); // a Stop on screen control holds until the person writes again
+  if (!system && !from && state.sessions[s.id]?.askedUser) { delete state.sessions[s.id].askedUser; saveState(); } // answered (#993)
   if (holdsMessage(state.paused, { system, from })) { // waits for Resume all
     state.paused.held.push({ id: s.id, client: s.client, text, attachments, context, system, from, byPerson, report, news });
     saveState();
@@ -6628,6 +6752,7 @@ function sendToSession(s, { text, attachments = [], context = '', system = false
   if (!blocks.length) return;
   if (system) { const line = stateLineFor(s, reported); if (line) blocks.push({ type: 'text', text: line }); } // reports and notices (#749)
   else blocks.push({ type: 'text', text: questionLine(state.sessions[s.id]?.lastQ) }); // its next question number (#928)
+  if (!system && !from && text) trackReply(s, text); // answered by number closes, the rest fades (#989)
   if (!system && !from && text) { const saved = saveAnswers(s, answersIn(text)); if (saved.length) blocks.push({ type: 'text', text: savedLine(saved) }); } // answers by number (#929)
   s.turnBy = turnStarter({ system, from, byPerson }); // whether its report counts toward the parent's wake limit
   s.reportTurn = !!report; // woken by session reports: the only turn that may end quietly (quietRefusal)
@@ -6843,7 +6968,7 @@ async function sendUsageNow({ force = false } = {}) {
 // The usage stats report for one day ({ day, counts }), exactly as sent; the ☰ window shows today's.
 function usageDayReport({ day, counts }) {
   const t = usageTotals({
-    clients: CLIENTS.filter((c) => !isPilotDesk(c.id)), brandOf: defaultEngineOf,
+    clients: CLIENTS, brandOf: defaultEngineOf,
     groups: CLIENTS.reduce((a, c) => a + (state.groups[c.id] || []).filter((g) => !g.archived).length, 0),
     schedules: scheduler.list().length,
     signinDesks: CLIENTS.filter((c) => !c.remote && browserStatus(c).sites.length).length, state,
@@ -7091,8 +7216,10 @@ async function reattachSessions() {
     if (state.sessions[r.id]?.archived === true) { runnerCall(`/sessions/${r.id}/end`, {}).catch(() => {}); continue; }
     const wasWaiting = !!state.sessions[r.id]?.waiting; // makeSession starts it as seen; read this first
     const s = makeSession({ clientId: client.id, resumeId: r.id });
-    s.events = await loadTranscript(client, r.id).catch(() => []);
+    s.events = await loadTranscript(client, r.id, { open: false }).catch(() => []);
     const now = (await runnerCall('/sessions')).find((x) => x.id === r.id) || r; // read after the transcript, so nothing is shown twice
+    // Its last turn ends there unless the runner is still on it: an idle session keeps its Done line and merge ask (#970).
+    if (turnOpenAfterRestart({ busy: now.busy, asks: now.asks.length })) s.events = s.events.filter((e) => !e[TAIL_END]);
     // Docket's copy of a Grok or Codex chat says how far it got: read on from there, so what came while the app was away is not lost.
     s.runnerSeq = keepsChat(s.engine) ? Math.min(chatSeq(r.id), now.seq) : now.seq;
     // The runner has the message after all (it is working on it): no need to say it may not have arrived.
@@ -7246,7 +7373,7 @@ function findCutOffs() {
 // - the library list changed: run npm install first;
 // - only the page changed: open pages reload themselves (version below).
 const RESTART_CODE = 75;
-const APP_FILES = ['server.mjs', 'pilot.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'first-start.mjs', 'signin-resume.mjs', 'runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs', 'profile-sync.mjs'];
+const APP_FILES = ['server.mjs', 'pilot.mjs', 'costs.mjs', 'scheduler.mjs', 'pause.mjs', 'cut-off.mjs', 'first-start.mjs', 'signin-resume.mjs', 'signin-needs.mjs','runner-idle.mjs', 'profile.mjs', 'tasks.mjs', 'crossings.mjs', 'codex-usage.mjs', 'grok-usage.mjs', 'codex-home.mjs', 'update-mode.mjs', 'platform.mjs', 'remote.mjs', 'feedback.mjs', 'plans.mjs', 'plan-folder.mjs', 'plan-review.mjs', 'profile-sync.mjs'];
 const PAGE_FILES = ['index.html', 'view.html', 'usage.html', 'plans.html'];
 const LIB_FILES = ['package.json', 'package-lock.json'];
 // While a restart waits for a quiet moment this app keeps serving the pages it started with, which go with
@@ -7380,11 +7507,14 @@ async function restartAfterWait(p, how) {
 // ---------- ☰ > Restart Docket ----------
 // Starts over to free everything Docket holds, unlike the restart above, which leaves the runner and its sessions
 // alone: every program this app and the runner started, at any depth (session programs, their connected services,
-// the private browser), and the runner itself are stopped; then this app exits with RESTART_CODE and supervisor.mjs
-// (or start-docket.cmd) starts it again, and it starts a fresh runner. Sessions that were working or waiting on the
+// the private browser), and the runner itself are stopped; then a new supervisor.mjs starts the app again with the
+// environment as it is now (startSupervisor below; start-docket.cmd's window instead starts it again on
+// RESTART_CODE), and the app starts a fresh runner. Sessions that were working or waiting on the
 // person are marked cut off by the restart, so they show under "Open when the portal stopped" with Continue and
 // never continue by themselves; idle ones start again on their next message. Nothing here starts the app again
 // when something else started it (node server.mjs by hand, a test copy): then it only stops, and the page says so.
+// ☰ > Quit Docket (quit: true) is the same full stop without the relaunch: the app exits with 0, which supervisor.mjs,
+// start-docket.cmd and launchd (no KeepAlive) all take as "stay stopped"; sessions it cuts off are marked 'quit'.
 // What the page's warning names: sessions working or waiting on the person, and how many are idle.
 function restartRisk() {
   const working = [], waiting = []; let idle = 0;
@@ -7399,12 +7529,13 @@ function restartRisk() {
 }
 const ownHelpers = new Set(); // the listings and stops below, and what they start (a console host): children of this app too, never in what is stopped
 const outOf = ({ cmd, args }) => new Promise((resolve) => ownHelpers.add(execFile(cmd, args, { windowsHide: true, maxBuffer: 64 << 20, timeout: 20_000 }, (err, stdout) => resolve(String(stdout || ''))).pid));
-async function restartDocket() {
+async function restartDocket({ quit = false } = {}) {
   docketRestarting = true; exiting = true; restarting = true;
   const risk = restartRisk(), cut = [...risk.working, ...risk.waiting];
-  const relaunch = relaunchesApp(await outOf(commandLineCommand(process.ppid)));
-  broadcast({ t: 'restarting', relaunch });
-  for (const x of cut) { const rec = state.sessions[x.id]; if (rec) rec.cutOff = newCutOff('restart', fileTime(clientById(rec.client), x.id)); }
+  const parent = quit ? '' : await outOf(commandLineCommand(process.ppid));
+  const relaunch = !quit && relaunchesApp(parent);
+  broadcast({ t: 'restarting', relaunch, quit });
+  for (const x of cut) { const rec = state.sessions[x.id]; if (rec) rec.cutOff = newCutOff(quit ? 'quit' : 'restart', fileTime(clientById(rec.client), x.id)); }
   saveState(); // written on exit
   const runnerPid = (await runnerHealth())?.pid;
   const before = parseTreeList(await outOf(treeListCommand()));
@@ -7423,9 +7554,23 @@ async function restartDocket() {
   }
   const detail = [`stopped the runner${runnerPid ? ` (pid ${runnerPid})` : ' (not running)'} and ${stopped.size - (runnerPid ? 1 : 0)} program(s) below it and the app${again ? `, ${again} on a second look` : ''}${left.length ? `; still there after three looks: pid ${left.join(', ')}` : ''}`,
     cut.length ? `cut off, left for Continue: ${cut.map((x) => `"${x.title}" (${x.id})`).join(', ')}` : 'nothing was working or waiting', `${risk.idle} idle session(s) start again on their next message`].join('\n');
-  logEvent(relaunch ? 'restarted (Restart Docket)' : 'stopped (Restart Docket; nothing here starts the app again, so start it by hand)', detail);
+  const replace = relaunch && supervisedBy(parent) && startSupervisor();
+  logEvent(quit ? 'quit (Quit Docket; it stays stopped until started again)' : replace ? 'restarted (Restart Docket; a new supervisor, with a fresh environment)' : relaunch ? 'restarted (Restart Docket)' : 'stopped (Restart Docket; nothing here starts the app again, so start it by hand)', detail);
   if (relaunch) keepRemoteShownOverRestart();
-  setTimeout(() => process.exit(relaunch ? RESTART_CODE : 0), 300);
+  setTimeout(() => process.exit(relaunch && !replace ? RESTART_CODE : 0), 300);
+}
+// Under supervisor.mjs, Restart Docket replaces it too, so nothing it was started with lives on (its variables, its
+// node, its own code): a new supervisor, on the node found on the PATH, waits for this app to be gone and starts the
+// app with the environment as it is now; this app exits with 0, which ends the old supervisor as Quit does. false when
+// it could not be started (the old supervisor then starts the app again on RESTART_CODE, as before).
+function startSupervisor() {
+  try {
+    const node = findNode({ env: process.env, exists: (p) => fs.existsSync(p), fallback: process.execPath });
+    const child = spawn(node, [path.join(ROOT, 'supervisor.mjs'), '--after', String(process.pid)], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', (e) => logEvent('could not start a new supervisor', e.message));
+    child.unref();
+    return !!child.pid;
+  } catch (e) { logEvent('could not start a new supervisor', e.message); return false; }
 }
 
 // ---------- updates from GitHub ----------
@@ -7780,6 +7925,7 @@ async function buildHistoryNow(client) {
     interrupted: cutAtStart(r.sessionId),
     archived: isArchived(client, r.sessionId),
     scheduleId: state.sessions[r.sessionId]?.scheduleId || null,
+    pilotRun: state.sessions[r.sessionId]?.pilotRun || null,
     runAt: state.sessions[r.sessionId]?.runAt || null,
     oneShot: !!state.sessions[r.sessionId]?.oneShot,
     groupId: effectiveGroup(client, r.sessionId),
@@ -7791,6 +7937,8 @@ async function buildHistoryNow(client) {
     unreadWhy: state.sessions[r.sessionId]?.waitingWhy?.why || null, // why it was waiting when it stopped (#671)
     unreadSaid: state.sessions[r.sessionId]?.waitingWhy?.said || null,
     awaitingAnswer: transcriptTail(files.get(r.sessionId)).awaiting,
+    cardOpen: openCards({ id: r.sessionId }) > 0, // a card left open while it was not running: the archive warning (#984)
+    openQ: openQOf(r.sessionId), // its open questions (#989)
     lastError: state.sessions[r.sessionId]?.lastError || null,
     engine: state.sessions[r.sessionId]?.engine || 'claude',
   })).concat(ownHomeRows(client, gone)).sort((a, b) => b.lastModified - a.lastModified);
@@ -8135,14 +8283,32 @@ function archiveSession(client, id, archived) {
   }
   setArchived(client.id, id, archived);
 }
+// For the waiting list: whether a desk's session is archived; a desk no longer set up is read from the record alone.
+function archivedIn(desk, id) {
+  const client = clientById(desk);
+  return client ? isArchived(client, id) : state.sessions[id]?.archived === true;
+}
 function setArchived(clientId, id, archived) {
   state.sessions[id] = { ...(state.sessions[id] || { client: clientId }), archived };
   if (archived) setPinned(clientId, id, false);
+  if (archived) closeCardsOf(id);
   saveState();
   historyCache.delete(clientId);
   broadcast({ t: 'archived', id, client: clientId, archived });
 }
 
+// Archiving settles the cards still waiting in it (#984), so none stays open behind an archived row; restoring it
+// does not bring them back. A proposal is dismissed through its own path, without teaching the autopilot a dismiss.
+function closeCardsOf(id) {
+  for (const { ev } of state.sessions[id]?.cards || []) {
+    const patch = closeOnArchive(ev);
+    if (!patch) continue;
+    if (ev.k === 'proposal') settleProposal(ev.id, 'dismissed', ARCHIVED_NOTE, null, { heard: false });
+    else { Object.assign(ev, patch); updateCard({ id }, ev); }
+  }
+  for (const h of handoffs.values()) if (h.sessionId === id) { const patch = closeOnArchive(h.ev); if (patch) { settleHandoff(h, patch); updateCard({ id }, h.ev); } }
+  saveState();
+}
 // Delete = gone for good: the session is ended if it is running, its record leaves state.sessions,
 // and its conversation file (and the folder beside it holding its agents' files) is removed from
 // that company's Claude home. Sessions it started stay, moved up to the top level in the group
@@ -8879,7 +9045,6 @@ const COPY_FIELD = { name: 'The name', folder: 'The working folder', env: 'Envir
 function copyRequest(b) {
   const src = clientById(b.source);
   if (!src) return { error: 'Unknown desk' };
-  if (isPilotDesk(src.id)) return { error: `${src.name} is the autopilot's desk, which is not copied.` };
   const uses = brandsOf(src);
   const conn = {};
   for (const e of Object.keys(BRANDS)) {
@@ -9108,7 +9273,7 @@ async function publishArtifact(client, sessionId, filePath) {
         const t = typeof c.content === 'string' ? c.content : JSON.stringify(c.content || '');
         if (publishes.has(c.tool_use_id) && !c.is_error) got = t.match(ARTIFACT_URL)?.[0] || url || got; else failed = clip(t, 300); // a read can say the page is gone without an error
       }
-      if (m.type === 'result') cost = m.total_cost_usd || 0;
+      if (m.type === 'result') { cost = m.total_cost_usd || 0; recordSideCall(client, 'artifact', m, modelFor(client, 'claude', AUTO_GROUP_MODEL)); }
     }
   } finally { clearTimeout(timer); q.close(); }
   logEvent('artifact publish', `${sessionId} ${f.path} -> ${got || 'failed: ' + failed} $${cost.toFixed(4)}`);
@@ -9346,7 +9511,11 @@ const newConversationNote = (engine) => { const n = BRANDS[engine]?.name || engi
 function readTranscript(client, id) {
   try { return fs.readFileSync(sessionFile(client, id), 'utf8'); } catch { return ''; }
 }
-async function loadTranscript(client, id) {
+// The Done line loadTranscript gives a transcript's last turn, so a caller that finds that turn still under way can take it off.
+const TAIL_END = Symbol('last turn end read from the transcript');
+// open: whether the last turn may still be under way (no Done line for it). By default, while the session is running here;
+// a caller that has just put it in live (a resume, an app restart) says, since only it knows (#970).
+async function loadTranscript(client, id, { open = !!live.get(id) } = {}) {
   const kept = keepsChat(live.get(id)?.engine || state.sessions[id]?.engine) || fs.existsSync(chatFile(id));
   // Each message with the time it was written (UTC ms): a kept chat stores it, a Claude transcript has it on each line.
   const times = kept ? null : transcriptTimes(readTranscript(client, id));
@@ -9357,7 +9526,7 @@ async function loadTranscript(client, id) {
   let turnAt = 0;
   let turnBlocks = []; // the turn's assistant blocks, for the thin-reply check (#863)
   const thinMark = () => { const t = thinTurn(turnBlocks); turnBlocks = []; return t ? { thin: true } : {}; };
-  const endTurn = () => { if (turnAt) { events.push({ k: 'result', at: turnAt, ...thinMark() }); turnAt = 0; } turnBlocks = []; };
+  const endTurn = () => { let ev = null; if (turnAt) { events.push(ev = { k: 'result', at: turnAt, ...thinMark() }); turnAt = 0; } turnBlocks = []; return ev; };
   let inPing = false; // a keep-warm ping and its reply stay out of the chat (keep-warm.mjs)
   for (const { msg: m, at } of rows) {
     if (m.parent_tool_use_id) continue;
@@ -9379,7 +9548,7 @@ async function loadTranscript(client, id) {
       }
     }
   }
-  if (!kept && !live.get(id)) endTurn();
+  if (!kept && !open) { const ev = endTurn(); if (ev) ev[TAIL_END] = true; }
   for (const e of events) if (e.k === 'tool' && e.status === 'running') e.status = 'done';
   const rec = state.sessions[id];
   // A saved session whose last turn failed before Docket kept lastError gets its red ring once opened.
@@ -9783,7 +9952,6 @@ function relayToRemotes(msg) {
 setInterval(() => { // connections past their time end, sockets and all
   for (const [t, r] of remoteTokens) if (r.expires <= Date.now()) { logEvent('remote: connection ended (time up)', `${r.name} ${r.ip}`); dropRemote(t); }
   for (const step of remoteUsedSteps) if (step < stepOf() - 4) remoteUsedSteps.delete(step);
-  for (const r of remoteCfg().pilotKeys || []) if (r.expires <= Date.now()) dropPilotKey(r.id, 'time up');
 }, 60e3).unref();
 // Passes an allowed request to this Docket's own page server, as if from this computer's page.
 function forwardLocal(method, pathAndQuery, body) {
@@ -9800,40 +9968,14 @@ function forwardLocal(method, pathAndQuery, body) {
   });
 }
 // Shows the Allow card on this computer's pages and waits: true (Allow), false (Don't allow) or null (no answer in
-// time, or the other computer gave up). ask.pilot: a pilot key is asked for, not a connection.
+// time, or the other computer gave up).
 function askAllowHere(ask, desk, res) {
   return new Promise((resolve) => {
     ask.resolve = resolve; remoteAsks.set(ask.id, ask);
-    broadcast({ t: 'remote-ask', ask: { id: ask.id, name: ask.name, ip: ask.ip, at: ask.at, desk: desk.name, pilot: ask.pilot } });
+    broadcast({ t: 'remote-ask', ask: { id: ask.id, name: ask.name, ip: ask.ip, at: ask.at, desk: desk.name } });
     setTimeout(() => resolve(null), ASK_WAIT_MS);
     res.on('close', () => resolve(null)); // the other computer gave up waiting
   }).finally(() => { remoteAsks.delete(ask.id); broadcast({ t: 'remote-asked', id: ask.id }); });
-}
-// A request made with a pilot key (#827): only what pilotKeyRoute lets it, only on the linked desk. Answers go
-// through the autopilot's own checks here (this computer's rules and hard stops), whether or not this computer's own
-// autopilot is on: the key is the person's say-so for that other pilot.
-async function pilotKeyRequest(req, res, p, desk, key, ip) {
-  const cfg = remoteCfg();
-  const rec = findPilotKey(cfg.pilotKeys, key, desk.id);
-  if (!rec) return json(res, 401, { error: 'That pilot key was revoked or has expired on this computer.', pilotKey: 'gone' });
-  const route = pilotKeyRoute(req.method, p, rec);
-  if (!route) return json(res, 403, { error: `A pilot key only lists and answers what waits on this desk${rec.screen ? ', and uses the screen tools' : ''}.` });
-  if (!rec.used || rec.used < Date.now() - 10 * 60e3) setTimeout(saveState, 0); // kept, roughly, for the list here
-  rec.used = Date.now(); rec.usedIp = ip;
-  const b = req.method === 'POST' ? await readBody(req) : {};
-  if (route.kind === 'revoke') { dropPilotKey(rec.id, `given back by ${rec.name}`); return json(res, 200, { ok: true }); }
-  if (route.kind === 'screen') return json(res, 200, await remoteScreenCall(desk, { id: rec.id, name: rec.name }, b));
-  if (route.kind === 'pending') return json(res, 200, { desk: { id: desk.id, name: desk.name }, items: pilotItemsFor(waitingOnPerson(), desk.id) });
-  return json(res, 200, await pilotAnswer(String(b.id || ''), String(b.answer || ''), { answers: b.answers, from: rec.name, desk: desk.id }));
-}
-function dropPilotKey(id, why) {
-  const cfg = remoteCfg(), rec = (cfg.pilotKeys || []).find((r) => r.id === id);
-  if (!rec) return false;
-  cfg.pilotKeys = revokePilotKey(cfg.pilotKeys, id);
-  saveState();
-  broadcastRemoteHere();
-  logEvent('remote: pilot key ended', `${rec.name}: ${why}`);
-  return true;
 }
 async function remoteHostRequest(req, res) {
   const ip = req.socket.remoteAddress;
@@ -9864,30 +10006,9 @@ async function remoteHostRequest(req, res) {
     logEvent('remote: connected', `${conn.name} ${ip}, desk ${desk.name}`);
     return json(res, 200, { token, expires: conn.expires, desk: { id: desk.id, name: desk.name } });
   }
-  const bearer = String(req.headers.authorization || '').replace(/^Bearer /, '');
-  if (isPilotKey(bearer)) return pilotKeyRequest(req, res, p, desk, bearer, ip);
   const who = remoteTokenOf(req);
   if (!who) return json(res, 401, { error: 'Not connected: enter a new code', expired: true });
   if (req.method === 'POST' && p === '/remote/bye') { dropRemote(who.token); logEvent('remote: disconnected by the other computer', who.name); return json(res, 200, { ok: true }); }
-  // A pilot key (#827), asked for over this connection: someone here clicks Allow, as for the connection itself.
-  if (req.method === 'POST' && p === '/remote/pilot-key') {
-    const b = await readBody(req);
-    if ([...remoteAsks.values()].some((a) => a.ip === ip)) return json(res, 409, { error: 'Something from this computer is already waiting for Allow there' });
-    const ask = { id: 'ra_' + randomUUID().slice(0, 8), name: who.name, ip, at: Date.now(), pilot: { screen: b.screen === true, days: PILOT_KEY_DAYS } };
-    const allowed = await askAllowHere(ask, desk, res);
-    if (!allowed) {
-      logEvent(`remote: pilot key ${allowed === false ? 'refused' : 'not answered'}`, `${who.name} ${ip}`);
-      return json(res, 403, { error: allowed === false ? 'Someone on that computer clicked Don\'t allow.' : 'Nobody clicked Allow on that computer in time. Ask again.' });
-    }
-    const { key, record } = grantPilotKey({ name: who.name, ip, desk: desk.id, screen: ask.pilot.screen, days: ask.pilot.days });
-    const cfg2 = remoteCfg();
-    cfg2.pilotKeys = [...livePilotKeys(cfg2.pilotKeys), record];
-    writePilotRulesIfMissing();
-    saveState();
-    broadcastRemoteHere();
-    logEvent('remote: pilot key granted', `${who.name} ${ip}, desk ${desk.name}${record.screen ? ', with the screen tools' : ''}, until ${new Date(record.expires).toISOString().slice(0, 10)}`);
-    return json(res, 200, { key, id: record.id, expires: record.expires, screen: record.screen });
-  }
   const route = remoteRoute(req.method, p);
   if (!route) return json(res, 403, { error: 'That can\'t be done from another computer' });
   let body = req.method === 'POST' ? await readBody(req) : undefined;
@@ -9932,8 +10053,8 @@ function remoteControlView() {
   try { if (cfg.secret || cfg.on) check = checkCodeOf(fingerprintOf(remoteCert().cert)); } catch {}
   return { on: !!cfg.on, desk: cfg.desk, authenticator: !!cfg.secret, port: REMOTE_PORT, hours: REMOTE_HOURS, running: !!remoteHttps, error: remoteHostError,
     addresses: officeAddresses(os.networkInterfaces()).map((a) => `${a}:${REMOTE_PORT}`), check,
-    connections: remoteHereView(), pilotKeys: livePilotKeys(cfg.pilotKeys).map(pilotKeyView),
-    asks: [...remoteAsks.values()].map(({ id, name, ip, at, pilot }) => ({ id, name, ip, at, pilot, desk: clientById(cfg.desk)?.name })) };
+    connections: remoteHereView(),
+    asks: [...remoteAsks.values()].map(({ id, name, ip, at }) => ({ id, name, ip, at, desk: clientById(cfg.desk)?.name })) };
 }
 // The page's controls for this computer's side (☰ > Desks > Remote Desks). Returns false when the request is not one of them.
 async function remoteControlRoutes(req, res, p) {
@@ -9946,10 +10067,7 @@ async function remoteControlRoutes(req, res, p) {
   if (p === '/api/remote-control') {
     if (b.desk !== undefined) {
       if (b.desk && !clientById(b.desk)) return json(res, 400, { error: 'Unknown desk' });
-      if (b.desk !== cfg.desk) { // a new desk means new connections and new pilot keys
-        for (const t of [...remoteTokens.keys()]) dropRemote(t);
-        for (const r of cfg.pilotKeys || []) dropPilotKey(r.id, 'the desk for remote control changed');
-      }
+      if (b.desk !== cfg.desk) for (const t of [...remoteTokens.keys()]) dropRemote(t); // a new desk means new connections
       cfg.desk = b.desk || null;
     }
     if (b.on !== undefined) {
@@ -9971,8 +10089,7 @@ async function remoteControlRoutes(req, res, p) {
     if (!remotePendingSecret) return json(res, 400, { error: 'Show the code to scan first' });
     if (checkCode(remotePendingSecret, b.code) === null) return json(res, 400, { error: 'That code does not match. Check the app added "Docket" and type the code it shows now.' });
     cfg.secret = remotePendingSecret; remotePendingSecret = null;
-    for (const t of [...remoteTokens.keys()]) dropRemote(t); // a new authenticator ends the old connections and pilot keys
-    for (const r of cfg.pilotKeys || []) dropPilotKey(r.id, 'the authenticator was set up again');
+    for (const t of [...remoteTokens.keys()]) dropRemote(t); // a new authenticator ends the old connections
     saveState();
     return json(res, 200, remoteControlView());
   }
@@ -9981,10 +10098,6 @@ async function remoteControlRoutes(req, res, p) {
     if (!a) return json(res, 404, { error: 'That request has already ended' });
     a.resolve(b.allow === true);
     return json(res, 200, { ok: true });
-  }
-  if (p === '/api/remote-control/pilot-keys/revoke') {
-    dropPilotKey(String(b.id || ''), 'revoked here');
-    return json(res, 200, remoteControlView());
   }
   if (p === '/api/remote-control/disconnect') {
     for (const [t, r] of remoteTokens) if (r.id === b.id) { dropRemote(t); logEvent('remote: disconnected here', r.name); }
@@ -10000,8 +10113,7 @@ const remoteDesks = () => (state.remoteDesks ||= []);
 const remoteDeskById = (id) => remoteDesks().find((d) => d.id === id);
 function remoteDeskView(d) {
   const c = remoteConns.get(d.id);
-  return { id: d.id, name: d.name, address: d.address, check: checkCodeOf(d.pin), connected: !!c, expires: c?.expires || null, deskName: c?.deskName || d.deskName || '',
-    pilot: d.pilotKey ? { expires: d.pilotKey.expires, screen: !!d.pilotKey.screen } : null, pilotGone: !d.pilotKey && d.pilotKeyGone?.why || '' };
+  return { id: d.id, name: d.name, address: d.address, check: checkCodeOf(d.pin), connected: !!c, expires: c?.expires || null, deskName: c?.deskName || d.deskName || '' };
 }
 function dropRemoteConn(id, why) {
   const c = remoteConns.get(id); if (!c) return;
@@ -10102,7 +10214,7 @@ async function remoteDeskRoutes(req, res, p) {
     broadcast({ t: 'clients' });
     return json(res, 200, remoteDeskView(d));
   }
-  const m = p.match(/^\/api\/remote-desks\/(\w+)\/(connect|disconnect|remove|pilot-key|pilot-key-revoke)$/);
+  const m = p.match(/^\/api\/remote-desks\/(\w+)\/(connect|disconnect|remove)$/);
   const d = m && remoteDeskById(m[1]);
   if (!d) return json(res, 404, { error: 'Unknown remote desk' });
   const conn = remoteConns.get(d.id);
@@ -10127,27 +10239,6 @@ async function remoteDeskRoutes(req, res, p) {
     broadcast({ t: 'clients' });
     return json(res, 200, remoteDeskView(d));
   }
-  // A pilot key (#827): asked for over the connection, and someone at that computer clicks Allow. Kept here in the
-  // saved state, never shown on a page or to a session; revoking it here gives it back there too.
-  if (m[2] === 'pilot-key') {
-    if (!conn) return json(res, 409, { error: `Connect to ${d.name} first: a pilot key is asked for over a connection, and someone there clicks Allow.` });
-    let r;
-    try { r = await remoteCall(d, conn, 'POST', '/remote/pilot-key', { screen: b.screen === true }, ASK_WAIT_MS + 20e3); }
-    catch (e) { return json(res, 502, { error: connectError(e, d.name) }); }
-    if (r.status !== 200 || !isPilotKey(r.json?.key)) return json(res, 400, { error: r.json?.error || `${d.name} gave no pilot key` });
-    d.pilotKey = { key: r.json.key, id: r.json.id, expires: r.json.expires, screen: !!r.json.screen };
-    delete d.pilotKeyGone;
-    saveState();
-    logEvent('remote desk: pilot key granted', `${d.name}${d.pilotKey.screen ? ', with the screen tools' : ''}`);
-    refreshRemotePilot().then(pilotLook);
-    return json(res, 200, remoteDeskView(d));
-  }
-  if ((m[2] === 'pilot-key-revoke' || m[2] === 'remove') && d.pilotKey) {
-    pilotKeyCall(d, 'POST', '/remote/pilot/revoke', {}, 5000).catch(() => {});
-    delete d.pilotKey; delete d.pilotKeyGone; remotePilot.delete(d.id); saveState();
-    logEvent('remote desk: pilot key revoked here', d.name);
-  }
-  if (m[2] === 'pilot-key-revoke') { delete d.pilotKeyGone; saveState(); return json(res, 200, remoteDeskView(d)); }
   if (conn) { remoteCall(d, conn, 'POST', '/remote/bye', {}, 5000).catch(() => {}); dropRemoteConn(d.id, m[2] === 'remove' ? 'removed' : 'disconnected here'); }
   if (m[2] === 'remove') { state.remoteDesks = remoteDesks().filter((x) => x.id !== d.id); saveState(); broadcast({ t: 'clients' }); return json(res, 200, { ok: true }); }
   return json(res, 200, remoteDeskView(d));
@@ -10274,6 +10365,15 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, text: p === '/api/pilot/promote' ? promotePilotKind(String(b.desk || ''), String(b.kind || '')) : pilotMiss(String(b.id || '')) });
       } catch (e) { return json(res, 400, { error: e.message }); }
     }
+    // A desk's Autopilot tab (#974), Suggest or Answer for a kind there, and the offer card's Not now / Not today.
+    if (req.method === 'GET' && p === '/api/pilot/desk') {
+      try { return json(res, 200, await pilotDeskView(String(url.searchParams.get('client') || ''))); } catch (e) { return json(res, 400, { error: e.message }); }
+    }
+    if (req.method === 'POST' && p === '/api/pilot/kind') {
+      const b = await readBody(req);
+      try { return json(res, 200, { ok: true, text: setPilotKind(String(b.desk || ''), String(b.kind || ''), String(b.level || '')) }); } catch (e) { return json(res, 400, { error: e.message }); }
+    }
+    if (req.method === 'POST' && p === '/api/pilot/offer') { pilotOfferAnswer(String((await readBody(req)).act || '')); return json(res, 200, { ok: true }); }
     // The person is answering something themselves (#942): the pilot keeps off it for a while.
     if (req.method === 'POST' && p === '/api/pilot/busy') { pilotSawBusy(String((await readBody(req)).id || '')); return json(res, 200, { ok: true }); }
     // Learn from your past sessions (#920): started here, read in the background; the panel hears when it is done.
@@ -10284,7 +10384,8 @@ const server = http.createServer(async (req, res) => {
       if (req.method === 'POST') {
         const b = await readBody(req);
         let note = '';
-        try { note = await setPilot({ on: b.on === undefined ? undefined : !!b.on, session: b.session, brand: b.brand }); } catch (e) { return json(res, 400, { error: e.message }); }
+        const engage = b.engage && typeof b.engage === 'object' ? (Array.isArray(b.engage.desks) ? { desks: b.engage.desks.map(String) } : { desk: String(b.engage.desk || ''), on: b.engage.on === true }) : undefined;
+        try { note = await setPilot({ on: b.on === undefined ? undefined : !!b.on, engage, quick: b.quick ? String(b.quick) : undefined, here: String(b.here || ''), movedNote: b.movedNote, session: b.session, brand: b.brand }); } catch (e) { return json(res, 400, { error: e.message }); }
         return json(res, 200, { ...(await pilotView()), note });
       }
     }
@@ -10326,10 +10427,10 @@ const server = http.createServer(async (req, res) => {
         // startGears: the model a new Shift session starts on, per brand, for the model menu's "Shift (starts ...)".
         const startGears = Object.fromEntries(brandsOf(c).map((e) => [e, usableGear(c, e, startGearOf(e, null, c.startGear?.[e])).name]));
         // planSystem: '' while the desk has not chosen one, which the page offers once (the card after the update, #180).
-        return { id: c.id, name: c.name, folder: c.folder, ...(isPilotDesk(c.id) ? { pilot: true } : {}), ...(c.hidden && !isPilotDesk(c.id) ? { hidden: true } : {}), color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', ...(c.planSwitch ? { planSwitch: { to: c.planSwitch.to, from: c.planSwitch.from, session: c.planSwitch.session } } : {}), brands, startGears,
+        return { id: c.id, name: c.name, folder: c.folder, ...(c.hidden ? { hidden: true } : {}), color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', ...(c.planSwitch ? { planSwitch: { to: c.planSwitch.to, from: c.planSwitch.from, session: c.planSwitch.session } } : {}), brands, startGears,
           bedrock: isBedrock(c), ...(gatewayFor(c, 'claude') ? { gateway: gatewayHost(c.gateway.url) } : {}), signedIn, forced: forcedOf(c), browser: browserStatus(c) };
       }));
-      return json(res, 200, [...pilotFirst(rows), ...await remoteRows(!quick)]); // remote desks come after this computer's own
+      return json(res, 200, [...rows, ...await remoteRows(!quick)]); // remote desks come after this computer's own
     }
     // Edit the company list: the whole list comes back, in order. Ids never change once made.
     // connections: who each brand of the desk is billed to, and the other desks billed to the same connection.
@@ -10338,7 +10439,7 @@ const server = http.createServer(async (req, res) => {
       const all = CLIENTS.map((c) => ({ id: c.id, name: c.name, conns: deskConnections(c) }));
       const connections = (c) => all.find((x) => x.id === c.id).conns.map((x) => ({ brand: x.brand, label: x.label, kind: x.kind, detail: x.detail,
         sharedWith: all.filter((o) => o.id !== c.id && o.conns.some((y) => y.key === x.key)).map((o) => o.name) }));
-      return json(res, 200, pilotFirst(CLIENTS).map((c) => ({ ...c, ...(isPilotDesk(c.id) ? { pilot: true, pilotOn: pilotOn() } : {}), forced: forcedOf(c), running: [...live.values()].filter((x) => x.client === c.id).length, hookList: hooksFor(c, PLUGIN_DIR), connections: connections(c),
+      return json(res, 200, CLIENTS.map((c) => ({ ...c, forced: forcedOf(c), running: [...live.values()].filter((x) => x.client === c.id).length, hookList: hooksFor(c, PLUGIN_DIR), connections: connections(c),
         gatewayModels: (gatewayFor(c, 'claude') && authCache.get(authKey(c.id))?.models) || [] })));
     }
     if (req.method === 'POST' && p === '/api/clients/edit') {
@@ -10346,15 +10447,12 @@ const server = http.createServer(async (req, res) => {
       const list = Array.isArray(b.clients) ? b.clients : [];
       const out = [], ids = new Set();
       for (const c of list) {
-        // The autopilot's desk is Docket's to set (#886): it is kept as it is, whatever comes back.
-        const r = isPilotDesk(c.id) ? { ...clientById(c.id) } : cleanCompany(c, (id) => ids.has(id) || clientById(id) || list.some((x) => x.id === id));
+        const r = cleanCompany(c, (id) => ids.has(id) || clientById(id) || list.some((x) => x.id === id));
         if (r.error) return json(res, 400, r);
         if (ids.has(r.id)) return json(res, 400, { error: `${r.name} is in the list twice` });
         ids.add(r.id);
         out.push(r);
       }
-      const pd = pilotDesk();
-      if (pd && !ids.has(pd.id) && pilotOn()) return json(res, 400, { error: `${pd.name} is the autopilot's desk. Turn the autopilot off in ☰ > Docket settings > Autopilot first, then Remove it.` });
       if (!out.length) return json(res, 400, { error: 'Keep at least one desk' });
       if (out.every((c) => c.hidden)) return json(res, 400, { error: 'Keep at least one desk shown' });
       const busy = CLIENTS.filter((c) => !ids.has(c.id) && [...live.values()].some((x) => x.client === c.id));
@@ -10362,9 +10460,8 @@ const server = http.createServer(async (req, res) => {
       // trash: the removed companies whose folders go to the Recycle Bin as well (only the ones Docket made).
       const binned = CLIENTS.filter((c) => !ids.has(c.id) && (b.trash || []).includes(c.id));
       const added = out.filter((c) => !clientById(c.id)).map((c) => c.id);
-      saveCompanies(pilotFirst(out));
+      saveCompanies(out);
       setTimeout(checkBudgets, 0); // a budget raised or cleared lets held work go (#959)
-      if (pd && !ids.has(pd.id)) { delete state.pilot.desk; saveState(); logEvent('autopilot: desk removed', pd.name); broadcast({ t: 'pilot', pilot: pilotBrief() }); }
       for (const id of added) { const c = clientById(id); if (c) runDeskCheck(c).catch(() => {}); }
       if (!b.trash) return json(res, 200, out);
       const trashed = [];
@@ -10452,6 +10549,21 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/forms-check') return json(res, 200, checkFormsOffers()); // look again now
+    if (req.method === 'GET' && p === '/api/question-levels') return json(res, 200, state.questionLevels); // #989
+    if (req.method === 'POST' && p === '/api/question-level') {
+      const b = await readBody(req);
+      const client = clientById(b.client);
+      if (!client) return json(res, 404, { error: 'Unknown desk' });
+      if (!QUESTION_LEVELS.includes(b.level)) return json(res, 400, { error: 'The level is off, highlight or track' });
+      setQuestionLevel(client, b.level);
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && p === '/api/questions/close') { // ✓ in the tray (#989)
+      const b = await readBody(req);
+      if (!state.sessions[b.id]) return json(res, 404, { error: 'Unknown session' });
+      trackClosed(b.id, [Number(b.q)]);
+      return json(res, 200, { ok: true });
+    }
     if (req.method === 'POST' && p === '/api/setup-check') { // ?client=: check that desk in full now
       const client = clientById(url.searchParams.get('client'));
       if (!client) return json(res, 404, { error: 'Unknown desk' });
@@ -10652,10 +10764,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/update/check') { await checkForUpdate(); return json(res, 200, updateInfo()); }
     if (req.method === 'POST' && p === '/api/update/restart-now') { restartWait.now(); return json(res, 200, updateInfo()); } // skip the wait for a quiet moment
     // ☰ > Restart Docket: GET says what it would cut off, for the warning; POST does it (the page then waits for the app).
+    // ☰ > Quit Docket posts { quit: true }: the same, without starting again.
     if (req.method === 'GET' && p === '/api/restart-docket') return json(res, 200, restartRisk());
     if (req.method === 'POST' && p === '/api/restart-docket') {
-      if (docketRestarting) return json(res, 409, { error: 'Docket is already restarting' });
-      restartDocket().catch((e) => { logEvent('Restart Docket failed', e?.stack || e); keepRemoteShownOverRestart(); setTimeout(() => process.exit(RESTART_CODE), 300); });
+      if (docketRestarting) return json(res, 409, { error: 'Docket is already restarting or quitting' });
+      const quit = !!(await readBody(req)).quit;
+      restartDocket({ quit }).catch((e) => { logEvent(`${quit ? 'Quit' : 'Restart'} Docket failed`, e?.stack || e); if (!quit) keepRemoteShownOverRestart(); setTimeout(() => process.exit(quit ? 0 : RESTART_CODE), 300); });
       return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/update/now') { // pulls; the restart follows once it is quiet, or at once with { anyway: true }
@@ -10674,7 +10788,6 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && p === '/api/clients/save-one') {
       const b = await readBody(req);
       const old = b.id ? clientById(b.id) : null;
-      if (old && isPilotDesk(old.id)) return json(res, 400, { error: `${old.name} is the autopilot's desk: Docket sets it up, so it is not edited here. Its pilot's brand is in ☰ > Docket settings > Autopilot.` });
       const r = cleanCompany({ ...b, id: old ? old.id : null }, (id) => !!clientById(id));
       if (r.error) return json(res, 400, r);
       if (old && [...live.values()].some((x) => x.client === old.id) && (old.home !== r.home || old.awsProfile !== r.awsProfile || old.gateway?.url !== r.gateway?.url)) return json(res, 400, { error: `${old.name} has sessions running. End them before changing its folders or sign-in.` });
@@ -10766,8 +10879,9 @@ const server = http.createServer(async (req, res) => {
       if (lm[2] === 'login') return json(res, 200, await startLogin(client, false, engine));
       if (lm[2].startsWith('browser-')) {
         const b = await readBody(req);
-        if (lm[2] === 'browser-open') await openSignInWindow(client, /^https?:\/\//.test(b.url || '') ? b.url : undefined);
-        if (lm[2] === 'browser-done') await closeSignInWindow(client);
+        const asker = typeof b.session === 'string' && state.sessions[b.session]?.client === client.id ? b.session : undefined;
+        if (lm[2] === 'browser-open') await openSignInWindow(client, /^https?:\/\//.test(b.url || '') ? b.url : undefined, asker);
+        if (lm[2] === 'browser-done') await closeSignInWindow(client, asker);
         if (lm[2] === 'browser-forget') await forgetBrowser(client);
         if (lm[2] === 'browser-forget-site') {
           if (!browserStatus(client).sites.includes(b.site)) return json(res, 400, { error: 'No sign-ins are saved for that site' });
@@ -11121,7 +11235,7 @@ const server = http.createServer(async (req, res) => {
         if (target) live.delete(target.id);
         if (d.editorSessionId && (await history(client)).some((r) => r.id === d.editorSessionId)) {
           target = startSession({ clientId: client.id, cwd: d.folder || client.folder, resumeId: d.editorSessionId, record: { editFor: d.id } });
-          target.events = await loadTranscript(client, d.editorSessionId);
+          target.events = await loadTranscript(client, d.editorSessionId, { open: false });
         } else {
           target = startSession({ clientId: client.id, cwd: d.folder || client.folder, title: `Editing schedule: ${d.title}`, record: { editFor: d.id } });
           scheduler.setEditor(d.id, target.id);
@@ -11206,7 +11320,6 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === 'POST' && p === '/api/sessions') {
       const b = await readBody(req);
-      if (isPilotDesk(b.client)) return json(res, 400, { error: `${clientById(b.client)?.name || 'This'} is the autopilot's desk: its sessions are the pilot runs Docket starts. Start work on another desk.` });
       const isGroup = (gid) => !!(clientById(b.client) && groupById(b.client, gid));
       const groupId = startGroup(b, isGroup);
       if (b.parentId) { // started by the person under a session: the same path as start_session
@@ -11263,7 +11376,7 @@ const server = http.createServer(async (req, res) => {
           const row = (await history(client)).find((r) => r.id === id);
           target = startSession({ clientId: client.id, cwd: b.cwd || row?.cwd, title: row?.title, resumeId: id, settings: b.settings || {} });
           if (s) target.events = s.events.slice();
-          else target.events = await loadTranscript(client, id);
+          else target.events = await loadTranscript(client, id, { open: false });
           addEvent(target, { k: 'note', text: 'Resumed' });
         }
         if (isArchived(clientById(target.client), id)) setArchived(target.client, id, false);
@@ -11477,6 +11590,7 @@ server.on('error', (err) => {
 server.requestTimeout = 0;
 server.listen(PORT, '127.0.0.1', () => {
   logEvent(`started: http://localhost:${PORT}`);
+  try { movePilotPerDesk(); } catch (e) { logEvent('autopilot: not moved to per desk', e.message); } // once (#973), before sessions are picked up again
   remoteShownAfterRestart();
   startupAtStart().catch(() => {});
   reattached = reattachUntilDone();
