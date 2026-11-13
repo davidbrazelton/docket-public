@@ -82,7 +82,7 @@ import { newLinkScan, scanLinkText, ticketKeys, isTicketKey, adoBase, parseAdoPr
   prTalk, adoThreadLasts, GH_TALK_PR, GH_TALK_ISSUE, ghPrTalkOf, ghIssueLast, adoItemNewestComment, adoPrThreads, adoMe, ticketFinished } from './links.mjs';
 import { currentBranch } from './git-head.mjs';
 import { restDue, restMinutes } from './rest.mjs';
-import { SUMMARY_CHECK, checkHours, summaryPlan, agoWords, factsBlock, checkStep, foundChanges, checkStats, tuneOffer, tuneWords, hoursWords } from './summary-check.mjs';
+import { SUMMARY_CHECK, checkHours, summaryPlan, agoWords, factsBlock, checkStep, foundChanges, checkStats, tuneOffer, tuneWords, hoursWords, awayHours } from './summary-check.mjs';
 import { PROFILE_FILE, FOLDER_FILES, newestFolderFile, SETTINGS, PAGE_SETTINGS, localItems, hashOf, noteChanges, profileFile, readProfile, profilePlan, planSummary } from './profile-sync.mjs';
 import { ARTIFACT_URL, artifactPublished } from './artifacts.mjs';
 import { SHEET_FILE, MAX_BYTES as SHEET_MAX_BYTES, readClientFile, pkce, authUrl as googleAuthUrl, exchangeCode, refreshAccess, revoke as revokeGoogle, uploadAsSheet, sourceMime, sheetName, sheetUrl } from './google-sheets.mjs';
@@ -4769,6 +4769,7 @@ async function sendSummary(client, id, mode) {
 state.summaryCheck ||= {};
 const SUMMARY_LOG = path.join(DATA_DIR, 'summary-checks.jsonl');
 const summaryHoursNow = (clientId) => checkHours(state.summaryCheck[clientId]?.hours);
+const awayHoursNow = (clientId) => awayHours(state.summaryCheck[clientId]?.away); // the welcome-back threshold (#1020)
 function readSummaryLog(clientId) {
   let all; try { all = fs.readFileSync(SUMMARY_LOG, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; }
   return clientId ? all.filter((e) => e.client === clientId) : all;
@@ -10833,14 +10834,20 @@ const server = http.createServer(async (req, res) => {
       state.feedback = d; saveState();
       return json(res, 200, destinationInfo(d));
     }
-    // ☰ > Gauges > Summary checks: one desk's threshold (POST { client, hours } sets it) and its log by age range (#919).
+    // ☰ > Gauges > Summary checks: one desk's threshold (POST { client, hours } sets it) and its log by age range (#919),
+    // and its welcome-back threshold (POST { away }, #1020).
     if (p === '/api/summary-check') {
       const b = req.method === 'POST' ? await readBody(req) : {};
       const client = clientById(b.client || url.searchParams.get('client'));
       if (!client) return json(res, 404, { error: 'Unknown desk' });
-      if (req.method === 'POST') { (state.summaryCheck[client.id] ||= {}).hours = checkHours(b.hours); saveState(); try { checkSummaryOffers(); } catch {} }
+      if (req.method === 'POST') {
+        const rec = state.summaryCheck[client.id] ||= {};
+        if (b.hours !== undefined) rec.hours = checkHours(b.hours);
+        if (b.away !== undefined) rec.away = awayHours(b.away);
+        saveState(); try { checkSummaryOffers(); } catch {}
+      }
       const log = readSummaryLog(client.id).slice(-SUMMARY_CHECK.keep);
-      return json(res, 200, { client: client.id, name: client.name, hours: summaryHoursNow(client.id), sample: SUMMARY_CHECK.sample, rows: checkStats(log), since: log[0]?.at || null });
+      return json(res, 200, { client: client.id, name: client.name, hours: summaryHoursNow(client.id), away: awayHoursNow(client.id), sample: SUMMARY_CHECK.sample, rows: checkStats(log), since: log[0]?.at || null });
     }
     // The offer to move a desk's threshold: the open offers, and an answer ({ client, answer: apply|later }).
     if (req.method === 'GET' && p === '/api/summary-offers') return json(res, 200, summaryOffers);
@@ -11452,7 +11459,7 @@ const server = http.createServer(async (req, res) => {
       const hist = allHist.filter((r) => !ids.has(r.id));
       // The session list shows all runs of a schedule as one row under the schedule's name.
       const schedules = scheduler.list(client.id).map(({ id, title }) => ({ id, title }));
-      return json(res, 200, { live: liveRows, history: hist, schedules, inbox: openInbox(state.inbox?.[client.id]).map((it) => ({ ...it, fromTitle: live.get(it.fromSession)?.title || it.fromTitle })), signinNeeds: signinNeeds(client.id) });
+      return json(res, 200, { live: liveRows, history: hist, schedules, inbox: openInbox(state.inbox?.[client.id]).map((it) => ({ ...it, fromTitle: live.get(it.fromSession)?.title || it.fromTitle })), signinNeeds: signinNeeds(client.id), awayHours: awayHoursNow(client.id) });
     }
     if (req.method === 'POST' && p === '/api/sessions') {
       const b = await readBody(req);

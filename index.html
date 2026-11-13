@@ -75,6 +75,8 @@ header.top .brand { font-weight: 600; margin-right: 8px; color: var(--accent); }
 .clients button { flex: none; border-color: transparent; display: flex; align-items: center; gap: 6px; }
 .clients button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .badge { background: var(--warn); color: var(--on-warn); border-radius: 999px; font-size: 11px; padding: 0 6px; font-weight: 600; }
+/* A desk tab's working count (#1023): an indicator, outlined so it reads apart from the orange count of sessions that need you. */
+.badge.working { background: none; color: var(--run); box-shadow: inset 0 0 0 1px var(--run); }
 header.top .spacer { flex: 1; }
 header.top > button { white-space: nowrap; }
 header.top #pauseBtn { padding: 5px 8px; } /* ⏸ Pause all, beside Terminal: an action, bordered and as tall as it */
@@ -342,6 +344,13 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
    button that stays at the top of the chat while the line is out of view. */
 .new-line { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: var(--accent); font-size: 12px; font-weight: 600; }
 .new-line::before, .new-line::after { content: ''; flex: 1; border-top: 2px solid var(--accent); }
+/* the welcome-back card (#1020), where the New line goes */
+.welcome-card { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; margin: 14px 0; padding: 10px 12px; border: 1px solid var(--accent); border-radius: 10px; background: var(--accent-soft); }
+.welcome-card .wc-t { flex: 1; min-width: 220px; }
+.welcome-card b { display: block; }
+.welcome-card small { color: var(--muted); font-size: 12px; }
+.welcome-card button { height: 28px; padding: 0 11px; font-size: 12px; }
+.welcome-card .wc-go { border-color: var(--accent); color: var(--accent); font-weight: 600; } /* outlined like the nudged Summary control: solid fill is + New session's alone (DESIGN.md) */
 .jump-wrap { position: sticky; top: 0; height: 0; z-index: 5; display: flex; justify-content: center; align-items: flex-start; }
 .jump-wrap button { margin-top: 6px; padding: 4px 14px; border-radius: 999px; font-size: 13px; box-shadow: 0 2px 8px rgba(0, 0, 0, .25); }
 .jump-wrap button[hidden] { display: none; }
@@ -607,6 +616,13 @@ select option:disabled { color: var(--muted); }
 .sum-ctl #sumModeBtn[aria-expanded="true"] { background: var(--accent-soft); color: var(--accent); }
 .sum-ctl.off { opacity: .45; }
 .sum-ctl.off > button { cursor: default; background: none; }
+/* Welcome back (#1020): while the card shows, the Summary control is outlined and lettered in the main color, never filled
+   (DESIGN.md keeps that for + New session). Its ring pulses outward three times, then holds still. */
+.sum-ctl.nudge { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); animation: sum-nudge 1.6s ease-out 3; }
+.sum-ctl.nudge > button { color: var(--accent); font-weight: 600; }
+.sum-ctl.nudge #sumModeBtn { border-left-color: var(--accent); }
+@keyframes sum-nudge { from { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } to { box-shadow: 0 0 0 7px transparent; } }
+@media (prefers-reduced-motion: reduce) { .sum-ctl.nudge { animation: none; } }
 .tl-menu.sum-pop { top: auto; bottom: calc(100% + 6px); min-width: 250px; color: var(--text); }
 .sum-pop .mh { padding: 2px 8px; font-size: 11px; color: var(--muted); }
 .sum-pop button { display: flex; gap: 8px; width: 100%; text-align: left; border: none; border-radius: 6px; padding: 5px 8px; font-size: 13px; line-height: 1.3; }
@@ -2243,6 +2259,8 @@ const HELP = [
     ['message', 'The message box', 'Type your message. Enter sends, Shift+Enter makes a new line. Paste pictures or drop files here. Type / for skills.'],
     ['attach', '+ Add files', 'Add files to your message'],
     ['summary', 'Summary', 'Ask the session where its work stands: an outline, the questions for you, and the next steps. It does no new work. Deep summary also reads the sessions under this one, without waking them.'],
+    ['welcome-go', 'Catch me up', 'Runs Summary (or Deep summary, as picked in Summary ▾): the session says where things stand, what it waits on you for, and what is next. It does no new work.'],
+    ['welcome-later', 'Not now', 'Put the welcome-back card away for this visit. Summary stays in the bar below for later.'],
     ['summary-mode', 'Summary ▾', 'Pick what Summary covers: this session only (Top), or this session and the sessions under it (Deep)'],
     ['chip-remove', '✕ on a file', 'Take this file off the message'],
     ['perm-mode', 'Permission mode', 'How much the AI may do without asking you first'],
@@ -2379,7 +2397,8 @@ const HELP = [
     ['menu-screen', 'Desks > desk > Screen control', 'On: this desk\'s sessions get tools to take screenshots, move and click the mouse and type, in any program on this computer (and on a remote desk\'s computer where it is on too). A last resort for programs with no better way in. Every action is logged, a bar shows while a session is in control, and Stop halts it. Off by default; sessions started or woken after you turn it on get the tools. Kept on this computer only'],
     ['menu-summarychecks', 'Gauges > Summary checks', "How often Summary's check of the facts found something changed since the last reply, by how long ago that reply was, on the desk on view. Its threshold, when a summary checks first, is set there too"],
     ['sc-hours', 'Hours', 'A summary checks the facts first when the last reply is at least this many hours old. 0 means every time. Below it, 1 in 4 summaries check anyway, so the numbers stay fresh'],
-    ['sc-save', 'Save', 'Use this threshold for summaries on this desk from now on'],
+    ['sc-away', 'Welcome back after', 'Opening a session you last looked at this many hours ago or more shows a welcome-back card that offers Summary. 0 turns it off. A day (24) at first'],
+    ['sc-save', 'Save', 'Use these settings on this desk from now on'],
     ['summary-apply', 'Change it', "Summaries on this desk check first after the suggested time. Change it any time in ☰ > Gauges > Summary checks"],
     ['summary-later', 'Not now', 'Keep the threshold. The same change is offered again only after 10 more checks in that range'],
     ['menu-screenlog', 'Gauges > Screen control log', 'Open the folder with the log of every screen action, on every desk (one file a day: session, time, action) and the picture of the screen taken before each click or drag. Kept 30 days'],
@@ -3094,6 +3113,8 @@ async function initPopout() {
   setTimeout(() => $('booting').remove(), 300);
   api('/api/editors').then((r) => { S.editors = r.editors || []; renderHead(); }).catch(() => {});
 }
+// The desk's sessions working on a reply right now: the ones whose row shows the blue dot (#1023).
+const workingCount = (clientId) => Object.values(S.live).filter((s) => s.client === clientId && ['running', 'starting'].includes(dotClass(s))).length;
 function waitingCount(clientId) {
   const liveIds = new Set(Object.values(S.live).filter((s) => s.client === clientId).map((s) => s.id));
   return Object.values(S.live).filter((s) => s.client === clientId && needsYou(s)).length
@@ -3114,9 +3135,10 @@ function renderClients() {
   if (menuHold(renderClients)) return; // waits while a menu is open (menu hold)
   $('clients').innerHTML = shownDesks().map((c) => {
     const n = waitingCount(c.id);
+    const w = c.id === S.client ? 0 : workingCount(c.id); // the open desk's list already shows its blue dots
     const rc = remoteMarkTip(c);
     const arrived = Date.now() - (deskArrived[c.id] || 0) < 3000 && c.id !== S.client;
-    return `<button class="${c.id === S.client ? 'on' : ''}${arrived ? ' arrived' : ''}${pilotOnDesk(c.id) ? ' pl-on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}\n\n${tipText('company')}`)}"><span class="cn">${deskName(c)}${deskPilotMark(c)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
+    return `<button class="${c.id === S.client ? 'on' : ''}${arrived ? ' arrived' : ''}${pilotOnDesk(c.id) ? ' pl-on' : ''}" data-c="${c.id}" title="${esc(`${c.name}${c.forced ? '\n' + c.forced : ''}${w ? `\n${w} working` : ''}\n\n${tipText('company')}`)}"><span class="cn">${deskName(c)}${deskPilotMark(c)}</span>${rc ? `<span class="rc-mark" title="${esc(rc)}" aria-label="Remote connection on">📡</span>` : ''}${c.signedIn === false ? '<span class="warn-mark">!</span>' : ''}${w ? `<span class="badge working">${w}</span>` : ''}${n ? `<span class="badge">${n}</span>` : ''}</button>`;
   }).join('');
   const total = waitingCount(S.client);
   const name = S.clients.find((c) => c.id === S.client)?.name;
@@ -3187,6 +3209,7 @@ async function loadSessions(clientId, refresh) {
     S.history[clientId] = r.history;
     S.inbox[clientId] = r.inbox || [];
     S.signinNeeds[clientId] = r.signinNeeds || {};
+    S.awayHours[clientId] = r.awayHours ?? 24;
     if (clientId === S.client) renderSigninNeed(); // the globe blinks for any session on the desk (#987)
     for (const x of r.schedules || []) S.schedTitles[x.id] = x.title;
     return;
@@ -4387,12 +4410,15 @@ function renderComposerBar() {
 // the open sessions under it), remembered; with none under it, only a plain Summary button shows.
 const summaryMode = () => store.get('summaryMode') === 'deep' ? 'deep' : 'top';
 const summaryKids = (s) => s && !s.archived ? descendants(s.id).filter((x) => !x.archived).length : 0;
+const sumBusy = (s) => !!s?.live && (['running', 'starting'].includes(s.status) || !!s.compactingSince);
 function renderSummaryCtl() {
   const s = S.selected && S.selected !== 'draft' && !S.schedOpen ? current() : null;
   $('sumCtl').hidden = !s;
   if (!s) return sumMenu(false);
   const n = summaryKids(s), deep = n > 0 && summaryMode() === 'deep';
-  const busy = !!s.live && (['running', 'starting'].includes(s.status) || !!s.compactingSince);
+  const busy = sumBusy(s);
+  if (busy && S.welcome?.id === s.id) { S.welcome = null; $('welcomeCard')?.remove(); } // the card is never up while it works
+  $('sumCtl').classList.toggle('nudge', S.welcome?.id === s.id);
   $('sumModeBtn').hidden = !n;
   $('sumCtl').classList.toggle('solo', !n);
   $('sumCtl').classList.toggle('off', busy);
@@ -4421,11 +4447,48 @@ document.addEventListener('mousedown', (e) => { if (sumMenuOpen() && !e.target.c
 document.addEventListener('keydown', (e) => { if (sumMenuOpen() && e.key === 'Escape') { e.stopPropagation(); sumMenu(false); $('sumModeBtn').focus(); } }, true);
 $('sumBtn').onclick = async () => {
   const s = current(); if (!s || $('sumBtn').disabled) return;
+  welcomeOff();
   const mode = summaryKids(s) ? summaryMode() : 'top';
   $('sumBtn').disabled = true;
   try { await api(`/api/sessions/${s.id}/summary?client=${S.client}`, { mode }); }
   catch (err) { tell(err.message); renderSummaryCtl(); } // on success, the session's status turning to running greys it
 };
+// ---------- the welcome-back card (#1020) ----------
+// Opening a session you have been away from (isAway) shows a card where the New line goes, offering Summary, and the
+// Summary control holds an outline (.nudge) while it shows. Catch me up, Summary, Not now or sending a message puts both
+// away. Once per visit: a reload partway through the visit does not bring it back, and seenAt is saved soon after.
+S.welcome = null; // { id, seenAt } while the card shows
+S.awayHours = {}; // desk id -> Welcome back after, in hours (☰ > Gauges > Summary checks), from the session list
+const awayHrs = (client = S.client) => S.awayHours[client] ?? 24;
+// ---------- away from a session ----------
+// Last opened (seenAt, the time the New line goes by) at least the desk's Welcome back hours ago, and not working now.
+// 0 hours turns it off; a session not opened since Docket began saving seenAt is not away.
+const isAway = (seenAt, hours, busy = false, now = Date.now()) => !!seenAt && hours > 0 && !busy && now - seenAt >= hours * 3600000;
+// "9 days", "1 day", "5 hours"
+const awayWords = (seenAt, now = Date.now()) => {
+  const h = Math.floor((now - seenAt) / 3600000), d = Math.floor(h / 24);
+  return d ? `${d} day${d === 1 ? '' : 's'}` : h ? `${h} hour${h === 1 ? '' : 's'}` : 'less than an hour';
+};
+// end of away from a session
+function welcomeHtml() {
+  const w = S.welcome;
+  return `<div class="welcome-card" id="welcomeCard" role="group" aria-label="Welcome back"><div class="wc-t"><b>You were last here ${esc(awayWords(w.seenAt))} ago.</b>`
+    + '<small>Summary asks the session where things stand, what it is waiting on you for, and what is next. It does no new work.</small></div>'
+    + `<button class="wc-go" data-welcome="go"${tip('welcome-go')}>Catch me up</button><button data-welcome="later"${tip('welcome-later')}>Not now</button></div>`;
+}
+function drawWelcome() {
+  if (S.welcome?.id !== S.selected) return;
+  const line = $('newLine');
+  if (line) line.insertAdjacentHTML('beforebegin', welcomeHtml()); else $('events').insertAdjacentHTML('beforeend', welcomeHtml());
+}
+function welcomeOff() {
+  if (!S.welcome) return;
+  S.welcome = null; $('welcomeCard')?.remove(); renderSummaryCtl();
+}
+$('events').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-welcome]'); if (!b) return;
+  if (b.dataset.welcome === 'go') $('sumBtn').onclick(); else welcomeOff();
+});
 async function changeSetting(key, value) {
   const d = clientDefaults(); d[key] = value; // becomes the default for new sessions
   const id = S.selected;
@@ -7056,16 +7119,17 @@ function summaryChecksHtml(r) {
     <div class="sc-row head"><span>Last reply</span><span>Checks</span><span></span><span>Found changes</span></div>
     ${r.rows.map(row).join('')}
     <div class="mu-note">${total ? `${total} check${total === 1 ? '' : 's'} since ${new Date(r.since).toLocaleDateString()}.` : 'No checks yet on this desk.'} Docket offers to move the threshold when these numbers say so.</div>
-    <div class="sc-set"><label for="scHours">Check first after</label><input type="number" id="scHours" min="0" step="1" value="${r.hours}"${tip('sc-hours')}> hours <button id="scSave"${tip('sc-save')}>Save</button></div>`;
+    <div class="sc-set"><label for="scHours">Check first after</label><input type="number" id="scHours" min="0" step="1" value="${r.hours}"${tip('sc-hours')}> hours</div>
+    <div class="sc-set"><label for="scAway">Welcome back after</label><input type="number" id="scAway" min="0" step="1" value="${r.away}"${tip('sc-away')}> hours (0: off) <button id="scSave"${tip('sc-save')}>Save</button></div>`;
 }
 async function showSummaryChecks(client = S.client) {
   const pending = dialog({ title: 'Summary checks', body: '<div class="mu" id="scBody"><div class="mu-note">Looking…</div></div>', buttons: [{ label: 'Close', value: null, primary: true }] });
   const draw = (r) => {
     const body = document.getElementById('scBody'); if (!body) return;
-    S.summaryHours[r.client] = r.hours; renderSummaryCtl();
+    S.summaryHours[r.client] = r.hours; S.awayHours[r.client] = r.away; renderSummaryCtl();
     body.innerHTML = summaryChecksHtml(r);
     document.getElementById('scSave').onclick = async () => {
-      try { draw(await api('/api/summary-check', { client, hours: document.getElementById('scHours').value })); } catch (err) { tell(err.message); }
+      try { draw(await api('/api/summary-check', { client, hours: document.getElementById('scHours').value, away: document.getElementById('scAway').value })); } catch (err) { tell(err.message); }
     };
   };
   try { draw(await api('/api/summary-check?' + new URLSearchParams({ client }))); }
@@ -8935,6 +8999,7 @@ async function openSession(id, auto = '') {
   recordView(S.client, id);
   schedDirty = false; S.schedOpen = null; $('tasks').classList.remove('wide'); $('composer').hidden = false;
   S.selected = id; if (!POPOUT) store.set('sel:' + S.client, id);
+  S.welcome = null;
   S.events = []; S.tasks = {}; swapBox(); setSuggestion('');
   tl.id = null; // the timeline is read again with the chat
   closeProfile();
@@ -8946,6 +9011,9 @@ async function openSession(id, auto = '') {
   // The line goes after the last visit; a reload partway through a visit keeps the line where it was.
   // Never looked since seenAt was first saved (#680): above the unread reply, when there is one.
   S.lineAt = { id, at: (['reload', 'reconnect'].includes(auto) && r.look?.lineAt) || r.look?.seenAt || (wasUnread && r.look && !r.look.lineAt ? unreadLineAt(r.events) : null) };
+  // Welcome back (#1020): from the seenAt read before this visit saves a new one; never again on a reload partway through it.
+  const was = r.look?.seenAt;
+  S.welcome = !['reload', 'reconnect'].includes(auto) && isAway(was, awayHrs(), sumBusy(current())) ? { id, seenAt: was } : null;
   setSuggestion(r.session?.suggestion);
   if (!r.session) {
     const row = current();
@@ -8955,7 +9023,7 @@ async function openSession(id, auto = '') {
     }
     renderHead();
   }
-  renderEvents(true); renderTasks(); refreshPRs(); refreshFiles(id); refreshCost(id);
+  renderEvents(true); renderTasks(); refreshPRs(); refreshFiles(id); refreshCost(id); renderSummaryCtl();
   markSeen('opened');
 }
 // A session you marked unread stays unread until you open it again, even while it is on screen.
@@ -9866,6 +9934,7 @@ function renderEvents(force, keep) {
   const typed = keepTyped($('events').querySelectorAll('[data-perm], [data-card]'));
   $('events').innerHTML = chatHtml(S.events, S.lineAt?.id === S.selected ? S.lineAt.at : null) || '<div class="empty">No messages yet.</div>';
   typed();
+  drawWelcome();
   for (const id of openTools || []) { const x = $('events').querySelector(`details.tool[data-tool="${CSS.escape(id)}"]`); if (x) x.open = true; }
   stepsView();
   weave();
@@ -11391,6 +11460,7 @@ async function send(preset) {
   const text = typeof preset === 'string' ? preset : $('input').value.trim();
   const box = typeof preset !== 'string';
   if (!text && !(box && S.attachments.length)) return;
+  welcomeOff();
   const attachments = box ? S.attachments.map(({ preview, ...a }) => a) : [];
   if (box) typingOff(); // sending stops the clock
   if (box) { $('input').value = ''; S.attachments = []; renderChips(); autosize(); stashBox(); setSuggestion(''); }

@@ -16,6 +16,14 @@ export function checkHours(v) {
   return v === undefined || v === null || v === '' || !Number.isFinite(n) || n < 0 ? SUMMARY_CHECK.defaultHours : Math.min(Math.round(n * 10) / 10, SUMMARY_CHECK.maxHours);
 }
 
+// Welcome back (#1020): opening a session you last looked at this many hours ago or more shows the welcome-back card
+// offering Summary. 0 turns it off; anything else not a number is a day.
+export const AWAY = { defaultHours: 24, maxHours: 24 * 365 };
+export function awayHours(v) {
+  const n = Number(v);
+  return v === undefined || v === null || v === '' || !Number.isFinite(n) || n < 0 ? AWAY.defaultHours : Math.min(Math.round(n * 10) / 10, AWAY.maxHours);
+}
+
 // Whether this summary checks first. lastReplyAt unknown counts as old. random is injectable for the tests.
 // Returns { ageMs, check, sampled }: sampled is a check run only because it was picked, below the threshold.
 export function summaryPlan({ lastReplyAt, now = Date.now(), hours = SUMMARY_CHECK.defaultHours, random = Math.random, sample = SUMMARY_CHECK.sample } = {}) {
