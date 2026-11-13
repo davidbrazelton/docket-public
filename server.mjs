@@ -53,7 +53,7 @@ import { workFolders, existingHomes } from './work-folders.mjs';
 import { sourceHomes, findGroups, planRun, writeReport, readReports, reportPaths, copyRun, checkCopies, undoRun } from './bring-in.mjs';
 import { moveDesk } from './move-desk.mjs';
 import { createScreenControl, SCREEN_TOOLS } from './screen.mjs';
-import { openCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, batteryCommand, parseBattery, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, treeListCommand, parseTreeList, descendants, leftBehind, killCommand, commandLineCommand, relaunchesApp, supervisedBy, findNode,
+import { openCommand, urlOpenCommand, folderOpenCommand, toolFolders, pathRe, isFullPath, exampleFolder, macTerminalScript, macTerminalOpen, terminalShells, exeNames, psTerminalScript, cmdTerminalScript, windowsTerminalCommand, presentFileText, processListCommand, parseProcessList, powerWatchCommand, powerEvent, batteryCommand, parseBattery, vsCodePaths, vswhereCommand, solutionIn, editorCommand, trashCommand, parseTrashOutput, trash, treeListCommand, parseTreeList, descendants, leftBehind, killCommand, commandLineCommand, relaunchesApp, supervisedBy, findNode,
   startupReadCommand, parseStartupRead, startupFiles, startupState, startupNeeds, startupScriptCommand, isTestCopy, folderPickCommand, parseFolderPick, folderPickStart, findLite, cloudFolders, profilePathCandidates } from './platform.mjs';
 import { cleanGateway, gatewayFor, loginOf, claudeRouteOf, claudeGateway, visibleGears, usableGear, modelFor, gearModelMap, liteArgs, liteCommand, loginLink, loginDone, pkceUnsupported, whoamiUser, tokenFrom, gatewayRefused, gatewayHost } from './gateway.mjs';
 import { groupProcesses, folderSize, cpuPercent, diskKeeper, breakdown, sharedServers } from './machine-use.mjs';
@@ -85,6 +85,7 @@ import { restDue, restMinutes } from './rest.mjs';
 import { SUMMARY_CHECK, checkHours, summaryPlan, agoWords, factsBlock, checkStep, foundChanges, checkStats, tuneOffer, tuneWords, hoursWords } from './summary-check.mjs';
 import { PROFILE_FILE, FOLDER_FILES, newestFolderFile, SETTINGS, PAGE_SETTINGS, localItems, hashOf, noteChanges, profileFile, readProfile, profilePlan, planSummary } from './profile-sync.mjs';
 import { ARTIFACT_URL, artifactPublished } from './artifacts.mjs';
+import { SHEET_FILE, MAX_BYTES as SHEET_MAX_BYTES, readClientFile, pkce, authUrl as googleAuthUrl, exchangeCode, refreshAccess, revoke as revokeGoogle, uploadAsSheet, sourceMime, sheetName, sheetUrl } from './google-sheets.mjs';
 import { copyPlan, runCopy, copyGroups, groupAction, copyEntry, needsSignIn, targetProblem, COPY_ITEMS, defaultChoices } from './copy-company.mjs';
 import { cleanEnv, isReserved, envScripts } from './company-env.mjs';
 import { canPair, isApproved, approve, crossingLog, insideCompany, answerInstructions, addToInbox, settleInbox, openInbox, crossReport, inboxContext } from './crossings.mjs';
@@ -103,6 +104,7 @@ import { deskServerArgs, mcpUrl, savedFiles } from './desk-browser.mjs';
 import { today as budgetDay, budgetStopped, continuedToday, heldLine, toolNotice, release as releaseHeld } from './budget-stop.mjs';
 import { outputUseRows, addRows, readLog, outputFolders, OUTPUT_LOG } from './big-output-use.mjs';
 import { STEP_TOOLS, stepKey, usualFor, addRun, estimateNote, loadHistory, saveHistory, seedHistory, trimHistory } from './step-times.mjs';
+import { readWorkbook, SHEET_EXT, MAX_ROWS, MAX_COLS } from './workbook.mjs';
 import {
   query, listSessions, getSessionMessages, renameSession, tool, createSdkMcpServer,
 } from '@anthropic-ai/claude-agent-sdk';
@@ -8958,6 +8960,9 @@ function cleanCompany(c, taken) {
   // hidden: the desk has no button at the top, so its sessions are out of the list, until it is shown again (☰ > Desks >
   // Manage). Nothing of it changes. The wizard does not send it, so it is kept; shown is the default and is not written.
   const hidden = (c.hidden !== undefined ? c.hidden : before.hidden) === true;
+  // googleSheets: Open in Google Sheets (#1017). Empty asks before the first upload, 'yes' once agreed, 'off' never sends a
+  // file to Google. Set on the Desks screen and by that first answer; the wizard does not send it, so it is kept.
+  const googleSheets = ['yes', 'off'].find((v) => v === (c.googleSheets !== undefined ? c.googleSheets : before.googleSheets)) || '';
   const asked = c.defaultEngine !== undefined ? c.defaultEngine : c.engine !== undefined ? c.engine : before.defaultEngine;
   const grokHome = String((c.grokHome !== undefined ? c.grokHome : before.grokHome) || '').trim();
   if (grokHome && !path.isAbsolute(grokHome)) return { error: `${name}: the Grok home folder must be a full path, like ${exampleFolder(process.platform, os.homedir(), 'grok_home', name)}` };
@@ -9022,7 +9027,7 @@ function cleanCompany(c, taken) {
   for (const [label, dir, sub] of [['Claude home', home, 'claude-home'], ['Grok home', grokHome, 'grok-home'], ['Codex home', codexHome, 'codex-home']]) {
     if (dir && isInside(dir, ROOT)) return { error: `${name}: the ${label} folder ${dir} is inside Docket's own folder (${ROOT}). It holds the sign-in, so it must be somewhere else, like ${path.join(homeRoots().claude, `${name}-desk`, sub)}` };
   }
-  return { id, name, home, folder: folder || home, ...(hidden ? { hidden: true } : {}), ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(planSwitch ? { planSwitch } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(forms ? { questionForms: forms } : {}), ...(resumeSignIn ? {} : { resumeAfterSignIn: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
+  return { id, name, home, folder: folder || home, ...(hidden ? { hidden: true } : {}), ...(googleSheets ? { googleSheets } : {}), ...(email ? { email } : {}), ...(defaultEngine ? { defaultEngine } : {}), ...(path.isAbsolute(grokHome) ? { grokHome } : {}), ...(path.isAbsolute(codexHome) ? { codexHome } : {}), ...(brandsOff.length ? { brandsOff } : {}), ...(awsProfile ? { awsProfile } : {}), ...(awsProfile && awsRegion ? { awsRegion } : {}), ...(gw.gateway ? { gateway: gw.gateway } : {}), ...(handoffPattern ? { handoffPattern } : {}), ...(planSystem ? { planSystem } : {}), ...(planFolder ? { planFolder } : {}), ...(planSwitch ? { planSwitch } : {}), ...(docketHooks ? { docketHooks } : {}), ...(settingSources ? { settingSources } : {}), ...(splitWork ? {} : { splitWork: false }), ...(forms ? { questionForms: forms } : {}), ...(resumeSignIn ? {} : { resumeAfterSignIn: false }), ...(configReload ? { configReload: 'ask' } : {}), ...(color ? { color } : {}), ...(budget ? { budget } : {}), ...(saveAt !== undefined ? { saveBeforeCompact: saveAt } : {}), ...(cacheTtl ? { promptCacheTtl: cacheTtl } : {}), ...(Object.keys(startGear).length ? { startGear } : {}), ...(Object.keys(links).length ? { links } : {}), ...(before.ghDefault ? { ghDefault: before.ghDefault } : {}), ...(Object.keys(ownEnv.env).length ? { env: ownEnv.env } : {}), ...(before.copiedFrom ? { copiedFrom: before.copiedFrom } : {}), ...(before.madeFolders?.length ? { madeFolders: before.madeFolders } : {}) };
 }
 function saveCompanies(list) {
   for (const c of list) {
@@ -9156,7 +9161,7 @@ const PREVIEW_EXT = new Set(['md', 'markdown', 'txt', 'json', 'csv', 'tsv']);
 // What the new-tab preview (/view) shows as the file itself rather than as text.
 const RAW_TYPE = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
   pdf: 'application/pdf', html: 'text/html; charset=utf-8', htm: 'text/html; charset=utf-8' };
-const viewOf = (e) => PREVIEW_EXT.has(e) ? 'text' : /^(html|htm)$/.test(e) ? 'html' : e === 'pdf' ? 'pdf' : RAW_TYPE[e] ? 'image' : null;
+const viewOf = (e) => PREVIEW_EXT.has(e) ? 'text' : SHEET_EXT.has(e) ? 'sheet' : /^(html|htm)$/.test(e) ? 'html' : e === 'pdf' ? 'pdf' : RAW_TYPE[e] ? 'image' : null;
 const PATH_RE = pathRe(); // C:\… on Windows, /Users/… on a Mac (platform.mjs)
 
 async function sessionFiles(client, id) {
@@ -9314,6 +9319,107 @@ function openFolder(client, id, dir) {
 function showFile(file, how, { cmd, args, opts } = openCommand(file, how)) {
   spawn(cmd, args, { detached: true, ...opts, stdio: 'ignore' }).on('error', (e) => logEvent('could not open a file', `${file}: ${e.message}`)).unref();
 }
+// ---------- Open in Google Sheets (#1017, google-sheets.mjs) ----------
+// The sign-in app is this computer's (google-client.json), each desk signs in to its own Google account (google/<id>.json).
+// A desk's googleSheets setting: '' asks before its first upload, 'yes' once agreed, 'off' never sends a file to Google.
+const GOOGLE_CLIENT_FILE = path.join(DATA_DIR, 'google-client.json');
+const googleTokenFile = (client) => path.join(DATA_DIR, 'google', `${client.id}.json`);
+const googleRedirect = () => `http://127.0.0.1:${PORT}/google/callback`;
+const googleAccess = new Map(); // desk id -> { accessToken, expires }
+const googleLogins = new Map(); // state -> { client, verifier, file: { sessionId, path }, at }: sign-ins under way, 15 minutes each
+const escHtml = (t) => String(t).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+const readJsonFile = (f) => { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return null; } };
+const googleApp = () => { const c = readClientFile(readJsonFile(GOOGLE_CLIENT_FILE) || {}); return c.error ? null : c; };
+const googleEmail = (client) => readJsonFile(googleTokenFile(client))?.email || '';
+function saveGoogleToken(client, t) {
+  fs.mkdirSync(path.dirname(googleTokenFile(client)), { recursive: true });
+  fs.writeFileSync(googleTokenFile(client), JSON.stringify({ refreshToken: t.refreshToken, email: t.email, at: Date.now() }, null, 2));
+  googleAccess.set(client.id, { accessToken: t.accessToken, expires: t.expires });
+}
+function forgetGoogle(client) {
+  const saved = readJsonFile(googleTokenFile(client));
+  if (saved?.refreshToken) revokeGoogle({ token: saved.refreshToken });
+  fs.rmSync(googleTokenFile(client), { force: true });
+  googleAccess.delete(client.id);
+}
+async function googleToken(client) {
+  const cached = googleAccess.get(client.id);
+  if (cached && cached.expires > Date.now() + 60000) return cached.accessToken;
+  const app = googleApp(), saved = readJsonFile(googleTokenFile(client));
+  if (!app || !saved?.refreshToken) return null;
+  try {
+    const t = await refreshAccess({ ...app, refreshToken: saved.refreshToken });
+    googleAccess.set(client.id, t);
+    return t.accessToken;
+  } catch (e) { if (e.signin) { forgetGoogle(client); return null; } throw e; }
+}
+// The session's file, checked like Open in its own program, read for the upload.
+async function sheetFile(client, sessionId, filePath) {
+  const full = path.resolve(filePath);
+  const f = (await sessionFiles(client, sessionId)).find((x) => x.path.toLowerCase() === full.toLowerCase());
+  if (!f) throw new Error('That file is not on this session\'s list');
+  if (!f.exists) throw new Error('That file no longer exists');
+  if (!SHEET_FILE.test(f.path)) throw new Error('Only .xlsx, .xls, .xlsm and .csv files open in Google Sheets');
+  const size = fs.statSync(f.path).size;
+  if (size > SHEET_MAX_BYTES) throw new Error(`${path.basename(f.path)} is ${Math.round(size / 1048576)} MB; Google turns files of up to 100 MB into Sheets`);
+  return f.path;
+}
+async function uploadToSheets(client, file, accessToken) {
+  const r = await uploadAsSheet({ accessToken, name: sheetName(file), mime: sourceMime(file), data: fs.readFileSync(file) });
+  const url = sheetUrl(r.url, googleEmail(client));
+  logEvent('opened in Google Sheets', `${client.name}: ${file} -> ${r.id}`);
+  showFile(url, 'open', urlOpenCommand(url));
+  return url;
+}
+// What the page does next: { confirm } (ask before the desk's first upload), { setup } (no sign-in app on this computer),
+// { connect } (the Google sign-in opened in the browser; the Sheet opens once it is done) or { opened } (the Sheet's address).
+async function openInSheets(client, sessionId, filePath, go) {
+  if (client.googleSheets === 'off') throw new Error(`Open in Google Sheets is turned off for ${client.name}. Turn it on in ☰ > Desks > Manage > ${client.name} > Google Sheets.`);
+  const file = await sheetFile(client, sessionId, filePath);
+  if (client.googleSheets !== 'yes') {
+    if (!go) return { confirm: true, email: googleEmail(client) };
+    saveCompanies(CLIENTS.map((c) => (c.id === client.id ? { ...c, googleSheets: 'yes' } : c)));
+  }
+  const app = googleApp();
+  if (!app) return { setup: true };
+  const token = await googleToken(client).catch((e) => { if (e.setup) return { setup: e.message }; throw e; });
+  if (token?.setup) return { setup: true, error: token.setup };
+  if (!token) {
+    for (const [k, v] of googleLogins) if (Date.now() - v.at > 15 * 60000) googleLogins.delete(k);
+    const { verifier, challenge } = pkce(), st = randomUUID();
+    googleLogins.set(st, { client: client.id, verifier, file: { sessionId, path: file }, at: Date.now() });
+    const url = googleAuthUrl({ clientId: app.clientId, redirectUri: googleRedirect(), state: st, challenge, email: readJsonFile(googleTokenFile(client))?.email || client.email });
+    showFile(url, 'open', urlOpenCommand(url));
+    return { connect: true };
+  }
+  try { return { opened: await uploadToSheets(client, file, token) }; }
+  catch (e) { if (e.signin) forgetGoogle(client); throw e; }
+}
+// Google sends the browser back here after its sign-in: the desk's sign-in is kept, the file goes up, and the same
+// browser tab goes on to the new Sheet, or shows what went wrong.
+async function googleCallback(url, res) {
+  const page = (title, text) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(`<!doctype html><meta charset="utf-8"><title>${escHtml(title)}</title><body style="font:15px system-ui;max-width:36em;margin:3em auto;padding:0 1em"><h2>${escHtml(title)}</h2><p>${escHtml(text)}</p><p>You can close this tab.</p>`); };
+  const login = googleLogins.get(url.searchParams.get('state') || '');
+  if (!login) return page('Sign-in not recognised', 'This Google sign-in was not started by Docket, or it is more than 15 minutes old. Choose Open in Google Sheets again.');
+  googleLogins.delete(url.searchParams.get('state'));
+  const client = clientById(login.client), app = googleApp();
+  if (!client || !app) return page('Sign-in not finished', 'The desk or Docket\'s Google sign-in app is gone. Choose Open in Google Sheets again.');
+  if (url.searchParams.get('error')) return page('Not signed in to Google', url.searchParams.get('error') === 'access_denied' ? 'The sign-in was cancelled, so nothing was sent to Google.' : `Google said: ${url.searchParams.get('error')}`);
+  let token;
+  try { token = await exchangeCode({ ...app, code: url.searchParams.get('code') || '', verifier: login.verifier, redirectUri: googleRedirect() }); }
+  catch (e) { return page('Not signed in to Google', e.message); }
+  saveGoogleToken(client, token);
+  broadcast({ t: 'clients' });
+  let sheet;
+  try {
+    const file = await sheetFile(client, login.file.sessionId, login.file.path);
+    const r = await uploadAsSheet({ accessToken: token.accessToken, name: sheetName(file), mime: sourceMime(file), data: fs.readFileSync(file) });
+    logEvent('opened in Google Sheets', `${client.name}: ${file} -> ${r.id}`);
+    sheet = sheetUrl(r.url, token.email);
+  } catch (e) { return page('Signed in, but the file did not go to Google', e.message); }
+  res.writeHead(302, { location: sheet }); res.end();
+}
+
 
 // The computer's own folder picker, one at a time, starting at the typed folder or the nearest one above it
 // that exists. It waits as long as the person takes: { folder }, { cancelled } or { error }.
@@ -10428,7 +10534,8 @@ const server = http.createServer(async (req, res) => {
         const startGears = Object.fromEntries(brandsOf(c).map((e) => [e, usableGear(c, e, startGearOf(e, null, c.startGear?.[e])).name]));
         // planSystem: '' while the desk has not chosen one, which the page offers once (the card after the update, #180).
         return { id: c.id, name: c.name, folder: c.folder, ...(c.hidden ? { hidden: true } : {}), color: c.color || '', defaultEngine: defaultEngineOf(c), planSystem: c.planSystem || '', ...(c.planSwitch ? { planSwitch: { to: c.planSwitch.to, from: c.planSwitch.from, session: c.planSwitch.session } } : {}), brands, startGears,
-          bedrock: isBedrock(c), ...(gatewayFor(c, 'claude') ? { gateway: gatewayHost(c.gateway.url) } : {}), signedIn, forced: forcedOf(c), browser: browserStatus(c) };
+          bedrock: isBedrock(c), ...(gatewayFor(c, 'claude') ? { gateway: gatewayHost(c.gateway.url) } : {}), signedIn, forced: forcedOf(c), browser: browserStatus(c),
+          googleSheets: c.googleSheets || '', googleEmail: googleEmail(c) };
       }));
       return json(res, 200, [...rows, ...await remoteRows(!quick)]); // remote desks come after this computer's own
     }
@@ -10439,7 +10546,7 @@ const server = http.createServer(async (req, res) => {
       const all = CLIENTS.map((c) => ({ id: c.id, name: c.name, conns: deskConnections(c) }));
       const connections = (c) => all.find((x) => x.id === c.id).conns.map((x) => ({ brand: x.brand, label: x.label, kind: x.kind, detail: x.detail,
         sharedWith: all.filter((o) => o.id !== c.id && o.conns.some((y) => y.key === x.key)).map((o) => o.name) }));
-      return json(res, 200, CLIENTS.map((c) => ({ ...c, forced: forcedOf(c), running: [...live.values()].filter((x) => x.client === c.id).length, hookList: hooksFor(c, PLUGIN_DIR), connections: connections(c),
+      return json(res, 200, CLIENTS.map((c) => ({ ...c, forced: forcedOf(c), running: [...live.values()].filter((x) => x.client === c.id).length, hookList: hooksFor(c, PLUGIN_DIR), connections: connections(c), googleEmail: googleEmail(c),
         gatewayModels: (gatewayFor(c, 'claude') && authCache.get(authKey(c.id))?.models) || [] })));
     }
     if (req.method === 'POST' && p === '/api/clients/edit') {
@@ -11197,6 +11304,11 @@ const server = http.createServer(async (req, res) => {
       }
       if (!view) return json(res, 400, { error: 'This kind of file does not preview here' });
       const meta = { name: f.name, path: f.path, modified: f.modified, view, ext: e };
+      if (view === 'sheet') { // an Excel workbook, read here (workbook.mjs) and sent as tables, each sheet cut short
+        if (f.size > 50e6) return json(res, 400, { error: 'That workbook is too large to preview' });
+        try { return json(res, 200, { ...meta, maxRows: MAX_ROWS, maxCols: MAX_COLS, sheets: await readWorkbook(f.path) }); }
+        catch (e) { return json(res, 400, { error: e.message }); }
+      }
       if (view !== 'text') return json(res, 200, meta);
       if (f.size > 3e6) return json(res, 400, { error: 'That file is too large to preview' });
       return json(res, 200, { ...meta, markdown: /^(md|markdown)$/.test(e), text: fs.readFileSync(f.path, 'utf8') });
@@ -11207,6 +11319,30 @@ const server = http.createServer(async (req, res) => {
       if (!client || !/^[\w-]+$/.test(b.sessionId || '') || typeof b.path !== 'string') return json(res, 400, { error: 'Bad request' });
       try { return json(res, 200, await publishArtifact(client, b.sessionId, b.path)); }
       catch (e) { return json(res, 400, { error: e.message }); }
+    }
+    // Open in Google Sheets (#1017): the file's menu and the preview's header. go: the person agreed to the desk's first upload.
+    if (req.method === 'POST' && p === '/api/files/sheets') {
+      const b = await readBody(req);
+      const client = clientById(b.client);
+      if (!client || !/^[\w-]+$/.test(b.sessionId || '') || typeof b.path !== 'string') return json(res, 400, { error: 'Bad request' });
+      try { return json(res, 200, await openInSheets(client, b.sessionId, b.path, b.go === true)); }
+      catch (e) { return e.setup ? json(res, 200, { setup: true, error: e.message }) : json(res, 400, { error: e.message }); }
+    }
+    if (req.method === 'GET' && p === '/google/callback') return await googleCallback(url, res);
+    // The Google sign-in app's client file (Download JSON in Google Cloud), kept for this computer.
+    if (req.method === 'POST' && p === '/api/google/client') {
+      const c = readClientFile((await readBody(req)).json);
+      if (c.error) return json(res, 400, c);
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(GOOGLE_CLIENT_FILE, JSON.stringify({ installed: { client_id: c.clientId, client_secret: c.clientSecret } }, null, 2));
+      googleAccess.clear(); // tokens from another app stop working with this one
+      return json(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && p === '/api/google/disconnect') {
+      const client = clientById((await readBody(req)).client);
+      if (!client) return json(res, 400, { error: 'Bad request' });
+      forgetGoogle(client); broadcast({ t: 'clients' });
+      return json(res, 200, { ok: true });
     }
     if (req.method === 'POST' && p === '/api/files/open') {
       const b = await readBody(req);

@@ -74,7 +74,7 @@ test('a remote may read the desk\'s sessions, start one, send, and answer; nothi
   // New group, naming and ordering groups; never a group's start folder, archiving or deleting
   for (const p of ['/api/groups', '/api/groups/order', '/api/groups/g_1a2b3c4d/rename']) assert.deepEqual(remoteRoute('POST', p), { kind: 'desk' }, p);
   for (const a of ['folder', 'archive', 'restore', 'delete']) assert.equal(remoteRoute('POST', `/api/groups/g_1a2b3c4d/${a}`), null, a);
-  const refused = [['POST', '/api/files/open'], ['GET', '/api/files/raw'], ['GET', '/api/files/content'], ['POST', '/api/terminal'], ['POST', '/api/editor'], ['POST', '/api/pick-folder'],
+  const refused = [['POST', '/api/files/open'], ['POST', '/api/files/sheets'], ['POST', '/api/google/client'], ['POST', '/api/google/disconnect'], ['GET', '/google/callback'], ['GET', '/api/files/raw'], ['GET', '/api/files/content'], ['POST', '/api/terminal'], ['POST', '/api/editor'], ['POST', '/api/pick-folder'],
     ['POST', '/api/clients/edit'], ['GET', '/api/clients/edit'], ['POST', '/api/clients/acme/login'], ['POST', '/api/clients/acme/profile/show'],
     ['POST', '/api/sessions/abc/end'], ['POST', '/api/sessions/abc/delete'], ['POST', '/api/sessions/abc/archive'], ['POST', '/api/sessions/abc/move'],
     ['GET', '/api/sessions/abc/files'], ['POST', '/api/pause'], ['POST', '/api/update/check'], ['POST', '/api/remote-control'], ['GET', '/api/remote-control'],

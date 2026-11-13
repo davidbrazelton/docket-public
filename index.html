@@ -303,6 +303,21 @@ main { display: flex; flex-direction: column; min-width: 0; min-height: 0; posit
 .md-body td { white-space: pre-wrap; vertical-align: top; }
 .md-body .pic { display: block; margin: 0 auto; max-width: 100%; height: auto; }
 .md-body.framed { max-width: none; padding: 0; height: 100%; }
+/* An Excel workbook (#1016): sheet tabs on top, then the sheet with its column letters and row numbers kept in view. Same as view.html. */
+.sheet-book { display: flex; flex-direction: column; height: 100%; }
+.sheet-tabs { display: flex; gap: 2px; padding: 6px 10px; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
+.sheet-tabs button { white-space: nowrap; font-size: 12px; padding: 3px 10px; }
+.sheet-tabs button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.sheet-at { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.sheet-cut { margin: 0; padding: 6px 12px; font-size: 12px; color: var(--muted); flex: none; }
+.sheet-wrap { flex: 1; min-height: 0; overflow: auto; }
+.md-body table.sheet { display: table; border-collapse: separate; border-spacing: 0; font-size: 13px; line-height: 1.4; }
+.md-body table.sheet th, .md-body table.sheet td { border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 2px 8px; white-space: pre; max-width: 32em; overflow: hidden; text-overflow: ellipsis; }
+.md-body table.sheet th { position: sticky; background: var(--panel); color: var(--muted); font-weight: 500; z-index: 1; }
+.md-body table.sheet thead th { top: 0; }
+.md-body table.sheet tbody th { left: 0; text-align: right; }
+.md-body table.sheet thead th:first-child { left: 0; z-index: 2; }
+.md-body table.sheet td.num { text-align: right; }
 .md-body .frame { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
 .main-head { display: flex; align-items: center; gap: 10px; padding: 10px 18px; border-bottom: 1px solid var(--divider); background: var(--panel); flex-wrap: wrap; }
 .main-head h1 { font-size: 16px; margin: 0; font-weight: 600; cursor: text; flex: 0 1 auto; min-width: 160px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1896,7 +1911,7 @@ try { const get = (k) => JSON.parse(localStorage.getItem(k)); applyAccent((get('
           <button data-pv-mode="middle" data-tip="pv-middle">Middle</button><button data-pv-mode="window" data-tip="pv-window">Window</button><button data-pv-mode="popout" data-tip="pv-popout">Pop out</button>
         </span>
         <a class="pv-tab" id="pvTab" target="_blank" rel="noopener" data-tip="pv-tab" aria-label="Open in a new tab"></a>
-        <button id="pvReload" data-tip="pv-reload">Reload</button><button id="pvOpen" data-tip="pv-open">Open in default program</button><button id="pvFolder" data-tip="pv-folder" aria-label="Show in File Explorer">📂</button><button class="ghost" id="pvClose" aria-label="Close preview" data-tip="pv-close">✕</button>
+        <button id="pvReload" data-tip="pv-reload">Reload</button><button id="pvOpen" data-tip="pv-open">Open in default program</button><button id="pvSheets" data-tip="pv-sheets" hidden>Open in Google Sheets</button><button id="pvFolder" data-tip="pv-folder" aria-label="Show in File Explorer">📂</button><button class="ghost" id="pvClose" aria-label="Close preview" data-tip="pv-close">✕</button>
       </div>
       <div class="preview-body"><div class="md-body" id="pvBody"></div></div>
     </section>
@@ -2293,6 +2308,7 @@ const HELP = [
     ['pv-reload', 'Reload', 'Read the file again to show its latest version'],
     ['pv-open', 'Open in default program', `Open the file in the program ${OS.opener} uses for it, like Excel or Word`],
     ['pv-folder', '📂', `Show in ${OS.files}`],
+    ['pv-sheets', 'Open in Google Sheets', 'Upload a copy to your Google Drive as a Google Sheet and open it in the browser. This file is not changed'],
     ['pv-close', '✕', 'Close the preview'],
     ['lb-close', '✕', 'Close (Esc)'],
     ['lb-prev', '‹', 'Previous picture (←)'],
@@ -2460,6 +2476,8 @@ const HELP = [
     ['ps-finish', 'Finish the switch', 'Switch the desk to its new plan system now. Press it once the conversion session says it is done'],
     ['ps-stop', 'Cancel the switch', 'Keep the desk on its old plan system. The conversion session and anything it made stay as they are'],
     ['ps-open', 'Open the session', 'Open the session converting this desk\'s plans'],
+    ['co-google', 'Google Sheets', 'Open in Google Sheets on a spreadsheet\'s menu uploads a copy to Google Drive. Ask first asks once before the first upload; Off hides it and never sends a file to Google from this desk'],
+    ['co-google-off', 'Disconnect', 'Forget this desk\'s Google sign-in, here and at Google. The Sheets already made stay in Drive'],
     ['co-cache', 'Prompt cache', 'How long Claude keeps its short-term memory of a session after each reply. Automatic is Claude Code\'s own choice: 1 hour on a Claude subscription, 5 minutes on an API key or Bedrock. 1 hour keeps it through longer pauses, and starting it costs a bit more each time. New sessions only'],
     ['co-env-name', 'Variable name', 'The name of an environment variable this desk\'s sessions, hooks, Terminal and env script get, like BATON_NOTES_ROOT. Names Docket sets itself (the homes, sign-in and connection) can\'t be used'],
     ['co-env-value', 'Variable value', 'Its value, on one line. Empty sets it to nothing'],
@@ -3222,7 +3240,7 @@ function fileIcon(name) {
   return '📄';
 }
 // Files the preview page (/view, view.html) can show in a tab of its own. Must match viewOf() in server.mjs.
-const TAB_VIEW = /\.(md|markdown|txt|json|csv|tsv|png|jpe?g|gif|webp|svg|pdf|html?)$/i;
+const TAB_VIEW = /\.(md|markdown|txt|json|csv|tsv|xlsx|xls|xlsm|png|jpe?g|gif|webp|svg|pdf|html?)$/i;
 const TAB_ICON = '<svg class="tab-ic" viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M9.5 2.5h4v4M13.5 2.5 7.5 8.5M11.5 9.5v3.25a.75.75 0 0 1-.75.75h-7.5a.75.75 0 0 1-.75-.75v-7.5a.75.75 0 0 1 .75-.75H6.5"/></svg>';
 // The ⋯ button on file, pull request, ticket and held job rows in the details panel; right-click opens the same menu.
 const FILE_MANAGER = OS.files; // the platform part above reads the computer
@@ -3238,7 +3256,11 @@ const MENU_IC = {
   done: MI('M3 8.5l3 3 7-7'), // a check mark
   publish: MI('M8 11V3M4.75 6.25L8 3l3.25 3.25M3 10.5v2.5h10v-2.5'), // an arrow up out of a tray
   share: MI('M11.5 5.5a1.75 1.75 0 1 0 0-.01M4.5 9.75a1.75 1.75 0 1 0 0-.01M11.5 14a1.75 1.75 0 1 0 0-.01M6 8.9l4-2.3M6 10.6l4 2.3'), // three linked dots
+  sheets: MI('M3 2.5h10v11H3zM3 6.25h10M3 9.75h10M7 6.25v7.25'), // a grid of cells
 };
+// Open in Google Sheets (#1017): a spreadsheet goes to the desk's Google Drive as a Google Sheet. Off for a desk hides it.
+const SHEET_FILE = /\.(xlsx|xls|xlsm|csv)$/i;
+const sheetsOn = (p) => { const d = S.clients.find((c) => c.id === S.client); return SHEET_FILE.test(p) && !!d && !d.remote && d.googleSheets !== 'off'; }; // a remote desk's files stay on its computer
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg)$/i;
 const viewUrl = (sessionId, filePath) => '/view?' + new URLSearchParams({ client: S.client, sessionId, path: filePath });
 function fileRow(f, sessionId) {
@@ -3537,6 +3559,31 @@ function csvTable(text, sep) {
   const [head, ...rest] = rows;
   return `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rest.map((r) => `<tr>${r.map((d) => `<td>${esc(d)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
+// An Excel workbook (#1016): the app reads it (workbook.mjs) and sends each sheet's first rows and columns as Excel
+// shows them. One sheet at a time, with tabs to pick it when there are several. Same as view.html.
+const colName = (c) => { let s = ''; for (c++; c > 0; c = Math.floor((c - 1) / 26)) s = String.fromCharCode(65 + (c - 1) % 26) + s; return s; };
+const NUM_CELL = /^[-+(]?[$€£¥]?\s?[\d,]*\.?\d+(?:[eE][-+]?\d+)?%?\)?$/;
+function sheetAt(s) {
+  if (!s.rows.length) return '<p class="sheet-cut">This sheet is empty.</p>';
+  const width = Math.max(...s.rows.map((r) => r.length)), cols = Array.from({ length: width }, (_, j) => j);
+  const cut = s.rows.length < s.totalRows || width < s.totalCols;
+  return (cut ? `<p class="sheet-cut">Showing the first ${s.rows.length.toLocaleString()} of ${s.totalRows.toLocaleString()} rows${width < s.totalCols ? ` and ${width} of ${s.totalCols} columns` : ''}. Open in default program to see it all.</p>` : '')
+    + `<div class="sheet-wrap"><table class="sheet"><thead><tr><th></th>${cols.map((j) => `<th>${colName(s.col + j)}</th>`).join('')}</tr></thead><tbody>`
+    + s.rows.map((r, i) => `<tr><th>${s.row + i + 1}</th>${cols.map((j) => { const v = r[j] ?? ''; return `<td${NUM_CELL.test(v) ? ' class="num"' : ''}${v.length > 40 ? ` title="${esc(v)}"` : ''}>${esc(v)}</td>`; }).join('')}</tr>`).join('')
+    + '</tbody></table></div>';
+}
+function sheetBook(f) {
+  if (!f.sheets.length) return '<p class="plain">(empty)</p>';
+  const at = Math.max(0, f.sheets.findIndex((s) => !s.hidden));
+  const tabs = f.sheets.length < 2 ? '' : `<div class="sheet-tabs" role="tablist" aria-label="Sheets">${f.sheets.map((s, i) => `<button class="ghost${i === at ? ' on' : ''}" role="tab" aria-selected="${i === at}" data-sheet="${i}"${s.hidden ? ' title="Hidden in Excel"' : ''}>${esc(s.name)}${s.hidden ? ' (hidden)' : ''}</button>`).join('')}</div>`;
+  return `<div class="sheet-book">${tabs}<div class="sheet-at">${sheetAt(f.sheets[at])}</div></div>`;
+}
+function pickSheet(box, sheets, b) {
+  for (const t of box.querySelectorAll('[data-sheet]')) { t.classList.toggle('on', t === b); t.setAttribute('aria-selected', t === b); }
+  box.querySelector('.sheet-at').innerHTML = sheetAt(sheets[+b.dataset.sheet]);
+}
+let pvSheets = null; // the sheets of the workbook being previewed
+$('pvBody').addEventListener('click', (e) => { const b = e.target.closest('[data-sheet]'); if (b && pvSheets) pickSheet($('pvBody'), pvSheets, b); });
 let pv = null; // the file being previewed: { client, sessionId, path }
 async function previewFile(sessionId, filePath, mode = store.get('previewMode', 'middle')) {
   pv = { client: S.client, sessionId, path: filePath };
@@ -3550,6 +3597,7 @@ async function previewFile(sessionId, filePath, mode = store.get('previewMode', 
   for (const b of document.querySelectorAll('[data-pv-mode]')) b.classList.toggle('on', b.dataset.pvMode === mode);
   $('preview').hidden = false;
   $('pvTab').href = viewUrl(sessionId, filePath);
+  $('pvSheets').hidden = !sheetsOn(filePath);
   renderPager();
   $('pvName').textContent = filePath.split(/[\\/]/).pop(); $('pvName').title = filePath; $('pvWhen').textContent = '';
   $('pvBody').innerHTML = '<p class="note">Loading…</p>';
@@ -3559,8 +3607,10 @@ async function previewFile(sessionId, filePath, mode = store.get('previewMode', 
     $('pvWhen').textContent = 'changed ' + new Date(f.modified).toLocaleString();
     // Pictures, PDF and HTML come from the raw file; HTML runs sandboxed, with no access to Docket (as in view.html).
     const raw = '/api/files/raw?' + new URLSearchParams({ ...pv, t: Date.now() });
-    $('pvBody').classList.toggle('framed', f.view === 'pdf' || f.view === 'html');
+    $('pvBody').classList.toggle('framed', f.view === 'pdf' || f.view === 'html' || f.view === 'sheet');
+    pvSheets = f.view === 'sheet' ? f.sheets : null;
     $('pvBody').innerHTML = f.view === 'image' ? `<img class="pic" alt="${esc(f.name)}" src="${esc(raw)}">`
+      : f.view === 'sheet' ? sheetBook(f)
       : f.view === 'pdf' ? `<iframe class="frame" title="${esc(f.name)}" src="${esc(raw)}"></iframe>`
       : f.view === 'html' ? `<iframe class="frame" title="${esc(f.name)}" sandbox="allow-scripts allow-popups allow-forms" src="${esc(raw)}"></iframe>`
       : f.ext === 'csv' || f.ext === 'tsv' ? csvTable(f.text, f.ext === 'tsv' ? '\t' : ',')
@@ -3595,12 +3645,45 @@ document.addEventListener('keydown', (e) => {
   e.preventDefault(); stepFile(e.key === 'ArrowLeft' ? -1 : 1);
 });
 $('pvTab').innerHTML = TAB_ICON;
-function closePreview() { $('preview').hidden = true; pv = null; $('pvBody').innerHTML = ''; } // emptied, so an HTML page shown in it stops running
+function closePreview() { $('preview').hidden = true; pv = null; pvSheets = null; $('pvBody').innerHTML = ''; } // emptied, so an HTML page shown in it stops running
 document.querySelector('.pv-modes').onclick = (e) => { const b = e.target.closest('[data-pv-mode]'); if (b && pv) previewFile(pv.sessionId, pv.path, b.dataset.pvMode); };
 $('pvReload').onclick = () => pv && previewFile(pv.sessionId, pv.path);
 $('pvClose').onclick = closePreview;
 $('pvOpen').onclick = () => pv && api('/api/files/open', { ...pv, how: 'open' }).catch((err) => tell(err.message));
 $('pvFolder').onclick = () => pv && api('/api/files/open', { ...pv, how: 'folder' }).catch((err) => tell(err.message));
+$('pvSheets').onclick = () => pv && openInSheets(pv.sessionId, pv.path);
+// Open in Google Sheets. The server answers what comes next: confirm (the desk's first upload, asked once), setup (this
+// computer has no Google sign-in app yet), connect (Google's sign-in opened in the browser; the Sheet follows it) or opened.
+async function openInSheets(sessionId, p, go = false) {
+  const name = p.split(/[\\/]/).pop(), desk = S.clients.find((c) => c.id === S.client)?.name || 'this desk';
+  let r;
+  try { r = await api('/api/files/sheets', { client: S.client, sessionId, path: p, go }); }
+  catch (err) { tell(`${name} did not open in Google Sheets: ${err.message}`); return; }
+  if (r.confirm) {
+    if (await ask(`Send ${name} to Google?`, `Open in Google Sheets uploads a copy of ${name} to ${r.email ? `the Google Drive of ${r.email}` : 'your Google Drive'} and turns it into a Google Sheet. The file here is not changed, and edits made in the Sheet do not come back to it.\n\nThis is asked once for ${desk}. To stop ${desk} ever sending files to Google, set ☰ > Desks > Manage > ${desk} > Google Sheets to Off.`, { yes: 'Upload to Google', no: 'Cancel', safe: true })) openInSheets(sessionId, p, true);
+    return;
+  }
+  if (r.setup) { if (await googleSetup(r.error)) openInSheets(sessionId, p, true); return; }
+  if (r.connect) tell(`Sign in to Google in the browser tab that opened. ${name} opens in Google Sheets there once you have.`);
+  else tell(`${name} opened in Google Sheets in your browser.`);
+}
+// Docket's Google sign-in app, once per computer: a Google Cloud OAuth client of type Desktop app, chosen as its JSON
+// file. Resolves true once it is saved.
+async function googleSetup(error = '') {
+  for (;;) {
+    const body = `${error ? `<div class="co-err">${esc(error)}</div>` : ''}<p>To put files in Google Drive, Docket needs a Google sign-in app of its own on this computer. Set it up once, in a Google account that may make one (a Google Workspace admin may have to allow it):</p>
+      <ol><li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" title="Make a Google Cloud project (opens Google Cloud in a new tab)" rel="noopener">Google Cloud</a> and make a project, like Docket.</li>
+      <li>Turn on the <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" title="Turn on the Google Drive API (opens Google Cloud in a new tab)" rel="noopener">Google Drive API</a> in it.</li>
+      <li>In <a href="https://console.cloud.google.com/auth/branding" target="_blank" title="Name the sign-in app and pick who may use it (opens Google Cloud in a new tab)" rel="noopener">Google Auth Platform</a>, fill in an app name and your email. For Audience, pick Internal on Google Workspace; otherwise pick External and press Publish app, or the sign-in runs out every 7 days. Docket asks only to see the files it makes, so Google needs no review.</li>
+      <li>Under <a href="https://console.cloud.google.com/auth/clients" target="_blank" title="Make the Desktop app client and download its JSON (opens Google Cloud in a new tab)" rel="noopener">Clients</a>, Create client, type Desktop app, then Download JSON.</li>
+      <li>Choose that file here: <input type="file" id="gcFile" accept=".json,application/json"></li></ol>
+      <p class="meta">It is kept in Docket's data folder on this computer only. Each desk then signs in to its own Google account the first time.</p>`;
+    if (await dialog({ title: 'Set up Google Sheets', body, buttons: [{ label: 'Cancel', value: null }, { label: 'Save', value: 'save', primary: true }] }) !== 'save') return false;
+    const f = $('gcFile')?.files?.[0];
+    if (!f) { error = 'Choose the JSON file you downloaded.'; continue; }
+    try { await api('/api/google/client', { json: await f.text() }); return true; } catch (err) { error = err.message; }
+  }
+}
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('preview').hidden && $('preview').classList.contains('as-window')) closePreview(); });
 $('preview').addEventListener('click', (e) => { if (e.target === $('preview') && $('preview').classList.contains('as-window')) closePreview(); });
 
@@ -3642,6 +3725,7 @@ function rowMenu(row, x, y) {
     const img = shows && IMAGE_FILE.test(p), what = img ? 'image ' : '', view = viewUrl(sessionId, p);
     items = (shows ? item('docket', 'docket', `Open ${what}in Docket`) + item('tab', 'tab', `Open ${what}in new tab`) + item('window', 'window', `Open ${what}in new window`) : '')
       + (ok && canOpen ? item('open', 'program', `Open ${what}in its own program`) : '')
+      + (ok && sheetsOn(p) ? item('sheets', 'sheets', 'Open in Google Sheets', tipText('pv-sheets')) : '')
       + (ok ? item('folder', 'folder', `Show in ${FILE_MANAGER}`) + '<hr>' : '')
       + (img ? item('image', 'copy', 'Copy image') + item('address', 'copy', 'Copy image address') : '')
       + item('copy', 'copy', 'Copy path')
@@ -3652,6 +3736,7 @@ function rowMenu(row, x, y) {
         + item('art-share', 'share', 'Share…', 'Opens the artifact page on claude.ai: use its Share button to pick who can see it')
         + item('art-copy', 'copy', 'Copy artifact link') : '');
     run = (act) => act === 'publish' ? publishFile(sessionId, p, row)
+      : act === 'sheets' ? openInSheets(sessionId, p)
       : act === 'art-open' || act === 'art-share' ? window.open(known.artifact, '_blank', 'noopener')
       : act === 'art-copy' ? copied(known.artifact, row)
       : act === 'docket' ? previewFile(sessionId, p)
@@ -8024,6 +8109,7 @@ async function editCompanies(rows, error = '', start, scrollTo, budgetFor) {
       <span>Color</span><span class="co-color"><span class="co-sw${c.color ? '' : ' none'}" style="--sw:${esc(c.color || '')}"></span>${c.color ? esc(c.color.toUpperCase()) : '<span class="muted">None: uses the main color</span>'}<button data-color="${i}"${tip('co-color')}>Pick…</button></span>
       <label for="co${i}defaultEngine">Default brand for new sessions</label><select id="co${i}defaultEngine" data-i="${i}" data-k="defaultEngine"${tip('co-default-engine')}>${coUses(c, 'claude') ? '<option value="">Claude</option>' : ''}${CO_BRANDS.filter(([e]) => e !== 'claude' && coUses(c, e)).map(([e, n]) => `<option value="${e}" ${c.defaultEngine === e ? 'selected' : ''}>${n}</option>`).join('')}</select>
       ${gearRows(c, i)}
+      ${c.id ? `<label for="co${i}googleSheets">Google Sheets</label><span class="co-color"><select id="co${i}googleSheets" data-i="${i}" data-k="googleSheets"${tip('co-google')}>${[['', 'Ask before the first upload'], ['yes', 'Allowed'], ['off', 'Off: never send files to Google']].map(([v, n]) => `<option value="${v}" ${(c.googleSheets || '') === v ? 'selected' : ''}>${n}</option>`).join('')}</select>${c.googleEmail ? `<span class="muted">Signed in as ${esc(c.googleEmail)}</span><button data-gdisc="${i}"${tip('co-google-off')}>Disconnect</button>` : ''}</span>` : ''}
       ${coUses(c, 'claude') ? `<label for="co${i}promptCacheTtl">Prompt cache</label><select id="co${i}promptCacheTtl" data-i="${i}" data-k="promptCacheTtl"${tip('co-cache')}><option value="">Automatic (Claude Code picks)</option><option value="1h" ${c.promptCacheTtl === '1h' ? 'selected' : ''}>1 hour</option>${c.promptCacheTtl === '5m' ? '<option value="5m" selected>5 minutes</option>' : ''}</select>` : ''}
       ${field(i, 'budget', 'Daily budget ($)', 'Dollars a day at API prices, like 50; today\'s spend turns amber at 80% and red at 100%, and at 100% new turns on this desk wait until you choose Continue today (optional)')}
       ${field(i, 'folder', 'Working folder', 'Where new sessions start (optional)', ' data-pick="here"')}
@@ -8108,6 +8194,8 @@ async function editCompanies(rows, error = '', start, scrollTo, budgetFor) {
     const top = $('dlgBody').scrollTop; $('dlgBody').innerHTML = body(); $('dlgBody').scrollTop = top;
   };
   $('dlgBody').onclick = (e) => {
+    const gd = e.target.closest('[data-gdisc]');
+    if (gd) { const c = rows[+gd.dataset.gdisc]; api('/api/google/disconnect', { client: c.id }).then(() => { read(); c.googleEmail = ''; const top = $('dlgBody').scrollTop; $('dlgBody').innerHTML = body(); $('dlgBody').scrollTop = top; }, (err) => tell(err.message)); return; }
     // A desk's header opens and closes its settings: its fold button, or the header itself outside its name and buttons.
     const head = e.target.closest('[data-fold]');
     if (head && (head.tagName === 'BUTTON' || e.target === head)) {

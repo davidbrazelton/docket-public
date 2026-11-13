@@ -13,6 +13,13 @@ export function openCommand(file, how, platform = process.platform) {
   return { cmd: 'xdg-open', args: [how === 'folder' ? path.posix.dirname(file) : file], opts: {} };
 }
 
+// The program that opens a web address in the default browser. Windows: rundll32's FileProtocolHandler, which takes the
+// address as it is (explorer.exe and start both mangle an address with & in it). macOS: open. Linux: xdg-open.
+export function urlOpenCommand(url, platform = process.platform) {
+  if (platform === 'win32') return { cmd: 'rundll32.exe', args: ['url.dll,FileProtocolHandler', url], opts: {} };
+  return { cmd: platform === 'darwin' ? 'open' : 'xdg-open', args: [url], opts: {} };
+}
+
 // Where an installer puts a program that may not be on the PATH Docket started with.
 // WinGet\Links is where winget puts a program like Codex (winget install OpenAI.Codex); AppData\Roaming\npm is where
 // npm install -g puts one, which is on no PATH when Node.js came with Docket-Setup.exe rather than its own installer.
