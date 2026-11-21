@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preview</title>
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48 256x256">
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<style>
+:root { --bg: #ffffff; --panel: #f7f6f3; --line: #e2e0d8; --text: #1f1e1b; --muted: #6b6a64; --accent: #c2410c; --accent-soft: #fde7d9; --code-bg: #f1efe9; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #1b1b19; --panel: #232321; --line: #373633; --text: #ecebe6; --muted: #a09f98; --accent: #f97316; --accent-soft: #3b2417; --code-bg: #2a2a27; }
+}
+:root[data-theme="dark"] { --bg: #1b1b19; --panel: #232321; --line: #373633; --text: #ecebe6; --muted: #a09f98; --accent: #f97316; --accent-soft: #3b2417; --code-bg: #2a2a27; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { position: sticky; top: 0; display: flex; gap: 8px; align-items: center; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header .name { font-weight: 600; flex: 1; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header .when { font-size: 12px; color: var(--muted); }
+button { font: inherit; font-size: 13px; color: inherit; background: none; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+main { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; word-wrap: break-word; }
+pre { background: var(--code-bg); padding: 10px 12px; border-radius: 8px; overflow: auto; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+:not(pre) > code { background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
+table { border-collapse: collapse; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--line); padding: 4px 8px; white-space: pre-wrap; vertical-align: top; }
+a { color: var(--accent); }
+img { max-width: 100%; }
+.plain { white-space: pre-wrap; font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.err { color: #b91c1c; }
+header .err { font-size: 12px; }
+body.framed main { max-width: none; padding: 0; }
+.frame { display: block; width: 100%; height: calc(100vh - 50px); border: 0; background: #fff; }
+.pager { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pager[hidden] { display: none; }
+.pager button { border: none; font-size: 20px; line-height: 1; padding: 0 8px 2px; }
+.pager button:disabled { opacity: .35; cursor: default; }
+.pic { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+/* An Excel workbook (#1016): sheet tabs on top, then the sheet with its column letters and row numbers kept in view. Same as index.html. */
+.sheet-book { display: flex; flex-direction: column; height: calc(100vh - 50px); }
+.sheet-tabs { display: flex; gap: 2px; padding: 6px 10px; border-bottom: 1px solid var(--line); overflow-x: auto; flex: none; }
+.sheet-tabs button { border-color: transparent; white-space: nowrap; font-size: 12px; padding: 3px 10px; }
+.sheet-tabs button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.sheet-at { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.sheet-cut { margin: 0; padding: 6px 12px; font-size: 12px; color: var(--muted); flex: none; }
+.sheet-wrap { flex: 1; min-height: 0; overflow: auto; }
+table.sheet { display: table; border-collapse: separate; border-spacing: 0; font-size: 13px; line-height: 1.4; }
+table.sheet th, table.sheet td { border: 0; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 2px 8px; white-space: pre; max-width: 32em; overflow: hidden; text-overflow: ellipsis; }
+table.sheet th { position: sticky; background: var(--panel); color: var(--muted); font-weight: 500; z-index: 1; }
+table.sheet thead th { top: 0; }
+table.sheet tbody th { left: 0; text-align: right; }
+table.sheet thead th:first-child { left: 0; z-index: 2; }
+table.sheet td.num { text-align: right; }
+</style>
+</head>
+<body>
+<header>
+  <span class="pager" id="pager" hidden><button id="prev" aria-label="Previous file" title="Previous file (←)">‹</button><span id="pos"></span><button id="next" aria-label="Next file" title="Next file (→)">›</button></span>
+  <span class="name" id="name">Loading…</span><span class="when" id="when"></span><span class="err" id="actErr" role="status"></span>
+  <button id="reload">Reload</button><button id="open">Open in default program</button><button id="folder" title="Show in File Explorer">📂</button>
+</header>
+<main id="body"></main>
+<script>
+// A preview of one file from a session's Files list, in its own tab or window: Markdown and text,
+// CSV and Excel workbooks as tables, pictures, PDF, and HTML pages (sandboxed).
+const q = new URLSearchParams(location.search);
+const ask = { client: q.get('client'), sessionId: q.get('sessionId'), path: q.get('path') };
+try { const t = localStorage.getItem('theme'); if (t) document.documentElement.dataset.theme = JSON.parse(t); } catch {}
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// A CSV or TSV file as a table (quoted values may hold the separator, quotes, and line breaks).
+function table(text, sep) {
+  const rows = []; let row = [], cell = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') quoted = false; else cell += c; }
+    else if (c === '"' && cell === '') quoted = true;
+    else if (c === sep) { row.push(cell); cell = ''; }
+    else if (c === '\n') { row.push(cell.replace(/\r$/, '')); rows.push(row); row = []; cell = ''; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  if (!rows.length) return '<p class="plain">(empty)</p>';
+  const [head, ...rest] = rows;
+  return `<table><thead><tr>${head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rest.map((r) => `<tr>${r.map((d) => `<td>${esc(d)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+// An Excel workbook (#1016): the app reads it (workbook.mjs) and sends each sheet's first rows and columns as Excel
+// shows them. One sheet at a time, with tabs to pick it when there are several. Same as index.html.
+const colName = (c) => { let s = ''; for (c++; c > 0; c = Math.floor((c - 1) / 26)) s = String.fromCharCode(65 + (c - 1) % 26) + s; return s; };
+const NUM_CELL = /^[-+(]?[$€£¥]?\s?[\d,]*\.?\d+(?:[eE][-+]?\d+)?%?\)?$/;
+function sheetAt(s) {
+  if (!s.rows.length) return '<p class="sheet-cut">This sheet is empty.</p>';
+  const width = Math.max(...s.rows.map((r) => r.length)), cols = Array.from({ length: width }, (_, j) => j);
+  const cut = s.rows.length < s.totalRows || width < s.totalCols;
+  return (cut ? `<p class="sheet-cut">Showing the first ${s.rows.length.toLocaleString()} of ${s.totalRows.toLocaleString()} rows${width < s.totalCols ? ` and ${width} of ${s.totalCols} columns` : ''}. Open in default program to see it all.</p>` : '')
+    + `<div class="sheet-wrap"><table class="sheet"><thead><tr><th></th>${cols.map((j) => `<th>${colName(s.col + j)}</th>`).join('')}</tr></thead><tbody>`
+    + s.rows.map((r, i) => `<tr><th>${s.row + i + 1}</th>${cols.map((j) => { const v = r[j] ?? ''; return `<td${NUM_CELL.test(v) ? ' class="num"' : ''}${v.length > 40 ? ` title="${esc(v)}"` : ''}>${esc(v)}</td>`; }).join('')}</tr>`).join('')
+    + '</tbody></table></div>';
+}
+function sheetBook(f) {
+  if (!f.sheets.length) return '<p class="plain">(empty)</p>';
+  const at = Math.max(0, f.sheets.findIndex((s) => !s.hidden));
+  const tabs = f.sheets.length < 2 ? '' : `<div class="sheet-tabs" role="tablist" aria-label="Sheets">${f.sheets.map((s, i) => `<button class="${i === at ? 'on' : ''}" role="tab" aria-selected="${i === at}" data-sheet="${i}"${s.hidden ? ' title="Hidden in Excel"' : ''}>${esc(s.name)}${s.hidden ? ' (hidden)' : ''}</button>`).join('')}</div>`;
+  return `<div class="sheet-book">${tabs}<div class="sheet-at">${sheetAt(f.sheets[at])}</div></div>`;
+}
+let sheets = null; // the sheets of the workbook shown
+document.getElementById('body').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-sheet]'); if (!b || !sheets) return;
+  for (const t of document.querySelectorAll('[data-sheet]')) { t.classList.toggle('on', t === b); t.setAttribute('aria-selected', t === b); }
+  document.querySelector('.sheet-at').innerHTML = sheetAt(sheets[+b.dataset.sheet]);
+});
+async function load() {
+  try {
+    const r = await fetch('/api/files/content?' + new URLSearchParams(ask));
+    const f = await r.json();
+    if (!r.ok) throw new Error(f.error || r.statusText);
+    document.title = f.name + ' · Preview';
+    document.getElementById('name').textContent = f.name;
+    document.getElementById('name').title = f.path;
+    document.getElementById('when').textContent = 'changed ' + new Date(f.modified).toLocaleString();
+    const body = document.getElementById('body');
+    const raw = '/api/files/raw?' + new URLSearchParams({ ...ask, t: Date.now() });
+    document.body.classList.toggle('framed', f.view === 'pdf' || f.view === 'html' || f.view === 'sheet');
+    sheets = f.view === 'sheet' ? f.sheets : null;
+    if (f.view === 'image') body.innerHTML = `<img class="pic" alt="${esc(f.name)}" src="${esc(raw)}">`;
+    else if (f.view === 'pdf') body.innerHTML = `<iframe class="frame" title="${esc(f.name)}" src="${esc(raw)}"></iframe>`;
+    // HTML runs in a sandbox with no access to Docket; pictures and styles it loads from beside it will not show.
+    else if (f.view === 'html') body.innerHTML = `<iframe class="frame" title="${esc(f.name)}" sandbox="allow-scripts allow-popups allow-forms" src="${esc(raw)}"></iframe>`;
+    else if (f.view === 'sheet') body.innerHTML = sheetBook(f);
+    else if (f.ext === 'csv' || f.ext === 'tsv') body.innerHTML = table(f.text, f.ext === 'tsv' ? '\t' : ',');
+    else body.innerHTML = f.markdown && window.marked && window.DOMPurify ? DOMPurify.sanitize(marked.parse(f.text)) : `<div class="plain">${esc(f.text)}</div>`;
+    for (const a of body.querySelectorAll('a[href]:not([href^="#"])')) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+  } catch (e) { document.getElementById('body').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+}
+const act = (how) => fetch('/api/files/open', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...ask, how }) })
+  .then(async (r) => { document.getElementById('actErr').textContent = r.ok ? '' : (await r.json()).error; }); // said in the header, never in an alert box
+// ‹ and › step through the session's files this page can show, in the order of Docket's Files list.
+const SHOWS = /\.(md|markdown|txt|json|csv|tsv|xlsx|xls|xlsm|png|jpe?g|gif|webp|svg|pdf|html?)$/i; // TAB_VIEW in index.html
+let files = [];
+async function loadFiles() {
+  try {
+    const r = await fetch(`/api/sessions/${encodeURIComponent(ask.sessionId)}/files?client=${encodeURIComponent(ask.client)}`);
+    if (!r.ok) return;
+    const shown = (await r.json()).filter((f) => f.exists && SHOWS.test(f.name));
+    files = [...shown.filter((f) => f.kind !== 'edited'), ...shown.filter((f) => f.kind === 'edited')];
+  } catch {}
+  pager();
+}
+const at = () => files.findIndex((f) => f.path.toLowerCase() === String(ask.path).toLowerCase());
+function pager() {
+  const i = at();
+  document.getElementById('pager').hidden = files.length < 2 || i < 0;
+  document.getElementById('pos').textContent = `${i + 1} of ${files.length}`;
+  document.getElementById('prev').disabled = i <= 0;
+  document.getElementById('next').disabled = i < 0 || i >= files.length - 1;
+}
+function step(d) {
+  const i = at(), f = i >= 0 && files[i + d]; if (!f) return;
+  ask.path = f.path;
+  history.replaceState(null, '', '/view?' + new URLSearchParams(ask));
+  pager(); load();
+}
+document.getElementById('prev').onclick = () => step(-1);
+document.getElementById('next').onclick = () => step(1);
+document.addEventListener('keydown', (e) => {
+  if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+  e.preventDefault(); step(e.key === 'ArrowLeft' ? -1 : 1);
+});
+loadFiles(); setInterval(loadFiles, 15000);
+document.getElementById('reload').onclick = load;
+document.getElementById('open').onclick = () => act('open');
+document.getElementById('folder').onclick = () => act('folder');
+// On a Mac the 📂 button shows the file in Finder.
+if (/mac|iphone|ipad/i.test(navigator.userAgentData?.platform || navigator.platform || '')) document.getElementById('folder').title = 'Show in Finder';
+load();
+</script>
+</body>
+</html>

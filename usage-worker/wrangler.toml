@@ -1,0 +1,10 @@
+# Docket's usage counter (#848). See README.md in this folder.
+name = "docket-usage"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "docket-usage"
+database_id = "31cde16c-a53c-4bab-a8d2-fa3d7f37b6c3"

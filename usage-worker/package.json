@@ -1,0 +1,5 @@
+{
+  "name": "docket-usage-worker",
+  "private": true,
+  "type": "module"
+}

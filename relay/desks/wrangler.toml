@@ -1,0 +1,22 @@
+# The Docket relay for Remote Desks (#1052). See README.md in this folder.
+name = "docket-relay"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = false
+
+# The address every Docket uses (DESK_RELAY_URL in remote.mjs). docket.center's DNS is on the same Cloudflare account.
+routes = [{ pattern = "relay.docket.center", custom_domain = true }]
+
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]
+
+# Connections a minute from one address, before anything reaches a room.
+[[ratelimits]]
+name = "RATE"
+namespace_id = "1052"
+simple = { limit = 60, period = 60 }

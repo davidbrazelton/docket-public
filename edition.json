@@ -1,0 +1,13 @@
+{
+  "edition": "labs",
+  "name": "Docket Labs",
+  "repo": "davidbrazelton/docket-public",
+  "pages": "https://davidbrazelton.github.io/docket-public/",
+  "handoverSince": "2026-11-20",
+  "other": {
+    "edition": "labs",
+    "name": "Docket Labs",
+    "repo": "davidbrazelton/docket-labs",
+    "pages": "https://davidbrazelton.github.io/docket-labs/"
+  }
+}
