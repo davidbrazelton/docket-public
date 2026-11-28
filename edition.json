@@ -1,0 +1,12 @@
+{
+  "edition": "local",
+  "name": "Docket",
+  "repo": "davidbrazelton/docket-public",
+  "pages": "https://davidbrazelton.github.io/docket-public/",
+  "other": {
+    "edition": "labs",
+    "name": "Docket Labs",
+    "repo": "davidbrazelton/docket-labs",
+    "pages": "https://davidbrazelton.github.io/docket-labs/"
+  }
+}

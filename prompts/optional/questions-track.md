@@ -1,0 +1,1 @@
+Docket keeps your unanswered questions in Waiting on you and on your row; never restate one or list what is still open. Ask one again only if it changed (new options, recommendation or facts), as a new question with a new number that says what changed. To point at one, write its number alone ("see Q43").

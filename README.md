@@ -1,0 +1,193 @@
+# Docket
+
+A page on your computer for starting, resuming and watching AI coding sessions, so your work does not depend on any one AI company's desktop app. It runs on Windows 10 or 11 and on macOS.
+
+**Just want to install it?** [Download for Windows](https://github.com/davidbrazelton/docket-public/releases/latest/download/Docket-Setup.exe) · [Install page](https://davidbrazelton.github.io/docket-public/) · [Mac steps](#install-on-a-mac) · [What's new](CHANGELOG.md)
+
+<picture>
+  <source srcset="docs/screenshot-dark.webp" media="(prefers-color-scheme: dark)">
+  <img src="docs/screenshot-light.webp" width="1440" alt="Docket in use: a list of sessions with what each needs from you, a plan's coordinator with its two child sessions nested under it, the conversation open, and its Plan panel with phases and steps">
+</picture>
+
+## Docket or Docket Labs
+
+This is **Docket**, the local-first download, and the one to pick unless you need what Docket Labs adds. It keeps to your computer: it leaves out everything that reaches past it or drives it. **[Docket Labs](https://davidbrazelton.github.io/docket-labs/)** is the experimental download with those features in.
+
+| | Docket (local-first) | Docket Labs (experimental) |
+|---|---|---|
+| Remote Desks: use a desk on one computer from another, on the office network or from anywhere through the Docket relay | No | Yes |
+| Screen control: sessions take screenshots, move the mouse and type in other programs | No | Yes |
+| Meeting recording, once it comes | No | Yes |
+| Everything else: sessions, desks, plans, schedules, the autopilot, Talk mode, the LiteLLM gateway, the private browser | Yes | Yes |
+
+**Why local-first is the default.** Remote Desks opens a way in from another computer, and screen control lets an AI session act as you in any program. Both are guarded, but each is more to trust and more to check. Docket leaves them out of its files altogether, not just switched off, so there is no such code in it to review or to go wrong.
+
+Each download has its own repo, installer, install page and updates: an install only updates from the repo it came from, and Docket has no switch between them. They do not install side by side: both use the same folder and port 4400. To switch on Windows, run the other download's installer: it moves this install over and keeps your desks, sessions and settings. On a Mac (or from the terminal), run this in the Docket folder:
+
+```
+git remote set-url origin https://github.com/davidbrazelton/docket-labs.git
+git fetch origin
+git reset --hard origin/master
+```
+
+An install from before the split had every feature. The update that made Docket local-first asked it once, first: **Keep everything** moved it to Docket Labs with nothing to reinstall, **Go local-first** took the update.
+
+## Why Docket
+
+Cursor, OpenCode and similar tools are AI coding agents: one person, one editor or terminal, one conversation at a time. Docket works one level above them. It doesn't replace your AI. It runs the AI tools you already use (Claude Code, Codex, Grok) and gives you one place to run all your work with them.
+
+- **Every session in one place.** Dozens of sessions side by side, grouped by project, each marked with what it needs from you: a question, a merge, a problem. No more hunting through a pile of terminal windows.
+- **Sessions that hand off work.** A session can start child sessions for separate pieces of a job, check what they did and close them when they're done. A big job gets a plan: phases and steps that child sessions take on as soon as each one is free, with progress in the Plan panel, and only your own steps, such as a decision, left to you. Each session runs on the model the work needs, so routine steps don't cost top-model prices.
+- **A desk for each client or team.** Each desk has its own sign-in, memory, past sessions and billing. Work for one client never leaks into another, and reaching across desks always asks you first.
+- **Work keeps going without you.** Schedules start sessions on a timetable, the autopilot answers routine questions under rules you set, and sessions keep running while Docket restarts or updates itself.
+- **More than code.** Sessions get a private browser with your saved sign-ins, a Files list for the reports and exports they make, and links to GitHub, Jira and Azure DevOps.
+- **Your computer, your accounts.** Docket runs on your own computer, and each desk bills to its own AI account.
+
+### Docket next to Cursor and OpenCode
+
+| | Docket | Cursor | OpenCode |
+|---|---|---|---|
+| **What it is** | A workspace for running many AI sessions | An AI code editor | An AI coding agent in the terminal |
+| **Sessions at once** | Many, side by side, with parent and child sessions | Mostly one per window | One per terminal |
+| **Separate clients** | One desk each, with its own sign-in, memory and billing | No | No |
+| **Runs unattended** | Schedules and autopilot | Background agents | No |
+| **Editing code by hand** | No, use your editor | Yes, a full editor | No |
+
+They work well together: Docket runs and organizes the work, and you open the results in Cursor or any other editor when you want to edit by hand.
+
+## What you need
+
+- **Node.js** 20 or newer (the LTS version from nodejs.org), and **Git**. The Windows installer below brings its own of both.
+- **At least one AI tool** from the table below.
+- Optional: the **GitHub CLI** (`gh`) to show pull request status on sessions, and the **AWS CLI** for a desk that runs Claude through Amazon Bedrock.
+
+### Supported AI tools
+
+| AI tool | Made by | Install | Signs in with |
+|---|---|---|---|
+| Claude Code | Anthropic | `npm install -g @anthropic-ai/claude-code` | a Claude account, or Amazon Bedrock (your company's AWS account) |
+| Codex | OpenAI | `npm install -g @openai/codex` (Windows also: `winget install -e --id OpenAI.Codex`) | a ChatGPT account (Plus, Pro, Business or Enterprise) |
+| Grok | xAI | Mac: `curl -fsSL https://x.ai/cli/install.sh \| bash`<br>Windows: `irm https://x.ai/cli/install.ps1 \| iex` | a Grok account |
+
+Each desk picks one or more of these, and each signs in on its own. Docket checks which tools are on the computer and shows how to install a missing one. Docket also recognizes an API key for each tool (Anthropic, OpenAI or xAI) set in that tool's own settings or in the desk's environment; the setup window does not ask for one.
+
+### Connections (optional)
+
+- **GitHub** (`gh`): pull request status on sessions.
+- **Jira** and **Azure DevOps**: ticket and pull request status, for desks set up for them in ☰ > Desks.
+- **AWS CLI**: only for a desk that runs Claude through Amazon Bedrock.
+
+## Install on Windows the easy way
+
+**[Download for Windows](https://github.com/davidbrazelton/docket-public/releases/latest/download/Docket-Setup.exe)** (Docket-Setup.exe, about 50 MB), then double-click it. It needs no admin rights and nothing installed beforehand: it carries its own Node.js and Git, downloads Docket into `%LOCALAPPDATA%\Programs\Docket`, makes it start when you sign in, adds **Docket** to the Start menu and opens it. The private browser sessions use downloads by itself in the background the first time Docket starts. You still need an AI tool (the table above); Docket shows how to install one.
+
+The installer is not code-signed yet, so Windows may show a blue **Windows protected your PC** window: click **More info**, then **Run anyway**.
+
+To remove it: **Settings > Apps > Installed apps > Docket > Uninstall**. That stops Docket and deletes its folder, with Docket's own settings and desk list. Each desk's own folders (its AI tool's sign-in and past sessions) are elsewhere and stay.
+
+## Install on Windows from the terminal
+
+If you already have Node.js and Git, or want Docket in a folder of your choice, in PowerShell:
+
+```powershell
+git clone https://github.com/davidbrazelton/docket-public.git C:\Work\docket
+cd C:\Work\docket
+npm install
+npx playwright install chromium
+.\install-windows.ps1
+```
+
+`C:\Work\docket` is only a suggestion: any folder works. The `playwright` line installs the private browser sessions use.
+
+`install-windows.ps1` makes Docket start by itself, with no window, when you sign in to Windows, and adds **Docket** to the Start menu, which opens it in its own window (starting it first if needed). Pin that Start menu entry to the taskbar rather than pinning the page in your browser: the page alone cannot start Docket after a restart.
+
+- `.\install-windows.ps1 -ShortcutOnly`: only the Start menu and desktop shortcuts, no start at sign-in.
+- `.\install-windows.ps1 -Desktop`: a **Start Docket** shortcut on the desktop as well.
+- `.\remove-windows.ps1` undoes the install.
+
+If Windows refuses to run the script because it came from the internet, run `Unblock-File .\install-windows.ps1` in the Docket folder and try again.
+
+## Install on a Mac
+
+Install Node.js, Git and at least one AI tool from the table above first, for example with Homebrew: `brew install node git gh`, then the AI tool's install line. Then in Terminal:
+
+```bash
+git clone https://github.com/davidbrazelton/docket-public.git ~/Work/docket
+cd ~/Work/docket
+npm install
+npx playwright install chromium
+./install-mac.sh
+```
+
+`install-mac.sh` makes Docket start by itself when you sign in to the Mac, adds `Docket.command` to `~/Applications` (it starts Docket if needed and opens it), and starts it now. Run it from a Terminal where `git`, `node` and your AI tools (`claude`, `codex`, `grok`) work, since Docket uses that Terminal's PATH. `--shortcut-only` skips the start at sign-in; `./remove-mac.sh` undoes the install.
+
+## First start
+
+Docket opens at http://localhost:4400 (only this computer can open it). The first time, a **Set up Docket** window walks you through your first desk: a name, which AI it uses (Claude, Grok or Codex), its folders, and signing in. **☰ > Desks** adds more desks later.
+
+## Start and stop
+
+- **Start:** it starts at sign-in. Otherwise open **Docket** from the Start menu (on a Mac, `./start-docket.sh`). Without the install, double-click `start-docket.cmd` in the Docket folder.
+- **Stop the app** (sessions keep working): `Stop-Process -Id (Get-NetTCPConnection -LocalPort 4400 -State Listen).OwningProcess`. On a Mac: `kill $(lsof -ti tcp:4400 -sTCP:LISTEN)`.
+- **Stop the sessions too:** the same command with port 4410.
+
+## Updates
+
+Docket updates itself from this repo (only this one: see [Docket or Docket Labs](#docket-or-docket-labs)). Every 5 minutes it checks GitHub for new git commits on `master`; this repo is public, so no GitHub sign-in is needed. When one arrives, Docket pulls it into its folder and restarts itself once no session is busy; sessions keep working. Until then a down arrow shows in the top bar: click it to update now.
+
+The ☰ menu shows the version and when it last checked. [CHANGELOG.md](CHANGELOG.md) lists what changed in each version. Docket never updates over your own changes: if you edit files in the Docket folder, it skips the update and the menu says why.
+
+This repo keeps no history: each update replaces `master` with one fresh commit. Docket moves its folder onto the new one by itself, as long as you have not edited files there or made git commits of your own.
+
+**Stopped updating?** Older installs got the update that follows this by themselves. A computer that was off or offline for a long stretch in late November 2026 may have missed it: the ☰ menu then says its folder "has git commits that are not on GitHub's master". Fix it once: in the Docket folder, run
+
+```
+git fetch origin
+git reset --hard origin/master
+```
+
+or install Docket again. The reset keeps your desks, sessions and settings (they are not in git); only edits you made to Docket's own files are lost.
+
+## Usage stats
+
+Docket sends anonymous usage stats, so its makers can see roughly how many computers run it and which features get used. Nothing in them says who you are, who you work for or what you work on.
+
+- **Asked first:** the first time Docket starts with this, a window lists every field below, what is never sent, where it goes, and the exact report the computer would send that day, with **Keep on** and **Turn off**. Nothing is sent until you answer it.
+- **When:** after that, a few times a day while Docket runs, the same day's report again (the counter keeps the last one per day). Nothing is sent on days Docket does not run. A send that fails is dropped quietly and never slows Docket down.
+- **Where:** Docket's own counter, a Cloudflare Worker that stores the reports in a database (`usage-worker/` in this repo). It stores no IP address.
+- **Install count:** `install-windows.ps1` (and so Docket-Setup.exe) and `install-mac.sh` send one request when an install finishes, carrying only `windows` or `mac`.
+
+Every field in the daily report:
+
+| Field | What it is |
+|---|---|
+| `id` | a random install ID, made once on this computer; it is in nothing else Docket sends |
+| `version` | the Docket version |
+| `platform` | `windows`, `mac` or `other` |
+| `firstSeen` | the day this install first counted |
+| `day` | the day the counts are for (UTC) |
+| `sessions` | sessions started that day, by brand (claude, codex, grok) |
+| `children` | sessions started by another session |
+| `shiftSessions` | sessions started in Shift mode |
+| `gears` | how many times sessions shifted to each gear (haiku, sonnet, opus, ...) |
+| `questions` | questions answered, and how often Explain more and Side chat were used on them: presses (on forms and on numbered questions), follow-ups asked, Use as my answer, answers sent with their side chat, and answers by model (haiku, sonnet, opus, fork) |
+| `plans` | plans made |
+| `ask` | questions asked of another desk |
+| `handoff` | pieces of work handed to another desk |
+| `pages` | times the Usage and Plans pages were opened |
+| `desks` | desks in total and by brand |
+| `remoteDesks` | remote desks |
+| `groups` | groups in total |
+| `schedules` | schedules in total |
+| `signinDesks` | desks with private-browser sign-ins saved (how many desks, not which sites) |
+| `remoteControl` | whether Remote Control or Reach from anywhere is on |
+| `updateMode` | whether updates are taken by themselves (`auto`) or never checked (`off`) |
+| `theme` | `light`, `dark` or `system` |
+
+**Never sent:** names, emails, folder or file paths, desk, group or session titles, prompts, chat or file contents, costs, repo names, the sites you sign in to.
+
+**To turn it off:** ☰ > Docket settings > Usage stats > Turn off (or Turn off in the window the first time). Nothing is then counted or sent from that computer. To turn it off before Docket ever starts, and for the install count too, set `DOCKET_NO_USAGE=1` in the environment Docket starts in (in PowerShell: `[Environment]::SetEnvironmentVariable('DOCKET_NO_USAGE', '1', 'User')`, then sign out and in; on a Mac, `export DOCKET_NO_USAGE=1` before running `install-mac.sh`, which also writes it into the LaunchAgent).
+
+## License
+
+MIT. See LICENSE and CONTRIBUTING.md.

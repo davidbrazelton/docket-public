@@ -1,0 +1,16 @@
+{
+  "name": "Docket",
+  "short_name": "Docket",
+  "description": "Many Claude sessions side by side.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f6f3",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/icon/docket-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon/docket-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon/docket-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

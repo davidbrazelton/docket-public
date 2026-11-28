@@ -1,0 +1,5 @@
+{
+  "name": "docket",
+  "version": "1.0.0",
+  "description": "The hooks Docket adds to every Claude session it starts. A desk turns one off on the Desks screen."
+}

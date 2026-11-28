@@ -1,0 +1,224 @@
+<!doctype html>
+<!-- The public install page, published as docs/index.html in the public copy and served by GitHub Pages.
+     publish/build.mjs fills in the {{...}} parts: davidbrazelton/docket-public the public repo, https://davidbrazelton.github.io/docket-public/ this page's own address, https://davidbrazelton.github.io/docket-labs/
+     the other download's page (Docket or Docket Labs, #1155; each page's own text is in local:/labs: blocks), and the Why Docket reasons and comparison,
+     download link, AI tools table and Mac steps taken from publish/README.md, so the page and the README always say
+     the same. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Docket: a control room for your AI coding tools</title>
+<meta name="description" content="Docket doesn't replace your AI. It runs Claude Code, Codex and Grok on your own computer, under your own accounts, and puts every session in one place.">
+<meta property="og:title" content="Docket: a control room for the AI coding tools you already use">
+<meta property="og:description" content="Docket doesn't replace your AI. It runs Claude Code, Codex and Grok on your own computer, under your own accounts, and puts every session in one place.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://davidbrazelton.github.io/docket-public/icon/docket-512.png">
+<link rel="icon" type="image/png" sizes="32x32" href="icon/docket-32.png">
+<link rel="apple-touch-icon" href="icon/docket-192.png">
+<style>
+  :root {
+    --bg: #f7f7f5; --card: #ffffff; --text: #1d1d1f; --muted: #5f6368; --line: #e2e2de;
+    --blue: #2457c5; --blue-soft: #e8eefb; --purple: #7a3fd1; --purple-soft: #f1eafc;
+    --accent: var(--blue); --accent-soft: var(--blue-soft); --accent-text: #ffffff; --code: #f0f0ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16171a; --card: #1f2125; --text: #ececec; --muted: #a3a7ad; --line: #33363c;
+      --blue: #5b8cff; --blue-soft: #1c2640; --purple: #b48cff; --purple-soft: #2a2140;
+      --accent-text: #0d1220; --code: #2a2d33;
+    }
+  }
+  /* Docket Labs wears purple, so nobody mistakes which page (and which download) they are on. */
+  body.labs { --accent: var(--purple); --accent-soft: var(--purple-soft); }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 20px 64px; }
+  h1 { font-size: 2.4rem; line-height: 1.15; margin: 0 0 16px; letter-spacing: -0.02em; max-width: 680px; }
+  h2 { font-size: 1.35rem; margin: 0 0 12px; }
+  h3 { font-size: 1.05rem; margin: 0 0 6px; }
+  p { margin: 0 0 12px; }
+  .lead { font-size: 1.15rem; color: var(--muted); max-width: 640px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 24px; margin-top: 24px; }
+  a { color: var(--accent); }
+  .download { display: inline-block; margin: 8px 0 12px; padding: 16px 28px; border-radius: 10px; background: var(--accent);
+    color: var(--accent-text); font-size: 1.2rem; font-weight: 600; text-decoration: none; }
+  .download:hover, .download:focus-visible { filter: brightness(1.08); }
+  .hero { padding: 8px 0 8px; }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; font-size: 0.9rem; margin-bottom: 12px; }
+  .brand img { width: 40px; height: 40px; }
+  .badge { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; padding: 2px 9px; border-radius: 99px;
+    background: var(--accent-soft); color: var(--accent); }
+  /* The two versions, one card each; the page's own is outlined and holds its one download button. */
+  .editions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 24px; }
+  @media (max-width: 640px) { .editions { grid-template-columns: 1fr; } }
+  .edition { --e: var(--blue); position: relative; display: flex; flex-direction: column; background: var(--card);
+    border: 1px solid var(--line); border-top: 4px solid var(--e); border-radius: 12px; padding: 18px 20px 20px; }
+  .edition.labs { --e: var(--purple); }
+  .edition.here { box-shadow: 0 0 0 2px var(--e); }
+  .edition h2 { font-size: 1.25rem; margin: 0; color: var(--e); }
+  .edition .sub { color: var(--muted); font-size: 0.95rem; margin: 0 0 10px; }
+  .edition ul { margin: 0 0 18px; padding-left: 20px; color: var(--muted); flex: 1; }
+  .edition .here-tag { position: absolute; top: 14px; right: 16px; font-size: 0.72rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--e); }
+  .edition .download { margin: 0; align-self: flex-start; background: var(--e); }
+  .button-outline { display: inline-block; align-self: flex-start; padding: 10px 20px; border-radius: 10px; border: 1px solid var(--e, var(--accent));
+    color: var(--e, var(--accent)); font-weight: 600; text-decoration: none; }
+  .button-outline:hover, .button-outline:focus-visible { background: var(--accent-soft); }
+  .edition .button-outline:hover, .edition .button-outline:focus-visible { background: var(--blue-soft); }
+  .edition.labs .button-outline:hover, .edition.labs .button-outline:focus-visible { background: var(--purple-soft); }
+  /* Wider than the text column on a wide screen, centered on it; never wider than the window less its gutters. */
+  .shot { --w: min(1120px, calc(100vw - 40px)); width: var(--w); margin: 28px 0 0 calc(50% - var(--w) / 2); }
+  .shot img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12); }
+  .shot figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 10px; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin-top: 16px; }
+  .why { margin-top: 48px; }
+  .why > p { max-width: 680px; }
+  .reasons { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin: 20px 0 0; }
+  .reason { background: var(--card); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 12px; padding: 18px 20px; }
+  .reason p { margin: 0; color: var(--muted); font-size: 0.97rem; }
+  th[scope="row"] { color: var(--text); }
+  .vs td:nth-child(2) { font-weight: 600; }
+  .small-gap { margin: 12px 0 0; }
+  @media (max-width: 480px) { main { padding-top: 32px; } h1 { font-size: 2rem; } }
+  .note { color: var(--muted); font-size: 0.95rem; }
+  code { background: var(--code); border-radius: 4px; padding: 1px 5px; font: 0.9em ui-monospace, Consolas, monospace; }
+  pre { background: var(--code); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 0 0 12px; }
+  pre code { background: none; padding: 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  footer { margin-top: 32px; color: var(--muted); font-size: 0.95rem; }
+  footer a { margin-right: 16px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="hero">
+    <div class="brand"><img src="icon/docket-192.png" alt="" width="40" height="40">Docket</div>
+    <h1>A control room for the AI coding tools you already use</h1>
+    <p class="lead">Docket doesn't replace your AI. It runs Claude Code, Codex and Grok on your own computer, under your own accounts, and puts every session in one place, each marked with what it needs from you.</p>
+    <div class="editions">
+      <div class="edition here">
+        <span class="here-tag">You're here</span>
+        <h2>Docket</h2><p class="sub">Local-first · recommended</p>
+        <ul><li>Keeps to your computer</li><li>Sessions, desks, plans, Talk mode</li><li>No remote access or screen control</li></ul>
+        <a class="download" href="https://github.com/davidbrazelton/docket-public/releases/latest/download/Docket-Setup.exe">Download for Windows</a>
+      </div>
+      <div class="edition labs">
+        <h2>Docket Labs</h2><p class="sub">Experimental</p>
+        <ul><li>Everything in Docket</li><li>Remote Desks from anywhere</li><li>Screen control, meeting recording</li></ul>
+        <a class="button-outline" href="https://davidbrazelton.github.io/docket-labs/">See Docket Labs</a>
+      </div>
+    </div>
+    <div class="actions">
+      <a href="#mac">Mac steps</a>
+      <a href="#why">Why Docket</a>
+      <a href="#choose">Compare the two in detail</a>
+    </div>
+    <p class="note small-gap">Free and open source (MIT). Windows 10 or 11, or macOS.</p>
+    <figure class="shot">
+      <picture>
+        <source srcset="screenshot-dark.webp" media="(prefers-color-scheme: dark)">
+        <img src="screenshot-light.webp" width="1440" height="900" alt="Docket in use: a list of sessions on the left, some working, one asking a question and one with a pull request to merge, with two child sessions nested under the session coordinating a plan; that conversation open in the middle; and on the right its Plan panel: the plan in three phases, 10 of 15 steps done, two in progress in the child sessions, one waiting on another, and one step that is yours to decide.">
+      </picture>
+      <figcaption>Every session in one place, each marked with what it needs from you, and a plan with its steps on the right. (Made-up example sessions.)</figcaption>
+    </figure>
+  </header>
+
+  <div class="why" id="why">
+    <h2>Why Docket</h2>
+    <p>Cursor, OpenCode and similar tools are AI coding agents: one person, one editor or terminal, one conversation at a time. Docket works one level above them. It doesn't replace your AI. It runs the AI tools you already use (Claude Code, Codex, Grok) and gives you one place to run all your work with them.</p>
+    <div class="reasons">
+      <div class="reason"><h3>Every session in one place</h3><p>Dozens of sessions side by side, grouped by project, each marked with what it needs from you: a question, a merge, a problem. No more hunting through a pile of terminal windows.</p></div>
+      <div class="reason"><h3>Sessions that hand off work</h3><p>A session can start child sessions for separate pieces of a job, check what they did and close them when they're done. A big job gets a plan: phases and steps that child sessions take on as soon as each one is free, with progress in the Plan panel, and only your own steps, such as a decision, left to you. Each session runs on the model the work needs, so routine steps don't cost top-model prices.</p></div>
+      <div class="reason"><h3>A desk for each client or team</h3><p>Each desk has its own sign-in, memory, past sessions and billing. Work for one client never leaks into another, and reaching across desks always asks you first.</p></div>
+      <div class="reason"><h3>Work keeps going without you</h3><p>Schedules start sessions on a timetable, the autopilot answers routine questions under rules you set, and sessions keep running while Docket restarts or updates itself.</p></div>
+      <div class="reason"><h3>More than code</h3><p>Sessions get a private browser with your saved sign-ins, a Files list for the reports and exports they make, and links to GitHub, Jira and Azure DevOps.</p></div>
+      <div class="reason"><h3>Your computer, your accounts</h3><p>Docket runs on your own computer, and each desk bills to its own AI account.</p></div>
+    </div>
+  </div>
+
+  <section id="compare">
+    <h2>Docket next to Cursor and OpenCode</h2>
+    <div class="table-wrap">
+      <table class="vs">
+        <thead><tr><th scope="col"></th><th scope="col">Docket</th><th scope="col">Cursor</th><th scope="col">OpenCode</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">What it is</th><td>A workspace for running many AI sessions</td><td>An AI code editor</td><td>An AI coding agent in the terminal</td></tr>
+          <tr><th scope="row">Sessions at once</th><td>Many, side by side, with parent and child sessions</td><td>Mostly one per window</td><td>One per terminal</td></tr>
+          <tr><th scope="row">Separate clients</th><td>One desk each, with its own sign-in, memory and billing</td><td>No</td><td>No</td></tr>
+          <tr><th scope="row">Runs unattended</th><td>Schedules and autopilot</td><td>Background agents</td><td>No</td></tr>
+          <tr><th scope="row">Editing code by hand</th><td>No, use your editor</td><td>Yes, a full editor</td><td>No</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note small-gap">They work well together: Docket runs and organizes the work, and you open the results in Cursor or any other editor when you want to edit by hand.</p>
+  </section>
+
+  <section id="choose">
+    <h2>Docket or Docket Labs, in detail</h2>
+    <p>Docket keeps to your computer and leaves out everything that reaches past it or drives it. Docket Labs has everything Docket has, plus those features. Pick Docket unless you need them.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th></th><th>Docket (local-first)</th><th>Docket Labs (experimental)</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Remote Desks: use a desk on one computer from another, on the office network or through the Docket relay</th><td>No</td><td>Yes</td></tr>
+          <tr><th scope="row">Screen control: sessions take screenshots, move the mouse and type in other programs</th><td>No</td><td>Yes</td></tr>
+          <tr><th scope="row">Meeting recording, once it comes</th><td>No</td><td>Yes</td></tr>
+          <tr><th scope="row">Everything else: sessions, desks, plans, schedules, the autopilot, Talk mode, the LiteLLM gateway</th><td>Yes</td><td>Yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note small-gap"><strong>Why local-first is the default:</strong> Remote Desks opens a way in from another computer, and screen control lets an AI session act as you in any program. Each is more to trust and more to check, so Docket leaves them out of its files altogether. Each download updates only from its own repo, and they do not install side by side. To switch on Windows, run the other download's installer: it moves your install over and keeps your desks and settings.</p>
+  </section>
+
+  <section id="windows">
+    <h2>Install on Windows</h2>
+    <p><a class="button-outline" href="https://github.com/davidbrazelton/docket-public/releases/latest/download/Docket-Setup.exe">Download for Windows</a></p>
+    <p>Double-click <code>Docket-Setup.exe</code> once it has downloaded. It needs no admin rights and brings everything it needs, then opens Docket and starts it each time you sign in.</p>
+    <p class="note">The installer is not code-signed yet, so Windows may say <strong>Windows protected your PC</strong>: click <strong>More info</strong>, then <strong>Run anyway</strong>.</p>
+  </section>
+
+  <section id="mac">
+    <h2>Install on a Mac</h2>
+    <p>There is no Mac installer yet, so the Mac install uses Terminal. First install Node.js, Git and at least one AI tool from the table below, for example with Homebrew: <code>brew install node git gh</code>. Then open Terminal and run:</p>
+    <pre><code>git clone https://github.com/davidbrazelton/docket-public.git ~/Work/docket
+cd ~/Work/docket
+npm install
+npx playwright install chromium
+./install-mac.sh</code></pre>
+    <p>Docket then starts by itself each time you sign in to the Mac, and opens at <code>http://localhost:4400</code>.</p>
+  </section>
+
+  <section id="ai-tools">
+    <h2>Supported AI tools</h2>
+    <p>You need at least one of these. Each one signs in on its own, and Docket shows how to install a missing one.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>AI tool</th><th>Made by</th><th>Install</th><th>Signs in with</th></tr></thead>
+        <tbody>
+          <tr><td>Claude Code</td><td>Anthropic</td><td><code>npm install -g @anthropic-ai/claude-code</code></td><td>a Claude account, or Amazon Bedrock (your company's AWS account)</td></tr>
+          <tr><td>Codex</td><td>OpenAI</td><td><code>npm install -g @openai/codex</code> (Windows also: <code>winget install -e --id OpenAI.Codex</code>)</td><td>a ChatGPT account (Plus, Pro, Business or Enterprise)</td></tr>
+          <tr><td>Grok</td><td>xAI</td><td>Mac: <code>curl -fsSL https://x.ai/cli/install.sh | bash</code><br>Windows: <code>irm https://x.ai/cli/install.ps1 | iex</code></td><td>a Grok account</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="updates">
+    <h2>Updates arrive by themselves</h2>
+    <p>Docket checks for a new version every few minutes. The first time one arrives it asks whether to take updates automatically or only when you say so. Your sessions keep working while it updates.</p>
+  </section>
+
+  <footer>
+    <a href="https://github.com/davidbrazelton/docket-public">The code on GitHub</a>
+    <a href="https://github.com/davidbrazelton/docket-public#readme">Full instructions (README)</a>
+    <a href="https://github.com/davidbrazelton/docket-public/blob/master/LICENSE">MIT license</a>
+  </footer>
+</main>
+</body>
+</html>
